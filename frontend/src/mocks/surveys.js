@@ -1,0 +1,105 @@
+export const MOCK_SURVEY_RECORDS = [
+  { id: "s1", title: "2025 年度客戶滿意度調查", code: "ABC123", createdAt: "2025-04-20", responseCount: 47, status: "active" },
+  { id: "s2", title: "員工工作環境滿意度調查", code: "XYZ789", createdAt: "2025-04-15", responseCount: 23, status: "active" },
+  { id: "s3", title: "產品功能需求調查", code: "DEF456", createdAt: "2025-04-10", responseCount: 89, status: "closed" },
+  { id: "s4", title: "Q1 市場調查問卷", code: "GHJ321", createdAt: "2025-03-28", responseCount: 134, status: "closed" },
+  { id: "s5", title: "新功能使用體驗回饋", code: "KLM654", createdAt: "2025-03-15", responseCount: 56, status: "closed" },
+];
+
+export const MOCK_SURVEY_DETAILS = {
+  s1: {
+    id: "s1",
+    title: "2025 年度客戶滿意度調查",
+    code: "ABC123",
+    createdAt: "2025-04-20",
+    questions: [
+      { id: "q1", type: "rating", title: "請為整體服務滿意度評分（0-5）" },
+      { id: "q2", type: "rating", title: "請為介面易用性評分（0-5）" },
+      { id: "q3", type: "single", title: "您最常使用我們的哪項功能？" },
+      { id: "q4", type: "multiple", title: "您希望改善哪些方面？（可複選）" },
+      { id: "q5", type: "long", title: "您有什麼建議或意見想告訴我們？" },
+    ],
+    responses: [
+      { respondentId: "r1", submittedAt: "2025-04-21 09:12", answers: { q1: "4", q2: "5", q3: "資料分析", q4: ["資料分析", "AI 問答"], q5: "希望增加更多圖表類型" } },
+      { respondentId: "r2", submittedAt: "2025-04-21 10:34", answers: { q1: "3", q2: "4", q3: "報表匯出", q4: ["報表匯出"], q5: "導出速度可以再快一點" } },
+      { respondentId: "r3", submittedAt: "2025-04-21 11:05", answers: { q1: "5", q2: "5", q3: "AI 問答", q4: ["AI 問答", "資料分析"], q5: "非常滿意，繼續加油！" } },
+      { respondentId: "r4", submittedAt: "2025-04-21 13:22", answers: { q1: "2", q2: "3", q3: "資料分析", q4: ["資料分析", "報表匯出", "API 整合"], q5: "行動裝置支援需要加強" } },
+      { respondentId: "r5", submittedAt: "2025-04-22 08:45", answers: { q1: "4", q2: "4", q3: "作品集管理", q4: ["作品集管理"], q5: "" } },
+      { respondentId: "r6", submittedAt: "2025-04-22 09:30", answers: { q1: "5", q2: "5", q3: "AI 問答", q4: ["AI 問答"], q5: "很好用，推薦給同事" } },
+      { respondentId: "r7", submittedAt: "2025-04-22 14:10", answers: { q1: "3", q2: "3", q3: "報表匯出", q4: ["報表匯出", "API 整合"], q5: "希望有更多圖表樣式" } },
+      { respondentId: "r8", submittedAt: "2025-04-23 10:00", answers: { q1: "4", q2: "4", q3: "資料分析", q4: ["資料分析"], q5: "整體使用體驗良好" } },
+    ],
+  },
+  s2: {
+    id: "s2",
+    title: "員工工作環境滿意度調查",
+    code: "XYZ789",
+    createdAt: "2025-04-15",
+    questions: [
+      { id: "q1", type: "rating", title: "工作環境整體滿意度（0-5）" },
+      { id: "q2", type: "single", title: "公司最需要改善的方面是？" },
+      { id: "q3", type: "short", title: "您最欣賞公司的一件事是什麼？" },
+    ],
+    responses: [
+      { respondentId: "r1", submittedAt: "2025-04-16 09:00", answers: { q1: "4", q2: "薪資福利", q3: "團隊氛圍很好" } },
+      { respondentId: "r2", submittedAt: "2025-04-16 10:15", answers: { q1: "3", q2: "職涯發展", q3: "彈性工作時間" } },
+      { respondentId: "r3", submittedAt: "2025-04-16 11:30", answers: { q1: "5", q2: "辦公環境", q3: "同事都很專業且友善" } },
+      { respondentId: "r4", submittedAt: "2025-04-17 08:45", answers: { q1: "2", q2: "薪資福利", q3: "公司文化導向正面" } },
+      { respondentId: "r5", submittedAt: "2025-04-17 14:00", answers: { q1: "4", q2: "工作與生活平衡", q3: "學習資源豐富" } },
+    ],
+  },
+  s3: {
+    id: "s3",
+    title: "產品功能需求調查",
+    code: "DEF456",
+    createdAt: "2025-04-10",
+    questions: [
+      { id: "q1", type: "multiple", title: "您最希望新增哪些功能？（可複選）" },
+      { id: "q2", type: "rating", title: "您願意為進階功能付費的意願（0-5）" },
+      { id: "q3", type: "long", title: "請描述您理想中的功能或使用情境" },
+    ],
+    responses: [
+      { respondentId: "r1", submittedAt: "2025-04-11 09:00", answers: { q1: ["即時協作編輯", "API 整合"], q2: "3", q3: "希望可以直接在平台上分享分析結果" } },
+      { respondentId: "r2", submittedAt: "2025-04-11 10:30", answers: { q1: ["行動裝置 App"], q2: "4", q3: "行動端支援是最大需求" } },
+      { respondentId: "r3", submittedAt: "2025-04-12 08:00", answers: { q1: ["自動化報告", "資料視覺化圖表"], q2: "5", q3: "希望有更多圖表類型可以選擇" } },
+      { respondentId: "r4", submittedAt: "2025-04-12 11:15", answers: { q1: ["API 整合", "自動化報告"], q2: "2", q3: "" } },
+      { respondentId: "r5", submittedAt: "2025-04-13 09:15", answers: { q1: ["即時協作編輯", "行動裝置 App", "資料視覺化圖表"], q2: "4", q3: "希望整體使用體驗更流暢" } },
+    ],
+  },
+  s4: {
+    id: "s4",
+    title: "Q1 市場調查問卷",
+    code: "GHJ321",
+    createdAt: "2025-03-28",
+    questions: [
+      { id: "q1", type: "rating", title: "對目前市場上同類產品的滿意度（0-5）" },
+      { id: "q2", type: "single", title: "您如何得知我們的產品？" },
+      { id: "q3", type: "short", title: "您最常使用的競爭對手是？" },
+      { id: "q4", type: "long", title: "您認為我們的產品與對手相比最大的優勢是？" },
+    ],
+    responses: [
+      { respondentId: "r1", submittedAt: "2025-03-29 09:00", answers: { q1: "3", q2: "社群媒體", q3: "Tableau", q4: "AI 功能更強大" } },
+      { respondentId: "r2", submittedAt: "2025-03-29 10:00", answers: { q1: "4", q2: "搜尋引擎", q3: "Power BI", q4: "價格更具競爭力" } },
+      { respondentId: "r3", submittedAt: "2025-03-30 08:30", answers: { q1: "5", q2: "朋友推薦", q3: "Excel", q4: "介面直覺易用" } },
+      { respondentId: "r4", submittedAt: "2025-03-30 11:00", answers: { q1: "2", q2: "線上廣告", q3: "Looker", q4: "導入功能更方便" } },
+      { respondentId: "r5", submittedAt: "2025-03-31 09:15", answers: { q1: "4", q2: "社群媒體", q3: "Tableau", q4: "即時協作功能很好" } },
+    ],
+  },
+  s5: {
+    id: "s5",
+    title: "新功能使用體驗回饋",
+    code: "KLM654",
+    createdAt: "2025-03-15",
+    questions: [
+      { id: "q1", type: "rating", title: "新功能整體滿意度（0-5）" },
+      { id: "q2", type: "single", title: "您認為新功能最大的優點是？" },
+      { id: "q3", type: "short", title: "您在使用新功能時遇到什麼問題？" },
+    ],
+    responses: [
+      { respondentId: "r1", submittedAt: "2025-03-16 09:00", answers: { q1: "5", q2: "速度提升", q3: "沒有明顯問題" } },
+      { respondentId: "r2", submittedAt: "2025-03-16 10:00", answers: { q1: "4", q2: "操作更直覺", q3: "提示文字可以更清楚" } },
+      { respondentId: "r3", submittedAt: "2025-03-17 08:00", answers: { q1: "3", q2: "速度提升", q3: "偶爾載入較慢" } },
+      { respondentId: "r4", submittedAt: "2025-03-17 11:00", answers: { q1: "4", q2: "介面設計", q3: "沒有" } },
+    ],
+  },
+};
