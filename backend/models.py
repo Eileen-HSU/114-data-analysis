@@ -1,7 +1,5 @@
-from flask_sqlalchemy import SQLAlchemy
+from extensions import db
 from datetime import datetime, timedelta
-
-db = SQLAlchemy()
 
 # 定義抓取台灣時間的函式 (UTC+8)
 def taiwan_now():
