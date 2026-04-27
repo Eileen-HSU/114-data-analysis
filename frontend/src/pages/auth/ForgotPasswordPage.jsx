@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import "./auth.css";
+import axios from "axios";
 
 export default function ForgotPasswordPage() {
   const navigate = useNavigate();
@@ -24,22 +25,40 @@ export default function ForgotPasswordPage() {
     emailRef.current?.classList.remove("is-invalid");
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const val = emailRef.current?.value.trim() ?? "";
     if (!val) { showError("請輸入電子郵件地址"); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) { showError("請輸入有效的電子郵件格式"); return; }
     clearError();
 
-    // Simulate sending — show loading state
     const btn = submitBtnRef.current;
-    if (btn) { btn.disabled = true; btn.innerHTML = `<i class="ri-loader-4-line" style="animation:spin 1s linear infinite"></i> 發送中...`; }
+    if (btn) { 
+      btn.disabled = true; 
+      btn.innerHTML = `<i class="ri-loader-4-line" style="animation:spin 1s linear infinite"></i> 發送中...`; 
+    }
 
-    setTimeout(() => {
-      if (sentEmailRef.current) sentEmailRef.current.textContent = val;
-      if (stepSendRef.current) stepSendRef.current.style.display = "none";
-      if (stepDoneRef.current) stepDoneRef.current.style.display = "block";
-    }, 1200);
+    try {
+      // 3. 呼叫後端 API
+      const response = await axios.post("http://127.0.0.1:5000/api/auth/send-otp", {
+        email: val,
+        type: "PASSWORD_RESET"
+      });
+
+      if (response.status === 200) {
+        if (sentEmailRef.current) sentEmailRef.current.textContent = val;
+        if (stepSendRef.current) stepSendRef.current.style.display = "none";
+        if (stepDoneRef.current) stepDoneRef.current.style.display = "block";
+      }
+    } catch (error) {
+      // 4. 錯誤處理 (例如：Email 沒註冊過)
+      const errorMsg = error.response?.data?.error || "發送失敗，請稍後再試";
+      showError(errorMsg);
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = "發送重設連結";
+      }
+    }
   };
 
   return (

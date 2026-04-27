@@ -6,7 +6,7 @@ from extensions import db, mail
 from routes.auth.register import register_bp
 from routes.auth.login import login_bp
 from routes.auth.pwd import pwd_bp
-from routes.profile import profile_bp
+from routes.auth.profile import profile_bp
 
 load_dotenv()
 
@@ -25,9 +25,9 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = '15503project@gmail.com' 
-app.config['MAIL_PASSWORD'] = 'cwymtbotttwbuxom'
-app.config['MAIL_DEFAULT_SENDER'] = '15503project@gmail.com'
+app.config['MAIL_USERNAME'] = '115503project@gmail.com' 
+app.config['MAIL_PASSWORD'] = 'zppbngpjpuwjhdzf'
+app.config['MAIL_DEFAULT_SENDER'] = '115503project@gmail.com'
 
 # ── 初始化 ────────────────────────────────────────────────────
 db.init_app(app)

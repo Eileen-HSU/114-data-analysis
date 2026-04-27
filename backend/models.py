@@ -12,7 +12,6 @@ class User(db.Model):
     user_name = db.Column(db.String(50), nullable=False)
     email = db.Column(db.String(100), nullable=False, unique=True)
     password_hash = db.Column(db.String(255), nullable=False)
-    # 使用台灣時間作為預設值
     created_at = db.Column(db.DateTime, default=taiwan_now)
 
     # 關聯設定
@@ -26,8 +25,12 @@ class UserProfile(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('User.user_id'), nullable=False)
     phone_number = db.Column(db.String(20), nullable=False)
     company_name = db.Column(db.String(100))
-    gender = db.Column(db.String(10))
-    language = db.Column(db.String(15))
+    gender = db.Column(db.String(20))
+    language = db.Column(db.String(36))
+    bio = db.Column(db.String(500))
+    location = db.Column(db.String(100))
+    updated_at = db.Column(db.DateTime, default=taiwan_now)
+
 
 # T03: User_Verification - 驗證碼機制
 class UserVerification(db.Model):
@@ -38,7 +41,6 @@ class UserVerification(db.Model):
     code_hash = db.Column(db.String(255), nullable=False)
     is_used = db.Column(db.Boolean, default=False)
     expires_at = db.Column(db.DateTime, nullable=False)
-    # 使用台灣時間作為預設值
     created_at = db.Column(db.DateTime, default=taiwan_now)
     target_email = db.Column(db.String(255))
     project_id = db.Column(db.Integer)
