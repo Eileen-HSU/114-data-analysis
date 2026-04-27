@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./auth.css";
+import axios from "axios";
 
 export default function ChangePasswordPage() {
   const navigate = useNavigate();
@@ -23,23 +24,38 @@ export default function ChangePasswordPage() {
     emailRef.current?.classList.remove("is-invalid");
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    const val = emailRef.current?.value.trim() ?? "";
-    if (!val) { showError("請輸入電子郵件地址"); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) { showError("請輸入有效的電子郵件格式"); return; }
-    clearError();
+  const handleSubmit = async (e) => { 
+  e.preventDefault();
+  const val = emailRef.current?.value.trim() ?? "";
+  if (!val) { showError("請輸入電子郵件地址"); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) { showError("請輸入有效的電子郵件格式"); return; }
+  clearError();
 
-    const btn = submitBtnRef.current;
-    if (btn) {
-      btn.disabled = true;
-      btn.innerHTML = `<i class="ri-loader-4-line" style="animation:spin 1s linear infinite"></i> 發送中...`;
-    }
+  const btn = submitBtnRef.current;
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<i class="ri-loader-4-line" style="animation:spin 1s linear infinite"></i> 發送中...`;
+  }
 
-    setTimeout(() => {
+  try {
+    const response = await axios.post("http://127.0.0.1:5000/api/auth/send-otp", {
+      email: val,
+      type: "PASSWORD_CHANGE"
+    });
+
+    if (response.status === 200) {
       setSentEmail(val);
       setStep("done");
-    }, 1200);
+    }
+    } catch (error) {
+      // 帳號未註冊或伺服器當機
+      const errorMsg = error.response?.data?.error || "發送失敗，請稍後再試";
+      showError(errorMsg);
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = "發送修改連結";
+      }
+    }
   };
 
   return (
@@ -63,7 +79,7 @@ export default function ChangePasswordPage() {
             <div className="auth-features">
               {[
                 { icon: "ri-mail-send-line", text: "驗證連結發送至您的信箱" },
-                { icon: "ri-time-line", text: "連結 30 分鐘內有效" },
+                { icon: "ri-time-line", text: "連結 10 分鐘內有效" },
                 { icon: "ri-shield-check-line", text: "全程加密保護帳號安全" },
               ].map((f, i) => (
                 <div className="auth-feature-item" key={i}>

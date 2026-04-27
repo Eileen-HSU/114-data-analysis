@@ -15,6 +15,7 @@ function getLocalSurveys() {
 export default function ProfilePage() {
   const navigate = useNavigate();
   const { user } = useAuth(); // ── 從 AuthContext 取得登入用戶
+  console.log('目前登入的 user：', user);
   const avatarInputRef = useRef(null);
   const [activeTab, setActiveTab] = useState("info");
   const [isEditing, setIsEditing] = useState(false);
@@ -33,6 +34,7 @@ export default function ProfilePage() {
 
   // ── 載入個人資料 ──────────────────────────────────────────
   useEffect(() => {
+    if (user === null) return;
     if (!user?.user_id) return;
 
     fetch(`http://127.0.0.1:5000/api/profile/${user.user_id}`)
@@ -81,13 +83,36 @@ export default function ProfilePage() {
     reader.readAsDataURL(file);
   };
 
-  const handleSave = () => {
-    setProfile(editProfile);
-    setSaved(true);
-    setTimeout(() => {
-      setSaved(false);
-      setIsEditing(false);
-    }, 900);
+  const handleSave = async () => {
+    try {
+        const res = await fetch(`http://127.0.0.1:5000/api/profile/${user.user_id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_name:    editProfile.name,
+                phone_number: editProfile.phone,
+                company_name: editProfile.company,
+                gender:       editProfile.gender,
+                location:        editProfile.location,
+                bio:          editProfile.bio,
+                updated_at:   new Date().toISOString(),
+
+            }),
+        });
+
+        if (!res.ok) throw new Error('更新失敗');
+
+        setProfile(editProfile);
+        setSaved(true);
+        setTimeout(() => {
+            setSaved(false);
+            setIsEditing(false);
+        }, 900);
+
+      } catch (err) {
+          console.error('儲存失敗', err);
+          alert('儲存失敗，請稍後再試');
+      }
   };
 
   const handleCancel = () => {

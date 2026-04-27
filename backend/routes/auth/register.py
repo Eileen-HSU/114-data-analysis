@@ -1,8 +1,13 @@
 from flask import Blueprint, request, jsonify
+from werkzeug.security import generate_password_hash
 from models import User, UserProfile
 from extensions import db
+import traceback
 
 register_bp = Blueprint('register', __name__)
+
+def taiwan_now():
+    return datetime.utcnow() + timedelta(hours=8)
 
 @register_bp.route('/api/register', methods=['POST'])
 def register():
@@ -20,7 +25,7 @@ def register():
         new_user = User(
             user_name=data.get('user_name'),
             email=data.get('email'),
-            password_hash=data.get('password_hash')
+            password_hash=generate_password_hash(data.get('password_hash'))
         )
         db.session.add(new_user)
         db.session.flush()
@@ -29,7 +34,8 @@ def register():
             user_id=new_user.user_id,
             phone_number=data.get('phone_number'),
             gender=data.get('gender'),
-            language=data.get('language', 'zh-TW')
+            language=data.get('language', 'zh-TW'),
+            company_name=data.get('company_name', '')
         )
         db.session.add(new_profile)
         db.session.commit()
@@ -41,4 +47,5 @@ def register():
 
     except Exception as e:
         db.session.rollback()
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 400
