@@ -44,3 +44,9 @@ class UserVerification(db.Model):
     created_at = db.Column(db.DateTime, default=taiwan_now)
     target_email = db.Column(db.String(255))
     project_id = db.Column(db.Integer)
+    # T04: Survey - 儲存問卷回覆資料
+class Survey(db.Model):
+    __tablename__ = 'Survey'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    content = db.Column(db.Text, nullable=False) # 儲存 JSON 格式的問卷內容
+    created_at = db.Column(db.DateTime, default=taiwan_now)
