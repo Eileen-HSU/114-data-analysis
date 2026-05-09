@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import Navbar from "../../components/feature/Navbar";
 import { MOCK_SURVEY_DETAILS } from "../../mocks/surveys";
 import "./survey.css";
+import { useNavigate } from 'react-router-dom';
 
 const MOCK_SURVEYS = Object.fromEntries(Object.values(MOCK_SURVEY_DETAILS).map((survey) => [survey.code, survey]));
 
@@ -9,13 +10,8 @@ function getStoredSurveys() {
   return JSON.parse(localStorage.getItem("surveys") || "{}");
 }
 
-function saveStoredSurvey(code, survey) {
-  const stored = getStoredSurveys();
-  stored[code] = survey;
-  localStorage.setItem("surveys", JSON.stringify(stored));
-}
-
 export default function FillSurveyPage() {
+  const navigate = useNavigate(); // 修正點 1：將 navigate 移入組件內部
   const [code, setCode] = useState("");
   const [survey, setSurvey] = useState(null);
   const [answers, setAnswers] = useState({});
@@ -52,26 +48,42 @@ export default function FillSurveyPage() {
     });
   };
 
-  const handleSubmit = () => {
+  // 修正點 2：合併後的唯一 handleSubmit
+  const handleSubmit = async (e) => {
+    if (e) e.preventDefault(); 
+
+    // 檢查必填項目
     const missing = survey.questions.some((q) => {
       const value = answers[q.id];
       return q.required && (Array.isArray(value) ? value.length === 0 : !String(value ?? "").trim());
     });
+
     if (missing) {
       setError("請完成所有必填題目。");
       return;
     }
 
-    const response = {
-      respondentId: `local-${Date.now()}`,
-      submittedAt: new Date().toLocaleString("zh-TW"),
-      answers,
-    };
-    const updatedSurvey = { ...survey, responses: [...(survey.responses || []), response] };
-    saveStoredSurvey(survey.code, updatedSurvey);
-    setSurvey(updatedSurvey);
-    setError("");
-    setSubmitted(true);
+    try {
+      const response = await fetch('http://127.0.0.1:5000/api/submit_form', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(answers), // 送出使用者回答
+      });
+
+      if (response.ok) {
+        setSubmitted(true);
+        setError("");
+        // 成功後跳轉
+        setTimeout(() => navigate('/workspace'), 1500); 
+      } else {
+        setError("伺服器儲存失敗，請檢查後端連線。");
+      }
+    } catch (error) {
+      console.error("提交失敗:", error);
+      setError("伺服器連線失敗，請確認後端 Python 是否已啟動。");
+    }
   };
 
   const renderQuestionInput = (question) => {

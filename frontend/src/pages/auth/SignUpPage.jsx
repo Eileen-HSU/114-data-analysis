@@ -17,29 +17,28 @@ export default function SignUpPage() {
   const [company, setCompany] = useState("");
   const [gender, setGender] = useState("");
 
-  const handleSubmit = async (e) => {
+const handleSubmit = async (e) => {
     e.preventDefault();
     
     try {
-      const response = await axios.post("/api/register", {
-        user_name: name,      
-        email: email,         
-        password_hash: password, 
+      // 將所有數據包裹在一個物件中作為 axios.post 的第二個參數
+      const response = await axios.post('http://localhost:5000/api/register', {
+        user_name: name,      // 對標後端 User 模型的名稱欄位
+        email: email,         // 對標 Email 欄位
+        password_hash: password, // 對標密碼欄位（後端會再加密）
         phone_number: phone,  
         gender: gender,       
         company_name: company 
       });
 
-      if (response.status === 201) {
-        alert("註冊成功！");
-        login({ name: name || "使用者", email });
-        navigate("/workspace");
-      }
-    } catch (err) {
-      console.error("註冊失敗:", err);
-      alert("註冊失敗，請檢查後端連線或 Email 是否重複。");
+      console.log("註冊成功:", response.data);
+      alert("註冊成功！");
+      navigate("/login"); // 註冊成功後自動導向登入頁
+    } catch (error) {
+      console.error("註冊失敗:", error);
+      alert(error.response?.data?.error || "註冊失敗，請檢查資料");
     }
-  };
+  }; // <--- 你之前漏掉的這個括號，就是紅屏報錯的元兇
 
   return (
     <div className="auth-page">
