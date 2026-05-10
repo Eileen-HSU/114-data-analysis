@@ -1,0 +1,105 @@
+-- MySQL dump 10.13  Distrib 8.0.27, for macos11 (arm64)
+--
+-- Host: analysis-ntub-analysis.c.aivencloud.com    Database: defaultdb
+-- ------------------------------------------------------
+-- Server version	8.0.45
+
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!50503 SET NAMES utf8mb4 */;
+/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
+/*!40103 SET TIME_ZONE='+00:00' */;
+/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;
+/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
+/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
+/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
+SET @MYSQLDUMP_TEMP_LOG_BIN = @@SESSION.SQL_LOG_BIN;
+SET @@SESSION.SQL_LOG_BIN= 0;
+
+--
+-- GTID state at the beginning of the backup 
+--
+
+SET @@GLOBAL.GTID_PURGED=/*!80000 '+'*/ 'a053e26e-4054-11f1-b96c-2e5594fbf578:1-37';
+
+--
+-- Table structure for table `AI_Analysis`
+--
+
+DROP TABLE IF EXISTS `AI_Analysis`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `AI_Analysis` (
+  `data_id` int NOT NULL AUTO_INCREMENT,
+  `project_id` int NOT NULL,
+  `raw_content` text NOT NULL,
+  `ai_category` varchar(100) DEFAULT NULL,
+  `ai_summary` text,
+  `ai_suggestion` text,
+  `corrected_category` varchar(100) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `chart_data` text,
+  `export_status` varchar(20) DEFAULT 'Not Exported',
+  PRIMARY KEY (`data_id`),
+  KEY `fk_data_project` (`project_id`),
+  CONSTRAINT `fk_data_project` FOREIGN KEY (`project_id`) REFERENCES `Workspace` (`project_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `Admin`
+--
+
+DROP TABLE IF EXISTS `Admin`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `Admin` (
+  `config_id` int NOT NULL AUTO_INCREMENT,
+  `admin_entry_key` varchar(50) NOT NULL,
+  `prompt_template` text,
+  `system_error_log` text,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`config_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `Chat_History`
+--
+
+DROP TABLE IF EXISTS `Chat_History`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `Chat_History` (
+  `chat_id` int NOT NULL AUTO_INCREMENT,
+  `project_id` int NOT NULL,
+  `chat_name` varchar(20) NOT NULL,
+  `sender_type` varchar(10) NOT NULL,
+  `message_content` text NOT NULL,
+  `is_auto_title` tinyint(1) DEFAULT '1',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`chat_id`),
+  KEY `fk_chat_project` (`project_id`),
+  CONSTRAINT `fk_chat_project` FOREIGN KEY (`project_id`) REFERENCES `Workspace` (`project_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `Survey_Response`
+--
+
+DROP TABLE IF EXISTS `Survey_Response`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `Survey_Response` (
+  `response_id` int NOT NULL AUTO_INCREMENT,
+  `template_id` int NOT NULL,
+  `answer_json` json NOT NULL,
+  `response_token` varchar(255) NOT NULL,
+  `submitted_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`response_id`),
+  KEY `fk_response_template` (`template_id`),
+  CONSTRAINT `fk_response_template` FOREIGN KEY (`template_id`) REFERENCES `Survey_Template` (`template_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT
