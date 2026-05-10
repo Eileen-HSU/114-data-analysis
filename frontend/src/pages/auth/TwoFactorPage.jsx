@@ -193,10 +193,10 @@ export default function TwoFactorPage() {
 
                 <button
                   className="btn btn-auth-submit w-100 mb-3"
-                  onClick={() => navigate("/profile")}
+                  onClick={() => navigate("/profile?two_factor=enabled")}
                 >
-                  <i className="ri-arrow-left-line" style={{ marginRight: 6 }}></i>
-                  返回個人資料
+                  <i className="ri-checkbox-circle-line" style={{ marginRight: 6 }}></i>
+                  模擬信件連結完成啟用
                 </button>
 
                 <button

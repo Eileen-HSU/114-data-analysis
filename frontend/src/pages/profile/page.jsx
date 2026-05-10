@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import Navbar from "../../components/feature/Navbar";
 import SurveyDetailPage from "./components/SurveyDetailPage";
 import { MOCK_SURVEY_RECORDS, MOCK_SURVEY_DETAILS } from "../../mocks/surveys";
@@ -7,6 +7,7 @@ import { useAuth } from "../../hooks/AuthContext";
 import "./profile.css";
 
 const DEFAULT_AVATAR = "https://static.readdy.ai/image/db4f710102ca6cc45db44808c8658987/b181cfaad2165c1909b7c8fa8339cbe7.png";
+const TWO_FACTOR_KEY_PREFIX = "dataanalysis_two_factor_enabled";
 
 function getLocalSurveys() {
   return Object.values(JSON.parse(localStorage.getItem("surveys") || "{}"));
@@ -14,12 +15,15 @@ function getLocalSurveys() {
 
 export default function ProfilePage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth(); // ── 從 AuthContext 取得登入用戶
   console.log('目前登入的 user：', user);
   const avatarInputRef = useRef(null);
   const [activeTab, setActiveTab] = useState("info");
   const [isEditing, setIsEditing] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const [showTwoFactorNotice, setShowTwoFactorNotice] = useState(false);
   const [selectedSurvey, setSelectedSurvey] = useState(null);
   const [avatarSrc, setAvatarSrc] = useState(DEFAULT_AVATAR);
   const [profile, setProfile] = useState({
@@ -31,6 +35,7 @@ export default function ProfilePage() {
     bio: "",
   });
   const [editProfile, setEditProfile] = useState(profile);
+  const twoFactorStorageKey = `${TWO_FACTOR_KEY_PREFIX}_${user?.user_id || user?.email || "guest"}`;
 
   // ── 載入個人資料 ──────────────────────────────────────────
   useEffect(() => {
@@ -53,6 +58,20 @@ export default function ProfilePage() {
       })
       .catch((err) => console.error("載入個人資料失敗", err));
   }, [user]);
+
+  useEffect(() => {
+    setTwoFactorEnabled(localStorage.getItem(twoFactorStorageKey) === "true");
+  }, [twoFactorStorageKey]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("two_factor") !== "enabled") return;
+
+    localStorage.setItem(twoFactorStorageKey, "true");
+    setTwoFactorEnabled(true);
+    setShowTwoFactorNotice(true);
+    navigate("/profile", { replace: true });
+  }, [location.search, navigate, twoFactorStorageKey]);
 
   const localSurveys = useMemo(() => getLocalSurveys(), [selectedSurvey, saved]);
   const surveyRecords = [
@@ -251,13 +270,31 @@ export default function ProfilePage() {
               </div>
               <div className="security-item">
                 <div className="d-flex align-items-center gap-3">
-                  <div className="security-icon bg-sky-50"><i className="ri-shield-check-line text-sky"></i></div>
+                  <div className={`security-icon ${twoFactorEnabled ? "security-icon-enabled" : "bg-sky-50"}`}>
+                    <i className={`ri-shield-check-line ${twoFactorEnabled ? "" : "text-sky"}`}></i>
+                  </div>
                   <div>
-                    <p className="security-label mb-0">雙因素驗證</p>
-                    <p className="security-desc mb-0">透過第二層驗證保護登入流程。</p>
+                    <div className="security-title-row">
+                      <p className="security-label mb-0">雙因素驗證</p>
+                      <span className={`two-factor-status ${twoFactorEnabled ? "enabled" : "disabled"}`}>
+                        {twoFactorEnabled ? "已開啟" : "未開啟"}
+                      </span>
+                    </div>
+                    <p className="security-desc mb-0">
+                      {twoFactorEnabled ? "登入時會要求輸入驗證碼。" : "透過第二層驗證保護登入流程。"}
+                    </p>
                   </div>
                 </div>
-                <button className="btn-security-action" onClick={() => navigate("/two-factor")}>設定</button>
+                <button
+                  className={`two-factor-switch ${twoFactorEnabled ? "enabled" : ""}`}
+                  onClick={() => !twoFactorEnabled && navigate("/two-factor")}
+                  disabled={twoFactorEnabled}
+                  type="button"
+                  aria-label={twoFactorEnabled ? "雙因素驗證已開啟" : "開啟雙因素驗證"}
+                >
+                  <span className="two-factor-switch-label">{twoFactorEnabled ? "ON" : "OFF"}</span>
+                  <span className="two-factor-switch-knob"></span>
+                </button>
               </div>
             </section>
           )}
@@ -302,6 +339,21 @@ export default function ProfilePage() {
           )}
         </div>
       </main>
+
+      {showTwoFactorNotice && (
+        <div className="profile-toast" role="status">
+          <div className="profile-toast-icon">
+            <i className="ri-checkbox-circle-line"></i>
+          </div>
+          <div>
+            <strong>已開啟雙因子驗證</strong>
+            <p>下次登入時會要求輸入驗證碼。</p>
+          </div>
+          <button onClick={() => setShowTwoFactorNotice(false)} aria-label="關閉通知">
+            <i className="ri-close-line"></i>
+          </button>
+        </div>
+      )}
     </>
   );
 }

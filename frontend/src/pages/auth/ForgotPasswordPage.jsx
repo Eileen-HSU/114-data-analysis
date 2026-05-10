@@ -40,15 +40,13 @@ export default function ForgotPasswordPage() {
 
     try {
       // 3. 呼叫後端 API
-      const response = await axios.post("https://one14-data-analysis.onrender.com", {
+      const response = await axios.post("https://one14-data-analysis.onrender.com/api/auth/send-otp", {
         email: val,
         type: "PASSWORD_RESET"
       });
 
       if (response.status === 200) {
-        if (sentEmailRef.current) sentEmailRef.current.textContent = val;
-        if (stepSendRef.current) stepSendRef.current.style.display = "none";
-        if (stepDoneRef.current) stepDoneRef.current.style.display = "block";
+        navigate(`/reset-password?email=${encodeURIComponent(val)}`);
       }
     } catch (error) {
       // 4. 錯誤處理 (例如：Email 沒註冊過)

@@ -13,6 +13,7 @@ const WELCOME_MSG = {
   content:
     "您好！我是 DataAnalysis AI 助手。請上傳您的資料檔案（CSV、Excel、JSON 或 TXT），或直接輸入您的分析問題，我將為您提供深度洞察。",
 };
+const ACTIVE_WORKSPACE_KEY = "dataanalysis_active_workspace";
 
 function buildSurveyChatContent(survey) {
   const ratingQuestions = survey.questions.filter((q) => q.type === "rating");
@@ -57,6 +58,114 @@ function buildSurveyChatContent(survey) {
   return lines.join("\n");
 }
 
+function cleanMessageText(text) {
+  return text
+    .replace(/\*\*/g, "")
+    .replace(/^[\s\-•]+/, "")
+    .trim();
+}
+
+function parseAssistantTableRows(content) {
+  const rows = [];
+  let currentSection = "";
+
+  content.split("\n").forEach((rawLine) => {
+    const line = cleanMessageText(rawLine);
+    if (!line) return;
+
+    const numbered = line.match(/^(\d+)\.\s*(.+)$/);
+    const bullet = line.match(/^[-]\s*(.+)$/);
+    const colonIndex = line.indexOf("：");
+
+    if (colonIndex > 0) {
+      const label = line.slice(0, colonIndex).trim();
+      const value = line.slice(colonIndex + 1).trim();
+      rows.push({
+        item: numbered ? numbered[2].split("：")[0].trim() : label,
+        description: numbered ? numbered[2].slice(numbered[2].indexOf("：") + 1).trim() : value,
+      });
+      return;
+    }
+
+    if (numbered || bullet) {
+      rows.push({
+        item: numbered ? `項目 ${numbered[1]}` : currentSection || "重點",
+        description: numbered ? numbered[2] : bullet[1],
+      });
+      return;
+    }
+
+    if (line.length <= 18) {
+      currentSection = line;
+      rows.push({ item: "分類", description: line });
+      return;
+    }
+
+    rows.push({ item: currentSection || "摘要", description: line });
+  });
+
+  return rows;
+}
+
+function PlainMessageContent({ content }) {
+  const lines = content.split("\n");
+  return lines.map((line, i) => (
+    <span key={i}>{line}{i < lines.length - 1 && <br />}</span>
+  ));
+}
+
+function AssistantTableContent({ content }) {
+  const rows = parseAssistantTableRows(content);
+
+  if (rows.length < 2) {
+    return <PlainMessageContent content={content} />;
+  }
+
+  return (
+    <div className="assistant-output-table-wrap">
+      <table className="assistant-output-table">
+        <thead>
+          <tr>
+            <th>項目</th>
+            <th>說明</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={`${row.item}-${index}`}>
+              <td>{row.item}</td>
+              <td>{row.description}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function MessageContent({ message }) {
+  if (message.role === "assistant") {
+    return <AssistantTableContent content={message.content} />;
+  }
+
+  return <PlainMessageContent content={message.content} />;
+}
+
+function buildAutoSessionTitle(text, file) {
+  if (file?.name) {
+    const baseName = file.name.replace(/\.[^/.]+$/, "");
+    return `分析：${baseName}`.slice(0, 28);
+  }
+
+  const cleaned = text
+    .replace(/\s+/g, " ")
+    .replace(/[，。！？、,.!?]/g, " ")
+    .trim();
+
+  if (!cleaned) return "新工作區";
+  return cleaned.length > 18 ? `${cleaned.slice(0, 18)}...` : cleaned;
+}
+
 export default function WorkspacePage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -91,6 +200,18 @@ export default function WorkspacePage() {
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
   const messages = activeSession?.messages ?? [];
+
+  useEffect(() => {
+    if (activeSessionId || sessions.length === 0) return;
+    const savedId = localStorage.getItem(ACTIVE_WORKSPACE_KEY);
+    const restored = sessions.find((s) => s.id === savedId);
+    setActiveSessionId(restored?.id || sessions[0].id);
+  }, [activeSessionId, sessions]);
+
+  useEffect(() => {
+    if (!activeSessionId) return;
+    localStorage.setItem(ACTIVE_WORKSPACE_KEY, activeSessionId);
+  }, [activeSessionId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -201,8 +322,23 @@ export default function WorkspacePage() {
     if (!input.trim() && !attachedFile) return;
     if (!activeSessionId) return;
     const content = attachedFile ? `[檔案：${attachedFile.name}] ${input}` : input;
+    const autoTitle = buildAutoSessionTitle(input, attachedFile);
     const userMsg = { id: Date.now().toString(), role: "user", content };
-    appendMessage(activeSessionId, userMsg);
+    setSessions((prev) =>
+      prev.map((s) => {
+        if (s.id !== activeSessionId) return s;
+        const shouldAutoTitle = s.title === "新工作區";
+        return {
+          ...s,
+          title: shouldAutoTitle ? autoTitle : s.title,
+          messages: [...s.messages, userMsg],
+        };
+      })
+    );
+    const session = sessions.find((s) => s.id === activeSessionId);
+    if (session?.title === "新工作區") {
+      syncChatTitle(activeSessionId, autoTitle);
+    }
     setInput("");
     setAttachedFile(null);
     setIsTyping(true);
@@ -423,9 +559,7 @@ export default function WorkspacePage() {
                         <i className={msg.role === "user" ? "ri-user-line" : "ri-robot-line"}></i>
                       </div>
                       <div className={`message-bubble ${msg.role === "user" ? "user-bubble" : "assistant-bubble"}`}>
-                        {msg.content.split("\n").map((line, i) => (
-                          <span key={i}>{line}{i < msg.content.split("\n").length - 1 && <br />}</span>
-                        ))}
+                        <MessageContent message={msg} />
                       </div>
                     </div>
                   ))}

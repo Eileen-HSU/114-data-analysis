@@ -3,6 +3,8 @@ import LoginPage from "../pages/auth/LoginPage.jsx";
 import SignUpPage from "../pages/auth/SignUpPage.jsx";
 import ForgotPasswordPage from "../pages/auth/ForgotPasswordPage.jsx";
 import ChangePasswordPage from "../pages/auth/ChangePasswordPage.jsx";
+import ResetPasswordPage from "../pages/auth/ResetPasswordPage.jsx";
+import LoginTwoFactorPage from "../pages/auth/LoginTwoFactorPage.jsx";
 import TwoFactorPage from "../pages/auth/TwoFactorPage.jsx";
 import WorkspacePage from "../pages/workspace/page.jsx";
 import CollectionPage from "../pages/collection/page.jsx";
@@ -17,7 +19,9 @@ const routes = [
   { path: "/login", element: <LoginPage /> },
   { path: "/signup", element: <SignUpPage /> },
   { path: "/forgot-password", element: <ForgotPasswordPage /> },
+  { path: "/reset-password", element: <ResetPasswordPage /> },
   { path: "/change-password", element: <ChangePasswordPage /> },
+  { path: "/login/two-factor", element: <LoginTwoFactorPage /> },
   { path: "/two-factor", element: <TwoFactorPage /> },
   { path: "/workspace", element: <WorkspacePage /> },
   { path: "/collection", element: <CollectionPage /> },
