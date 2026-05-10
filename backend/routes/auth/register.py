@@ -16,8 +16,11 @@ def register():
     if not data:
         return jsonify({"error": "未接收到資料"}), 400
 
-    required = ['user_name', 'email', 'password_hash', 'phone_number', 'gender']
+    required = ['user_name', 'email', 'phone_number', 'gender']
     missing = [f for f in required if not data.get(f)]
+    password = data.get('password') or data.get('password_hash')
+    if not password:
+        missing.append('password')
     if missing:
         return jsonify({"error": f"缺少必填欄位: {missing}"}), 400
 
@@ -25,7 +28,7 @@ def register():
         new_user = User(
             user_name=data.get('user_name'),
             email=data.get('email'),
-            password_hash=generate_password_hash(data.get('password_hash'))
+            password_hash=generate_password_hash(password)
         )
         db.session.add(new_user)
         db.session.flush()
