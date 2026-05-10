@@ -1,12 +1,13 @@
-from flask import Blueprint, request, jsonify
-from extensions import db, mail
+from flask import Blueprint, current_app, request, jsonify
+from extensions import db
 from models import User, UserVerification
-from flask_mail import Message
 from werkzeug.security import generate_password_hash, check_password_hash
 import random
 from datetime import datetime, timedelta
 import traceback
 import os
+import smtplib
+from email.mime.text import MIMEText
 
 pwd_bp = Blueprint('pwd', __name__)
 
@@ -14,6 +15,29 @@ def taiwan_now():
     return datetime.utcnow() + timedelta(hours=8)
 
 # ── 1. 發送驗證碼 (支援修改與重設) ───────────────────────
+def send_password_email(recipient, subject, body):
+    msg = MIMEText(body, "plain", "utf-8")
+    msg["Subject"] = subject
+    msg["From"] = current_app.config["MAIL_DEFAULT_SENDER"]
+    msg["To"] = recipient
+
+    smtp_class = smtplib.SMTP_SSL if current_app.config.get("MAIL_USE_SSL") else smtplib.SMTP
+    with smtp_class(
+        current_app.config["MAIL_SERVER"],
+        current_app.config["MAIL_PORT"],
+        timeout=current_app.config.get("MAIL_TIMEOUT", 20),
+    ) as smtp:
+        smtp.ehlo()
+        if current_app.config.get("MAIL_USE_TLS"):
+            smtp.starttls()
+            smtp.ehlo()
+        if current_app.config.get("MAIL_USERNAME") and current_app.config.get("MAIL_PASSWORD"):
+            smtp.login(
+                current_app.config["MAIL_USERNAME"],
+                current_app.config["MAIL_PASSWORD"],
+            )
+        smtp.send_message(msg)
+
 @pwd_bp.route('/api/auth/send-otp', methods=['POST'])
 def send_otp():
     data = request.get_json()
@@ -60,8 +84,7 @@ def send_otp():
         action_text = "修改" if verify_type == "PASSWORD_CHANGE" else "重設"
         subject = f"【DataAnalysis】{action_text}您的密碼驗證"
 
-        msg = Message(subject, recipients=[email])
-        msg.body = f"""您好：
+        message_body = f"""您好：
         
 我們收到了您{action_text}密碼的請求。
 您的驗證碼為：{otp}
@@ -71,7 +94,7 @@ def send_otp():
 
 (此連結與驗證碼將於 10 分鐘後失效。如果這不是您本人的操作，請忽略此信。)
 """
-        mail.send(msg)
+        send_password_email(email, subject, message_body)
         return jsonify({"message": f"{action_text}驗證碼已寄出"}), 200
 
     except Exception as e:
