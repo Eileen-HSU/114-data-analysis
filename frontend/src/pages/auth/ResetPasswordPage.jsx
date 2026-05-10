@@ -45,7 +45,7 @@ export default function ResetPasswordPage() {
 
     try {
       // 呼叫後端重設密碼 API
-      await axios.post("https://one14-data-analysis-frontend.onrender.com/api/auth/reset-password", {
+      await axios.post("https://one14-data-analysis.onrender.com/api/auth/reset-password", {
         email,
         otp: trimmedOtp,
         new_password: newPassword,
