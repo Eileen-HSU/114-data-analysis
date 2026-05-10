@@ -15,8 +15,11 @@ def login():
     if not data:
         return jsonify({"error": "未接收到資料"}), 400
 
-    required = ['email', 'password_hash']
+    required = ['email']
     missing = [f for f in required if not data.get(f)]
+    password = data.get('password') or data.get('password_hash')
+    if not password:
+        missing.append('password')
     if missing:
         return jsonify({"error": f"缺少必填欄位: {missing}"}), 400
 
@@ -26,7 +29,7 @@ def login():
             return jsonify({"error": "帳號或密碼錯誤"}), 401
 
         # 用 check_password_hash 比對加密密碼
-        if not check_password_hash(user.password_hash, data.get('password_hash')):
+        if not check_password_hash(user.password_hash, password):
             return jsonify({"error": "帳號或密碼錯誤"}), 401
 
         return jsonify({
