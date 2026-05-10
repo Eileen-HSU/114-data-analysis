@@ -60,3 +60,14 @@ if __name__ == '__main__':
     # 只有在本地執行 python app.py 時才會用到下面這行
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    # 這會把後端的報錯直接轉成 JSON 傳給前端，不會被 CORS 擋住
+    response = jsonify({
+        "error": str(e),
+        "type": str(type(e)),
+        "message": "後端邏輯崩潰，請檢查此報錯"
+    })
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    return response, 500
