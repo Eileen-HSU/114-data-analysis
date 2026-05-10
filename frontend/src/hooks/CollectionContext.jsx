@@ -1,16 +1,8 @@
 import { createContext, useContext, useEffect, useState } from "react";
 
-const INIT_FOLDERS = [
-  { id: "f1", name: "2025 客戶分析" },
-  { id: "f2", name: "產品研究" },
-];
+const INIT_FOLDERS = [];
 
-const INIT_FILES = [
-  { id: "file-1", name: "customer_feedback.csv", type: "csv", size: "84.2 KB", folderId: "f1", createdAt: "2026/4/20 10:15" },
-  { id: "file-2", name: "sales_dashboard.xlsx", type: "xlsx", size: "132.8 KB", folderId: "f1", createdAt: "2026/4/21 14:32" },
-  { id: "file-3", name: "survey_schema.json", type: "json", size: "12.4 KB", folderId: "f2", createdAt: "2026/4/22 09:48" },
-  { id: "file-4", name: "AI 分析對話紀錄", type: "chat", size: "—", folderId: null, createdAt: "2026/4/23 16:05", sessionId: "sample-chat" },
-];
+const INIT_FILES = [];
 
 const CollectionContext = createContext(null);
 const WORKSPACE_SESSIONS_KEY = "dataanalysis_workspace_sessions";

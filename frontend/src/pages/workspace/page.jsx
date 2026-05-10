@@ -3,7 +3,6 @@ import { useNavigate, useLocation } from "react-router-dom";
 import Navbar from "../../components/feature/Navbar";
 import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
 import { useAuth } from "../../hooks/AuthContext";
-import { MOCK_SURVEY_RECORDS, MOCK_SURVEY_DETAILS } from "../../mocks/surveys";
 import { useCollection } from "../../hooks/CollectionContext";
 import "./workspace.css";
 
@@ -14,6 +13,24 @@ const WELCOME_MSG = {
     "您好！我是 DataAnalysis AI 助手。請上傳您的資料檔案（CSV、Excel、JSON 或 TXT），或直接輸入您的分析問題，我將為您提供深度洞察。",
 };
 const ACTIVE_WORKSPACE_KEY = "dataanalysis_active_workspace";
+
+function getStoredSurveyRecords(user) {
+  const surveys = Object.values(JSON.parse(localStorage.getItem("surveys") || "{}"));
+  return surveys
+    .filter((survey) => {
+      if (!user) return false;
+      if (!survey.ownerId && !survey.ownerEmail) return false;
+      return survey.ownerId === user?.user_id || survey.ownerEmail === user?.email;
+    })
+    .map((survey) => ({
+      id: survey.id || survey.code,
+      title: survey.title,
+      code: survey.code,
+      createdAt: survey.createdAt,
+      responseCount: survey.responses?.length || 0,
+      detail: survey,
+    }));
+}
 
 function buildSurveyChatContent(survey) {
   const ratingQuestions = survey.questions.filter((q) => q.type === "rating");
@@ -278,7 +295,7 @@ export default function WorkspacePage() {
   }, []);
 
   const handleSelectSurvey = (record) => {
-    const detail = MOCK_SURVEY_DETAILS[record.id];
+    const detail = record.detail;
     if (!detail) return;
     const content = buildSurveyChatContent(detail);
     const newId = `survey-${Date.now()}`;
@@ -312,7 +329,7 @@ export default function WorkspacePage() {
     }, 1800);
   };
 
-  const filteredSurveyPicker = MOCK_SURVEY_RECORDS.filter(
+  const filteredSurveyPicker = getStoredSurveyRecords(user).filter(
     (s) =>
       s.title.toLowerCase().includes(surveyPickerSearch.toLowerCase()) ||
       s.code.toLowerCase().includes(surveyPickerSearch.toLowerCase())
