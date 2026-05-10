@@ -33,7 +33,7 @@ raw_db_uri = os.getenv('SQLALCHEMY_DATABASE_URI') or \
     "mysql+pymysql://avnadmin:AVNS_VGfMOJaETf2ioJjcFeu@analysis-ntub-analysis.c.aivencloud.com:17020/defaultdb"
 app.config['SQLALCHEMY_DATABASE_URI'] = sanitize_db_uri(raw_db_uri)
 
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 # 2. 透過 connect_args 傳遞驅動程式能理解的 'ssl' 參數
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
