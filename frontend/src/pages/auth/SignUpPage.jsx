@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/AuthContext";
 import axios from "axios";
+import { apiUrl } from "../../lib/api";
 import "./auth.css";
 
 export default function SignUpPage() {
@@ -22,7 +23,7 @@ const handleSubmit = async (e) => {
     
     try {
       // 將所有數據包裹在一個物件中作為 axios.post 的第二個參數
-      const response = await axios.post('https://one14-data-analysis.onrender.com/api/register', {
+      const response = await axios.post(apiUrl("/api/register"), {
         user_name: name,      // 對標後端 User 模型的名稱欄位
         email: email,         // 對標 Email 欄位
         password: password,   // 對標密碼欄位（後端會再加密）

@@ -3,6 +3,7 @@ import Navbar from "../../components/feature/Navbar";
 import { MOCK_SURVEY_DETAILS } from "../../mocks/surveys";
 import "./survey.css";
 import { useNavigate } from 'react-router-dom';
+import { apiUrl } from "../../lib/api";
 
 const MOCK_SURVEYS = Object.fromEntries(Object.values(MOCK_SURVEY_DETAILS).map((survey) => [survey.code, survey]));
 
@@ -64,7 +65,7 @@ export default function FillSurveyPage() {
     }
 
     try {
-      const response = await fetch('https://one14-data-analysis.onrender.com/api/submit_form', {
+      const response = await fetch(apiUrl("/api/submit_form"), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

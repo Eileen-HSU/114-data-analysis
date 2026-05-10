@@ -19,7 +19,7 @@ Publish Directory: dist
 Environment variables:
 
 ```txt
-VITE_API_BASE_URL=https://one14-data-analysis.onrender.com
+VITE_API_BASE_URL=https://one14-data-analysis-uhkg.onrender.com
 ```
 
 The project also includes `render.yaml`, so Render Blueprint can create the same Static Site automatically.
