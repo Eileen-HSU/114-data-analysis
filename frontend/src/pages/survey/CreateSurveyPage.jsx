@@ -138,7 +138,7 @@ export default function CreateSurveyPage() {
           title: q.title.trim(),
           options: q.options.map((opt) => opt.trim()),
         })),
-        user_id: user?.user_id || 1 // 確保對象你的登入 ID
+        user_id: user?.user_id
       };
 
       console.log("[FRONTEND] 🚀 準備發送數據至 Aiven...", payload);
@@ -150,7 +150,22 @@ export default function CreateSurveyPage() {
         console.log("[FRONTEND] ✓ 成功存入 Aiven:", response.data);
         
         // 4. 將後端生成的邀請碼顯示在畫面上
-        setGeneratedCode(response.data.access_code); 
+        const accessCode = response.data.access_code;
+        const savedSurvey = {
+          id: response.data.template_id || `survey-${Date.now()}`,
+          title: payload.title,
+          description: payload.description,
+          questions: payload.questions,
+          code: accessCode,
+          createdAt: new Date().toISOString().slice(0, 10),
+          responses: [],
+          ownerId: user?.user_id,
+          ownerEmail: user?.email,
+        };
+        const storedSurveys = JSON.parse(localStorage.getItem("surveys") || "{}");
+        storedSurveys[accessCode] = savedSurvey;
+        localStorage.setItem("surveys", JSON.stringify(storedSurveys));
+        setGeneratedCode(accessCode);
         setError("");
       }
     } catch (error) {

@@ -1,11 +1,8 @@
 import { useMemo, useState } from "react";
 import Navbar from "../../components/feature/Navbar";
-import { MOCK_SURVEY_DETAILS } from "../../mocks/surveys";
 import "./survey.css";
 import { useNavigate } from 'react-router-dom';
 import { apiUrl } from "../../lib/api";
-
-const MOCK_SURVEYS = Object.fromEntries(Object.values(MOCK_SURVEY_DETAILS).map((survey) => [survey.code, survey]));
 
 function getStoredSurveys() {
   return JSON.parse(localStorage.getItem("surveys") || "{}");
@@ -24,7 +21,7 @@ export default function FillSurveyPage() {
 
   const handleEnterCode = () => {
     const normalized = code.trim().toUpperCase();
-    const found = getStoredSurveys()[normalized] || MOCK_SURVEYS[normalized];
+    const found = getStoredSurveys()[normalized];
     if (!found) {
       setError("找不到這組邀請碼，請確認後再試一次。");
       return;
@@ -149,9 +146,9 @@ export default function FillSurveyPage() {
             <section className="code-entry-card">
               <div className="code-entry-icon"><i className="ri-key-2-line"></i></div>
               <h2 style={{ textAlign: "center", fontSize: 18, fontWeight: 800 }}>輸入邀請碼</h2>
-              <p style={{ textAlign: "center", color: "var(--slate-500)" }}>可測試：ABC123 / XYZ789 / DEF456</p>
+              <p style={{ textAlign: "center", color: "var(--slate-500)" }}>請輸入問卷建立後產生的邀請碼</p>
               <div className="code-input-wrapper">
-                <input className={`code-input ${error ? "error" : ""}`} value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === "Enter" && handleEnterCode()} maxLength={6} placeholder="ABC123" />
+                <input className={`code-input ${error ? "error" : ""}`} value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === "Enter" && handleEnterCode()} maxLength={12} placeholder="輸入邀請碼" />
                 <button className="btn-enter-code" onClick={handleEnterCode}>
                   <i className="ri-arrow-right-line"></i>進入
                 </button>

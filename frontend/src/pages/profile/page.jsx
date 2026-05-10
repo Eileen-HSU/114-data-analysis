@@ -2,7 +2,6 @@ import { useMemo, useRef, useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Navbar from "../../components/feature/Navbar";
 import SurveyDetailPage from "./components/SurveyDetailPage";
-import { MOCK_SURVEY_RECORDS, MOCK_SURVEY_DETAILS } from "../../mocks/surveys";
 import { useAuth } from "../../hooks/AuthContext";
 import { apiUrl } from "../../lib/api";
 import "./profile.css";
@@ -10,8 +9,13 @@ import "./profile.css";
 const DEFAULT_AVATAR = "https://static.readdy.ai/image/db4f710102ca6cc45db44808c8658987/b181cfaad2165c1909b7c8fa8339cbe7.png";
 const TWO_FACTOR_KEY_PREFIX = "dataanalysis_two_factor_enabled";
 
-function getLocalSurveys() {
-  return Object.values(JSON.parse(localStorage.getItem("surveys") || "{}"));
+function getLocalSurveys(user) {
+  const stored = Object.values(JSON.parse(localStorage.getItem("surveys") || "{}"));
+  return stored.filter((survey) => {
+    if (!user) return false;
+    if (!survey.ownerId && !survey.ownerEmail) return false;
+    return survey.ownerId === user?.user_id || survey.ownerEmail === user?.email;
+  });
 }
 
 export default function ProfilePage() {
@@ -74,9 +78,8 @@ export default function ProfilePage() {
     navigate("/profile", { replace: true });
   }, [location.search, navigate, twoFactorStorageKey]);
 
-  const localSurveys = useMemo(() => getLocalSurveys(), [selectedSurvey, saved]);
-  const surveyRecords = [
-    ...localSurveys.map((survey) => ({
+  const localSurveys = useMemo(() => getLocalSurveys(user), [user, selectedSurvey, saved]);
+  const surveyRecords = localSurveys.map((survey) => ({
       id: survey.id || survey.code,
       title: survey.title,
       code: survey.code,
@@ -85,9 +88,7 @@ export default function ProfilePage() {
       status: "active",
       local: true,
       detail: survey,
-    })),
-    ...MOCK_SURVEY_RECORDS.map((record) => ({ ...record, detail: MOCK_SURVEY_DETAILS[record.id] })),
-  ];
+    }));
 
   if (selectedSurvey) {
     return <SurveyDetailPage survey={selectedSurvey} onBack={() => setSelectedSurvey(null)} />;
@@ -143,8 +144,8 @@ export default function ProfilePage() {
   const stats = [
     { icon: "ri-bar-chart-line", iconColor: "text-stat-coral", iconBg: "bg-stat-coral", barBg: "bar-coral", num: surveyRecords.length, label: "問卷數" },
     { icon: "ri-user-line", iconColor: "text-stat-mauve", iconBg: "bg-stat-mauve", barBg: "bar-mauve", num: surveyRecords.reduce((sum, survey) => sum + survey.responseCount, 0), label: "總回覆" },
-    { icon: "ri-folder-line", iconColor: "text-stat-sky", iconBg: "bg-stat-sky", barBg: "bar-sky", num: 12, label: "資料夾" },
-    { icon: "ri-calendar-line", iconColor: "text-stat-teal", iconBg: "bg-stat-teal", barBg: "bar-teal", num: 128, label: "使用天數" },
+    { icon: "ri-folder-line", iconColor: "text-stat-sky", iconBg: "bg-stat-sky", barBg: "bar-sky", num: 0, label: "資料夾" },
+    { icon: "ri-calendar-line", iconColor: "text-stat-teal", iconBg: "bg-stat-teal", barBg: "bar-teal", num: 0, label: "使用天數" },
   ];
 
   const infoFields = [
@@ -304,18 +305,9 @@ export default function ProfilePage() {
             <section className="profile-card-inner p-4 p-md-5">
               <h2 className="tab-title">近期活動</h2>
               <div className="activity-list">
-                {[
-                  ["ri-upload-cloud-2-line", "匯入 customer_feedback.csv 到工作區", "2 小時前"],
-                  ["ri-folder-add-line", "建立資料夾：2025 客戶分析", "昨天"],
-                  ["ri-chat-3-line", "將問卷資料匯入 Chat 分析", "昨天"],
-                  ["ri-file-excel-line", "儲存 Excel 分析報告", "3 天前"],
-                ].map(([icon, text, time]) => (
-                  <div className="activity-item" key={text}>
-                    <div className="activity-icon bg-violet-50"><i className={`${icon} text-violet`}></i></div>
-                    <div className="activity-text flex-grow-1">{text}</div>
-                    <span className="activity-time">{time}</span>
-                  </div>
-                ))}
+                <div className="profile-field">
+                  <span className="field-value">目前還沒有活動紀錄。</span>
+                </div>
               </div>
             </section>
           )}
@@ -324,6 +316,11 @@ export default function ProfilePage() {
             <section className="profile-card-inner p-4 p-md-5">
               <h2 className="tab-title">我的問卷</h2>
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                {surveyRecords.length === 0 && (
+                  <div className="profile-field">
+                    <span className="field-value">目前還沒有建立問卷。</span>
+                  </div>
+                )}
                 {surveyRecords.map((survey) => (
                   <div key={`${survey.id}-${survey.code}`} className="profile-field" style={{ justifyContent: "space-between", gap: 16 }}>
                     <div>
