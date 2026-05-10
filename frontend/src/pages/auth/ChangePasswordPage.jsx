@@ -38,7 +38,7 @@ export default function ChangePasswordPage() {
   }
 
   try {
-    const response = await axios.post("http://127.0.0.1:5000/api/auth/send-otp", {
+    const response = await axios.post("https://one14-data-analysis.onrender.com", {
       email: val,
       type: "PASSWORD_CHANGE"
     });
