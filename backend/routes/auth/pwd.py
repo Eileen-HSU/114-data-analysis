@@ -6,6 +6,7 @@ import random
 from datetime import datetime, timedelta
 import traceback
 import os
+import socket
 import smtplib
 from email.mime.text import MIMEText
 
@@ -14,6 +15,22 @@ pwd_bp = Blueprint('pwd', __name__)
 def taiwan_now():
     return datetime.utcnow() + timedelta(hours=8)
 
+class IPv4SMTP(smtplib.SMTP):
+    def _get_socket(self, host, port, timeout):
+        for _family, _socktype, _proto, _canonname, sockaddr in socket.getaddrinfo(
+            host,
+            port,
+            socket.AF_INET,
+            socket.SOCK_STREAM,
+        ):
+            return socket.create_connection(sockaddr, timeout, source_address=self.source_address)
+        raise OSError(f"No IPv4 address found for SMTP host {host}")
+
+class IPv4SMTP_SSL(smtplib.SMTP_SSL):
+    def _get_socket(self, host, port, timeout):
+        raw_socket = IPv4SMTP._get_socket(self, host, port, timeout)
+        return self.context.wrap_socket(raw_socket, server_hostname=host)
+
 # ── 1. 發送驗證碼 (支援修改與重設) ───────────────────────
 def send_password_email(recipient, subject, body):
     msg = MIMEText(body, "plain", "utf-8")
@@ -21,7 +38,7 @@ def send_password_email(recipient, subject, body):
     msg["From"] = current_app.config["MAIL_DEFAULT_SENDER"]
     msg["To"] = recipient
 
-    smtp_class = smtplib.SMTP_SSL if current_app.config.get("MAIL_USE_SSL") else smtplib.SMTP
+    smtp_class = IPv4SMTP_SSL if current_app.config.get("MAIL_USE_SSL") else IPv4SMTP
     with smtp_class(
         current_app.config["MAIL_SERVER"],
         current_app.config["MAIL_PORT"],
