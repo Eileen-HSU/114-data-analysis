@@ -10,6 +10,15 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
+  const isTwoFactorRequired = (data) =>
+    Boolean(
+      data.two_factor_enabled ||
+      data.twoFactorEnabled ||
+      data.requires_2fa ||
+      data.require_2fa ||
+      data.requiresTwoFactor
+    );
+
   const handleSubmit = async (e) => {
   e.preventDefault();
 
@@ -30,8 +39,16 @@ export default function LoginPage() {
       return;
     }
 
+    const userData = { name: data.user_name, email: data.email, user_id: data.user_id };
+
+    if (isTwoFactorRequired(data)) {
+      sessionStorage.setItem("dataanalysis_pending_2fa", JSON.stringify(userData));
+      navigate("/login/two-factor");
+      return;
+    }
+
     // 登入成功
-    login({ name: data.user_name, email: data.email, user_id: data.user_id });
+    login(userData);
     navigate("/workspace");
 
   } catch (err) {

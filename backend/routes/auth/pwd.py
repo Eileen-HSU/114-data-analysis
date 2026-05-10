@@ -43,9 +43,9 @@ def send_otp():
     # 🔗 根據 type 決定導向前端哪一個頁面
     # 請確保這與你的 App.jsx 路由 path 一致
     if verify_type == "PASSWORD_CHANGE":
-        frontend_path = "ChangePasswordPage"
+        frontend_path = "change-password"
     else:
-        frontend_path = "ForgotPasswordPage"
+        frontend_path = "reset-password"
 
     reset_link = f"http://localhost:5173/{frontend_path}?email={email}"
 

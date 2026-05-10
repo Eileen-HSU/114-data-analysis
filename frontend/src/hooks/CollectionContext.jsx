@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 
 const INIT_FOLDERS = [
   { id: "f1", name: "2025 客戶分析" },
@@ -13,12 +13,26 @@ const INIT_FILES = [
 ];
 
 const CollectionContext = createContext(null);
+const WORKSPACE_SESSIONS_KEY = "dataanalysis_workspace_sessions";
+
+function loadWorkspaceSessions() {
+  try {
+    const raw = localStorage.getItem(WORKSPACE_SESSIONS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
 
 export function CollectionProvider({ children }) {
   const [folders, setFolders] = useState(INIT_FOLDERS);
   const [files, setFiles] = useState(INIT_FILES);
   const [deletedItems, setDeletedItems] = useState([]);
-  const [workspaceSessions, setWorkspaceSessions] = useState([]);
+  const [workspaceSessions, setWorkspaceSessions] = useState(loadWorkspaceSessions);
+
+  useEffect(() => {
+    localStorage.setItem(WORKSPACE_SESSIONS_KEY, JSON.stringify(workspaceSessions));
+  }, [workspaceSessions]);
 
   const nowString = () => {
     const d = new Date();

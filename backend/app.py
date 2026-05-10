@@ -70,12 +70,12 @@ app.register_blueprint(survey_bp)
 
 with app.app_context():
     # 1. 抓出到底是連到哪一個地址
-    print(f"📡 目前對標的資料庫地址: {app.config['SQLALCHEMY_DATABASE_URI']}")
+    print(f"[DB] 目前對標的資料庫地址: {app.config['SQLALCHEMY_DATABASE_URI']}")
     
     # 2. 直接在後端演算一下表內有幾筆
     from models import Survey_Template
     count = Survey_Template.query.count()
-    print(f"📊 Aiven 雲端目前的總筆數: {count}")
+    print(f"[DB] Aiven 雲端目前的總筆數: {count}")
 
 # ── 路由設定 ────────────────────────────────
 
@@ -128,4 +128,4 @@ def submit_form():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, use_reloader=False)
