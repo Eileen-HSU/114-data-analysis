@@ -1,4 +1,5 @@
 import os
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from flask import Flask, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -21,10 +22,25 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 
 # 修正資料庫 SSL 憑證路徑 (Render 環境專用)
 db_url = os.getenv('DATABASE_URL')
-if db_url and "ssl_ca=ca.pem" in db_url:
+if db_url:
     # 確保在 Render 上能正確找到 ca.pem 的絕對路徑
-    ca_path = os.path.join(basedir, 'ca.pem')
-    db_url = db_url.replace("ssl_ca=ca.pem", f"ssl_ca={ca_path}")
+    parsed_url = urlsplit(db_url)
+    query_params = []
+    for key, value in parse_qsl(parsed_url.query, keep_blank_values=True):
+        normalized_key = key.lower().replace("_", "-")
+        if normalized_key == "ssl-mode":
+            continue
+        if key == "ssl_ca" and value == "ca.pem":
+            value = os.path.join(basedir, "ca.pem")
+        query_params.append((key, value))
+
+    db_url = urlunsplit((
+        parsed_url.scheme,
+        parsed_url.netloc,
+        parsed_url.path,
+        urlencode(query_params),
+        parsed_url.fragment,
+    ))
 
 app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
