@@ -44,6 +44,8 @@ export default function ForgotPasswordPage() {
       const response = await axios.post(apiUrl("/api/auth/send-otp"), {
         email: val,
         type: "PASSWORD_RESET" // 後端會根據這個 type 決定郵件內的連結要帶 ?from=forgot
+      }, {
+        timeout: 30000
       });
 
       if (response.status === 200) {
