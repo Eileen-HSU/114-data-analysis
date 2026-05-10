@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
+import { apiUrl } from "../../lib/api";
 import "./auth.css";
 
 export default function ResetPasswordPage() {
@@ -45,7 +46,7 @@ export default function ResetPasswordPage() {
 
     try {
       // 呼叫後端重設密碼 API
-      await axios.post("https://one14-data-analysis.onrender.com/api/auth/reset-password", {
+      await axios.post(apiUrl("/api/auth/reset-password"), {
         email,
         otp: trimmedOtp,
         new_password: newPassword,

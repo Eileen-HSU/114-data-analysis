@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./auth.css";
 import axios from "axios";
+import { apiUrl } from "../../lib/api";
 
 export default function ChangePasswordPage() {
   const navigate = useNavigate();
@@ -38,7 +39,7 @@ export default function ChangePasswordPage() {
     }
 
     try {
-      const response = await axios.post("https://one14-data-analysis.onrender.com/api/auth/send-otp", {
+      const response = await axios.post(apiUrl("/api/auth/send-otp"), {
         email: val,
         type: "PASSWORD_CHANGE" // 後端會根據這個 type 決定郵件內的連結要帶 ?from=change
       });

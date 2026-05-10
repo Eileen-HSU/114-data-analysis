@@ -4,6 +4,7 @@ import Navbar from "../../components/feature/Navbar";
 import SurveyDetailPage from "./components/SurveyDetailPage";
 import { MOCK_SURVEY_RECORDS, MOCK_SURVEY_DETAILS } from "../../mocks/surveys";
 import { useAuth } from "../../hooks/AuthContext";
+import { apiUrl } from "../../lib/api";
 import "./profile.css";
 
 const DEFAULT_AVATAR = "https://static.readdy.ai/image/db4f710102ca6cc45db44808c8658987/b181cfaad2165c1909b7c8fa8339cbe7.png";
@@ -42,7 +43,7 @@ export default function ProfilePage() {
     if (user === null) return;
     if (!user?.user_id) return;
 
-    fetch(`https://one14-data-analysis.onrender.com/api/profile/${user.user_id}`)
+    fetch(apiUrl(`/api/profile/${user.user_id}`))
       .then((res) => res.json())
       .then((data) => {
         const loaded = {
@@ -104,7 +105,7 @@ export default function ProfilePage() {
 
   const handleSave = async () => {
     try {
-        const res = await fetch(`https://one14-data-analysis.onrender.com/api/profile/${user.user_id}`, {
+        const res = await fetch(apiUrl(`/api/profile/${user.user_id}`), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

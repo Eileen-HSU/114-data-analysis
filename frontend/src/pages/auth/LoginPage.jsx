@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/AuthContext";
+import { apiUrl } from "../../lib/api";
 import "./auth.css";
 
 export default function LoginPage() {
@@ -23,7 +24,7 @@ export default function LoginPage() {
   e.preventDefault();
 
   try {
-    const res = await fetch("https://one14-data-analysis.onrender.com/api/login", {
+    const res = await fetch(apiUrl("/api/login"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
