@@ -2,9 +2,7 @@ from flask import Blueprint, request, jsonify
 from werkzeug.security import generate_password_hash
 from models import User, UserProfile
 from extensions import db
-from sqlalchemy.exc import IntegrityError
 import traceback
-from datetime import datetime, timedelta
 
 register_bp = Blueprint('register', __name__)
 
@@ -18,19 +16,16 @@ def register():
     if not data:
         return jsonify({"error": "未接收到資料"}), 400
 
-    required = ['user_name', 'email', 'password', 'phone_number', 'gender']
+    required = ['user_name', 'email', 'password_hash', 'phone_number', 'gender']
     missing = [f for f in required if not data.get(f)]
     if missing:
         return jsonify({"error": f"缺少必填欄位: {missing}"}), 400
-
-    if User.query.filter_by(email=data.get('email')).first():
-        return jsonify({"error": "此電子郵件已被使用，請使用其他帳號或嘗試登入。"}), 409
 
     try:
         new_user = User(
             user_name=data.get('user_name'),
             email=data.get('email'),
-            password_hash=generate_password_hash(data.get('password'))
+            password_hash=generate_password_hash(data.get('password_hash'))
         )
         db.session.add(new_user)
         db.session.flush()
@@ -50,9 +45,6 @@ def register():
             "user_id": new_user.user_id
         }), 201
 
-    except IntegrityError:
-        db.session.rollback()
-        return jsonify({"error": "此電子郵件已存在，請使用其他帳號或登入。"}), 409
     except Exception as e:
         db.session.rollback()
         traceback.print_exc()

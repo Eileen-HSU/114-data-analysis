@@ -6,7 +6,11 @@ import "./auth.css";
 export default function ResetPasswordPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  
+  // 1. 從 URL 獲取資訊：email 與來源標記 (from)
   const email = useMemo(() => searchParams.get("email") || "", [searchParams]);
+  const from = useMemo(() => searchParams.get("from") || "change", [searchParams]);
+
   const [otp, setOtp] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -18,12 +22,13 @@ export default function ResetPasswordPage() {
     e.preventDefault();
     const trimmedOtp = otp.trim();
 
+    // 基礎前端驗證
     if (!email) {
-      setError("缺少電子郵件，請重新發送驗證碼。");
+      setError("缺少電子郵件資訊，請重新從信箱連結進入。");
       return;
     }
     if (!/^\d{6}$/.test(trimmedOtp)) {
-      setError("請輸入 6 位數驗證碼。");
+      setError("請輸入正確的 6 位數驗證碼。");
       return;
     }
     if (newPassword.length < 6) {
@@ -39,16 +44,26 @@ export default function ResetPasswordPage() {
     setIsSubmitting(true);
 
     try {
-      await axios.post("https://one14-data-analysis.onrender.com/api/auth/reset-password", {
+      // 呼叫後端重設密碼 API
+      await axios.post("https://one14-data-analysis-frontend.onrender.com/api/auth/reset-password", {
         email,
         otp: trimmedOtp,
         new_password: newPassword,
       });
 
-      alert("密碼已重新設定，請使用新密碼登入。");
-      navigate("/login");
+      // --- 分流跳轉邏輯 ---
+      if (from === "forgot") {
+        // 情況 A：從「忘記密碼」進來 -> 提示成功並要求重新登入
+        alert("密碼重設成功！請使用新密碼重新登入。");
+        navigate("/login", { replace: true });
+      } else {
+        // 情況 B：從「修改密碼」進來 (或是預設情況) -> 直接進入主畫面
+        navigate("/workspace", { replace: true });
+      }
+      
     } catch (err) {
-      setError(err.response?.data?.error || "密碼重設失敗，請稍後再試。");
+      // 處理後端回傳的錯誤 (如：驗證碼錯誤、過期等)
+      setError(err.response?.data?.error || "密碼重設失敗，請檢查驗證碼或稍後再試。");
     } finally {
       setIsSubmitting(false);
     }
@@ -57,6 +72,7 @@ export default function ResetPasswordPage() {
   return (
     <div className="auth-page">
       <div className="row g-0" style={{ minHeight: "100vh" }}>
+        {/* 左側視覺裝飾區域 */}
         <div className="col-lg-6 d-none d-lg-flex auth-visual auth-visual-reset-pw">
           <div className="auth-visual-overlay"></div>
           <div className="auth-visual-content">
@@ -67,15 +83,17 @@ export default function ResetPasswordPage() {
                 className="auth-logo-img"
               />
             </div>
-            <h2 className="auth-visual-title">設定新密碼</h2>
+            <h2 className="auth-visual-title">
+              {from === "forgot" ? "重設您的密碼" : "設定新密碼"}
+            </h2>
             <p className="auth-visual-desc">
-              輸入信箱收到的驗證碼，並建立一組新的登入密碼。
+              請輸入發送到信箱的驗證碼，設定完成後您就能繼續進行資料分析。
             </p>
             <div className="auth-features">
               {[
                 { icon: "ri-key-2-line", text: "驗證碼 10 分鐘內有效" },
-                { icon: "ri-lock-password-line", text: "新密碼將立即生效" },
-                { icon: "ri-shield-check-line", text: "完成後請重新登入帳號" },
+                { icon: "ri-lock-star-line", text: "新密碼需至少 6 個字元" },
+                { icon: "ri-shield-check-line", text: from === "forgot" ? "完成後請重新登入" : "完成後直接進入工作區" },
               ].map((f, i) => (
                 <div className="auth-feature-item" key={i}>
                   <div className="auth-feature-icon">
@@ -88,8 +106,9 @@ export default function ResetPasswordPage() {
           </div>
         </div>
 
+        {/* 右側表單操作區域 */}
         <div className="col-lg-6 d-flex align-items-center justify-content-center auth-form-area">
-          <button className="back-home-btn" onClick={() => navigate("/forgot-password")}>
+          <button className="back-home-btn" onClick={() => navigate(from === "forgot" ? "/forgot-password" : "/change-password")}>
             <div className="back-home-icon">
               <i className="ri-arrow-left-line"></i>
             </div>
@@ -100,9 +119,11 @@ export default function ResetPasswordPage() {
             <div className="forgot-icon-wrap">
               <i className="ri-lock-unlock-line"></i>
             </div>
-            <h1 className="auth-title">重新設定密碼</h1>
+            <h1 className="auth-title">
+              {from === "forgot" ? "重新設定密碼" : "變更您的密碼"}
+            </h1>
             <p className="auth-subtitle" style={{ marginBottom: 28 }}>
-              驗證碼已寄到 {email || "您的電子郵件"}。
+              正在為 <strong>{email || "您的電子郵件"}</strong> 設定新密碼
             </p>
 
             <form onSubmit={handleSubmit} noValidate>
@@ -123,7 +144,7 @@ export default function ResetPasswordPage() {
               </div>
 
               <div className="mb-3">
-                <label className="auth-label">新密碼</label>
+                <label className="auth-label">設定新密碼</label>
                 <div className="position-relative">
                   <i className="ri-lock-line form-icon"></i>
                   <input
@@ -143,8 +164,8 @@ export default function ResetPasswordPage() {
                 </div>
               </div>
 
-              <div className="mb-3">
-                <label className="auth-label">再次輸入新密碼</label>
+              <div className="mb-4">
+                <label className="auth-label">再次確認新密碼</label>
                 <div className="position-relative">
                   <i className="ri-lock-line form-icon"></i>
                   <input
@@ -164,7 +185,7 @@ export default function ResetPasswordPage() {
               )}
 
               <button type="submit" className="btn btn-auth-submit w-100 mt-2" disabled={isSubmitting}>
-                {isSubmitting ? "設定中..." : "確定"}
+                {isSubmitting ? "設定中..." : "確定修改並進入系統"}
               </button>
             </form>
           </div>

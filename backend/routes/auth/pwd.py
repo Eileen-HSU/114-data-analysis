@@ -30,7 +30,14 @@ def send_otp():
     # 產生 6 位數隨機碼
     otp = str(random.randint(100000, 999999))
 
-    # 寫入驗證紀錄 (加密 OTP 存入資料庫)
+    # 如果是從個人資料發起的修改，from=change；如果是登入頁發起的忘記密碼，from=forgot
+    from_param = "change" if verify_type == "PASSWORD_CHANGE" else "forgot"
+    
+    reset_link = f"https://one14-data-analysis-frontend.onrender.com/reset-password?email={email}&from={from_param}"   
+
+    print(f"DEBUG: 目前生成的連結是 -> {reset_link}")  
+
+    # 寫入驗證紀錄
     new_verify = UserVerification(
         user_id=user.user_id,
         type=verify_type,
@@ -39,15 +46,6 @@ def send_otp():
         target_email=email,
         is_used=False
     )
-
-    # 🔗 根據 type 決定導向前端哪一個頁面
-    # 請確保這與你的 App.jsx 路由 path 一致
-    if verify_type == "PASSWORD_CHANGE":
-        frontend_path = "change-password"
-    else:
-        frontend_path = "reset-password"
-
-    reset_link = f"http://localhost:5173/{frontend_path}?email={email}"
 
     try:
         db.session.add(new_verify)
@@ -87,17 +85,14 @@ def reset_password():
     if not all([email, otp, new_password]):
         return jsonify({"error": "缺少必要欄位"}), 400
 
-    # 尋找該 Email 最新且未使用的驗證碼紀錄
     record = UserVerification.query.filter_by(
         target_email=email,
         is_used=False
     ).order_by(UserVerification.created_at.desc()).first()
 
-    # 驗證 OTP 是否正確 
     if not record or not check_password_hash(record.code_hash, otp):
         return jsonify({"error": "驗證碼錯誤或無效"}), 400
 
-    # 檢查是否過期
     if record.expires_at < taiwan_now():
         return jsonify({"error": "驗證碼已過期"}), 400
 
@@ -106,11 +101,10 @@ def reset_password():
         return jsonify({"error": "使用者不存在"}), 404
 
     try:
-        # 使用加密新密碼後存入User表
         user.password_hash = generate_password_hash(new_password)  
-        record.is_used = True # 標記此驗證碼已使用
+        record.is_used = True 
         db.session.commit()
-        return jsonify({"message": "密碼更新成功！請重新登入"}), 200
+        return jsonify({"message": "密碼更新成功！"}), 200
 
     except Exception as e:
         db.session.rollback()

@@ -36,7 +36,7 @@ class UserProfile(db.Model):
 # T03: User_Verification - 驗證碼機制
 class UserVerification(db.Model):
     __tablename__ = 'User_Verification'
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    verification_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_id = db.Column(db.Integer, db.ForeignKey('User.user_id'), nullable=False)
     type = db.Column(db.String(50), nullable=False) # REGISTER / PASSWORD_RESET
     code_hash = db.Column(db.String(255), nullable=False)
@@ -45,14 +45,12 @@ class UserVerification(db.Model):
     created_at = db.Column(db.DateTime, default=taiwan_now)
     target_email = db.Column(db.String(255))
     project_id = db.Column(db.Integer)
-    # T04: Survey - 儲存問卷回覆資料
-
-class Survey_Template(db.Model):
-    __tablename__ = 'Survey_Template' # 嚴格對齊資料表名稱
     
-    # 根據你的截圖，精確還原實體欄位
+# T04: Survey - 儲存問卷回覆資料
+class Survey_Template(db.Model):
+    __tablename__ = 'Survey_Template' 
     template_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    project_id = db.Column(db.Integer, nullable=True) # 假設目前還沒有專案綁定
+    project_id = db.Column(db.Integer, nullable=True) 
     share_uuid = db.Column(db.String(36), default=lambda: str(uuid.uuid4()), unique=True)
     access_code = db.Column(db.String(10), unique=True) # 邀請碼
-    question_json = db.Column(db.JSON, nullable=False)  # 這裡放你的問卷標題與題目
+    question_json = db.Column(db.JSON, nullable=False)  # 問卷標題與題目
