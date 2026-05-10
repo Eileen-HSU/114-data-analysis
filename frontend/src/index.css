@@ -58,6 +58,77 @@ body {
   margin: 0;
 }
 
+.route-page {
+  min-height: 100vh;
+  padding: 132px 20px 48px;
+  background:
+    linear-gradient(135deg, rgba(167, 139, 250, 0.18), transparent 36%),
+    linear-gradient(225deg, rgba(14, 165, 233, 0.16), transparent 34%),
+    #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.route-panel {
+  width: min(760px, 100%);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.12);
+  padding: 42px;
+  text-align: center;
+}
+
+.route-eyebrow {
+  margin: 0 0 12px;
+  color: var(--violet-600);
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.route-panel h1 {
+  margin: 0;
+  color: #172033;
+  font-size: clamp(32px, 6vw, 54px);
+  font-weight: 900;
+}
+
+.route-panel p {
+  margin: 18px auto 0;
+  max-width: 560px;
+  color: var(--slate-500);
+  font-size: 17px;
+  line-height: 1.8;
+}
+
+.route-actions {
+  margin-top: 28px;
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.route-primary,
+.route-secondary {
+  min-height: 48px;
+  border-radius: 8px;
+  padding: 0 20px;
+  font-weight: 800;
+}
+
+.route-primary {
+  background: var(--violet-500);
+  color: white;
+}
+
+.route-secondary {
+  background: white;
+  border: 1px solid var(--slate-200);
+  color: var(--slate-700);
+}
+
 .deploy-page {
   min-height: 100vh;
   background:
