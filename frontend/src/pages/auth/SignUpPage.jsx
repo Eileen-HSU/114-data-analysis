@@ -25,7 +25,7 @@ const handleSubmit = async (e) => {
       const response = await axios.post('http://localhost:5000/api/register', {
         user_name: name,      // 對標後端 User 模型的名稱欄位
         email: email,         // 對標 Email 欄位
-        password_hash: password, // 對標密碼欄位（後端會再加密）
+        password: password,   // 對標密碼欄位（後端會再加密）
         phone_number: phone,  
         gender: gender,       
         company_name: company 

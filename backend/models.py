@@ -1,5 +1,6 @@
 from extensions import db
 from datetime import datetime, timedelta
+import uuid
 
 # 定義抓取台灣時間的函式 (UTC+8)
 def taiwan_now():
@@ -45,8 +46,13 @@ class UserVerification(db.Model):
     target_email = db.Column(db.String(255))
     project_id = db.Column(db.Integer)
     # T04: Survey - 儲存問卷回覆資料
-class Survey(db.Model):
-    __tablename__ = 'Survey'
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    content = db.Column(db.Text, nullable=False) # 儲存 JSON 格式的問卷內容
-    created_at = db.Column(db.DateTime, default=taiwan_now)
+
+class Survey_Template(db.Model):
+    __tablename__ = 'Survey_Template' # 嚴格對齊資料表名稱
+    
+    # 根據你的截圖，精確還原實體欄位
+    template_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    project_id = db.Column(db.Integer, nullable=True) # 假設目前還沒有專案綁定
+    share_uuid = db.Column(db.String(36), default=lambda: str(uuid.uuid4()), unique=True)
+    access_code = db.Column(db.String(10), unique=True) # 邀請碼
+    question_json = db.Column(db.JSON, nullable=False)  # 這裡放你的問卷標題與題目

@@ -7,28 +7,45 @@ from routes.auth.register import register_bp
 from routes.auth.login import login_bp
 from routes.auth.pwd import pwd_bp
 from routes.auth.profile import profile_bp
-from models import Survey, User, UserProfile
+from routes.auth.survey import survey_bp
+from models import Survey_Template, User, UserProfile
+from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
+from sqlalchemy import text
 
 # 1. 載入環境變數
 load_dotenv()
 
+# 2. 解析並移除不受支援的 ssl_mode 參數
+def sanitize_db_uri(uri: str) -> str:
+    parsed = urlparse(uri)
+    if not parsed.query:
+        return uri
+
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query.pop('ssl_mode', None)
+    new_query = urlencode(query)
+
+    return urlunparse(parsed._replace(query=new_query))
+
 app = Flask(__name__)
+
+raw_db_uri = os.getenv('SQLALCHEMY_DATABASE_URI') or \
+    "mysql+pymysql://avnadmin:AVNS_VGfMOJaETf2ioJjcFeu@analysis-ntub-analysis.c.aivencloud.com:17020/defaultdb"
+app.config['SQLALCHEMY_DATABASE_URI'] = sanitize_db_uri(raw_db_uri)
+
 CORS(app)
 
-# 1. 完全移除 URI 中的查詢參數，不給 PyMySQL 誤判的機會
-# 1. 將連線網址後面所有的參數（?ssl_mode...）通通刪掉，只留下純淨的網址
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('SQLALCHEMY_DATABASE_URI') or \
-    "mysql+pymysql://avnadmin:AVNS_VGfMOJaETf2ioJjcFeu@analysis-ntub-analysis.c.aivencloud.com:17020/defaultdb"
-
-# 2. 改用 connect_args 傳遞 SSL 設定。
-# 在 PyMySQL 中，SSL 參數的 Key 叫做 'ssl'，且裡面不支援 'ssl_mode' 這個字眼。
+# 2. 透過 connect_args 傳遞驅動程式能理解的 'ssl' 參數
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     "connect_args": {
         "ssl": {
-            "ca": None  # 讓 PyMySQL 自動處理 SSL 握手，避開參數名稱衝突
+            "check_hostname": False  # 避免部分環境下主機名稱驗證失敗
         }
-    }
+    },
+    "pool_recycle": 280,  # 預防 Aiven 自動斷開閒置連線
+    "pool_pre_ping": True # 每次連線前檢查有效性
 }
+
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -49,6 +66,16 @@ app.register_blueprint(register_bp)
 app.register_blueprint(login_bp)
 app.register_blueprint(pwd_bp)
 app.register_blueprint(profile_bp)
+app.register_blueprint(survey_bp)
+
+with app.app_context():
+    # 1. 抓出到底是連到哪一個地址
+    print(f"📡 目前對標的資料庫地址: {app.config['SQLALCHEMY_DATABASE_URI']}")
+    
+    # 2. 直接在後端演算一下表內有幾筆
+    from models import Survey_Template
+    count = Survey_Template.query.count()
+    print(f"📊 Aiven 雲端目前的總筆數: {count}")
 
 # ── 路由設定 ────────────────────────────────
 
@@ -67,17 +94,38 @@ def get_status():
 def submit_form():
     data = request.json
     try:
-        new_survey = Survey(content=str(data))
+        # 1. 產生邀請碼 (對標 Aiven 的 access_code 欄位)
+        import random, string
+        generated_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
+        # 2. 取得第一個可用的 project_id
+        workspace = db.session.execute(text("SELECT project_id FROM Workspace LIMIT 1")).fetchone()
+        if workspace is None:
+            return jsonify({"error": "Workspace 表中沒有可用的 project_id，請先建立 Workspace"}), 400
+
+        project_id = workspace[0]
+
+        # 3. 嚴格對標 Aiven 的欄位名稱
+        new_survey = Survey_Template(
+            project_id=project_id,
+            access_code=generated_code,
+            question_json=data  # 前端傳來的完整問卷 JSON
+        )
+        
         db.session.add(new_survey)
         db.session.commit()
-        return jsonify({"message": "成功存入 Aiven Workspace"}), 201
+        
+        return jsonify({
+            "message": "成功存入 Aiven Workspace", 
+            "access_code": generated_code
+        }), 201
+        
     except Exception as e:
         db.session.rollback()
+        # 這是最重要的：把錯誤印出來，你才知道為什麼沒存進去！
+        print(f"❌ 存入失敗，原因：{e}") 
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/get_surveys', methods=['GET'])
-def get_surveys():
-    return jsonify({"data": "從資料庫抓到的內容"})
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True)

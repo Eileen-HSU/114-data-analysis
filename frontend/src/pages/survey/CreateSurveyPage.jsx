@@ -3,7 +3,9 @@ import { useNavigate } from "react-router-dom";
 import Navbar from "../../components/feature/Navbar";
 import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
 import { useAuth } from "../../hooks/AuthContext";
+import axios from "axios";
 import "./survey.css";
+
 
 const QUESTION_TYPES = [
   { value: "short", label: "短答題", icon: "ri-text" },
@@ -30,10 +32,12 @@ function generateCode() {
 
 export default function CreateSurveyPage() {
   const navigate = useNavigate();
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, user } = useAuth();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [questions, setQuestions] = useState([newQuestion()]);
+  const [questions, setQuestions] = useState([
+    newQuestion("short") // 預設一題進行對標測試
+  ]);
   const [error, setError] = useState("");
   const [generatedCode, setGeneratedCode] = useState("");
   const [copied, setCopied] = useState(false);
@@ -68,6 +72,74 @@ export default function CreateSurveyPage() {
         return next;
       })
     );
+  };
+
+  const handleSaveSurvey = async (e) => {
+    if (e) e.preventDefault();
+
+    // 1. 物理查核：標題與題目不准為空
+    const validationMessage = validate();
+    if (validationMessage) {
+      setError(validationMessage);
+      return;
+    }
+
+    try {
+      // 2. 封裝 100% 對標後端欄位的 payload
+      const payload = {
+        title: title.trim(),
+        description: description.trim(),
+        questions: questions.map((q) => ({
+          ...q,
+          title: q.title.trim(),
+          options: q.options.map((opt) => opt.trim()),
+        })),
+        user_id: user?.user_id || 1
+      };
+
+      console.log("[FRONTEND] 🚀 準備發送 Payload:", payload);
+
+      // 3. 執行物理傳送
+      const response = await axios.post('http://localhost:5000/api/surveys', payload);
+
+      if (response.status === 201 || response.status === 200) {
+        console.log("[FRONTEND] ✓ 數據入庫 Aiven 成功:", response.data);
+        
+        // 4. 觸發顯示邀請碼模態視窗
+        setGeneratedCode(response.data.access_code); 
+        setError("");
+        alert('對標成功！問卷已存入 Aiven 雲端資料庫');
+      }
+    } catch (error) {
+      console.error("[FRONTEND] ✗ 傳送失敗:", error);
+      alert('儲存失敗，請確認後端已開啟且 Aiven 連線正常');
+    }
+  }; // handleSaveSurvey 函數在這裡準確閉合
+
+    const payload = {
+      title: title,
+      description: description,
+      questions: questions,
+      user_id: user?.user_id || 1 // 使用登入用戶的 ID，測試時預設為 1
+    };
+
+    console.log("[FRONTEND] 準備發送 payload:", payload);
+
+    try {
+      // 發送到我們之前寫好的後端 API
+      console.log("[FRONTEND] 開始發送 axios.post 到 http://localhost:5000/api/surveys");
+      const response = await axios.post('http://localhost:5000/api/surveys', payload);
+      console.log("[FRONTEND] ✓ 成功收到回應:", response.data);
+      alert('對標成功！問卷已存入 Aiven 雲端資料庫');
+      console.log('問卷 ID:', response.data.survey_id);
+      
+      // 成功後跳回大廳
+      window.location.href = "/survey";
+    } catch (error) {
+      console.error('[FRONTEND] ✗ 數據發送失敗:', error);
+      console.error('[FRONTEND] 錯誤詳情:', error.response?.data || error.message);
+      alert('儲存失敗，請檢查後端 Terminal 是否噴紅字');
+    }
   };
 
   const updateOption = (questionId, optionIndex, value) => {
@@ -113,31 +185,45 @@ export default function CreateSurveyPage() {
     return "";
   };
 
-  const handleGenerate = () => {
-    const message = validate();
-    if (message) {
-      setError(message);
+  const handleSaveSurvey = async (e) => {
+    if (e) e.preventDefault();
+
+    // 1. 驗證標題
+    const validationMessage = validate();
+    if (validationMessage) {
+      setError(validationMessage);
       return;
     }
 
-    const code = generateCode();
-    const stored = JSON.parse(localStorage.getItem("surveys") || "{}");
-    stored[code] = {
-      id: `local-${code}`,
-      title: title.trim(),
-      description: description.trim(),
-      code,
-      createdAt: new Date().toLocaleString("zh-TW"),
-      questions: questions.map((q) => ({
-        ...q,
-        title: q.title.trim(),
-        options: q.options.map((option) => option.trim()),
-      })),
-      responses: [],
-    };
-    localStorage.setItem("surveys", JSON.stringify(stored));
-    setError("");
-    setGeneratedCode(code);
+    try {
+      // 2. 封裝要對象 Aiven 資料庫 question_json 的 payload
+      const payload = {
+        title: title.trim(),
+        description: description.trim(),
+        questions: questions.map((q) => ({
+          ...q,
+          title: q.title.trim(),
+          options: q.options.map((opt) => opt.trim()),
+        })),
+        user_id: user?.user_id || 1 // 確保對象你的登入 ID
+      };
+
+      console.log("[FRONTEND] 🚀 準備發送數據至 Aiven...", payload);
+
+      // 3. 發送請求（確保與後端 app.py 的 /api/surveys 路徑一致）
+      const response = await axios.post('http://localhost:5000/api/surveys', payload);
+
+      if (response.status === 201 || response.status === 200) {
+        console.log("[FRONTEND] ✓ 成功存入 Aiven:", response.data);
+        
+        // 4. 將後端生成的邀請碼顯示在畫面上
+        setGeneratedCode(response.data.access_code); 
+        setError("");
+      }
+    } catch (error) {
+      console.error("[FRONTEND] ✗ 存入失敗:", error);
+      alert("資料庫寫入失敗！請確認後端已開啟並連線至 Aiven。");
+    }
   };
 
   return (
@@ -224,9 +310,9 @@ export default function CreateSurveyPage() {
           </button>
 
           {error && <p style={{ color: "#ef4444", fontWeight: 800 }}>{error}</p>}
-          <button className="btn-generate" onClick={handleGenerate}>
+          <button className="btn-generate" onClick={handleSaveSurvey}>
             <i className="ri-magic-line"></i>
-            產生邀請碼
+            產生邀請碼並存入雲端
           </button>
         </div>
       </main>
