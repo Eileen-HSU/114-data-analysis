@@ -38,7 +38,7 @@ export default function ChangePasswordPage() {
     }
 
     try {
-      const response = await axios.post("https://one14-data-analysis-frontend.onrender.com/api/auth/send-otp", {
+      const response = await axios.post("https://one14-data-analysis.onrender.com/api/auth/send-otp", {
         email: val,
         type: "PASSWORD_CHANGE" // 後端會根據這個 type 決定郵件內的連結要帶 ?from=change
       });

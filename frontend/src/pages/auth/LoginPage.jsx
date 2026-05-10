@@ -23,7 +23,7 @@ export default function LoginPage() {
   e.preventDefault();
 
   try {
-    const res = await fetch("https://one14-data-analysis-frontend.onrender.com/api/login", {
+    const res = await fetch("https://one14-data-analysis.onrender.com/api/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
