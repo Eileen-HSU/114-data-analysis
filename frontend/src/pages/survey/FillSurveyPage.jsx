@@ -64,7 +64,7 @@ export default function FillSurveyPage() {
     }
 
     try {
-      const response = await fetch('http://127.0.0.1:5000/api/submit_form', {
+      const response = await fetch('https://one14-data-analysis.onrender.com/api/submit_form', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
