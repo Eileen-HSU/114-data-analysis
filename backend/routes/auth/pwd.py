@@ -6,6 +6,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import random
 from datetime import datetime, timedelta
 import traceback
+import os
 
 pwd_bp = Blueprint('pwd', __name__)
 
@@ -33,7 +34,11 @@ def send_otp():
     # 如果是從個人資料發起的修改，from=change；如果是登入頁發起的忘記密碼，from=forgot
     from_param = "change" if verify_type == "PASSWORD_CHANGE" else "forgot"
     
-    reset_link = f"https://one14-data-analysis-frontend.onrender.com/reset-password?email={email}&from={from_param}"   
+    frontend_url = os.getenv(
+        "FRONTEND_URL",
+        "https://one14-data-analysis-frontend.onrender.com",
+    ).rstrip("/")
+    reset_link = f"{frontend_url}/reset-password?email={email}&from={from_param}"
 
     print(f"DEBUG: 目前生成的連結是 -> {reset_link}")  
 
