@@ -15,6 +15,7 @@ const ProfilePage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<"info" | "security" | "activity">("info");
   const [avatarUrl, setAvatarUrl] = useState<string>(DEFAULT_AVATAR);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const editSectionRef = useRef<HTMLDivElement>(null);
 
   const [form, setForm] = useState({
     name: user?.name || "使用者",
@@ -40,6 +41,19 @@ const ProfilePage: React.FC = () => {
     setEditing(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
+  };
+
+  const handleEditClick = () => {
+    if (editing) {
+      setEditing(false);
+      return;
+    }
+
+    setActiveTab("info");
+    setEditing(true);
+    setTimeout(() => {
+      editSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
   };
 
   const activities = [
@@ -132,7 +146,7 @@ const ProfilePage: React.FC = () => {
                     <p className="text-base text-slate-400 mt-1">{user?.email || "user@example.com"}</p>
                   </div>
                   <button
-                    onClick={() => setEditing(!editing)}
+                    onClick={handleEditClick}
                     className="flex items-center gap-2 px-5 py-2.5 bg-violet-500 text-white text-base font-bold rounded-xl hover:bg-violet-400 cursor-pointer whitespace-nowrap transition-all shadow-sm"
                   >
                     <i className={editing ? "ri-close-line" : "ri-edit-line"}></i>
@@ -178,7 +192,7 @@ const ProfilePage: React.FC = () => {
 
           {/* 基本資料 Tab */}
           {activeTab === "info" && (
-            <div className="bg-white border border-slate-100 rounded-2xl p-8 shadow-sm">
+            <div ref={editSectionRef} className="bg-white border border-slate-100 rounded-2xl p-8 shadow-sm scroll-mt-24">
               <h2 className="text-xl font-bold text-slate-800 mb-7">基本資料</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {fields.map((field) => (
