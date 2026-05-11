@@ -18,6 +18,11 @@ function getLocalSurveys(user) {
   });
 }
 
+function getSurveyTime(createdAt) {
+  const time = new Date(createdAt || 0).getTime();
+  return Number.isNaN(time) ? 0 : time;
+}
+
 export default function ProfilePage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -31,6 +36,8 @@ export default function ProfilePage() {
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [showTwoFactorNotice, setShowTwoFactorNotice] = useState(false);
   const [selectedSurvey, setSelectedSurvey] = useState(null);
+  const [surveySearch, setSurveySearch] = useState("");
+  const [surveySortOrder, setSurveySortOrder] = useState("desc");
   const [avatarSrc, setAvatarSrc] = useState(DEFAULT_AVATAR);
   const [profile, setProfile] = useState({
     name: "",
@@ -80,7 +87,7 @@ export default function ProfilePage() {
   }, [location.search, navigate, twoFactorStorageKey]);
 
   const localSurveys = useMemo(() => getLocalSurveys(user), [user, selectedSurvey, saved]);
-  const surveyRecords = localSurveys.map((survey) => ({
+  const surveyRecords = useMemo(() => localSurveys.map((survey) => ({
       id: survey.id || survey.code,
       title: survey.title,
       code: survey.code,
@@ -89,7 +96,22 @@ export default function ProfilePage() {
       status: "active",
       local: true,
       detail: survey,
-    }));
+    })), [localSurveys]);
+  const visibleSurveyRecords = useMemo(() => {
+    const keyword = surveySearch.trim().toLowerCase();
+
+    return [...surveyRecords]
+      .filter((survey) => {
+        if (!keyword) return true;
+        return [survey.title, survey.code]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(keyword));
+      })
+      .sort((a, b) => {
+        const diff = getSurveyTime(a.createdAt) - getSurveyTime(b.createdAt);
+        return surveySortOrder === "asc" ? diff : -diff;
+      });
+  }, [surveyRecords, surveySearch, surveySortOrder]);
 
   if (selectedSurvey) {
     return <SurveyDetailPage survey={selectedSurvey} onBack={() => setSelectedSurvey(null)} />;
@@ -334,14 +356,42 @@ export default function ProfilePage() {
 
           {activeTab === "surveys" && (
             <section className="profile-card-inner p-4 p-md-5">
-              <h2 className="tab-title">我的問卷</h2>
+              <div className="surveys-toolbar">
+                <h2 className="tab-title mb-0">我的問卷</h2>
+                <div className="survey-controls">
+                  <div className="survey-search">
+                    <i className="ri-search-line"></i>
+                    <input
+                      type="search"
+                      value={surveySearch}
+                      onChange={(event) => setSurveySearch(event.target.value)}
+                      placeholder="搜尋問卷名稱或邀請碼"
+                      aria-label="搜尋問卷"
+                    />
+                  </div>
+                  <select
+                    className="survey-sort-select"
+                    value={surveySortOrder}
+                    onChange={(event) => setSurveySortOrder(event.target.value)}
+                    aria-label="問卷時間排序"
+                  >
+                    <option value="desc">時間倒序</option>
+                    <option value="asc">時間正序</option>
+                  </select>
+                </div>
+              </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 {surveyRecords.length === 0 && (
                   <div className="profile-field">
                     <span className="field-value">目前還沒有建立問卷。</span>
                   </div>
                 )}
-                {surveyRecords.map((survey) => (
+                {surveyRecords.length > 0 && visibleSurveyRecords.length === 0 && (
+                  <div className="profile-field">
+                    <span className="field-value">找不到符合搜尋條件的問卷。</span>
+                  </div>
+                )}
+                {visibleSurveyRecords.map((survey) => (
                   <div key={`${survey.id}-${survey.code}`} className="profile-field" style={{ justifyContent: "space-between", gap: 16 }}>
                     <div>
                       <strong>{survey.title}</strong>
