@@ -197,7 +197,6 @@ export default function WorkspacePage() {
 
 
   const { addChatToCollection, addFileToCollection, syncChatTitle, workspaceSessions: sessions, setWorkspaceSessions: setSessions } = useCollection();
-  const [showLoginModal] = useState(!isLoggedIn);
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -427,7 +426,7 @@ export default function WorkspacePage() {
     addChatToCollection(title, newId);
   };
 
-  if (showLoginModal) {
+  if (!isLoggedIn) {
     return (
       <>
         <Navbar />
