@@ -5,7 +5,11 @@ import { useNavigate } from 'react-router-dom';
 import { apiUrl } from "../../lib/api";
 
 function getStoredSurveys() {
-  return JSON.parse(localStorage.getItem("surveys") || "{}");
+  try {
+    return JSON.parse(localStorage.getItem("surveys") || "{}");
+  } catch {
+    return {};
+  }
 }
 
 export default function FillSurveyPage() {
@@ -62,15 +66,25 @@ export default function FillSurveyPage() {
     }
 
     try {
-      const response = await fetch(apiUrl("/api/submit_form"), {
+      const response = await fetch(apiUrl(`/api/surveys/${survey.code}/responses`), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(answers), // 送出使用者回答
+        body: JSON.stringify({ answers }),
       });
 
       if (response.ok) {
+        const storedSurveys = getStoredSurveys();
+        const existingSurvey = storedSurveys[survey.code] || survey;
+        storedSurveys[survey.code] = {
+          ...existingSurvey,
+          responses: [
+            ...(existingSurvey.responses || []),
+            { answers, submittedAt: new Date().toISOString() },
+          ],
+        };
+        localStorage.setItem("surveys", JSON.stringify(storedSurveys));
         setSubmitted(true);
         setError("");
         // 成功後跳轉
