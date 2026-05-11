@@ -910,6 +910,63 @@
   gap: 10px;
 }
 
+.sdp-code-card {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 9px 12px;
+  background: #f8fafc;
+  border: 1px solid var(--slate-100);
+  border-radius: 12px;
+  min-width: 230px;
+}
+
+.sdp-code-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--slate-400);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.sdp-code-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sdp-code-value {
+  color: var(--slate-900);
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.sdp-copy-code-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 10px;
+  background: white;
+  color: #6d5dfc;
+  border: 1px solid var(--violet-100);
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.sdp-copy-code-btn:hover {
+  background: var(--violet-50);
+  border-color: var(--violet-200);
+  transform: translateY(-1px);
+}
+
 /* Import to Chat Button */
 .sdp-import-btn {
   display: flex;
@@ -1446,5 +1503,12 @@
   .sdp-tabbar { padding: 0 20px; }
   .sdp-content { padding: 24px 20px; }
   .sdp-rating-grid { grid-template-columns: 1fr; }
-  .sdp-topbar-right { display: none; }
+  .sdp-topbar-right {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .sdp-code-card {
+    width: 100%;
+  }
 }
