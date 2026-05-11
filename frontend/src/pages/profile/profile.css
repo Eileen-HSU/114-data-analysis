@@ -306,8 +306,7 @@
   pointer-events: none;
 }
 
-.survey-search input,
-.survey-sort-select {
+.survey-search input {
   height: 42px;
   border: 1.5px solid var(--slate-200);
   border-radius: 10px;
@@ -324,15 +323,38 @@
   padding: 0 12px 0 38px;
 }
 
-.survey-sort-select {
-  padding: 0 34px 0 12px;
-  cursor: pointer;
-}
-
-.survey-search input:focus,
-.survey-sort-select:focus {
+.survey-search input:focus {
   border-color: #c9a0a0;
   box-shadow: 0 0 0 3px rgba(201, 160, 160, 0.16);
+}
+
+.survey-sort-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 220px;
+}
+
+.survey-sort-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0;
+  color: var(--slate-700);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.survey-sort-option input {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  accent-color: #c9a0a0;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 /* Profile Fields */
@@ -1407,11 +1429,8 @@
 @media (max-width: 768px) {
   .surveys-toolbar,
   .survey-controls,
-  .survey-search {
-    width: 100%;
-  }
-
-  .survey-sort-select {
+  .survey-search,
+  .survey-sort-options {
     width: 100%;
   }
 

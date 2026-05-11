@@ -370,15 +370,28 @@ export default function ProfilePage() {
                       aria-label="搜尋問卷"
                     />
                   </div>
-                  <select
-                    className="survey-sort-select"
-                    value={surveySortOrder}
-                    onChange={(event) => setSurveySortOrder(event.target.value)}
-                    aria-label="問卷時間排序"
-                  >
-                    <option value="desc">時間倒序</option>
-                    <option value="asc">時間正序</option>
-                  </select>
+                  <div className="survey-sort-options" role="radiogroup" aria-label="問卷時間排序">
+                    <label className="survey-sort-option">
+                      <span>追蹤日期：由近到遠</span>
+                      <input
+                        type="radio"
+                        name="survey-sort-order"
+                        value="desc"
+                        checked={surveySortOrder === "desc"}
+                        onChange={() => setSurveySortOrder("desc")}
+                      />
+                    </label>
+                    <label className="survey-sort-option">
+                      <span>追蹤日期：由遠到近</span>
+                      <input
+                        type="radio"
+                        name="survey-sort-order"
+                        value="asc"
+                        checked={surveySortOrder === "asc"}
+                        onChange={() => setSurveySortOrder("asc")}
+                      />
+                    </label>
+                  </div>
                 </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
