@@ -15,7 +15,14 @@ const WELCOME_MSG = {
 const ACTIVE_WORKSPACE_KEY = "dataanalysis_active_workspace";
 
 function getStoredSurveyRecords(user) {
-  const surveys = Object.values(JSON.parse(localStorage.getItem("surveys") || "{}"));
+  let surveys = [];
+  try {
+    const stored = JSON.parse(localStorage.getItem("surveys") || "{}");
+    surveys = Object.values(stored || {});
+  } catch {
+    surveys = [];
+  }
+
   return surveys
     .filter((survey) => {
       if (!user) return false;
