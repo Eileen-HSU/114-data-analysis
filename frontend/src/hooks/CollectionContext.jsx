@@ -10,7 +10,8 @@ const WORKSPACE_SESSIONS_KEY = "dataanalysis_workspace_sessions";
 function loadWorkspaceSessions() {
   try {
     const raw = localStorage.getItem(WORKSPACE_SESSIONS_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
