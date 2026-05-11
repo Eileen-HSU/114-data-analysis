@@ -358,8 +358,8 @@ export default function ProfilePage() {
           {activeTab === "surveys" && (
             <section className="profile-card-inner p-4 p-md-5">
               <div className="surveys-toolbar">
-                <h2 className="tab-title mb-0">我的問卷</h2>
-                <div className="survey-controls">
+                <div className="surveys-title-group">
+                  <h2 className="tab-title mb-0">我的問卷</h2>
                   <div className="survey-search">
                     <i className="ri-search-line"></i>
                     <input
@@ -370,6 +370,8 @@ export default function ProfilePage() {
                       aria-label="搜尋問卷"
                     />
                   </div>
+                </div>
+                <div className="survey-controls">
                   <div className="survey-sort-options" role="radiogroup" aria-label="問卷時間排序">
                     <label className="survey-sort-option">
                       <span>追蹤日期：由近到遠</span>
