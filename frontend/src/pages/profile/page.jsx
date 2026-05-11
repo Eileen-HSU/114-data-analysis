@@ -24,6 +24,7 @@ export default function ProfilePage() {
   const { user } = useAuth(); // ── 從 AuthContext 取得登入用戶
   console.log('目前登入的 user：', user);
   const avatarInputRef = useRef(null);
+  const editSectionRef = useRef(null);
   const [activeTab, setActiveTab] = useState("info");
   const [isEditing, setIsEditing] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -105,6 +106,11 @@ export default function ProfilePage() {
   };
 
   const handleSave = async () => {
+    if (!user?.user_id) {
+      alert('請重新登入後再試');
+      return;
+    }
+
     try {
         const res = await fetch(apiUrl(`/api/profile/${user.user_id}`), {
             method: 'PUT',
@@ -121,7 +127,8 @@ export default function ProfilePage() {
             }),
         });
 
-        if (!res.ok) throw new Error('更新失敗');
+        const result = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(result.error || '儲存失敗，請稍後再試');
 
         setProfile(editProfile);
         setSaved(true);
@@ -132,13 +139,26 @@ export default function ProfilePage() {
 
       } catch (err) {
           console.error('儲存失敗', err);
-          alert('儲存失敗，請稍後再試');
+          alert(err.message || '儲存失敗，請稍後再試');
       }
   };
 
   const handleCancel = () => {
     setEditProfile(profile);
     setIsEditing(false);
+  };
+
+  const handleEditToggle = () => {
+    if (isEditing) {
+      handleCancel();
+      return;
+    }
+
+    setActiveTab("info");
+    setIsEditing(true);
+    setTimeout(() => {
+      editSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
   };
 
   const stats = [
@@ -183,7 +203,7 @@ export default function ProfilePage() {
                   <h1 className="profile-name">{profile.name}</h1>
                   <p className="profile-email">{user?.email || ""}</p> {/* ── 從 AuthContext 取得 email */}
                 </div>
-                <button className="btn btn-violet ms-auto align-self-end" onClick={() => (isEditing ? handleCancel() : setIsEditing(true))}>
+                <button className="btn btn-violet ms-auto align-self-end" onClick={handleEditToggle}>
                   <i className={`${isEditing ? "ri-close-line" : "ri-edit-line"} me-1`}></i>
                   {isEditing ? "取消編輯" : "編輯資料"}
                 </button>
@@ -219,7 +239,7 @@ export default function ProfilePage() {
           </div>
 
           {activeTab === "info" && (
-            <section className="profile-card-inner p-4 p-md-5">
+            <section className="profile-card-inner p-4 p-md-5" ref={editSectionRef}>
               <h2 className="tab-title">基本資料</h2>
               <div className="row g-4">
                 {infoFields.map((field) => (
