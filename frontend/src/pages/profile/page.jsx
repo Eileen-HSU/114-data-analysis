@@ -24,6 +24,7 @@ export default function ProfilePage() {
   const { user } = useAuth(); // ── 從 AuthContext 取得登入用戶
   console.log('目前登入的 user：', user);
   const avatarInputRef = useRef(null);
+  const editSectionRef = useRef(null);
   const [activeTab, setActiveTab] = useState("info");
   const [isEditing, setIsEditing] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -141,6 +142,19 @@ export default function ProfilePage() {
     setIsEditing(false);
   };
 
+  const handleEditToggle = () => {
+    if (isEditing) {
+      handleCancel();
+      return;
+    }
+
+    setActiveTab("info");
+    setIsEditing(true);
+    setTimeout(() => {
+      editSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
+
   const stats = [
     { icon: "ri-bar-chart-line", iconColor: "text-stat-coral", iconBg: "bg-stat-coral", barBg: "bar-coral", num: surveyRecords.length, label: "問卷數" },
     { icon: "ri-user-line", iconColor: "text-stat-mauve", iconBg: "bg-stat-mauve", barBg: "bar-mauve", num: surveyRecords.reduce((sum, survey) => sum + survey.responseCount, 0), label: "總回覆" },
@@ -183,7 +197,7 @@ export default function ProfilePage() {
                   <h1 className="profile-name">{profile.name}</h1>
                   <p className="profile-email">{user?.email || ""}</p> {/* ── 從 AuthContext 取得 email */}
                 </div>
-                <button className="btn btn-violet ms-auto align-self-end" onClick={() => (isEditing ? handleCancel() : setIsEditing(true))}>
+                <button className="btn btn-violet ms-auto align-self-end" onClick={handleEditToggle}>
                   <i className={`${isEditing ? "ri-close-line" : "ri-edit-line"} me-1`}></i>
                   {isEditing ? "取消編輯" : "編輯資料"}
                 </button>
@@ -219,7 +233,7 @@ export default function ProfilePage() {
           </div>
 
           {activeTab === "info" && (
-            <section className="profile-card-inner p-4 p-md-5">
+            <section className="profile-card-inner p-4 p-md-5" ref={editSectionRef}>
               <h2 className="tab-title">基本資料</h2>
               <div className="row g-4">
                 {infoFields.map((field) => (
