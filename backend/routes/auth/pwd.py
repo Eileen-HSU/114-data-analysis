@@ -73,25 +73,34 @@ def send_otp():
         action_text = "修改" if verify_type == "PASSWORD_CHANGE" else "重設"
         subject = f"【DataAnalysis】{action_text}您的密碼驗證"
 
+        # 使用 textwrap.dedent 或直接貼齊左側，避免信件內容出現多餘空白
         message_body = f"""您好：
-        
-我們收到了您{action_text}密碼的請求。
-您的驗證碼為：{otp}
 
-您可以直接點擊下方連結進行{action_text}：
-{reset_link}
+            我們收到了您{action_text}密碼的請求。
+            您的驗證碼為：{otp}
 
-(此連結與驗證碼將於 10 分鐘後失效。如果這不是您本人的操作，請忽略此信。)
-"""
-        send_password_email_resend(email, subject, message_body)
+            您可以直接點擊下方連結進行{action_text}：
+            {reset_link}
+
+            (此連結與驗證碼將於 10 分鐘後失效。如果這不是您本人的操作，請忽略此信。)"""
+
+        # ── 核心改動：使用 Thread 異步寄信 ──
+        # 這會直接觸發發信邏輯但不會等待結果，立刻執行下方的 return
+        email_thread = Thread(
+            target=send_password_email_resend, 
+            args=(email, subject, message_body)
+        )
+        email_thread.start()
+
+        # 立刻回傳結果，解決 Render Timeout 問題
         return jsonify({"message": f"{action_text}驗證碼已寄出"}), 200
 
     except Exception as e:
         db.session.rollback()
         traceback.print_exc()
-        # 顯示詳細錯誤，方便你用 F12 Network 查看真相
-        return jsonify({"error": "發信系統故障", "details": str(e)}), 500
-
+        return jsonify({"error": "系統處理失敗", "details": str(e)}), 500
+    
+    
 # ── 2. 驗證並更新 (保持原有邏輯) ────────────────────────
 @pwd_bp.route('/api/auth/reset-password', methods=['POST'])
 def reset_password():
