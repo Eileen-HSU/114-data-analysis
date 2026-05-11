@@ -15,7 +15,14 @@ const WELCOME_MSG = {
 const ACTIVE_WORKSPACE_KEY = "dataanalysis_active_workspace";
 
 function getStoredSurveyRecords(user) {
-  const surveys = Object.values(JSON.parse(localStorage.getItem("surveys") || "{}"));
+  let surveys = [];
+  try {
+    const stored = JSON.parse(localStorage.getItem("surveys") || "{}");
+    surveys = Object.values(stored || {});
+  } catch {
+    surveys = [];
+  }
+
   return surveys
     .filter((survey) => {
       if (!user) return false;
@@ -186,11 +193,10 @@ function buildAutoSessionTitle(text, file) {
 export default function WorkspacePage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, user } = useAuth();
 
 
   const { addChatToCollection, addFileToCollection, syncChatTitle, workspaceSessions: sessions, setWorkspaceSessions: setSessions } = useCollection();
-  const [showLoginModal] = useState(!isLoggedIn);
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -420,7 +426,7 @@ export default function WorkspacePage() {
     addChatToCollection(title, newId);
   };
 
-  if (showLoginModal) {
+  if (!isLoggedIn) {
     return (
       <>
         <Navbar />
