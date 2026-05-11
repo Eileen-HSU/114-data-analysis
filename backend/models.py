@@ -54,3 +54,13 @@ class Survey_Template(db.Model):
     share_uuid = db.Column(db.String(36), default=lambda: str(uuid.uuid4()), unique=True)
     access_code = db.Column(db.String(10), unique=True) # 邀請碼
     question_json = db.Column(db.JSON, nullable=False)  # 問卷標題與題目
+
+
+class Survey_Response(db.Model):
+    __tablename__ = 'Survey_Response'
+    response_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    template_id = db.Column(db.Integer, db.ForeignKey('Survey_Template.template_id'), nullable=False)
+    answer_json = db.Column(db.JSON, nullable=False)
+    response_token = db.Column(db.String(255), nullable=False, default=lambda: str(uuid.uuid4()))
+    submitted_at = db.Column(db.DateTime, default=taiwan_now)
+    updated_at = db.Column(db.DateTime, default=taiwan_now, onupdate=taiwan_now)
