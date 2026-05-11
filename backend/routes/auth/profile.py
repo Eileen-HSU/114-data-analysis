@@ -37,23 +37,27 @@ def get_profile(user_id):
 
 @profile_bp.route('/api/profile/<int:user_id>', methods=['PUT'])
 def update_profile(user_id):
-    data = request.get_json()
     try:
+        data = request.get_json(silent=True) or {}
         user = User.query.get(user_id)
         if not user:
             return jsonify({"error": "使用者不存在"}), 404
 
-        if data.get('user_name'):
-            user.user_name = data.get('user_name')
+        user_name = (data.get('user_name') or '').strip()
+        if user_name:
+            user.user_name = user_name
 
         profile = UserProfile.query.filter_by(user_id=user_id).first()
-        if profile:
-            profile.phone_number = data.get('phone_number', profile.phone_number)
-            profile.company_name = data.get('company_name', profile.company_name)
-            profile.gender       = data.get('gender',       profile.gender)
-            profile.bio          = data.get('bio',          profile.bio)
-            profile.location     = data.get('location',     profile.location)
-            profile.updated_at    = taiwan_now()
+        if not profile:
+            profile = UserProfile(user_id=user_id, phone_number='')
+            db.session.add(profile)
+
+        profile.phone_number = data.get('phone_number') or ''
+        profile.company_name = data.get('company_name') or ''
+        profile.gender       = data.get('gender')       or ''
+        profile.bio          = data.get('bio')          or ''
+        profile.location     = data.get('location')     or ''
+        profile.updated_at    = taiwan_now()
 
         db.session.commit()
         return jsonify({"message": "更新成功"}), 200
