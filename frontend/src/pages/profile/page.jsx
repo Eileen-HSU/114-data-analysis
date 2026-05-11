@@ -106,6 +106,11 @@ export default function ProfilePage() {
   };
 
   const handleSave = async () => {
+    if (!user?.user_id) {
+      alert('請重新登入後再試');
+      return;
+    }
+
     try {
         const res = await fetch(apiUrl(`/api/profile/${user.user_id}`), {
             method: 'PUT',
@@ -122,7 +127,8 @@ export default function ProfilePage() {
             }),
         });
 
-        if (!res.ok) throw new Error('更新失敗');
+        const result = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(result.error || '儲存失敗，請稍後再試');
 
         setProfile(editProfile);
         setSaved(true);
@@ -133,7 +139,7 @@ export default function ProfilePage() {
 
       } catch (err) {
           console.error('儲存失敗', err);
-          alert('儲存失敗，請稍後再試');
+          alert(err.message || '儲存失敗，請稍後再試');
       }
   };
 
