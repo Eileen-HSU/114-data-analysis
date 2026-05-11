@@ -291,6 +291,13 @@
   flex-wrap: wrap;
 }
 
+.surveys-title-group {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
 .survey-search {
   position: relative;
   min-width: 260px;
@@ -1428,6 +1435,7 @@
 
 @media (max-width: 768px) {
   .surveys-toolbar,
+  .surveys-title-group,
   .survey-controls,
   .survey-search,
   .survey-sort-options {
