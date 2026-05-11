@@ -151,13 +151,15 @@ export default function CreateSurveyPage() {
         
         // 4. 將後端生成的邀請碼顯示在畫面上
         const accessCode = response.data.access_code;
+        const createdAtMs = Date.now();
         const savedSurvey = {
           id: response.data.template_id || `survey-${Date.now()}`,
           title: payload.title,
           description: payload.description,
           questions: payload.questions,
           code: accessCode,
-          createdAt: new Date().toISOString().slice(0, 10),
+          createdAt: new Date(createdAtMs).toISOString().slice(0, 10),
+          createdAtMs,
           responses: [],
           ownerId: user?.user_id,
           ownerEmail: user?.email,

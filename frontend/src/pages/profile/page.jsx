@@ -87,11 +87,12 @@ export default function ProfilePage() {
   }, [location.search, navigate, twoFactorStorageKey]);
 
   const localSurveys = useMemo(() => getLocalSurveys(user), [user, selectedSurvey, saved]);
-  const surveyRecords = useMemo(() => localSurveys.map((survey) => ({
+  const surveyRecords = useMemo(() => localSurveys.map((survey, index) => ({
       id: survey.id || survey.code,
       title: survey.title,
       code: survey.code,
       createdAt: survey.createdAt,
+      createdAtMs: survey.createdAtMs || getSurveyTime(survey.createdAt) + index,
       responseCount: survey.responses?.length || 0,
       status: "active",
       local: true,
@@ -108,7 +109,7 @@ export default function ProfilePage() {
           .some((value) => String(value).toLowerCase().includes(keyword));
       })
       .sort((a, b) => {
-        const diff = getSurveyTime(a.createdAt) - getSurveyTime(b.createdAt);
+        const diff = a.createdAtMs - b.createdAtMs;
         return surveySortOrder === "asc" ? diff : -diff;
       });
   }, [surveyRecords, surveySearch, surveySortOrder]);
