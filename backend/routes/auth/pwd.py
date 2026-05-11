@@ -6,60 +6,40 @@ import random
 from datetime import datetime, timedelta
 import traceback
 import os
-import socket
-import smtplib
-from email.mime.text import MIMEText
+import resend 
 
 pwd_bp = Blueprint('pwd', __name__)
+
+# 沒辦法改 Render 環境變數，所以直接寫死 API KEY
+RESEND_API_KEY = "re_8iZoHx8F_6trPstNJyCsis55zZbvGpDNQ"
+resend.api_key = RESEND_API_KEY
 
 def taiwan_now():
     return datetime.utcnow() + timedelta(hours=8)
 
-class IPv4SMTP(smtplib.SMTP):
-    def _get_socket(self, host, port, timeout):
-        for _family, _socktype, _proto, _canonname, sockaddr in socket.getaddrinfo(
-            host,
-            port,
-            socket.AF_INET,
-            socket.SOCK_STREAM,
-        ):
-            return socket.create_connection(sockaddr, timeout, source_address=self.source_address)
-        raise OSError(f"No IPv4 address found for SMTP host {host}")
-
-class IPv4SMTP_SSL(smtplib.SMTP_SSL):
-    def _get_socket(self, host, port, timeout):
-        raw_socket = IPv4SMTP._get_socket(self, host, port, timeout)
-        return self.context.wrap_socket(raw_socket, server_hostname=host)
-
-# ── 1. 發送驗證碼 (支援修改與重設) ───────────────────────
-def send_password_email(recipient, subject, body):
-    msg = MIMEText(body, "plain", "utf-8")
-    msg["Subject"] = subject
-    msg["From"] = current_app.config["MAIL_DEFAULT_SENDER"]
-    msg["To"] = recipient
-
-    smtp_class = IPv4SMTP_SSL if current_app.config.get("MAIL_USE_SSL") else IPv4SMTP
-    with smtp_class(
-        current_app.config["MAIL_SERVER"],
-        current_app.config["MAIL_PORT"],
-        timeout=current_app.config.get("MAIL_TIMEOUT", 20),
-    ) as smtp:
-        smtp.ehlo()
-        if current_app.config.get("MAIL_USE_TLS"):
-            smtp.starttls()
-            smtp.ehlo()
-        if current_app.config.get("MAIL_USERNAME") and current_app.config.get("MAIL_PASSWORD"):
-            smtp.login(
-                current_app.config["MAIL_USERNAME"],
-                current_app.config["MAIL_PASSWORD"],
-            )
-        smtp.send_message(msg)
+# ── 1. Resend 發信函數 ───────────────────────
+def send_password_email_resend(recipient, subject, body_text):
+    try:
+        # 轉換換行符號為 HTML 格式
+        html_body = body_text.replace("\n", "<br>")
+        
+        params = {
+            "from": "onboarding@resend.dev",  # 測試期固定
+            "to": recipient,
+            "subject": subject,
+            "html": f"<div>{html_body}</div>"
+        }
+        
+        r = resend.Emails.send(params)
+        return True
+    except Exception as e:
+        print(f"Resend Error: {str(e)}")
+        raise e
 
 @pwd_bp.route('/api/auth/send-otp', methods=['POST'])
 def send_otp():
     data = request.get_json()
     email = data.get('email')
-    # 接收前端傳入的 type: 'PASSWORD_CHANGE' 或 'PASSWORD_RESET'
     verify_type = data.get('type', 'PASSWORD_RESET')
 
     if not email:
@@ -69,19 +49,12 @@ def send_otp():
     if not user:
         return jsonify({"error": "此 Email 尚未註冊"}), 404
 
-    # 產生 6 位數隨機碼
     otp = str(random.randint(100000, 999999))
-
-    # 如果是從個人資料發起的修改，from=change；如果是登入頁發起的忘記密碼，from=forgot
     from_param = "change" if verify_type == "PASSWORD_CHANGE" else "forgot"
     
-    frontend_url = os.getenv(
-        "FRONTEND_URL",
-        "https://one14-data-analysis-frontend.onrender.com",
-    ).rstrip("/")
+    # 寫死前端網址，避免抓不到環境變數
+    frontend_url = "https://one14-data-analysis-frontend.onrender.com"
     reset_link = f"{frontend_url}/reset-password?email={email}&from={from_param}"
-
-    print(f"DEBUG: 目前生成的連結是 -> {reset_link}")  
 
     # 寫入驗證紀錄
     new_verify = UserVerification(
@@ -97,7 +70,6 @@ def send_otp():
         db.session.add(new_verify)
         db.session.commit()
 
-        # 動態調整郵件內容
         action_text = "修改" if verify_type == "PASSWORD_CHANGE" else "重設"
         subject = f"【DataAnalysis】{action_text}您的密碼驗證"
 
@@ -106,22 +78,24 @@ def send_otp():
 我們收到了您{action_text}密碼的請求。
 您的驗證碼為：{otp}
 
-您也可以直接點擊下方連結進行{action_text}：
+您可以直接點擊下方連結進行{action_text}：
 {reset_link}
 
 (此連結與驗證碼將於 10 分鐘後失效。如果這不是您本人的操作，請忽略此信。)
 """
-        send_password_email(email, subject, message_body)
+        send_password_email_resend(email, subject, message_body)
         return jsonify({"message": f"{action_text}驗證碼已寄出"}), 200
 
     except Exception as e:
         db.session.rollback()
         traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        # 顯示詳細錯誤，方便你用 F12 Network 查看真相
+        return jsonify({"error": "發信系統故障", "details": str(e)}), 500
 
-# ── 2. 驗證並執行密碼更新 ───────────────────────────────
+# ── 2. 驗證並更新 (保持原有邏輯) ────────────────────────
 @pwd_bp.route('/api/auth/reset-password', methods=['POST'])
 def reset_password():
+    # ... 原有邏輯 ...
     data = request.get_json()
     email = data.get('email')
     otp = data.get('otp')
