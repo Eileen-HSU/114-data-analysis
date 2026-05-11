@@ -196,7 +196,7 @@ export default function WorkspacePage() {
   const { isLoggedIn, user } = useAuth();
 
 
-  const { addChatToCollection, addFileToCollection, syncChatTitle, workspaceSessions: sessions, setWorkspaceSessions: setSessions } = useCollection();
+  const { addChatToCollection, addFileToCollection, syncChatTitle, deleteChatSession, workspaceSessions: sessions, setWorkspaceSessions: setSessions } = useCollection();
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -412,6 +412,27 @@ export default function WorkspacePage() {
     setRenamingId(null);
   };
 
+  const deleteSession = (sessionId) => {
+    const session = sessions.find((s) => s.id === sessionId);
+    if (!session) return;
+    const ok = window.confirm(`確定要刪除「${session.title}」嗎？刪除後可在作品集的最近刪除中還原。`);
+    if (!ok) return;
+
+    deleteChatSession(sessionId);
+    setRenamingId(null);
+    setSearchQuery("");
+    if (activeSessionId === sessionId) {
+      const nextSession = sessions.find((s) => s.id !== sessionId);
+      setActiveSessionId(nextSession?.id || null);
+      if (nextSession?.id) {
+        localStorage.setItem(ACTIVE_WORKSPACE_KEY, nextSession.id);
+      } else {
+        localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
+      }
+    }
+    showToast("已刪除工作區，並移至最近刪除");
+  };
+
   const createNewSession = () => {
     const newId = Date.now().toString();
     const title = "新工作區";
@@ -539,6 +560,13 @@ export default function WorkspacePage() {
                       title="重新命名"
                     >
                       <i className="ri-pencil-line"></i>
+                    </button>
+                    <button
+                      className="session-delete"
+                      onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
+                      title="刪除工作區"
+                    >
+                      <i className="ri-delete-bin-line"></i>
                     </button>
                   </div>
                 ))
