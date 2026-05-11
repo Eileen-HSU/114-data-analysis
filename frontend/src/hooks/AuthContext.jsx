@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { createContext, useContext, useState, useCallback } from "react";
 
 const AUTH_KEY = "dataanalysis_auth";
 
@@ -9,32 +9,29 @@ const AuthContext = createContext({
   logout: () => {},
 });
 
-export function AuthProvider({ children }) {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [user, setUser] = useState(null);
+function loadStoredUser() {
+  const raw = localStorage.getItem(AUTH_KEY);
+  if (!raw) return null;
 
-  useEffect(() => {
-    const raw = localStorage.getItem(AUTH_KEY);
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        setIsLoggedIn(true);
-        setUser(parsed);
-      } catch {
-        localStorage.removeItem(AUTH_KEY);
-      }
-    }
-  }, []);
+  try {
+    return JSON.parse(raw);
+  } catch {
+    localStorage.removeItem(AUTH_KEY);
+    return null;
+  }
+}
+
+export function AuthProvider({ children }) {
+  const [user, setUser] = useState(loadStoredUser);
+  const isLoggedIn = Boolean(user);
 
   const login = useCallback((userData) => {
     localStorage.setItem(AUTH_KEY, JSON.stringify(userData));
-    setIsLoggedIn(true);
     setUser(userData);
   }, []);
 
   const logout = useCallback(() => {
     localStorage.removeItem(AUTH_KEY);
-    setIsLoggedIn(false);
     setUser(null);
   }, []);
 
