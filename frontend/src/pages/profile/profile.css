@@ -275,6 +275,66 @@
 
 .tab-title { font-size: 20px; font-weight: 700; color: var(--slate-800); margin-bottom: 28px; }
 
+.surveys-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+}
+
+.survey-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.survey-search {
+  position: relative;
+  min-width: 260px;
+}
+
+.survey-search i {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--slate-400);
+  font-size: 16px;
+  pointer-events: none;
+}
+
+.survey-search input,
+.survey-sort-select {
+  height: 42px;
+  border: 1.5px solid var(--slate-200);
+  border-radius: 10px;
+  background: white;
+  color: var(--slate-700);
+  font-size: 14px;
+  font-weight: 600;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.survey-search input {
+  width: 100%;
+  padding: 0 12px 0 38px;
+}
+
+.survey-sort-select {
+  padding: 0 34px 0 12px;
+  cursor: pointer;
+}
+
+.survey-search input:focus,
+.survey-sort-select:focus {
+  border-color: #c9a0a0;
+  box-shadow: 0 0 0 3px rgba(201, 160, 160, 0.16);
+}
+
 /* Profile Fields */
 .profile-field {
   display: flex;
@@ -1345,6 +1405,16 @@
 .sdp-tr-even:hover, .sdp-tr-odd:hover { background: var(--violet-50)/30; }
 
 @media (max-width: 768px) {
+  .surveys-toolbar,
+  .survey-controls,
+  .survey-search {
+    width: 100%;
+  }
+
+  .survey-sort-select {
+    width: 100%;
+  }
+
   .sdp-topbar { padding: 16px 20px; flex-wrap: wrap; }
   .sdp-tabbar { padding: 0 20px; }
   .sdp-content { padding: 24px 20px; }
