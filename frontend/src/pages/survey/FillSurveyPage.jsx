@@ -3,6 +3,7 @@ import Navbar from "../../components/feature/Navbar";
 import "./survey.css";
 import { useNavigate } from 'react-router-dom';
 import { apiUrl } from "../../lib/api";
+import { useActivity } from "../../hooks/ActivityContext";
 
 function getStoredSurveys() {
   try {
@@ -14,6 +15,7 @@ function getStoredSurveys() {
 
 export default function FillSurveyPage() {
   const navigate = useNavigate(); // 修正點 1：將 navigate 移入組件內部
+  const { recordActivity } = useActivity();
   const [code, setCode] = useState("");
   const [survey, setSurvey] = useState(null);
   const [answers, setAnswers] = useState({});
@@ -85,6 +87,12 @@ export default function FillSurveyPage() {
           ],
         };
         localStorage.setItem("surveys", JSON.stringify(storedSurveys));
+        recordActivity({
+          text: `提交問卷回覆「${survey.title}」`,
+          icon: "ri-send-plane-line",
+          iconBg: "bg-stat-teal",
+          iconColor: "text-stat-teal",
+        });
         setSubmitted(true);
         setError("");
         // 成功後跳轉

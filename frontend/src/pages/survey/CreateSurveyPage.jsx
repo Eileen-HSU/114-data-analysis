@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import Navbar from "../../components/feature/Navbar";
 import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
 import { useAuth } from "../../hooks/AuthContext";
+import { useActivity } from "../../hooks/ActivityContext";
 import axios from "axios";
 import { apiUrl } from "../../lib/api";
 import "./survey.css";
@@ -34,6 +35,7 @@ function generateCode() {
 export default function CreateSurveyPage() {
   const navigate = useNavigate();
   const { isLoggedIn, user } = useAuth();
+  const { recordActivity } = useActivity();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [questions, setQuestions] = useState([
@@ -167,6 +169,12 @@ export default function CreateSurveyPage() {
         const storedSurveys = JSON.parse(localStorage.getItem("surveys") || "{}");
         storedSurveys[accessCode] = savedSurvey;
         localStorage.setItem("surveys", JSON.stringify(storedSurveys));
+        recordActivity({
+          text: `建立問卷「${payload.title}」`,
+          icon: "ri-survey-line",
+          iconBg: "bg-stat-coral",
+          iconColor: "text-stat-coral",
+        });
         setGeneratedCode(accessCode);
         setError("");
       }

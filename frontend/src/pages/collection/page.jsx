@@ -4,6 +4,7 @@ import Navbar from "../../components/feature/Navbar";
 import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
 import { useAuth } from "../../hooks/AuthContext";
 import { useCollection } from "../../hooks/CollectionContext";
+import { useActivity } from "../../hooks/ActivityContext";
 import "./collection.css";
 
 const FILE_ICONS = {
@@ -17,6 +18,7 @@ const FILE_ICONS = {
 export default function CollectionPage() {
   const navigate = useNavigate();
   const { isLoggedIn } = useAuth();
+  const { recordActivity } = useActivity();
   const {
     folders,
     files,
@@ -79,6 +81,12 @@ export default function CollectionPage() {
   const createFolder = () => {
     if (!newFolderName.trim()) return;
     setFolders((prev) => [...prev, { id: `folder-${Date.now()}`, name: newFolderName.trim() }]);
+    recordActivity({
+      text: `建立資料夾「${newFolderName.trim()}」`,
+      icon: "ri-folder-add-line",
+      iconBg: "bg-stat-sky",
+      iconColor: "text-stat-sky",
+    });
     setNewFolderName("");
     setShowNewFolderModal(false);
   };
@@ -93,6 +101,12 @@ export default function CollectionPage() {
   const saveFolderRename = (folderId) => {
     if (renameFolderValue.trim()) {
       setFolders((prev) => prev.map((folder) => (folder.id === folderId ? { ...folder, name: renameFolderValue.trim() } : folder)));
+      recordActivity({
+        text: `重新命名資料夾為「${renameFolderValue.trim()}」`,
+        icon: "ri-edit-line",
+        iconBg: "bg-violet-50",
+        iconColor: "text-violet",
+      });
     }
     setRenamingFolderId(null);
   };
@@ -100,6 +114,12 @@ export default function CollectionPage() {
   const saveFileRename = (fileId) => {
     if (renameFileValue.trim()) {
       setFiles((prev) => prev.map((file) => (file.id === fileId ? { ...file, name: renameFileValue.trim() } : file)));
+      recordActivity({
+        text: `重新命名檔案為「${renameFileValue.trim()}」`,
+        icon: "ri-edit-line",
+        iconBg: "bg-violet-50",
+        iconColor: "text-violet",
+      });
     }
     setRenamingFileId(null);
   };
