@@ -19,19 +19,24 @@ def create_survey():
     if not data:
         print("[CREATE_SURVEY] 錯誤：request.json 為空或無法解析")
         return jsonify({"error": "request body 為空或格式錯誤"}), 400
+    if not data.get('title') or not isinstance(data.get('questions'), list):
+        return jsonify({"error": "缺少問卷標題或題目資料"}), 400
     
     try:
         print(f"[CREATE_SURVEY] 收到的數據: title='{data.get('title')}', questions_count={len(data.get('questions', []))} ")
         
-        # 獲取第一個可用的 project_id
-        result = db.session.execute(text("SELECT project_id FROM Workspace LIMIT 1"))
-        workspace_row = result.fetchone()
-        if not workspace_row:
-            print("[CREATE_SURVEY] 錯誤：Workspace 表中沒有可用的 project_id")
-            return jsonify({"error": "沒有可用的工作區，請先建立工作區"}), 400
-        
-        project_id = workspace_row[0]
-        print(f"[CREATE_SURVEY] 已取得 project_id: {project_id}")
+        # 問卷可以先獨立建立；若有 Workspace，再附上第一個可用的 project_id。
+        project_id = None
+        try:
+            result = db.session.execute(text("SELECT project_id FROM Workspace LIMIT 1"))
+            workspace_row = result.fetchone()
+            if workspace_row:
+                project_id = workspace_row[0]
+                print(f"[CREATE_SURVEY] 已取得 project_id: {project_id}")
+            else:
+                print("[CREATE_SURVEY] Workspace 表中沒有資料，將以 project_id=None 建立問卷")
+        except Exception as workspace_error:
+            print(f"[CREATE_SURVEY] 無法取得 Workspace project_id，將略過: {workspace_error}")
         
         # 自動產生一組 5 碼的隨機邀請碼 (對應 access_code)
         generated_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
@@ -45,7 +50,7 @@ def create_survey():
         }
 
         new_template = Survey_Template(
-            project_id=project_id,  # 使用有效的 project_id
+            project_id=project_id,
             access_code=generated_code,
             question_json=survey_content
             # share_uuid 會自動生成，template_id 資料庫會自動遞增
