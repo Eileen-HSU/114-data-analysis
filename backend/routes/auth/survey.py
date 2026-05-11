@@ -5,7 +5,6 @@ import sys
 import random
 import string
 from sqlalchemy import text
-# 確保從 models.py 引入你的資料表實體
 from models import Survey_Template, Survey_Response
 survey_bp = Blueprint('survey', __name__)
 
