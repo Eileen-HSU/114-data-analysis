@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import Navbar from "../../components/feature/Navbar";
 import SurveyDetailPage from "./components/SurveyDetailPage";
 import { useAuth } from "../../hooks/AuthContext";
+import { useActivity } from "../../hooks/ActivityContext";
 import { apiUrl } from "../../lib/api";
 import "./profile.css";
 
@@ -23,13 +24,35 @@ function getSurveyTime(createdAt) {
   return Number.isNaN(time) ? 0 : time;
 }
 
+function formatActivityTime(value) {
+  const time = new Date(value).getTime();
+  if (!time || Number.isNaN(time)) return "";
+  const diff = Date.now() - time;
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+
+  if (diff < minute) return "剛剛";
+  if (diff < hour) return `${Math.floor(diff / minute)} 分鐘前`;
+  if (diff < day) return `${Math.floor(diff / hour)} 小時前`;
+
+  return new Intl.DateTimeFormat("zh-TW", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 export default function ProfilePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth(); // ── 從 AuthContext 取得登入用戶
   console.log('目前登入的 user：', user);
+  const { activities, recordActivity, clearActivities } = useActivity();
   const avatarInputRef = useRef(null);
   const editSectionRef = useRef(null);
+  const surveysSectionRef = useRef(null);
   const [activeTab, setActiveTab] = useState("info");
   const [isEditing, setIsEditing] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -83,8 +106,14 @@ export default function ProfilePage() {
     localStorage.setItem(twoFactorStorageKey, "true");
     setTwoFactorEnabled(true);
     setShowTwoFactorNotice(true);
+    recordActivity({
+      text: "啟用雙重驗證",
+      icon: "ri-shield-check-line",
+      iconBg: "bg-stat-teal",
+      iconColor: "text-stat-teal",
+    });
     navigate("/profile", { replace: true });
-  }, [location.search, navigate, twoFactorStorageKey]);
+  }, [location.search, navigate, recordActivity, twoFactorStorageKey]);
 
   const localSurveys = useMemo(() => getLocalSurveys(user), [user, selectedSurvey, saved]);
   const surveyRecords = useMemo(() => localSurveys.map((survey, index) => ({
@@ -123,7 +152,15 @@ export default function ProfilePage() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (loadEvent) => {
-      if (loadEvent.target?.result) setAvatarSrc(loadEvent.target.result);
+      if (loadEvent.target?.result) {
+        setAvatarSrc(loadEvent.target.result);
+        recordActivity({
+          text: "更新個人頭像",
+          icon: "ri-camera-line",
+          iconBg: "bg-stat-mauve",
+          iconColor: "text-stat-mauve",
+        });
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -154,6 +191,12 @@ export default function ProfilePage() {
         if (!res.ok) throw new Error(result.error || '儲存失敗，請稍後再試');
 
         setProfile(editProfile);
+        recordActivity({
+          text: "更新個人資料",
+          icon: "ri-user-settings-line",
+          iconBg: "bg-violet-50",
+          iconColor: "text-violet",
+        });
         setSaved(true);
         setTimeout(() => {
             setSaved(false);
@@ -184,8 +227,15 @@ export default function ProfilePage() {
     }, 0);
   };
 
+  const scrollToSurveys = () => {
+    setActiveTab("surveys");
+    setTimeout(() => {
+      surveysSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
+
   const stats = [
-    { icon: "ri-bar-chart-line", iconColor: "text-stat-coral", iconBg: "bg-stat-coral", barBg: "bar-coral", num: surveyRecords.length, label: "問卷數" },
+    { icon: "ri-bar-chart-line", iconColor: "text-stat-coral", iconBg: "bg-stat-coral", barBg: "bar-coral", num: surveyRecords.length, label: "問卷數", action: scrollToSurveys },
     { icon: "ri-user-line", iconColor: "text-stat-mauve", iconBg: "bg-stat-mauve", barBg: "bar-mauve", num: surveyRecords.reduce((sum, survey) => sum + survey.responseCount, 0), label: "總回覆" },
     { icon: "ri-folder-line", iconColor: "text-stat-sky", iconBg: "bg-stat-sky", barBg: "bar-sky", num: 0, label: "資料夾" },
     { icon: "ri-calendar-line", iconColor: "text-stat-teal", iconBg: "bg-stat-teal", barBg: "bar-teal", num: 0, label: "使用天數" },
@@ -233,16 +283,24 @@ export default function ProfilePage() {
               </div>
 
               <div className="row g-3 mb-4">
-                {stats.map((stat) => (
-                  <div className="col-6 col-md-3" key={stat.label}>
-                    <div className="profile-stat">
-                      <div className={`stat-top-bar ${stat.barBg}`}></div>
-                      <div className={`stat-icon-box ${stat.iconBg}`}><i className={`${stat.icon} ${stat.iconColor}`}></i></div>
-                      <div className="stat-number">{stat.num}</div>
-                      <div className="stat-label">{stat.label}</div>
+                {stats.map((stat) => {
+                  const StatTag = stat.action ? "button" : "div";
+                  return (
+                    <div className="col-6 col-md-3" key={stat.label}>
+                      <StatTag
+                        type={stat.action ? "button" : undefined}
+                        className={`profile-stat ${stat.action ? "profile-stat-clickable" : ""}`}
+                        onClick={stat.action}
+                        aria-label={stat.action ? "查看我的問卷" : undefined}
+                      >
+                        <div className={`stat-top-bar ${stat.barBg}`}></div>
+                        <div className={`stat-icon-box ${stat.iconBg}`}><i className={`${stat.icon} ${stat.iconColor}`}></i></div>
+                        <div className="stat-number">{stat.num}</div>
+                        <div className="stat-label">{stat.label}</div>
+                      </StatTag>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               <p className="profile-bio">{profile.bio}</p>
             </div>
@@ -346,17 +404,37 @@ export default function ProfilePage() {
 
           {activeTab === "activity" && (
             <section className="profile-card-inner p-4 p-md-5">
-              <h2 className="tab-title">近期活動</h2>
+              <div className="activity-header">
+                <h2 className="tab-title mb-0">近期活動</h2>
+                {activities.length > 0 && (
+                  <button className="activity-clear-btn" type="button" onClick={clearActivities}>
+                    清除紀錄
+                  </button>
+                )}
+              </div>
               <div className="activity-list">
-                <div className="profile-field">
-                  <span className="field-value">目前還沒有活動紀錄。</span>
-                </div>
+                {activities.length === 0 && (
+                  <div className="profile-field">
+                    <span className="field-value">目前還沒有活動紀錄。</span>
+                  </div>
+                )}
+                {activities.map((activity) => (
+                  <div className="activity-item" key={activity.id}>
+                    <div className={`activity-icon ${activity.iconBg || "bg-violet-50"}`}>
+                      <i className={`${activity.icon || "ri-time-line"} ${activity.iconColor || "text-violet"}`}></i>
+                    </div>
+                    <div className="activity-main">
+                      <span className="activity-text">{activity.text}</span>
+                      <span className="activity-time">{formatActivityTime(activity.createdAt)}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
             </section>
           )}
 
           {activeTab === "surveys" && (
-            <section className="profile-card-inner p-4 p-md-5">
+            <section className="profile-card-inner p-4 p-md-5" ref={surveysSectionRef}>
               <div className="surveys-toolbar">
                 <div className="surveys-title-group">
                   <h2 className="tab-title mb-0">我的問卷</h2>
@@ -415,7 +493,20 @@ export default function ProfilePage() {
                         邀請碼 {survey.code} · {survey.responseCount} 份回覆 · {survey.createdAt}
                       </div>
                     </div>
-                    <button className="btn btn-violet" onClick={() => setSelectedSurvey(survey.detail)}>查看詳情</button>
+                    <button
+                      className="btn btn-violet"
+                      onClick={() => {
+                        recordActivity({
+                          text: `查看問卷「${survey.title}」`,
+                          icon: "ri-survey-line",
+                          iconBg: "bg-stat-coral",
+                          iconColor: "text-stat-coral",
+                        });
+                        setSelectedSurvey(survey.detail);
+                      }}
+                    >
+                      查看詳情
+                    </button>
                   </div>
                 ))}
               </div>

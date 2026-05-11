@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
+import { useActivity } from "./ActivityContext";
 
 const INIT_FOLDERS = [];
 
@@ -25,6 +26,7 @@ function loadWorkspaceSessions() {
 }
 
 export function CollectionProvider({ children }) {
+  const { recordActivity } = useActivity();
   const [folders, setFolders] = useState(() => loadArray(COLLECTION_FOLDERS_KEY, INIT_FOLDERS));
   const [files, setFiles] = useState(() => loadArray(COLLECTION_FILES_KEY, INIT_FILES));
   const [deletedItems, setDeletedItems] = useState(() => loadArray(DELETED_ITEMS_KEY));
@@ -87,6 +89,12 @@ export function CollectionProvider({ children }) {
     ]);
     setFolders((prev) => prev.filter((f) => f.id !== id));
     setFiles((prev) => prev.map((f) => (f.folderId === id ? { ...f, folderId: null } : f)));
+    recordActivity({
+      text: `刪除資料夾「${name}」`,
+      icon: "ri-folder-reduce-line",
+      iconBg: "bg-stat-coral",
+      iconColor: "text-stat-coral",
+    });
   };
 
   const deleteFile = (id, name) => {
@@ -103,6 +111,12 @@ export function CollectionProvider({ children }) {
       ...prev,
     ]);
     setFiles((prev) => prev.filter((f) => f.id !== id));
+    recordActivity({
+      text: `刪除檔案「${name}」`,
+      icon: "ri-delete-bin-line",
+      iconBg: "bg-stat-coral",
+      iconColor: "text-stat-coral",
+    });
   };
 
   const deleteChatSession = (sessionId) => {
@@ -131,6 +145,12 @@ export function CollectionProvider({ children }) {
     ]);
     setFiles((prev) => prev.filter((f) => f.sessionId !== sessionId));
     setWorkspaceSessions((prev) => prev.filter((s) => s.id !== sessionId));
+    recordActivity({
+      text: `刪除工作區 Chat「${chatFile?.name || session.title}」`,
+      icon: "ri-chat-delete-line",
+      iconBg: "bg-stat-coral",
+      iconColor: "text-stat-coral",
+    });
   };
 
   const restoreItem = (item) => {
@@ -158,10 +178,25 @@ export function CollectionProvider({ children }) {
       }
     }
     setDeletedItems((prev) => prev.filter((d) => d.id !== item.id));
+    recordActivity({
+      text: `還原「${item.name}」`,
+      icon: "ri-arrow-go-back-line",
+      iconBg: "bg-stat-teal",
+      iconColor: "text-stat-teal",
+    });
   };
 
   const permanentDelete = (id) => {
+    const target = deletedItems.find((item) => item.id === id);
     setDeletedItems((prev) => prev.filter((d) => d.id !== id));
+    if (target) {
+      recordActivity({
+        text: `永久刪除「${target.name}」`,
+        icon: "ri-delete-bin-2-line",
+        iconBg: "bg-stat-coral",
+        iconColor: "text-stat-coral",
+      });
+    }
   };
 
   const getFileType = (filename) => {
@@ -190,6 +225,12 @@ export function CollectionProvider({ children }) {
       createdAt: nowString(),
     };
     setFiles((prev) => [newFile, ...prev]);
+    recordActivity({
+      text: `新增檔案「${newFile.name}」到作品集`,
+      icon: "ri-file-add-line",
+      iconBg: "bg-stat-sky",
+      iconColor: "text-stat-sky",
+    });
   };
 
   const addChatToCollection = (title, sessionId) => {
@@ -204,6 +245,12 @@ export function CollectionProvider({ children }) {
       sessionId,
     };
     setFiles((prev) => [newFile, ...prev]);
+    recordActivity({
+      text: `新增工作區 Chat「${title}」`,
+      icon: "ri-chat-new-line",
+      iconBg: "bg-stat-mauve",
+      iconColor: "text-stat-mauve",
+    });
   };
 
   const syncChatTitle = (sessionId, newTitle) => {

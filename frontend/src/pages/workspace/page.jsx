@@ -4,6 +4,7 @@ import Navbar from "../../components/feature/Navbar";
 import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
 import { useAuth } from "../../hooks/AuthContext";
 import { useCollection } from "../../hooks/CollectionContext";
+import { useActivity } from "../../hooks/ActivityContext";
 import "./workspace.css";
 
 const WELCOME_MSG = {
@@ -194,6 +195,7 @@ export default function WorkspacePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isLoggedIn, user } = useAuth();
+  const { recordActivity } = useActivity();
 
 
   const { addChatToCollection, addFileToCollection, syncChatTitle, deleteChatSession, workspaceSessions: sessions, setWorkspaceSessions: setSessions } = useCollection();
@@ -362,6 +364,12 @@ export default function WorkspacePage() {
     if (session?.title === "新工作區") {
       syncChatTitle(activeSessionId, autoTitle);
     }
+    recordActivity({
+      text: `在工作區送出訊息「${autoTitle}」`,
+      icon: "ri-message-3-line",
+      iconBg: "bg-stat-mauve",
+      iconColor: "text-stat-mauve",
+    });
     setInput("");
     setAttachedFile(null);
     setIsTyping(true);
