@@ -8,6 +8,7 @@ from routes.auth.register import register_bp
 from routes.auth.login import login_bp
 from routes.auth.pwd import pwd_bp
 from routes.auth.profile import profile_bp
+from routes.auth.survey import survey_bp
 
 load_dotenv()
 
@@ -67,6 +68,7 @@ app.register_blueprint(register_bp)
 app.register_blueprint(login_bp)
 app.register_blueprint(pwd_bp)
 app.register_blueprint(profile_bp)
+app.register_blueprint(survey_bp)
 
 @app.route('/api/status', methods=['GET'])
 def get_status():

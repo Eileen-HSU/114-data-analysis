@@ -143,8 +143,8 @@ export default function CreateSurveyPage() {
 
       console.log("[FRONTEND] 🚀 準備發送數據至 Aiven...", payload);
 
-      // 3. 發送請求到後端 Render 部署的 /api/submit_form
-      const response = await axios.post(apiUrl("/api/submit_form"), payload);
+      // 3. 發送請求到後端 Render 部署的 /api/surveys
+      const response = await axios.post(apiUrl("/api/surveys"), payload);
 
       if (response.status === 201 || response.status === 200) {
         console.log("[FRONTEND] ✓ 成功存入 Aiven:", response.data);
