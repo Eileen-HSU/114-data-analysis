@@ -55,8 +55,8 @@ export default function ProfilePage() {
           phone:    data.phone_number || "",
           company:  data.company_name || "",
           gender:   data.gender       || "",
-          location: "",
-          bio:      "",
+          location: data.location     || "",
+          bio:      data.bio          || "",
         };
         setProfile(loaded);
         setEditProfile(loaded);
