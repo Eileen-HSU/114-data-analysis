@@ -48,18 +48,25 @@
 
 .btn-banner {
   padding: 12px 24px;
-  background: #c9a0a0;
+  background: #3f6f74;
   color: white;
   font-weight: 700;
   font-size: 15px;
   border-radius: 12px;
-  border: none;
+  border: 1px solid #345f64;
   transition: all 0.2s;
   white-space: nowrap;
   cursor: pointer;
+  box-shadow: 0 10px 24px rgba(63, 111, 116, 0.22);
 }
 
-.btn-banner:hover { background: #b88a8a; color: white; }
+.btn-banner:hover {
+  background: #345f64;
+  border-color: #2c5357;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(63, 111, 116, 0.28);
+}
 
 .stat-card {
   background: rgba(255,255,255,0.75);
