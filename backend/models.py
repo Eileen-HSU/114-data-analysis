@@ -46,7 +46,7 @@ class UserVerification(db.Model):
     target_email = db.Column(db.String(255))
     project_id = db.Column(db.Integer)
     
-# T04: Survey - 儲存問卷回覆資料
+# T05: Survey_Template - 問卷模板
 class Survey_Template(db.Model):
     __tablename__ = 'Survey_Template' 
     template_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -55,7 +55,7 @@ class Survey_Template(db.Model):
     access_code = db.Column(db.String(10), unique=True) # 邀請碼
     question_json = db.Column(db.JSON, nullable=False)  # 問卷標題與題目
 
-
+# T06: Survey_Response - 儲存問卷回覆資料
 class Survey_Response(db.Model):
     __tablename__ = 'Survey_Response'
     response_id = db.Column(db.Integer, primary_key=True, autoincrement=True)

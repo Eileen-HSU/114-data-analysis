@@ -1,14 +1,15 @@
-from app import app, mail
-from flask_mail import Message
+import resend
 
-with app.app_context():
-    try:
-        msg = Message(
-            subject='測試信件',
-            recipients=['bingq7943@gmail.com'], 
-            body='如果收到這封信，代表 Mail 設定正確！'
-        )
-        mail.send(msg)
-        print("✅ 寄信成功！")
-    except Exception as e:
-        print(f"❌ 寄信失敗：{e}")
+# 填入你的 Key
+resend.api_key = "re_8iZoHx8F_6trPstNJy" 
+
+try:
+    r = resend.Emails.send({
+        "from": "onboarding@resend.dev",
+        "to": "bingq7943@gmail.com",
+        "subject": "本地測試 Resend",
+        "html": "<strong>這是一封從本地發出的測試信！</strong>"
+    })
+    print("發送成功！", r)
+except Exception as e:
+    print("發送失敗：", e)
