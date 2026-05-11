@@ -6,7 +6,7 @@ import random
 import string
 from sqlalchemy import text
 # 確保從 models.py 引入你的資料表實體
-from models import Survey_Template
+from models import Survey_Template, Survey_Response
 survey_bp = Blueprint('survey', __name__)
 
 @survey_bp.route('/api/surveys', methods=['POST'])
@@ -63,12 +63,42 @@ def create_survey():
         
         return jsonify({
             "message": "問卷建立成功", 
-            "access_code": generated_code
+            "access_code": generated_code,
+            "template_id": new_template.template_id
         }), 201
         
     except Exception as e:
         print(f"[CREATE_SURVEY] ✗ 寫入失敗: {e}")
         import traceback
+        traceback.print_exc()
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+@survey_bp.route('/api/surveys/<access_code>/responses', methods=['POST'])
+def submit_survey_response(access_code):
+    data = request.get_json()
+    if not data or not isinstance(data.get('answers'), dict):
+        return jsonify({"error": "缺少問卷答案資料"}), 400
+
+    try:
+        survey = Survey_Template.query.filter_by(access_code=access_code.upper()).first()
+        if not survey:
+            return jsonify({"error": "找不到此邀請碼對應的問卷"}), 404
+
+        response = Survey_Response(
+            template_id=survey.template_id,
+            answer_json=data.get('answers')
+        )
+        db.session.add(response)
+        db.session.commit()
+
+        return jsonify({
+            "message": "問卷送出成功",
+            "response_id": response.response_id
+        }), 201
+
+    except Exception as e:
         traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
