@@ -58,6 +58,7 @@ export default function ProfilePage() {
   const [saved, setSaved] = useState(false);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [showTwoFactorNotice, setShowTwoFactorNotice] = useState(false);
+  const [showPasswordNotice, setShowPasswordNotice] = useState(false);
   const [selectedSurvey, setSelectedSurvey] = useState(null);
   const [surveySearch, setSurveySearch] = useState("");
   const [surveySortOrder, setSurveySortOrder] = useState("desc");
@@ -114,6 +115,20 @@ export default function ProfilePage() {
     });
     navigate("/profile", { replace: true });
   }, [location.search, navigate, recordActivity, twoFactorStorageKey]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("password_changed") !== "1") return;
+
+    setShowPasswordNotice(true);
+    recordActivity({
+      text: "密碼已修改",
+      icon: "ri-lock-password-line",
+      iconBg: "bg-stat-teal",
+      iconColor: "text-stat-teal",
+    });
+    navigate("/profile", { replace: true });
+  }, [location.search, navigate, recordActivity]);
 
   const localSurveys = useMemo(() => getLocalSurveys(user), [user, selectedSurvey, saved]);
   const surveyRecords = useMemo(() => localSurveys.map((survey, index) => ({
@@ -525,6 +540,21 @@ export default function ProfilePage() {
             <p>下次登入時會要求輸入驗證碼。</p>
           </div>
           <button onClick={() => setShowTwoFactorNotice(false)} aria-label="關閉通知">
+            <i className="ri-close-line"></i>
+          </button>
+        </div>
+      )}
+
+      {showPasswordNotice && (
+        <div className="profile-toast" role="status">
+          <div className="profile-toast-icon">
+            <i className="ri-checkbox-circle-line"></i>
+          </div>
+          <div>
+            <strong>密碼已修改</strong>
+            <p>你的登入密碼已成功更新。</p>
+          </div>
+          <button onClick={() => setShowPasswordNotice(false)} aria-label="關閉通知">
             <i className="ri-close-line"></i>
           </button>
         </div>

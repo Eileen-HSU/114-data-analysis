@@ -3,9 +3,11 @@ import { useNavigate } from "react-router-dom";
 import "./auth.css";
 import axios from "axios";
 import { apiUrl } from "../../lib/api";
+import { useAuth } from "../../hooks/AuthContext";
 
 export default function ChangePasswordPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const emailRef = useRef(null);
   const errorRef = useRef(null);
   const submitBtnRef = useRef(null);
@@ -47,8 +49,7 @@ export default function ChangePasswordPage() {
       });
 
       if (response.status === 200) {
-        setSentEmail(val);
-        setStep("done");
+        navigate(`/reset-password?email=${encodeURIComponent(val)}&from=change`);
       }
     } catch (error) {
       const errorMsg = error.response?.data?.error || "發送失敗，請稍後再試";
@@ -132,6 +133,7 @@ export default function ChangePasswordPage() {
                         type="email"
                         className="form-control form-control-custom"
                         placeholder="your@email.com"
+                        defaultValue={user?.email || ""}
                         onInput={clearError}
                       />
                     </div>

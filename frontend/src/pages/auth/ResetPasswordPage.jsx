@@ -58,8 +58,8 @@ export default function ResetPasswordPage() {
         alert("密碼重設成功！請使用新密碼重新登入。");
         navigate("/login", { replace: true });
       } else {
-        // 情況 B：從「修改密碼」進來 (或是預設情況) -> 直接進入主畫面
-        navigate("/workspace", { replace: true });
+        // 情況 B：從「修改密碼」進來 (或是預設情況) -> 回到個人資料並顯示通知
+        navigate("/profile?password_changed=1", { replace: true });
       }
       
     } catch (err) {
@@ -94,7 +94,7 @@ export default function ResetPasswordPage() {
               {[
                 { icon: "ri-key-2-line", text: "驗證碼 10 分鐘內有效" },
                 { icon: "ri-lock-star-line", text: "新密碼需至少 6 個字元" },
-                { icon: "ri-shield-check-line", text: from === "forgot" ? "完成後請重新登入" : "完成後直接進入工作區" },
+                { icon: "ri-shield-check-line", text: from === "forgot" ? "完成後請重新登入" : "完成後回到個人資料" },
               ].map((f, i) => (
                 <div className="auth-feature-item" key={i}>
                   <div className="auth-feature-icon">
