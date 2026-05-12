@@ -9,6 +9,15 @@ import "./profile.css";
 
 const DEFAULT_AVATAR = "https://static.readdy.ai/image/db4f710102ca6cc45db44808c8658987/b181cfaad2165c1909b7c8fa8339cbe7.png";
 const TWO_FACTOR_KEY_PREFIX = "dataanalysis_two_factor_enabled";
+const AVATAR_STORAGE_KEY_PREFIX = "dataanalysis_avatar";
+
+function getUserStorageId(user) {
+  return user?.user_id || user?.email || "guest";
+}
+
+function getAvatarStorageKey(user) {
+  return `${AVATAR_STORAGE_KEY_PREFIX}_${getUserStorageId(user)}`;
+}
 
 function getLocalSurveys(user) {
   const stored = Object.values(JSON.parse(localStorage.getItem("surveys") || "{}"));
@@ -60,7 +69,7 @@ function getUsageDays(createdAt) {
 export default function ProfilePage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useAuth(); // ── 從 AuthContext 取得登入用戶
+  const { user, updateUser } = useAuth(); // ── 從 AuthContext 取得登入用戶
   console.log('目前登入的 user：', user);
   const { activities, recordActivity, clearActivities } = useActivity();
   const avatarInputRef = useRef(null);
@@ -86,7 +95,8 @@ export default function ProfilePage() {
     createdAt: "",
   });
   const [editProfile, setEditProfile] = useState(profile);
-  const twoFactorStorageKey = `${TWO_FACTOR_KEY_PREFIX}_${user?.user_id || user?.email || "guest"}`;
+  const twoFactorStorageKey = `${TWO_FACTOR_KEY_PREFIX}_${getUserStorageId(user)}`;
+  const avatarStorageKey = getAvatarStorageKey(user);
 
   // ── 載入個人資料 ──────────────────────────────────────────
   useEffect(() => {
@@ -114,6 +124,16 @@ export default function ProfilePage() {
   useEffect(() => {
     setTwoFactorEnabled(localStorage.getItem(twoFactorStorageKey) === "true");
   }, [twoFactorStorageKey]);
+
+  useEffect(() => {
+    if (!user) return;
+    const storedAvatar = localStorage.getItem(avatarStorageKey);
+    const nextAvatar = storedAvatar || user.avatar || DEFAULT_AVATAR;
+    setAvatarSrc(nextAvatar);
+    if (storedAvatar && storedAvatar !== user.avatar) {
+      updateUser({ avatar: storedAvatar });
+    }
+  }, [avatarStorageKey, updateUser, user]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -183,7 +203,10 @@ export default function ProfilePage() {
     const reader = new FileReader();
     reader.onload = (loadEvent) => {
       if (loadEvent.target?.result) {
-        setAvatarSrc(loadEvent.target.result);
+        const nextAvatar = loadEvent.target.result;
+        localStorage.setItem(avatarStorageKey, nextAvatar);
+        setAvatarSrc(nextAvatar);
+        updateUser({ avatar: nextAvatar });
         recordActivity({
           text: "更新個人頭像",
           icon: "ri-camera-line",
