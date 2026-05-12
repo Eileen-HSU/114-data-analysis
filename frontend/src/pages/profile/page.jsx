@@ -44,6 +44,19 @@ function formatActivityTime(value) {
   }).format(new Date(value));
 }
 
+function getUsageDays(createdAt) {
+  const createdTime = new Date(createdAt || 0).getTime();
+  if (!createdTime || Number.isNaN(createdTime)) return 0;
+
+  const start = new Date(createdTime);
+  start.setHours(0, 0, 0, 0);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return Math.max(1, Math.floor((today - start) / (24 * 60 * 60 * 1000)) + 1);
+}
+
 export default function ProfilePage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -70,6 +83,7 @@ export default function ProfilePage() {
     gender: "",
     location: "",
     bio: "",
+    createdAt: "",
   });
   const [editProfile, setEditProfile] = useState(profile);
   const twoFactorStorageKey = `${TWO_FACTOR_KEY_PREFIX}_${user?.user_id || user?.email || "guest"}`;
@@ -89,6 +103,7 @@ export default function ProfilePage() {
           gender:   data.gender       || "",
           location: data.location     || "",
           bio:      data.bio          || "",
+          createdAt: data.created_at  || "",
         };
         setProfile(loaded);
         setEditProfile(loaded);
@@ -253,7 +268,7 @@ export default function ProfilePage() {
     { icon: "ri-bar-chart-line", iconColor: "text-stat-coral", iconBg: "bg-stat-coral", barBg: "bar-coral", num: surveyRecords.length, label: "問卷數", action: scrollToSurveys },
     { icon: "ri-user-line", iconColor: "text-stat-mauve", iconBg: "bg-stat-mauve", barBg: "bar-mauve", num: surveyRecords.reduce((sum, survey) => sum + survey.responseCount, 0), label: "總回覆" },
     { icon: "ri-folder-line", iconColor: "text-stat-sky", iconBg: "bg-stat-sky", barBg: "bar-sky", num: 0, label: "資料夾" },
-    { icon: "ri-calendar-line", iconColor: "text-stat-teal", iconBg: "bg-stat-teal", barBg: "bar-teal", num: 0, label: "使用天數" },
+    { icon: "ri-calendar-line", iconColor: "text-stat-teal", iconBg: "bg-stat-teal", barBg: "bar-teal", num: getUsageDays(profile.createdAt), label: "使用天數" },
   ];
 
   const infoFields = [
