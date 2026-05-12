@@ -49,7 +49,9 @@ export default function ForgotPasswordPage() {
       });
 
       if (response.status === 200) {
-        navigate(`/reset-password?email=${encodeURIComponent(val)}`);
+        if (sentEmailRef.current) sentEmailRef.current.textContent = val;
+        if (stepSendRef.current) stepSendRef.current.style.display = "none";
+        if (stepDoneRef.current) stepDoneRef.current.style.display = "block";
       }
     } catch (error) {
       // 4. 錯誤處理 (例如：Email 沒註冊過)
