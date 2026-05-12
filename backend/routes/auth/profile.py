@@ -21,6 +21,7 @@ def get_profile(user_id):
             "user_id":      user.user_id,
             "user_name":    user.user_name,
             "email":        user.email,
+            "created_at":   user.created_at.isoformat() if user.created_at else "",
             "phone_number": profile.phone_number if profile else "",
             "company_name": profile.company_name if profile else "",
             "gender":       profile.gender       if profile else "",
