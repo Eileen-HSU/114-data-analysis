@@ -63,7 +63,7 @@ export default function Navbar({ transparent = false }) {
         {/* Center Logo */}
         <a
           className="navbar-brand d-flex align-items-center"
-          onClick={() => navigate("/")}
+          onClick={() => navigate(isLoggedIn ? "/workspace" : "/")}
           style={{
             cursor: "pointer",
             textDecoration: "none",
