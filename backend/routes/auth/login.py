@@ -55,16 +55,17 @@ def login():
             db.session.commit()
 
             # 寄出 Resend 信件
-            subject = "【DataAnalysis】您的雙因子驗證碼"
-            message_body = f"您的登入驗證碼為：{otp}\n請於 10 分鐘內輸入。"
-            send_password_email_via_resend(user.email, subject, message_body)
+            send_password_email_via_resend(user.email, "【DataAnalysis】登入驗證碼", f"您的驗證碼為：{otp}")
 
             return jsonify({
                 "require_2fa": True,
-                "user_id":   user.user_id,
-                "user_name": user.user_name,
-                "email":     user.email
+                **user_info
             }), 200
+
+        # 沒開 2FA 直接發 Token
+        token = jwt.encode({'user_id': user.user_id, 'exp': taiwan_now() + timedelta(hours=24)}, 
+                            os.getenv("JWT_SECRET_KEY"), algorithm="HS256")
+        return jsonify({"token": token, **user_info}), 200
 
     except Exception as e:
         print(f"Login Error: {str(e)}") # 終端機偵錯用
