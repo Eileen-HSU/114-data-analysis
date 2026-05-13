@@ -188,7 +188,7 @@ export default function TwoFactorPage() {
               </>
             )}
 
-            {step === "done" && (
+            {step === "otp" && (
               <div style={{ textAlign: "center" }}>
                 <div className="forgot-success-icon" style={{ background: "#edf2f7", color: "#8fa3b8" }}>
                   <i className="ri-shield-check-line"></i>
