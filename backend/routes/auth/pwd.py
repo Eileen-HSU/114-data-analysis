@@ -11,6 +11,7 @@ from extensions import db
 from models import User, UserVerification
 
 pwd_bp = Blueprint("pwd", __name__)
+DEFAULT_RESEND_SENDER = "DataAnalysis <onboarding@resend.dev>"
 
 
 def taiwan_now():
@@ -18,19 +19,38 @@ def taiwan_now():
 
 
 def send_password_email_via_resend(recipient, subject, body_text):
-    resend.api_key = os.getenv("RESEND_API_KEY")
-    sender = os.getenv("MAIL_DEFAULT_SENDER", "onboarding@resend.dev")
-    if "gmail.com" in sender.lower():
-        sender = "onboarding@resend.dev"
+    api_key = os.getenv("RESEND_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("RESEND_API_KEY is not configured")
 
+    sender = os.getenv("RESEND_FROM_EMAIL") or os.getenv("MAIL_DEFAULT_SENDER") or DEFAULT_RESEND_SENDER
+    sender = sender.strip()
+    if not sender:
+        sender = DEFAULT_RESEND_SENDER
+    if "gmail.com" in sender.lower():
+        raise RuntimeError("Resend sender cannot be a Gmail address. Use onboarding@resend.dev or a verified domain sender.")
+
+    resend.api_key = api_key
+    html_body = "<p>" + body_text.replace("\n", "<br>") + "</p>"
     response = resend.Emails.send({
         "from": sender,
-        "to": recipient,
+        "to": [recipient],
         "subject": subject,
-        "html": f"<p>{body_text.replace(chr(10), '<br>')}</p>",
+        "html": html_body,
+        "text": body_text,
     })
     print(f"Resend email sent: {response}")
     return response
+
+
+@pwd_bp.route("/api/auth/email-config", methods=["GET"])
+def email_config():
+    sender = os.getenv("RESEND_FROM_EMAIL") or os.getenv("MAIL_DEFAULT_SENDER") or DEFAULT_RESEND_SENDER
+    return jsonify({
+        "resend_api_key_configured": bool(os.getenv("RESEND_API_KEY", "").strip()),
+        "sender": sender,
+        "sender_looks_valid": "gmail.com" not in sender.lower(),
+    }), 200
 
 
 @pwd_bp.route("/api/auth/send-otp", methods=["POST"])
