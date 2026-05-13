@@ -27,10 +27,9 @@ export default function LoginTwoFactorPage() {
     if (!pendingUser) navigate("/login", { replace: true });
   }, [navigate, pendingUser]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const trimmedCode = code.trim();
-
     if (!/^\d{6}$/.test(trimmedCode)) {
       setError("請輸入 6 位數驗證碼。");
       return;
@@ -39,11 +38,26 @@ export default function LoginTwoFactorPage() {
     setError("");
     setIsSubmitting(true);
 
-    setTimeout(() => {
-      login(pendingUser);
-      sessionStorage.removeItem(PENDING_2FA_KEY);
-      navigate("/workspace", { replace: true });
-    }, 400);
+    try {
+      const res = await fetch(apiUrl('/api/auth/2fa/login/two-factor'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: pendingUser.email, otp: trimmedCode })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        login(data.token, data.user); // 儲存 Token 並更新狀態
+        sessionStorage.removeItem(PENDING_2FA_KEY);
+        navigate("/workspace", { replace: true });
+      } else {
+        setError(data.error || "驗證碼錯誤，請重新輸入。");
+        setIsSubmitting(false);
+      }
+    } catch (err) {
+      setError("伺服器連線失敗");
+      setIsSubmitting(false);
+    }
   };
 
   if (!pendingUser) return null;
