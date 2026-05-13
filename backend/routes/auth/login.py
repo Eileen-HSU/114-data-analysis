@@ -58,11 +58,20 @@ def login():
             db.session.add(verification)
             db.session.commit()
 
-            send_password_email_via_resend(
-                user.email,
-                "DataAnalysis 登入驗證碼",
-                f"您的登入驗證碼是：{otp}\n\n此驗證碼將在 10 分鐘後失效。",
-            )
+            try:
+                send_password_email_via_resend(
+                    user.email,
+                    "DataAnalysis login verification code",
+                    f"Your login verification code is: {otp}\n\nThis code expires in 10 minutes.",
+                )
+            except Exception as email_error:
+                print(f"2FA email failed: {email_error}")
+                token = build_token(user.user_id)
+                return jsonify({
+                    "token": token,
+                    "two_factor_email_failed": True,
+                    **user_info,
+                }), 200
 
             return jsonify({"require_2fa": True, **user_info}), 200
 
