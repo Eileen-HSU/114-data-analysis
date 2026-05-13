@@ -23,7 +23,7 @@ export default function TwoFactorPage() {
     emailRef.current?.classList.remove("is-invalid");
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const val = emailRef.current?.value.trim() ?? "";
     if (!val) { showError("請輸入電子郵件地址"); return; }
@@ -36,10 +36,24 @@ export default function TwoFactorPage() {
       btn.innerHTML = `<i class="ri-loader-4-line" style="animation:spin 1s linear infinite"></i> 發送中...`;
     }
 
-    setTimeout(() => {
-      setSentEmail(val);
-      setStep("done");
-    }, 1200);
+    try {
+      const res = await fetch('/api/auth/2fa/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: val })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSentEmail(val);
+        setStep("otp");  
+      } else {
+        showError(data.error || "發送失敗，請稍後再試");
+        if (btn) { btn.disabled = false; btn.innerHTML = "發送啟用連結"; }
+      }
+    } catch {
+      showError("伺服器連線失敗");
+      if (btn) { btn.disabled = false; btn.innerHTML = "發送啟用連結"; }
+    }
   };
 
   return (
