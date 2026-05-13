@@ -55,6 +55,7 @@ app.register_blueprint(register_bp)
 app.register_blueprint(login_bp)
 app.register_blueprint(pwd_bp)
 app.register_blueprint(profile_bp)
+app.register_blueprint(two_factor_bp)
 app.register_blueprint(survey_bp)
 
 @app.route('/api/status', methods=['GET'])
@@ -66,7 +67,6 @@ def get_status():
     })
 
 if __name__ == '__main__':
-    # 這裡要注意：Render 部署時通常會由 Gunicorn 啟動，
     # 只有在本地執行 python app.py 時才會用到下面這行
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
