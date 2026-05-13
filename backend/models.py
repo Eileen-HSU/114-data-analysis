@@ -15,7 +15,7 @@ class User(db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=taiwan_now)
     email_2fa_enabled = db.Column(db.Boolean, default=False)
-
+    
     # 關聯設定
     profile = db.relationship('UserProfile', backref='user', uselist=False)
     verifications = db.relationship('UserVerification', backref='user')

@@ -44,7 +44,6 @@ def send_2fa_code():
 def enable_2fa():
     data = request.get_json()
     email = data.get('email')
-    otp = data.get('otp')
 
     record = UserVerification.query.filter_by(target_email=email, type='2FA', is_used=False).order_by(UserVerification.created_at.desc()).first()
 
