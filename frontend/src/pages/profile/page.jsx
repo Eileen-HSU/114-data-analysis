@@ -261,6 +261,39 @@ export default function ProfilePage() {
           alert(err.message || '儲存失敗，請稍後再試');
       }
   };
+  
+// 雙因子驗證開關
+const handleDisable2FA = async () => {
+  if (!window.confirm("確定要關閉雙因子驗證嗎？這會降低您的帳號安全性。")) return;
+
+  try {
+    const res = await fetch(apiUrl('/api/auth/2fa/disable'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: user.email })
+    });
+
+    if (res.ok) {
+      // 1. 更新資料庫成功後，同步更新本地 LocalStorage
+      localStorage.setItem(twoFactorStorageKey, "false");
+      // 2. 更新 State
+      setTwoFactorEnabled(false);
+      // 3. 紀錄活動
+      recordActivity({
+        text: "關閉雙重驗證",
+        icon: "ri-shield-flash-line",
+        iconBg: "bg-stat-coral",
+        iconColor: "text-stat-coral",
+      });
+      alert("雙因子驗證已關閉");
+    } else {
+      alert("關閉失敗，請稍後再試");
+    }
+  } catch (err) {
+    console.error("關閉 2FA 失敗", err);
+    alert("網路錯誤");
+  }
+};
 
   const handleCancel = () => {
     setEditProfile(profile);
@@ -443,10 +476,17 @@ export default function ProfilePage() {
                 </div>
                 <button
                   className={`two-factor-switch ${twoFactorEnabled ? "enabled" : ""}`}
-                  onClick={() => !twoFactorEnabled && navigate("/two-factor")}
-                  disabled={twoFactorEnabled}
+                  onClick={() => {
+                    if (twoFactorEnabled) {
+                      // 如果已經開啟，點擊就是為了關閉
+                      handleDisable2FA();
+                    } else {
+                      // 如果未開啟，跳轉到開啟頁面
+                      navigate("/two-factor");
+                    }
+                  }}
                   type="button"
-                  aria-label={twoFactorEnabled ? "雙因素驗證已開啟" : "開啟雙因素驗證"}
+                  aria-label={twoFactorEnabled ? "關閉雙因素驗證" : "開啟雙因素驗證"}
                 >
                   <span className="two-factor-switch-label">{twoFactorEnabled ? "ON" : "OFF"}</span>
                   <span className="two-factor-switch-knob"></span>

@@ -196,7 +196,7 @@ export default function TwoFactorPage() {
                   onClick={() => navigate("/profile?two_factor=enabled")}
                 >
                   <i className="ri-checkbox-circle-line" style={{ marginRight: 6 }}></i>
-                  模擬信件連結完成啟用
+                  信件連結完成啟用
                 </button>
 
                 <button
