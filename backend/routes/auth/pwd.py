@@ -6,7 +6,7 @@ import random
 from datetime import datetime, timedelta
 import traceback
 import os
-import resend  # 記得在 requirements.txt 加入 resend
+import resend  
 
 pwd_bp = Blueprint('pwd', __name__)
 
