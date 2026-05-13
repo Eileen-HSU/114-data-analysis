@@ -6,10 +6,12 @@ import "./auth.css";
 export default function TwoFactorPage() {
   const navigate = useNavigate();
   const emailRef = useRef(null);
+  const otpRef = useRef(null);
   const errorRef = useRef(null);
   const submitBtnRef = useRef(null);
   const [step, setStep] = useState("send");
   const [sentEmail, setSentEmail] = useState("");
+  const [isVerifying, setIsVerifying] = useState(false);
 
   const showError = (msg) => {
     if (errorRef.current) {
@@ -24,43 +26,82 @@ export default function TwoFactorPage() {
     emailRef.current?.classList.remove("is-invalid");
   };
 
-  const handleSubmit = async (e) => {
+  const sendCode = async (e) => {
     e.preventDefault();
-    const val = emailRef.current?.value.trim() ?? "";
-    if (!val) { showError("請輸入電子郵件地址"); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) { showError("請輸入有效的電子郵件格式"); return; }
+    const email = emailRef.current?.value.trim() ?? "";
+    if (!email) {
+      showError("請輸入電子郵件");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      showError("請輸入正確的電子郵件格式");
+      return;
+    }
     clearError();
 
     const btn = submitBtnRef.current;
     if (btn) {
       btn.disabled = true;
-      btn.innerHTML = `<i class="ri-loader-4-line" style="animation:spin 1s linear infinite"></i> 發送中...`;
+      btn.innerHTML = `<i class="ri-loader-4-line" style="animation:spin 1s linear infinite"></i> 寄送中...`;
     }
 
     try {
-      const res = await fetch(apiUrl('/api/auth/2fa/send'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: val })
+      const res = await fetch(apiUrl("/api/auth/2fa/send"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
       });
       const data = await res.json();
       if (res.ok) {
-        setSentEmail(val);
-        setStep("otp");  
+        setSentEmail(email);
+        setStep("otp");
       } else {
-        showError(data.error || "發送失敗，請稍後再試");
-        if (btn) { btn.disabled = false; btn.innerHTML = "發送啟用連結"; }
+        showError(data.error || "寄送失敗，請稍後再試");
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = "寄送驗證碼";
+        }
       }
     } catch {
-      showError("伺服器連線失敗");
-      if (btn) { btn.disabled = false; btn.innerHTML = "發送啟用連結"; }
+      showError("連線失敗，請稍後再試");
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = "寄送驗證碼";
+      }
+    }
+  };
+
+  const verifyCode = async () => {
+    const otp = otpRef.current?.value.trim() ?? "";
+    if (!/^\d{6}$/.test(otp)) {
+      showError("請輸入 6 位數驗證碼");
+      return;
+    }
+    clearError();
+    setIsVerifying(true);
+
+    try {
+      const res = await fetch(apiUrl("/api/auth/2fa/two-factor"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: sentEmail, otp }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        navigate("/profile?two_factor=enabled");
+      } else {
+        showError(data.error || "驗證失敗，請重新輸入");
+        setIsVerifying(false);
+      }
+    } catch {
+      showError("連線失敗，請稍後再試");
+      setIsVerifying(false);
     }
   };
 
   return (
     <div className="auth-page">
       <div className="row g-0" style={{ minHeight: "100vh" }}>
-        {/* Left Visual */}
         <div className="col-lg-6 d-none d-lg-flex auth-visual auth-visual-2fa">
           <div className="auth-visual-overlay"></div>
           <div className="auth-visual-content">
@@ -73,13 +114,13 @@ export default function TwoFactorPage() {
             </div>
             <h2 className="auth-visual-title">啟用兩步驟驗證</h2>
             <p className="auth-visual-desc">
-              開啟雙重驗證後，每次登入都需要額外確認，大幅提升帳號安全性。
+              為您的帳號增加一層保護，登入時需輸入電子郵件驗證碼。
             </p>
             <div className="auth-features">
               {[
-                { icon: "ri-shield-check-line", text: "防止未授權的帳號存取" },
-                { icon: "ri-mail-send-line", text: "驗證碼發送至您的信箱" },
-                { icon: "ri-lock-2-line", text: "即使密碼外洩也能保護帳號" },
+                { icon: "ri-shield-check-line", text: "降低未授權登入風險" },
+                { icon: "ri-mail-send-line", text: "驗證碼會寄送至您的信箱" },
+                { icon: "ri-lock-2-line", text: "可隨時在個人資料中停用" },
               ].map((f, i) => (
                 <div className="auth-feature-item" key={i}>
                   <div className="auth-feature-icon">
@@ -92,7 +133,6 @@ export default function TwoFactorPage() {
           </div>
         </div>
 
-        {/* Right Form */}
         <div className="col-lg-6 d-flex align-items-center justify-content-center auth-form-area">
           <button className="back-home-btn" onClick={() => navigate("/profile")}>
             <div className="back-home-icon">
@@ -114,12 +154,12 @@ export default function TwoFactorPage() {
                 <div className="forgot-icon-wrap" style={{ background: "linear-gradient(135deg, #edf2f7, #e8f4f8)", color: "#8fa3b8" }}>
                   <i className="ri-shield-check-line"></i>
                 </div>
-                <h1 className="auth-title">兩步驟驗證</h1>
+                <h1 className="auth-title">啟用兩步驟驗證</h1>
                 <p className="auth-subtitle" style={{ marginBottom: 28 }}>
-                  輸入您的帳號電子郵件，我們將發送啟用驗證連結。
+                  輸入您的電子郵件，我們會寄送驗證碼確認身分。
                 </p>
 
-                <form onSubmit={handleSubmit} noValidate>
+                <form onSubmit={sendCode} noValidate>
                   <div className="mb-4">
                     <label className="auth-label">電子郵件</label>
                     <div className="position-relative">
@@ -145,7 +185,6 @@ export default function TwoFactorPage() {
                     ></p>
                   </div>
 
-                  {/* 說明區塊 */}
                   <div style={{
                     background: "#f0f4f8",
                     border: "1px solid #dce6f0",
@@ -158,12 +197,12 @@ export default function TwoFactorPage() {
                   }}>
                     <i className="ri-information-line" style={{ color: "#8fa3b8", fontSize: 16, marginTop: 2, flexShrink: 0 }}></i>
                     <p style={{ fontSize: 13, color: "var(--slate-500)", margin: 0, lineHeight: 1.6 }}>
-                      啟用後，每次登入時系統將發送一次性驗證碼至您的信箱，輸入正確後才能完成登入。
+                      啟用後，下次登入時需輸入信箱驗證碼才能進入帳號。
                     </p>
                   </div>
 
                   <button ref={submitBtnRef} type="submit" className="btn btn-auth-submit w-100 mb-3">
-                    發送啟用連結
+                    寄送驗證碼
                   </button>
 
                   <button
@@ -190,28 +229,48 @@ export default function TwoFactorPage() {
             )}
 
             {step === "otp" && (
-              <div style={{ textAlign: "center" }}>
+              <div>
                 <div className="forgot-success-icon" style={{ background: "#edf2f7", color: "#8fa3b8" }}>
                   <i className="ri-shield-check-line"></i>
                 </div>
-                <h1 className="auth-title" style={{ textAlign: "center" }}>驗證郵件已發送！</h1>
-                <p style={{ color: "var(--slate-500)", fontSize: 15, lineHeight: 1.7, marginBottom: 8 }}>
-                  我們已將兩步驟驗證啟用連結發送至
+                <h1 className="auth-title" style={{ textAlign: "center" }}>輸入驗證碼</h1>
+                <p style={{ color: "var(--slate-500)", fontSize: 15, lineHeight: 1.7, marginBottom: 8, textAlign: "center" }}>
+                  我們已將驗證碼寄送至
                 </p>
-                <p style={{ fontWeight: 700, color: "var(--slate-800)", fontSize: 16, marginBottom: 28 }}>
+                <p style={{ fontWeight: 700, color: "var(--slate-800)", fontSize: 16, marginBottom: 28, textAlign: "center" }}>
                   {sentEmail}
                 </p>
-                <p style={{ color: "var(--slate-400)", fontSize: 13, lineHeight: 1.7, marginBottom: 32 }}>
-                  請點擊信件中的連結完成啟用。連結將在 <strong>30 分鐘</strong>內有效。<br />
-                  啟用後下次登入即會要求輸入驗證碼。
-                </p>
 
-                <button
-                  className="btn btn-auth-submit w-100 mb-3"
-                  onClick={() => navigate("/profile?two_factor=enabled")}
-                >
+                <div className="mb-3">
+                  <label className="auth-label">驗證碼</label>
+                  <div className="position-relative">
+                    <i className="ri-key-2-line form-icon"></i>
+                    <input
+                      ref={otpRef}
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      className="form-control form-control-custom"
+                      placeholder="請輸入 6 位數驗證碼"
+                      onInput={clearError}
+                    />
+                  </div>
+                  <p
+                    ref={errorRef}
+                    style={{
+                      display: "none",
+                      color: "#ef4444",
+                      fontSize: 13,
+                      marginTop: 6,
+                      alignItems: "center",
+                      gap: 5,
+                    }}
+                  ></p>
+                </div>
+
+                <button className="btn btn-auth-submit w-100 mb-3" onClick={verifyCode} disabled={isVerifying}>
                   <i className="ri-checkbox-circle-line" style={{ marginRight: 6 }}></i>
-                  信件連結完成啟用
+                  {isVerifying ? "驗證中..." : "完成啟用"}
                 </button>
 
                 <button
@@ -230,15 +289,16 @@ export default function TwoFactorPage() {
                   }}
                   onClick={() => {
                     setStep("send");
+                    setIsVerifying(false);
                     if (submitBtnRef.current) {
                       submitBtnRef.current.disabled = false;
-                      submitBtnRef.current.innerHTML = "發送啟用連結";
+                      submitBtnRef.current.innerHTML = "寄送驗證碼";
                     }
                     if (emailRef.current) emailRef.current.value = "";
                   }}
                 >
                   <i className="ri-refresh-line" style={{ marginRight: 6 }}></i>
-                  重新發送
+                  重新寄送
                 </button>
               </div>
             )}
