@@ -9,6 +9,7 @@ from routes.auth.login import login_bp
 from routes.auth.pwd import pwd_bp
 from routes.auth.profile import profile_bp
 from routes.auth.survey import survey_bp
+from routes.auth.TwoFactor import two_factor_bp
 
 load_dotenv()
 
