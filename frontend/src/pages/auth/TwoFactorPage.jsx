@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { apiUrl } from "../../lib/api";
 import "./auth.css";
 
 export default function TwoFactorPage() {
@@ -37,7 +38,7 @@ export default function TwoFactorPage() {
     }
 
     try {
-      const res = await fetch('/api/auth/2fa/send', {
+      const res = await fetch(apiUrl('/api/auth/2fa/send'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: val })

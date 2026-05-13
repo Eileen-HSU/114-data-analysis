@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/AuthContext";
+import { apiUrl } from "../../lib/api";
 import "./auth.css";
 
 const PENDING_2FA_KEY = "dataanalysis_pending_2fa";
