@@ -1,72 +1,75 @@
-from flask import Blueprint, request, jsonify
-from werkzeug.security import check_password_hash
-from models import User
-from extensions import db
-from datetime import datetime, timedelta
-from routes.auth.pwd import send_password_email_via_resend, taiwan_now
-from models import UserVerification
-import random
-import jwt 
+from datetime import timedelta
 import os
+import random
 
-login_bp = Blueprint('login', __name__)
+import jwt
+from flask import Blueprint, jsonify, request
+from werkzeug.security import check_password_hash, generate_password_hash
 
-def taiwan_now():
-    return datetime.utcnow() + timedelta(hours=8)
+from extensions import db
+from models import User, UserVerification
+from routes.auth.pwd import send_password_email_via_resend, taiwan_now
 
-@login_bp.route('/api/login', methods=['POST'])
+login_bp = Blueprint("login", __name__)
+
+
+def get_jwt_secret():
+    return os.getenv("JWT_SECRET_KEY") or os.getenv("VERIFY") or "JWT_SECRET_KEY"
+
+
+def build_token(user_id):
+    return jwt.encode(
+        {"user_id": user_id, "exp": taiwan_now() + timedelta(hours=24)},
+        get_jwt_secret(),
+        algorithm="HS256",
+    )
+
+
+@login_bp.route("/api/login", methods=["POST"])
 def login():
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "未接收到資料"}), 400
-
-    email = data.get('email')
-    password = data.get('password') or data.get('password_hash')
+    data = request.get_json(silent=True) or {}
+    email = data.get("email")
+    password = data.get("password") or data.get("password_hash")
 
     if not email or not password:
-        return jsonify({"error": "請提供電子郵件與密碼"}), 400
+        return jsonify({"error": "請輸入電子郵件和密碼"}), 400
 
     try:
         user = User.query.filter_by(email=email).first()
-        
-        # 1. 基本帳密驗證
         if not user or not check_password_hash(user.password_hash, password):
             return jsonify({"error": "帳號或密碼錯誤"}), 401
 
-        # 2. 準備回傳給前端的基礎資料 (用於 sessionStorage)
         user_info = {
-            "user_id":   user.user_id,
+            "user_id": user.user_id,
             "user_name": user.user_name,
-            "email":     user.email
+            "email": user.email,
         }
 
-        # 3. 檢查是否開啟雙因子驗證 (2FA)
         if user.email_2fa_enabled:
-            # 💡 關鍵修改：在攔截登入的同時，直接產生並寄出驗證碼
             otp = str(random.randint(100000, 999999))
-            new_verify = UserVerification(
+            verification = UserVerification(
                 user_id=user.user_id,
-                type='2FA',
+                type="2FA",
                 code_hash=generate_password_hash(otp),
                 expires_at=taiwan_now() + timedelta(minutes=10),
-                target_email=user.email
+                target_email=user.email,
+                is_used=False,
             )
-            db.session.add(new_verify)
+            db.session.add(verification)
             db.session.commit()
 
-            # 寄出 Resend 信件
-            send_password_email_via_resend(user.email, "【DataAnalysis】登入驗證碼", f"您的驗證碼為：{otp}")
+            send_password_email_via_resend(
+                user.email,
+                "DataAnalysis 登入驗證碼",
+                f"您的登入驗證碼是：{otp}\n\n此驗證碼將在 10 分鐘後失效。",
+            )
 
-            return jsonify({
-                "require_2fa": True,
-                **user_info
-            }), 200
+            return jsonify({"require_2fa": True, **user_info}), 200
 
-        # 沒開 2FA 直接發 Token
-        token = jwt.encode({'user_id': user.user_id, 'exp': taiwan_now() + timedelta(hours=24)}, 
-                            os.getenv("JWT_SECRET_KEY"), algorithm="HS256")
+        token = build_token(user.user_id)
         return jsonify({"token": token, **user_info}), 200
 
     except Exception as e:
-        print(f"Login Error: {str(e)}") # 終端機偵錯用
-        return jsonify({"error": "伺服器內部錯誤"}), 500
+        db.session.rollback()
+        print(f"Login Error: {e}")
+        return jsonify({"error": "登入失敗，請稍後再試"}), 500
