@@ -50,6 +50,7 @@ export default function ResetPasswordPage() {
         email,
         otp: trimmedOtp,
         new_password: newPassword,
+        type: from === "forgot" ? "PASSWORD_RESET" : "PASSWORD_CHANGE",
       });
 
       // --- 分流跳轉邏輯 ---

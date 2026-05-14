@@ -270,7 +270,7 @@ const handleDisable2FA = async () => {
     const res = await fetch(apiUrl('/api/auth/2fa/disable'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: user.email })
+      body: JSON.stringify({ email: user.email, password })
     });
 
     if (res.ok) {
