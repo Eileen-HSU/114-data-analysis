@@ -266,22 +266,19 @@ export default function ProfilePage() {
 const handleDisable2FA = async () => {
   if (!window.confirm("確定要關閉雙因子驗證嗎？這會降低您的帳號安全性。")) return;
 
-  const password = window.prompt("請輸入您的密碼以確認身份：");  
-  if (!password) return;
-
   try {
     const res = await fetch(apiUrl('/api/auth/2fa/disable'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: user.email, password })
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${user.token}`,
+      },
+      body: JSON.stringify({ email: user.email })
     });
 
     if (res.ok) {
-      // 1. 更新資料庫成功後，同步更新本地 LocalStorage
       localStorage.setItem(twoFactorStorageKey, "false");
-      // 2. 更新 State
       setTwoFactorEnabled(false);
-      // 3. 紀錄活動
       recordActivity({
         text: "關閉雙重驗證",
         icon: "ri-shield-flash-line",
@@ -290,7 +287,8 @@ const handleDisable2FA = async () => {
       });
       alert("雙因子驗證已關閉");
     } else {
-      alert("關閉失敗，請稍後再試");
+      const data = await res.json();
+      alert(data.error || "關閉失敗，請稍後再試");
     }
   } catch (err) {
     console.error("關閉 2FA 失敗", err);

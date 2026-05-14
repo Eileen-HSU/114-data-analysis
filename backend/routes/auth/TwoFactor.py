@@ -182,23 +182,23 @@ def login_verify_2fa():
 
 @two_factor_bp.route("/api/auth/2fa/disable", methods=["POST"])
 def disable_2fa():
-    """
-    停用 2FA：需提供密碼驗證身份，防止任意停用他人的 2FA。
-    """
-    data = request.get_json(silent=True) or {}
-    email = data.get("email")
-    password = data.get("password")  # 需提供密碼才能停用
+    # 驗證 JWT token
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "未授權"}), 401
 
-    if not email or not password:
-        return jsonify({"error": "請提供電子郵件與密碼"}), 400
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, get_jwt_secret(), algorithms=["HS256"])
+        user_id = payload.get("user_id")
+    except jwt.ExpiredSignatureError:
+        return jsonify({"error": "登入已過期，請重新登入"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"error": "無效的 token"}), 401
 
-    user = User.query.filter_by(email=email).first()
+    user = User.query.filter_by(user_id=user_id).first()
     if not user:
         return jsonify({"error": "找不到使用者"}), 404
-
-    # 驗證密碼
-    if not check_password_hash(user.password_hash, password):
-        return jsonify({"error": "密碼錯誤"}), 403
 
     try:
         user.email_2fa_enabled = False
