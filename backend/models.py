@@ -39,13 +39,14 @@ class UserVerification(db.Model):
     __tablename__ = 'User_Verification'
     verification_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_id = db.Column(db.Integer, db.ForeignKey('User.user_id'), nullable=False)
-    type = db.Column(db.String(50), nullable=False) # REGISTER / PASSWORD_RESET
+    type = db.Column(db.String(50), nullable=False) # REGISTER / PASSWORD_RESET / 2FA
     code_hash = db.Column(db.String(255), nullable=False)
     is_used = db.Column(db.Boolean, default=False)
     expires_at = db.Column(db.DateTime, nullable=False)
     created_at = db.Column(db.DateTime, default=taiwan_now)
     target_email = db.Column(db.String(255))
     project_id = db.Column(db.Integer)
+    attempts = db.Column(db.Integer, default=0, nullable=False)
     
 # T05: Survey_Template - 問卷模板
 class Survey_Template(db.Model):

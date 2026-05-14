@@ -261,7 +261,7 @@ export default function ProfilePage() {
           alert(err.message || '儲存失敗，請稍後再試');
       }
   };
-  
+
 // 雙因子驗證開關
 const handleDisable2FA = async () => {
   if (!window.confirm("確定要關閉雙因子驗證嗎？這會降低您的帳號安全性。")) return;
