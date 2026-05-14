@@ -11,6 +11,7 @@ from routes.auth.login import login_bp
 from routes.auth.profile import profile_bp
 from routes.auth.pwd import pwd_bp
 from routes.auth.register import register_bp
+from routes.workspace import workspace_bp, start_scheduler
 from routes.auth.survey import survey_bp
 
 load_dotenv()
@@ -46,12 +47,16 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db.init_app(app)
 mail.init_app(app)
 
+start_scheduler()
+
+
 app.register_blueprint(register_bp)
 app.register_blueprint(login_bp)
 app.register_blueprint(pwd_bp)
 app.register_blueprint(profile_bp)
 app.register_blueprint(two_factor_bp)
 app.register_blueprint(survey_bp)
+app.register_blueprint(workspace_bp)
 
 
 @app.route("/api/status", methods=["GET"])
