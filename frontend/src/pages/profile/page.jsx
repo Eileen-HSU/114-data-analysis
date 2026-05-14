@@ -266,6 +266,9 @@ export default function ProfilePage() {
 const handleDisable2FA = async () => {
   if (!window.confirm("確定要關閉雙因子驗證嗎？這會降低您的帳號安全性。")) return;
 
+  const password = window.prompt("請輸入您的密碼以確認身份：");  
+  if (!password) return;
+
   try {
     const res = await fetch(apiUrl('/api/auth/2fa/disable'), {
       method: 'POST',
