@@ -76,7 +76,6 @@ def login():
             db.session.add(verification)
             db.session.commit()
 
-            # 寄信失敗就直接報錯，不能跳過 2FA
             send_password_email_via_resend(
                 user.email,
                 "DataAnalysis 登入驗證碼",

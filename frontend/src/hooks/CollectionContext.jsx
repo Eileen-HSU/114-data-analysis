@@ -1,8 +1,8 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { useActivity } from "./ActivityContext";
+import { apiUrl } from "../lib/api";
 
 const INIT_FOLDERS = [];
-
 const INIT_FILES = [];
 
 const CollectionContext = createContext(null);
@@ -67,7 +67,6 @@ export function CollectionProvider({ children }) {
           createdAt: session.date || nowString(),
           sessionId: session.id,
         }));
-
       return missingChatFiles.length ? [...missingChatFiles, ...prev] : prev;
     });
   }, [workspaceSessions]);
@@ -119,9 +118,16 @@ export function CollectionProvider({ children }) {
     });
   };
 
-  const deleteChatSession = (sessionId) => {
+  // ── 軟刪除：移至垃圾桶，同時打後端 API ──────────────────
+  const deleteChatSession = async (sessionId) => {
     const session = workspaceSessions.find((s) => s.id === sessionId);
     if (!session) return;
+
+    try {
+      await fetch(apiUrl(`/api/workspace/${session.project_id}`), { method: "DELETE" });
+    } catch (err) {
+      console.error("軟刪除失敗", err);
+    }
 
     const chatFile = files.find((f) => f.type === "chat" && f.sessionId === sessionId);
     setDeletedItems((prev) => [
@@ -140,6 +146,7 @@ export function CollectionProvider({ children }) {
           sessionId,
         },
         workspaceSession: session,
+        project_id: session.project_id || null,
       },
       ...prev,
     ]);
@@ -153,7 +160,17 @@ export function CollectionProvider({ children }) {
     });
   };
 
-  const restoreItem = (item) => {
+  // ── 還原：從垃圾桶還原，同時打後端 API ──────────────────
+  const restoreItem = async (item) => {
+      try {
+        await fetch(apiUrl(`/api/workspace/${item.project_id}/restore`), {
+          method: "POST",
+        });
+      } catch (err) {
+        console.error("還原失敗", err);
+      }
+    
+
     if (item.type === "folder") {
       const folder = item.originalData;
       setFolders((prev) => [...prev, folder]);
@@ -177,6 +194,7 @@ export function CollectionProvider({ children }) {
         });
       }
     }
+
     setDeletedItems((prev) => prev.filter((d) => d.id !== item.id));
     recordActivity({
       text: `還原「${item.name}」`,
@@ -186,8 +204,17 @@ export function CollectionProvider({ children }) {
     });
   };
 
-  const permanentDelete = (id) => {
+  // ── 永久刪除：從資料庫完全刪除，同時打後端 API ──────────
+  const permanentDelete = async (id) => {
     const target = deletedItems.find((item) => item.id === id);
+      try {
+        await fetch(apiUrl(`/api/workspace/${target.project_id}/permanent`), {
+          method: "DELETE",
+        });
+      } catch (err) {
+        console.error("永久刪除失敗", err);
+      }
+
     setDeletedItems((prev) => prev.filter((d) => d.id !== id));
     if (target) {
       recordActivity({
@@ -255,9 +282,7 @@ export function CollectionProvider({ children }) {
 
   const syncChatTitle = (sessionId, newTitle) => {
     setFiles((prev) =>
-      prev.map((f) =>
-        f.sessionId === sessionId ? { ...f, name: newTitle } : f
-      )
+      prev.map((f) => (f.sessionId === sessionId ? { ...f, name: newTitle } : f))
     );
   };
 

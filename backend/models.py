@@ -47,8 +47,20 @@ class UserVerification(db.Model):
     target_email = db.Column(db.String(255))
     project_id = db.Column(db.Integer)
     attempts = db.Column(db.Integer, default=0, nullable=False)
+
+# T04: Workspace - 專案紀錄
+class Workspace(db.Model):
+    __tablename__ = 'Workspace'
+    project_id   = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id      = db.Column(db.Integer, db.ForeignKey('User.user_id'), nullable=False)
+    project_name = db.Column(db.String(100), nullable=False)
+    search_tag   = db.Column(db.String(50))
+    status       = db.Column(db.String(20), default='Pending')
+    created_at   = db.Column(db.DateTime, default=taiwan_now)
+    is_deleted   = db.Column(db.Boolean, default=False)
+    deleted_at   = db.Column(db.DateTime)
     
-# T05: Survey_Template - 問卷模板
+# T07: Survey_Template - 問卷模板
 class Survey_Template(db.Model):
     __tablename__ = 'Survey_Template' 
     template_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -57,7 +69,7 @@ class Survey_Template(db.Model):
     access_code = db.Column(db.String(10), unique=True) # 邀請碼
     question_json = db.Column(db.JSON, nullable=False)  # 問卷標題與題目
 
-# T06: Survey_Response - 儲存問卷回覆資料
+# T08: Survey_Response - 儲存問卷回覆資料
 class Survey_Response(db.Model):
     __tablename__ = 'Survey_Response'
     response_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
