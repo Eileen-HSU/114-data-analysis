@@ -276,7 +276,6 @@ const handleDisable2FA = async () => {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${user.token}`,
       },
-      body: JSON.stringify({ email: user.email })
     });
 
     if (res.ok) {
