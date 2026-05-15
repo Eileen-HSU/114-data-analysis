@@ -32,8 +32,12 @@ def verify_token(request):
     except jwt.InvalidTokenError:
         return None, "Invalid token"
 
-@profile_bp.route('/api/profile/<int:user_id>', methods=['GET'])
+@profile_bp.route('/api/profile/<int:user_id>', methods=['GET', 'OPTIONS'])
 def get_profile(user_id):
+    # OPTIONS 預檢請求直接返回成功
+    if request.method == "OPTIONS":
+        return "", 200
+    
     # 驗證用戶身份—只能查看自己的資料
     auth_user_id, error = verify_token(request)
     if error:
@@ -67,8 +71,12 @@ def get_profile(user_id):
         logging.error(f"Get profile error: {e}", exc_info=True)
         return jsonify({"error": "Failed to fetch profile"}), 500
 
-@profile_bp.route('/api/profile/<int:user_id>', methods=['PUT'])
+@profile_bp.route('/api/profile/<int:user_id>', methods=['PUT', 'OPTIONS'])
 def update_profile(user_id):
+    # OPTIONS 預檢請求直接返回成功
+    if request.method == "OPTIONS":
+        return "", 200
+    
     # 驗證用戶身份—只能更新自己的註冊
     auth_user_id, error = verify_token(request)
     if error:
