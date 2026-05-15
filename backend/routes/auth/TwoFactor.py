@@ -184,7 +184,10 @@ def login_verify_2fa():
 def disable_2fa():
     # 驗證 JWT token
     auth_header = request.headers.get("Authorization", "")
+    print(f"Auth header: {auth_header}")
+
     if not auth_header.startswith("Bearer "):
+        print("No Bearer token")
         return jsonify({"error": "未授權"}), 401
 
     token = auth_header.split(" ")[1]
