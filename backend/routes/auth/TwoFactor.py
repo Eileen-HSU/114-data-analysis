@@ -197,6 +197,7 @@ def disable_2fa():
     except jwt.ExpiredSignatureError:
         return jsonify({"error": "登入已過期，請重新登入"}), 401
     except jwt.InvalidTokenError as e:
+        print("JWT ERROR:", str(e))
         return jsonify({"error": f"Token 無效: {str(e)}"}), 400
 
     user = User.query.filter_by(user_id=user_id).first()
