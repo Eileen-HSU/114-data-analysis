@@ -296,7 +296,6 @@ const handleDisable2FA = async () => {
     console.error("關閉 2FA 失敗", err);
     alert("網路錯誤");
   }
-  body: JSON.stringify({})
 };
 
   const handleCancel = () => {
