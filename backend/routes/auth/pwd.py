@@ -39,7 +39,6 @@ def send_password_email_via_resend(recipient, subject, body_text):
         "html": html_body,
         "text": body_text,
     })
-    print(f"Resend email sent: {response}")
     return response
 
 
@@ -54,11 +53,9 @@ def _invalidate_old_codes(email: str, otp_type: str):
 
 @pwd_bp.route("/api/auth/email-config", methods=["GET"])
 def email_config():
-    sender = os.getenv("RESEND_FROM_EMAIL") or os.getenv("MAIL_DEFAULT_SENDER") or DEFAULT_RESEND_SENDER
+    # 不要暴露敏感的配置信息
     return jsonify({
-        "resend_api_key_configured": bool(os.getenv("RESEND_API_KEY", "").strip()),
-        "sender": sender,
-        "sender_looks_valid": "gmail.com" not in sender.lower(),
+        "status": "ok",
     }), 200
 
 
@@ -116,8 +113,9 @@ def send_otp():
 
     except Exception as e:
         db.session.rollback()
-        traceback.print_exc()
-        return jsonify({"error": "寄送驗證信失敗", "details": str(e)}), 500
+        import logging
+        logging.error(f"OTP send failed: {e}", exc_info=True)
+        return jsonify({"error": "寶送驗證信失敗、請稍後再試"}), 500
 
 
 # 忘記密碼和變更密碼都可以共用這個驗證碼驗證邏輯，前端可傳 type 區分用途
@@ -160,5 +158,6 @@ def reset_password():
 
     except Exception as e:
         db.session.rollback()
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        import logging
+        logging.error(f"Password reset failed: {e}", exc_info=True)
+        return jsonify({"error": "密碼疆新失敗、請稍後再試"}), 500
