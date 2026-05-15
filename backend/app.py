@@ -2,7 +2,7 @@ import os
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request, make_response
 from flask_cors import CORS
 
 from extensions import db, mail
@@ -56,7 +56,6 @@ app.register_blueprint(survey_bp)
 app.register_blueprint(workspace_bp)
 
 start_scheduler()
-from flask import Flask, jsonify, request
 
 @app.before_request
 def handle_options():
