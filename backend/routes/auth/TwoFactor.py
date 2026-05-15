@@ -73,7 +73,7 @@ def _verify_otp(email: str, otp: str, otp_type: str):
     return record, None, 200
 
 
-@two_factor_bp.route("/send", methods=["POST", "OPTIONS"])
+@two_factor_bp.route("/send", methods=["POST"])
 def send_2fa_code():
     data = request.get_json(silent=True) or {}
     email = data.get("email")
@@ -114,7 +114,7 @@ def send_2fa_code():
         return jsonify({"error": str(e)}), 500
 
 
-@two_factor_bp.route("/api/2fa//two-factor", methods=["POST", "OPTIONS"])
+@two_factor_bp.route("/enable", methods=["POST"])
 def enable_2fa():
     """啟用 2FA：需先通過 OTP 驗證"""
     data = request.get_json(silent=True) or {}
@@ -142,7 +142,7 @@ def enable_2fa():
         return jsonify({"error": str(e)}), 500
 
 
-@two_factor_bp.route("/login/two-factor", methods=["POST", "OPTIONS"])
+@two_factor_bp.route("/login/two-factor", methods=["POST"])
 def login_verify_2fa():
     """
     登入第二步：驗證 OTP。
@@ -183,11 +183,8 @@ def login_verify_2fa():
     }), 200
 
 
-@two_factor_bp.route("/disable", methods=["POST", "OPTIONS"])
+@two_factor_bp.route("/disable", methods=["POST"])
 def disable_2fa():
-    # OPTIONS 預檢請求直接返回成功
-    if request.method == "OPTIONS":
-        return "", 200
 
     # 驗證 JWT token
     auth_header = request.headers.get("Authorization", "")
