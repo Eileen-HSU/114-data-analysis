@@ -58,19 +58,6 @@ app.register_blueprint(two_factor_bp)
 app.register_blueprint(survey_bp)
 app.register_blueprint(workspace_bp)
 
-
-app.register_blueprint(register_bp, url_prefix='/api/auth')
-app.register_blueprint(login_bp, url_prefix='/api/auth')
-app.register_blueprint(pwd_bp, url_prefix='/api/auth')
-app.register_blueprint(profile_bp, url_prefix='/api/auth')
-
-# 2FA 專用的前綴
-app.register_blueprint(two_factor_bp, url_prefix='/api/auth/2fa')
-
-app.register_blueprint(survey_bp, url_prefix='/api/survey')
-app.register_blueprint(workspace_bp, url_prefix='/api/workspace')
-
-
 @app.route("/api/status", methods=["GET"])
 def get_status():
     return jsonify({
