@@ -2,7 +2,7 @@ import os
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 from flask_cors import CORS
 
 from extensions import db, mail
@@ -17,15 +17,7 @@ from routes.auth.survey import survey_bp
 load_dotenv()
 
 app = Flask(__name__)
-# CORS 配置：只允許指定的前端域名
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
-CORS(app, 
-     resources={r"/api/*": {"origins": allowed_origins}}, 
-     supports_credentials=False,
-     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-     allow_headers=["Content-Type", "Authorization"],
-     expose_headers=["Content-Type"],
-     max_age=3600)
+CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True, methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 
@@ -64,24 +56,35 @@ app.register_blueprint(survey_bp)
 app.register_blueprint(workspace_bp)
 
 start_scheduler()
+from flask import Flask, jsonify, request
 
+@app.before_request
+def handle_options():
+    if request.method == "OPTIONS":
+        from flask import make_response
+        response = make_response()
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        return response, 200
 
 @app.route("/api/status", methods=["GET"])
 def get_status():
-    # 不要暴露環境信息
     return jsonify({
         "status": "online",
+        "database": "Connected",
+        "environment": "Production",
     })
 
 
 @app.errorhandler(Exception)
 def handle_exception(e):
-    # 不要返回詳細的錯誤信息給客戶端
-    import logging
-    logging.error(f"Unhandled exception: {str(e)}", exc_info=True)
     response = jsonify({
+        "error": str(e),
+        "type": str(type(e)),
         "message": "伺服器發生錯誤，請稍後再試",
     })
+    response.headers.add("Access-Control-Allow-Origin", "*")
     return response, 500
 
 
