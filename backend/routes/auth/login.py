@@ -37,7 +37,7 @@ def _invalidate_old_codes(email: str, otp_type: str):
     ).update({"is_used": True})
 
 
-@login_bp.route("/login", methods=["POST"])
+@login_bp.route("/api/login", methods=["POST"])
 def login():
     data = request.get_json(silent=True) or {}
     email = data.get("email")
