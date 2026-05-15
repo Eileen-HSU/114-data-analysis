@@ -185,6 +185,10 @@ def login_verify_2fa():
 
 @two_factor_bp.route("/disable", methods=["POST", "OPTIONS"])
 def disable_2fa():
+    # OPTIONS 預檢請求直接返回成功
+    if request.method == "OPTIONS":
+        return "", 200
+
     # 驗證 JWT token
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
