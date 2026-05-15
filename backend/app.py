@@ -47,9 +47,6 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db.init_app(app)
 mail.init_app(app)
 
-start_scheduler()
-
-
 app.register_blueprint(register_bp)
 app.register_blueprint(login_bp)
 app.register_blueprint(pwd_bp)
@@ -57,6 +54,9 @@ app.register_blueprint(profile_bp)
 app.register_blueprint(two_factor_bp, url_prefix='/api/2fa')
 app.register_blueprint(survey_bp)
 app.register_blueprint(workspace_bp)
+
+start_scheduler()
+
 
 @app.route("/api/status", methods=["GET"])
 def get_status():
