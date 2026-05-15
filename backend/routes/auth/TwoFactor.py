@@ -17,7 +17,7 @@ MAX_OTP_ATTEMPTS = 5
 
 
 def get_jwt_secret():
-    secret = os.getenv("JWT_SECRET_KEY") or os.getenv("VERIFY")
+    secret = os.getenv("JWT_SECRET_KEY")
     if not secret:
         raise RuntimeError("JWT_SECRET_KEY 環境變數未設定")
     return secret
