@@ -12,7 +12,7 @@ from routes.auth.pwd import send_password_email_via_resend, taiwan_now
 
 two_factor_bp = Blueprint("two_factor", __name__)
 
-# OTP 最多嘗試次數
+# 暴力破解防護：OTP 最多嘗試次數
 MAX_OTP_ATTEMPTS = 5
 
 
@@ -84,6 +84,7 @@ def send_2fa_code():
     if not user:
         return jsonify({"error": "找不到使用者"}), 404
 
+    # 使用密碼學安全的亂數
     otp = str(secrets.randbelow(900000) + 100000)
 
     try:
@@ -97,7 +98,7 @@ def send_2fa_code():
             expires_at=taiwan_now() + timedelta(minutes=10),
             target_email=email,
             is_used=False,
-            attempts=0,  
+            attempts=0,  # 需確認 model 有此欄位
         )
         db.session.add(verification)
         db.session.commit()
@@ -145,7 +146,9 @@ def enable_2fa():
 def login_verify_2fa():
     """
     登入第二步：驗證 OTP。
-    前端必須先完成密碼驗證，再呼叫此路由。
+    前端必須先完成密碼驗證（第一步），再呼叫此路由。
+    建議第一步回傳短效 pre_auth_token，此路由應驗證該 token。
+    目前以 email + otp 為最低驗證，正式環境請加上 pre_auth_token 驗證。
     """
     data = request.get_json(silent=True) or {}
     email = data.get("email")
@@ -184,10 +187,7 @@ def login_verify_2fa():
 def disable_2fa():
     # 驗證 JWT token
     auth_header = request.headers.get("Authorization", "")
-    print(f"Auth header: {auth_header}")
-
     if not auth_header.startswith("Bearer "):
-        print("No Bearer token")
         return jsonify({"error": "未授權"}), 401
 
     token = auth_header.split(" ")[1]
@@ -196,8 +196,8 @@ def disable_2fa():
         user_id = payload.get("user_id")
     except jwt.ExpiredSignatureError:
         return jsonify({"error": "登入已過期，請重新登入"}), 401
-    except jwt.InvalidTokenError:
-        return jsonify({"error": "無效的 token"}), 401
+    except jwt.InvalidTokenError as e:
+        return jsonify({"error": f"Token 無效: {str(e)}"}), 400
 
     user = User.query.filter_by(user_id=user_id).first()
     if not user:
