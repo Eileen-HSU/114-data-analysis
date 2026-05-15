@@ -114,7 +114,7 @@ def send_2fa_code():
         return jsonify({"error": str(e)}), 500
 
 
-@two_factor_bp.route("/two-factor", methods=["POST", "OPTIONS"])
+@two_factor_bp.route("/api/2fa//two-factor", methods=["POST", "OPTIONS"])
 def enable_2fa():
     """啟用 2FA：需先通過 OTP 驗證"""
     data = request.get_json(silent=True) or {}

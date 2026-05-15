@@ -81,7 +81,7 @@ export default function TwoFactorPage() {
     setIsVerifying(true);
 
     try {
-      const res = await fetch(apiUrl("/api/auth/2fa/two-factor"), {
+      const res = await fetch(apiUrl("/api/2fa/two-factor"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: sentEmail, otp }),
