@@ -67,11 +67,10 @@ def create_survey():
         }), 201
         
     except Exception as e:
-        print(f"[CREATE_SURVEY] ✗ 寫入失敗: {e}")
-        import traceback
-        traceback.print_exc()
+        import logging
+        logging.error(f"Survey creation failed: {e}", exc_info=True)
         db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "問卷建立失敗"}), 500
 
 
 @survey_bp.route('/api/surveys/<access_code>/responses', methods=['POST'])
@@ -98,6 +97,7 @@ def submit_survey_response(access_code):
         }), 201
 
     except Exception as e:
-        traceback.print_exc()
+        import logging
+        logging.error(f"Survey response submission failed: {e}", exc_info=True)
         db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "問卷送出失敗"}), 500

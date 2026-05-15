@@ -17,7 +17,13 @@ from routes.auth.survey import survey_bp
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True, methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+# CORS 配置：只允許指定的前端域名
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
+CORS(app, 
+     resources={r"/api/*": {"origins": allowed_origins}}, 
+     supports_credentials=False,  # 禁用跨域認證
+     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+     allow_headers=["Content-Type", "Authorization"])
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 
@@ -60,21 +66,20 @@ start_scheduler()
 
 @app.route("/api/status", methods=["GET"])
 def get_status():
+    # 不要暴露環境信息
     return jsonify({
         "status": "online",
-        "database": "Connected",
-        "environment": "Production",
     })
 
 
 @app.errorhandler(Exception)
 def handle_exception(e):
+    # 不要返回詳細的錯誤信息給客戶端
+    import logging
+    logging.error(f"Unhandled exception: {str(e)}", exc_info=True)
     response = jsonify({
-        "error": str(e),
-        "type": str(type(e)),
         "message": "伺服器發生錯誤，請稍後再試",
     })
-    response.headers.add("Access-Control-Allow-Origin", "*")
     return response, 500
 
 

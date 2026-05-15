@@ -103,7 +103,9 @@ export default function ProfilePage() {
     if (user === null) return;
     if (!user?.user_id) return;
 
-    fetch(apiUrl(`/api/profile/${user.user_id}`))
+    fetch(apiUrl(`/api/profile/${user.user_id}`), {
+      headers: { 'Authorization': `Bearer ${user.token}`, }
+    })
       .then((res) => res.json())
       .then((data) => {
         const loaded = {
@@ -227,7 +229,10 @@ export default function ProfilePage() {
     try {
         const res = await fetch(apiUrl(`/api/profile/${user.user_id}`), {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${user.token}`,
+            },
             body: JSON.stringify({
                 user_name:    editProfile.name,
                 phone_number: editProfile.phone,

@@ -14,7 +14,7 @@ login_bp = Blueprint("login", __name__)
 
 
 def get_jwt_secret():
-    secret = os.getenv("JWT_SECRET_KEY") or os.getenv("VERIFY")
+    secret = os.getenv("JWT_SECRET_KEY")
     if not secret:
         raise RuntimeError("JWT_SECRET_KEY 環境變數未設定")
     return secret
@@ -89,5 +89,6 @@ def login():
 
     except Exception as e:
         db.session.rollback()
-        print(f"Login Error: {e}")
+        import logging
+        logging.error(f"Login error: {e}", exc_info=True)
         return jsonify({"error": "登入失敗，請稍後再試"}), 500

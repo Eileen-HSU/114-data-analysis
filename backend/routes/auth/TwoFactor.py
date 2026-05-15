@@ -73,7 +73,7 @@ def _verify_otp(email: str, otp: str, otp_type: str):
     return record, None, 200
 
 
-@two_factor_bp.route("/api/auth/2fa/send", methods=["POST"])
+@two_factor_bp.route("/send", methods=["POST", "OPTIONS"])
 def send_2fa_code():
     data = request.get_json(silent=True) or {}
     email = data.get("email")
@@ -114,7 +114,7 @@ def send_2fa_code():
         return jsonify({"error": str(e)}), 500
 
 
-@two_factor_bp.route("/api/auth/2fa/two-factor", methods=["POST"])
+@two_factor_bp.route("/two-factor", methods=["POST", "OPTIONS"])
 def enable_2fa():
     """啟用 2FA：需先通過 OTP 驗證"""
     data = request.get_json(silent=True) or {}
@@ -142,7 +142,7 @@ def enable_2fa():
         return jsonify({"error": str(e)}), 500
 
 
-@two_factor_bp.route("/api/auth/2fa/login/two-factor", methods=["POST"])
+@two_factor_bp.route("/login/two-factor", methods=["POST", "OPTIONS"])
 def login_verify_2fa():
     """
     登入第二步：驗證 OTP。
@@ -183,7 +183,7 @@ def login_verify_2fa():
     }), 200
 
 
-@two_factor_bp.route("/api/auth/2fa/disable", methods=["POST"])
+@two_factor_bp.route("/disable", methods=["POST", "OPTIONS"])
 def disable_2fa():
     # 驗證 JWT token
     auth_header = request.headers.get("Authorization", "")
@@ -197,8 +197,9 @@ def disable_2fa():
     except jwt.ExpiredSignatureError:
         return jsonify({"error": "登入已過期，請重新登入"}), 401
     except jwt.InvalidTokenError as e:
-        print("JWT ERROR:", str(e))
-        return jsonify({"error": f"Token 無效: {str(e)}"}), 400
+        import logging
+        logging.warning(f"Invalid JWT token attempted")
+        return jsonify({"error": "Token 無效"}), 401
 
     user = User.query.filter_by(user_id=user_id).first()
     if not user:

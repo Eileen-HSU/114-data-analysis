@@ -3,18 +3,49 @@ from models import User, UserProfile
 from extensions import db
 from datetime import datetime, timedelta
 import traceback
+import os
+import jwt
 
 profile_bp = Blueprint('profile', __name__)
 
 def taiwan_now():
     return datetime.utcnow() + timedelta(hours=8)
 
+def get_jwt_secret():
+    secret = os.getenv("JWT_SECRET_KEY")
+    if not secret:
+        raise RuntimeError("JWT_SECRET_KEY 環境變數未設定")
+    return secret
+
+def verify_token(request):
+    """驗證 JWT token 並回傳 user_id"""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None, "Unauthorized"
+    
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, get_jwt_secret(), algorithms=["HS256"])
+        return payload.get("user_id"), None
+    except jwt.ExpiredSignatureError:
+        return None, "Token expired"
+    except jwt.InvalidTokenError:
+        return None, "Invalid token"
+
 @profile_bp.route('/api/profile/<int:user_id>', methods=['GET'])
 def get_profile(user_id):
+    # 驗證用戶身份—只能查看自己的資料
+    auth_user_id, error = verify_token(request)
+    if error:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    if auth_user_id != user_id:
+        return jsonify({"error": "Forbidden"}), 403
+    
     try:
         user = User.query.get(user_id)
         if not user:
-            return jsonify({"error": "使用者不存在"}), 404
+            return jsonify({"error": "User not found"}), 404
 
         profile = UserProfile.query.filter_by(user_id=user_id).first()
         return jsonify({
@@ -32,17 +63,25 @@ def get_profile(user_id):
         }), 200
 
     except Exception as e:
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 400
-
+        import logging
+        logging.error(f"Get profile error: {e}", exc_info=True)
+        return jsonify({"error": "Failed to fetch profile"}), 500
 
 @profile_bp.route('/api/profile/<int:user_id>', methods=['PUT'])
 def update_profile(user_id):
+    # 驗證用戶身份—只能更新自己的註冊
+    auth_user_id, error = verify_token(request)
+    if error:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    if auth_user_id != user_id:
+        return jsonify({"error": "Forbidden"}), 403
+    
     try:
         data = request.get_json(silent=True) or {}
         user = User.query.get(user_id)
         if not user:
-            return jsonify({"error": "使用者不存在"}), 404
+            return jsonify({"error": "User not found"}), 404
 
         user_name = (data.get('user_name') or '').strip()
         if user_name:
@@ -61,9 +100,10 @@ def update_profile(user_id):
         profile.updated_at    = taiwan_now()
 
         db.session.commit()
-        return jsonify({"message": "更新成功"}), 200
+        return jsonify({"message": "Profile updated successfully"}), 200
 
     except Exception as e:
         db.session.rollback()
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        import logging
+        logging.error(f"Update profile error: {e}", exc_info=True)
+        return jsonify({"error": "Failed to update profile"}), 500

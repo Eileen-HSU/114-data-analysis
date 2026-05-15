@@ -12,7 +12,6 @@ def taiwan_now():
 @register_bp.route('/api/register', methods=['POST'])
 def register():
     data = request.get_json()
-    print("收到的資料:", data)
     if not data:
         return jsonify({"error": "未接收到資料"}), 400
 
@@ -50,5 +49,6 @@ def register():
 
     except Exception as e:
         db.session.rollback()
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 400
+        import logging
+        logging.error(f"Registration error: {e}", exc_info=True)
+        return jsonify({"error": "註冊失敗，請稍後再試"}), 400
