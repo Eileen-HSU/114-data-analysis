@@ -54,12 +54,9 @@ app.register_blueprint(register_bp)
 app.register_blueprint(login_bp)
 app.register_blueprint(pwd_bp)
 app.register_blueprint(profile_bp)
-app.register_blueprint(two_factor_bp)
+app.register_blueprint(two_factor_bp, url_prefix='/api/2fa')
 app.register_blueprint(survey_bp)
 app.register_blueprint(workspace_bp)
-
-app.register_blueprint(login_bp, url_prefix='/api/auth')         # 負責 /api/auth/...
-app.register_blueprint(two_factor_bp, url_prefix='/api/2fa')         # 負責 /api/2fa/...
 
 @app.route("/api/status", methods=["GET"])
 def get_status():

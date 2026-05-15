@@ -183,7 +183,7 @@ def login_verify_2fa():
     }), 200
 
 
-@two_factor_bp.route("/disable", methods=["POST"])
+@two_factor_bp.route("/api/auth/2fa/disable", methods=["POST"])
 def disable_2fa():
     # 驗證 JWT token
     auth_header = request.headers.get("Authorization", "")
