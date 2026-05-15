@@ -2,7 +2,7 @@ import os
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 
 from extensions import db, mail
@@ -21,9 +21,11 @@ app = Flask(__name__)
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
 CORS(app, 
      resources={r"/api/*": {"origins": allowed_origins}}, 
-     supports_credentials=False,  # 禁用跨域認證
+     supports_credentials=False,
      methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-     allow_headers=["Content-Type", "Authorization"])
+     allow_headers=["Content-Type", "Authorization"],
+     expose_headers=["Content-Type"],
+     max_age=3600)
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 
