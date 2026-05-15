@@ -185,31 +185,32 @@ def login_verify_2fa():
 
 @two_factor_bp.route("/disable", methods=["POST"])
 def disable_2fa():
+    # 1. 取得前端傳來的資料
+    data = request.get_json(silent=True) or {}
+    email = data.get("email")
+    password = data.get("password")
 
-    # 驗證 JWT token
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        return jsonify({"error": "未授權"}), 401
-
-    token = auth_header.split(" ")[1]
-    try:
-        payload = jwt.decode(token, get_jwt_secret(), algorithms=["HS256"])
-        user_id = payload.get("user_id")
-    except jwt.ExpiredSignatureError:
-        return jsonify({"error": "登入已過期，請重新登入"}), 401
-    except jwt.InvalidTokenError as e:
-        import logging
-        logging.warning(f"Invalid JWT token attempted")
-        return jsonify({"error": "Token 無效"}), 401
-
-    user = User.query.filter_by(user_id=user_id).first()
-    if not user:
-        return jsonify({"error": "找不到使用者"}), 404
+    # 檢查是否有輸入資料
+    if not email or not password:
+        return jsonify({"error": "請提供電子郵件與密碼以進行驗證"}), 400
 
     try:
+        # 2. 查找使用者
+        user = User.query.filter_by(email=email).first()
+        
+        if not user:
+            return jsonify({"error": "找不到該使用者"}), 404
+
+        # 3. 驗證密碼是否正確
+        if not check_password_hash(user.password_hash, password):
+            return jsonify({"error": "密碼錯誤，身分驗證失敗"}), 403
+
+        # 4. 執行關閉 2FA
         user.email_2fa_enabled = False
         db.session.commit()
-        return jsonify({"message": "兩步驟驗證已停用"}), 200
+
+        return jsonify({"message": "雙因子驗證已成功停用"}), 200
+
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"伺服器發生錯誤: {str(e)}"}), 500

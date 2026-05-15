@@ -53,7 +53,6 @@ def _invalidate_old_codes(email: str, otp_type: str):
 
 @pwd_bp.route("/api/auth/email-config", methods=["GET"])
 def email_config():
-    # 不要暴露敏感的配置信息
     return jsonify({
         "status": "ok",
     }), 200

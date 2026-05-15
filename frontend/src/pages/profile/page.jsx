@@ -269,41 +269,49 @@ export default function ProfilePage() {
 
 // 雙因子驗證開關
 const handleDisable2FA = async () => {
-  if (!window.confirm("確定要關閉雙因子驗證嗎？這會降低您的帳號安全性。")) return;
+  if (!window.confirm("確定要關閉雙因子驗證嗎？")) return;
+
+  // 使用提示框要求輸入密碼
+  const password = window.prompt("請輸入密碼以確認您的身分：");
+  
+  if (!password) {
+    alert("操作已取消：必須輸入密碼");
+    return;
+  }
 
   try {
-    console.log('準備關閉 2FA，Token:', user?.token ? `${user.token.substring(0, 20)}...` : 'NO TOKEN');
-    
     const res = await fetch(apiUrl('/api/2fa/disable'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${user.token}`,
+        // 注意：這裡不帶 Authorization Header 了
       },
+      body: JSON.stringify({
+        email: user?.email, // 從目前的登入狀態抓 email
+        password: password   // 使用者剛才輸入的密碼
+      }),
     });
 
-    console.log('2FA disable 回應狀態:', res.status, res.statusText);
+    const data = await res.json();
 
     if (res.ok) {
       localStorage.setItem(twoFactorStorageKey, "false");
       setTwoFactorEnabled(false);
+      alert("雙因子驗證已成功關閉");
+      
       recordActivity({
         text: "關閉雙重驗證",
         icon: "ri-shield-flash-line",
         iconBg: "bg-stat-coral",
         iconColor: "text-stat-coral",
       });
-      alert("雙因子驗證已關閉");
     } else {
-      const data = await res.json().catch(() => ({}));
-
-      console.log("2FA 後端回傳:", res.status, data);
-
-      alert(data.error || `關閉失敗（${res.status}），請稍後再試`);
+      // 顯示後端回傳的具體錯誤 (如: 密碼錯誤)
+      alert(data.error || "驗證失敗");
     }
   } catch (err) {
-    console.error("關閉 2FA 詳細錯誤:", err.message, err.stack);
-    alert(`網路錯誤: ${err.message}`);
+    console.error("2FA Disable Error:", err);
+    alert("網路連線錯誤，請稍後再試");
   }
 };
 
