@@ -21,7 +21,8 @@ CORS(app,
     resources={r"/api/*": {"origins": "*"}},
     supports_credentials=False,
     allow_headers=["Content-Type", "Authorization"],
-    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    automatic_options=True
 )
 
 basedir = os.path.abspath(os.path.dirname(__file__))
