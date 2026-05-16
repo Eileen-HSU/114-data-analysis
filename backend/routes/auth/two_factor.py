@@ -183,8 +183,11 @@ def login_verify_2fa():
     }), 200
 
 
-@two_factor_bp.route("/disable", methods=["POST"])
+@two_factor_bp.route("/disable", methods=["POST", "OPTIONS"])
 def disable_2fa():
+    # OPTIONS 預檢請求直接返回成功
+    if request.method == "OPTIONS":
+        return "", 200
 
     # 1. 取得前端傳來的資料
     data = request.get_json(silent=True) or {}
