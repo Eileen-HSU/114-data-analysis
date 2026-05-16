@@ -63,6 +63,14 @@ app.register_blueprint(workspace_bp)
 
 start_scheduler()
 
+@app.route("/api/2fa/disable", methods=["OPTIONS"])
+def options_2fa_disable():
+    res = make_response()
+    res.headers["Access-Control-Allow-Origin"] = "*"
+    res.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+    res.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    return res, 200
+
 @app.route("/api/status", methods=["GET"])
 def get_status():
     return jsonify({
