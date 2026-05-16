@@ -1,215 +1,181 @@
-from datetime import timedelta
-import os
-import secrets
-
-import jwt
-from flask import Blueprint, jsonify, request
-from werkzeug.security import check_password_hash, generate_password_hash
-
+from flask import Blueprint, request, jsonify
 from extensions import db
 from models import User, UserVerification
 from routes.auth.pwd import send_password_email_via_resend, taiwan_now
+from werkzeug.security import generate_password_hash, check_password_hash
+import random
+from datetime import timedelta
+import jwt
+import os
 
-two_factor_bp = Blueprint("two_factor", __name__)
+two_factor_bp = Blueprint('two_factor', __name__)
 
-# 暴力破解防護：OTP 最多嘗試次數
 MAX_OTP_ATTEMPTS = 5
 
 
-def get_jwt_secret():
-    secret = os.getenv("JWT_SECRET_KEY")
-    if not secret:
-        raise RuntimeError("JWT_SECRET_KEY 環境變數未設定")
-    return secret
+# 1. 發送 2FA 驗證碼
+@two_factor_bp.route('/api/auth/2fa/send', methods=['POST'])
+def send_2fa_code():
+    data = request.get_json()
+    email = data.get('email')
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        return jsonify({"error": "使用者不存在"}), 404
 
+    otp = str(random.randint(100000, 999999))
 
-def issue_token(user_id):
-    return jwt.encode(
-        {"user_id": user_id, "exp": taiwan_now() + timedelta(hours=24)},
-        get_jwt_secret(),
-        algorithm="HS256",
-    )
-
-
-def _invalidate_old_codes(email: str, otp_type: str):
-    """將同一 email 所有未使用的舊驗證碼標記為已使用"""
+    # 作廢所有舊的未使用驗證碼
     UserVerification.query.filter_by(
         target_email=email,
-        type=otp_type,
+        type='2FA',
         is_used=False,
     ).update({"is_used": True})
 
-
-def _verify_otp(email: str, otp: str, otp_type: str):
-    """
-    驗證 OTP，回傳 (record, error_message, status_code)。
-    成功時 error_message 為 None。
-    """
-    record = UserVerification.query.filter_by(
+    new_verify = UserVerification(
+        user_id=user.user_id,
+        type='2FA',
+        code_hash=generate_password_hash(otp),
+        expires_at=taiwan_now() + timedelta(minutes=10),
         target_email=email,
-        type=otp_type,
         is_used=False,
-    ).order_by(UserVerification.created_at.desc()).first()
-
-    if not record:
-        return None, "驗證碼不存在或已使用", 400
-
-    # 先檢查過期，避免繼續計算 hash
-    if record.expires_at < taiwan_now():
-        return None, "驗證碼已過期", 400
-
-    # 暴力破解防護
-    if record.attempts >= MAX_OTP_ATTEMPTS:
-        record.is_used = True
-        db.session.commit()
-        return None, "嘗試次數過多，請重新取得驗證碼", 429
-
-    if not check_password_hash(record.code_hash, otp or ""):
-        record.attempts += 1
-        db.session.commit()
-        remaining = MAX_OTP_ATTEMPTS - record.attempts
-        return None, f"驗證碼錯誤，剩餘 {remaining} 次機會", 400
-
-    return record, None, 200
-
-
-@two_factor_bp.route("/send", methods=["POST"])
-def send_2fa_code():
-    data = request.get_json(silent=True) or {}
-    email = data.get("email")
-    if not email:
-        return jsonify({"error": "請輸入電子郵件"}), 400
-
-    user = User.query.filter_by(email=email).first()
-    if not user:
-        return jsonify({"error": "找不到使用者"}), 404
-
-    # 使用密碼學安全的亂數
-    otp = str(secrets.randbelow(900000) + 100000)
+        attempts=0,
+    )
 
     try:
-        # 作廢所有舊的未使用驗證碼，防止舊碼仍可登入
-        _invalidate_old_codes(email, "2FA")
-
-        verification = UserVerification(
-            user_id=user.user_id,
-            type="2FA",
-            code_hash=generate_password_hash(otp),
-            expires_at=taiwan_now() + timedelta(minutes=10),
-            target_email=email,
-            is_used=False,
-            attempts=0,  # 需確認 model 有此欄位
-        )
-        db.session.add(verification)
+        db.session.add(new_verify)
         db.session.commit()
-
-        send_password_email_via_resend(
-            email,
-            "DataAnalysis 兩步驟驗證碼",
-            f"您好，\n\n您的驗證碼是：{otp}\n\n請在 10 分鐘內完成驗證。",
-        )
+        subject = "【DataAnalysis】您的雙因子驗證碼"
+        message_body = f"您的驗證碼為：{otp}\n請於 10 分鐘內輸入。若非本人操作請忽略。"
+        send_password_email_via_resend(email, subject, message_body)
         return jsonify({"message": "驗證碼已寄出"}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
 
-@two_factor_bp.route("/enable", methods=["POST"])
+# 2. 開啟 2FA 功能 (在 Profile 頁面操作)
+@two_factor_bp.route('/api/auth/2fa/two-factor', methods=['POST'])
 def enable_2fa():
-    """啟用 2FA：需先通過 OTP 驗證"""
-    data = request.get_json(silent=True) or {}
-    email = data.get("email")
-    otp = data.get("otp")
+    data = request.get_json()
+    email = data.get('email')
+    otp = data.get('otp')
 
-    if not email or not otp:
-        return jsonify({"error": "請提供電子郵件與驗證碼"}), 400
+    record = UserVerification.query.filter_by(
+        target_email=email,
+        type='2FA',
+        is_used=False,
+    ).order_by(UserVerification.created_at.desc()).first()
 
-    record, error, status = _verify_otp(email, otp, "2FA")
-    if error:
-        return jsonify({"error": error}), status
+    if not record:
+        return jsonify({"error": "驗證碼不存在或已使用"}), 400
 
-    user = User.query.filter_by(email=email).first()
-    if not user:
-        return jsonify({"error": "找不到使用者"}), 404
+    if record.expires_at < taiwan_now():
+        return jsonify({"error": "驗證碼已過期"}), 400
 
-    try:
-        user.email_2fa_enabled = True
+    if record.attempts >= MAX_OTP_ATTEMPTS:
         record.is_used = True
         db.session.commit()
-        return jsonify({"message": "兩步驟驗證已啟用"}), 200
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "嘗試次數過多，請重新取得驗證碼"}), 429
+
+    if not check_password_hash(record.code_hash, otp):
+        record.attempts += 1
+        db.session.commit()
+        remaining = MAX_OTP_ATTEMPTS - record.attempts
+        return jsonify({"error": f"驗證碼錯誤，剩餘 {remaining} 次機會"}), 400
+
+    user = User.query.filter_by(email=email).first()
+    user.email_2fa_enabled = True
+    record.is_used = True
+    db.session.commit()
+    return jsonify({"message": "雙因子驗證已開啟"}), 200
 
 
-@two_factor_bp.route("/login/two-factor", methods=["POST"])
+# 3. 登入時的 2FA 驗證 (輸入完密碼後的下一步)
+@two_factor_bp.route('/api/auth/2fa/login/two-factor', methods=['POST'])
 def login_verify_2fa():
-    """
-    登入第二步：驗證 OTP。
-    前端必須先完成密碼驗證（第一步），再呼叫此路由。
-    建議第一步回傳短效 pre_auth_token，此路由應驗證該 token。
-    目前以 email + otp 為最低驗證，正式環境請加上 pre_auth_token 驗證。
-    """
-    data = request.get_json(silent=True) or {}
-    email = data.get("email")
-    otp = data.get("otp")
+    data = request.get_json()
+    email = data.get('email')
+    otp = data.get('otp')
 
-    if not email or not otp:
-        return jsonify({"error": "請提供電子郵件與驗證碼"}), 400
+    record = UserVerification.query.filter_by(
+        target_email=email,
+        type='2FA',
+        is_used=False,
+    ).order_by(UserVerification.created_at.desc()).first()
 
-    record, error, status = _verify_otp(email, otp, "2FA")
-    if error:
-        return jsonify({"error": error}), status
+    if not record:
+        return jsonify({"error": "驗證碼不存在或已使用"}), 400
 
-    user = User.query.filter_by(email=email).first()
-    if not user:
-        return jsonify({"error": "找不到使用者"}), 404
+    if record.expires_at < taiwan_now():
+        return jsonify({"error": "驗證碼已過期"}), 400
 
-    try:
+    if record.attempts >= MAX_OTP_ATTEMPTS:
         record.is_used = True
         db.session.commit()
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "嘗試次數過多，請重新取得驗證碼"}), 429
+
+    if not check_password_hash(record.code_hash, otp):
+        record.attempts += 1
+        db.session.commit()
+        remaining = MAX_OTP_ATTEMPTS - record.attempts
+        return jsonify({"error": f"驗證碼錯誤，剩餘 {remaining} 次機會"}), 400
+
+    user = User.query.filter_by(email=email).first()
+
+    token = jwt.encode({
+        'user_id': user.user_id,
+        'exp': taiwan_now() + timedelta(hours=24)
+    }, os.getenv("JWT_SECRET_KEY", "your-secret-key"), algorithm="HS256")
+
+    record.is_used = True
+    db.session.commit()
 
     return jsonify({
-        "token": issue_token(user.user_id),
+        "token": token,
         "user": {
             "user_id": user.user_id,
             "email": user.email,
             "user_name": user.user_name,
             "name": user.user_name,
-        },
+        }
     }), 200
 
 
-@two_factor_bp.route("/disable", methods=["POST"])
-def disable_2fa():
-    
-    # 1. 取得前端傳來的資料
-    data = request.get_json(silent=True) or {}
-    email = data.get("email")
-    password = data.get("password")
+# 4. 關閉 2FA (需輸入密碼確認，最多嘗試 5 次)
+# 使用 IP 記錄失敗次數防止暴力破解
+_disable_attempts = {}
 
-    # 檢查是否有輸入資料
+@two_factor_bp.route('/api/auth/2fa/disable', methods=['POST', 'OPTIONS'])
+def disable_2fa():
+    if request.method == 'OPTIONS':
+        return '', 200
+
+    data = request.get_json(silent=True) or {}
+    email = data.get('email')
+    password = data.get('password')
+
     if not email or not password:
         return jsonify({"error": "請提供電子郵件與密碼以進行驗證"}), 400
 
+    # 暴力破解防護（以 email 為 key）
+    attempts = _disable_attempts.get(email, 0)
+    if attempts >= MAX_OTP_ATTEMPTS:
+        return jsonify({"error": "嘗試次數過多，請稍後再試"}), 429
+
     try:
-        # 2. 查找使用者
         user = User.query.filter_by(email=email).first()
-        
         if not user:
             return jsonify({"error": "找不到該使用者"}), 404
 
-        # 3. 驗證密碼是否正確
         if not check_password_hash(user.password_hash, password):
-            return jsonify({"error": "密碼錯誤，身分驗證失敗"}), 403
+            _disable_attempts[email] = attempts + 1
+            remaining = MAX_OTP_ATTEMPTS - _disable_attempts[email]
+            return jsonify({"error": f"密碼錯誤，剩餘 {remaining} 次機會"}), 403
 
-        # 4. 執行關閉 2FA
+        # 驗證成功，清除計數並關閉 2FA
+        _disable_attempts.pop(email, None)
         user.email_2fa_enabled = False
         db.session.commit()
-
         return jsonify({"message": "雙因子驗證已成功停用"}), 200
 
     except Exception as e:
