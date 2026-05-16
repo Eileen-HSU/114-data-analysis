@@ -22,7 +22,7 @@ CORS(app,
     supports_credentials=False,
     allow_headers=["Content-Type", "Authorization"],
     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    automatic_options=True
+    automatic_options=False
 )
 
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -86,3 +86,14 @@ def handle_exception(e):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
+
+@app.before_request
+def handle_options():
+    if request.method == "OPTIONS":
+        from flask import make_response
+        res = make_response()
+        res.headers["Access-Control-Allow-Origin"] = "*"
+        res.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        res.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        return res
