@@ -267,53 +267,37 @@ export default function ProfilePage() {
       }
   };
 
-// 雙因子驗證開關
-const handleDisable2FA = async () => {
-  if (!window.confirm("確定要關閉雙因子驗證嗎？")) return;
-
-  // 使用提示框要求輸入密碼
-  const password = window.prompt("請輸入密碼以確認您的身分：");
-  
-  if (!password) {
-    alert("操作已取消：必須輸入密碼");
-    return;
-  }
-
-  try {
-    const res = await fetch(apiUrl('/api/2fa/disable'), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        // 注意：這裡不帶 Authorization Header 了
-      },
-      body: JSON.stringify({
-        email: user?.email, // 從目前的登入狀態抓 email
-        password: password   // 使用者剛才輸入的密碼
-      }),
-    });
-
-    const data = await res.json();
-
-    if (res.ok) {
-      localStorage.setItem(twoFactorStorageKey, "false");
-      setTwoFactorEnabled(false);
-      alert("雙因子驗證已成功關閉");
-      
-      recordActivity({
-        text: "關閉雙重驗證",
-        icon: "ri-shield-flash-line",
-        iconBg: "bg-stat-coral",
-        iconColor: "text-stat-coral",
-      });
-    } else {
-      // 顯示後端回傳的具體錯誤 (如: 密碼錯誤)
-      alert(data.error || "驗證失敗");
+  // 雙因子驗證開關 ------------------------------------------------------
+  const handleDisable2FA = async () => {
+    const password = window.prompt("請輸入密碼以確認關閉雙因子驗證：");
+    if (!password) {
+      alert("操作已取消：必須輸入密碼");
+      return;
     }
-  } catch (err) {
-    console.error("2FA Disable Error:", err);
-    alert("網路連線錯誤，請稍後再試");
-  }
-};
+    try {
+      const res = await fetch(apiUrl('/api/2fa/disable'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user?.email, password }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        localStorage.setItem(twoFactorStorageKey, "false");
+        setTwoFactorEnabled(false);
+        recordActivity({
+          text: "關閉雙重驗證",
+          icon: "ri-shield-flash-line",
+          iconBg: "bg-stat-coral",
+          iconColor: "text-stat-coral",
+        });
+      } else {
+        alert(data.error || "驗證失敗");
+      }
+    } catch (err) {
+      console.error("2FA Disable Error:", err);
+      alert("網路連線錯誤，請稍後再試");
+    }
+  };
 
   const handleCancel = () => {
     setEditProfile(profile);
