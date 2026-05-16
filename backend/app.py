@@ -6,7 +6,7 @@ from flask import Flask, jsonify, request, make_response
 from flask_cors import CORS
 
 from extensions import db, mail
-from routes.auth.TwoFactor import two_factor_bp
+from routes.auth.two_factor import two_factor_bp
 from routes.auth.login import login_bp
 from routes.auth.profile import profile_bp
 from routes.auth.pwd import pwd_bp
