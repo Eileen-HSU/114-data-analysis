@@ -44,7 +44,7 @@ def verify_token(req):
 
 
 # 1. 發送 2FA 驗證碼
-@two_factor_bp.route('/api/auth/2fa/send', methods=['POST'])
+@two_factor_bp.route('/send', methods=['POST'])
 def send_2fa_code():
     data = request.get_json(silent=True) or {}
     email = data.get('email')
@@ -97,7 +97,7 @@ def send_2fa_code():
 
 
 # 2. 開啟 2FA 功能 (在 Profile 頁面操作)
-@two_factor_bp.route('/api/auth/2fa/two-factor', methods=['POST'])
+@two_factor_bp.route('/two-factor', methods=['POST'])
 def enable_2fa():
     data = request.get_json(silent=True) or {}
     email = data.get('email')
@@ -138,7 +138,7 @@ def enable_2fa():
 
 # 3. 登入時的 2FA 驗證
 # 使用 pre_auth_token 確保第一步密碼驗證已完成
-@two_factor_bp.route('/api/auth/2fa/login/two-factor', methods=['POST'])
+@two_factor_bp.route('/login/two-factor', methods=['POST'])
 def login_verify_2fa():
     data = request.get_json(silent=True) or {}
     email = data.get('email')
@@ -206,7 +206,7 @@ def login_verify_2fa():
 
 
 # 4. 關閉 2FA（需 JWT 登入狀態 + 密碼確認）
-@two_factor_bp.route('/api/auth/2fa/disable', methods=['POST', 'OPTIONS'])
+@two_factor_bp.route('/disable', methods=['POST', 'OPTIONS'])
 def disable_2fa():
     if request.method == 'OPTIONS':
         return '', 200
