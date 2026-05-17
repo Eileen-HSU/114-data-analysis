@@ -27,8 +27,11 @@ export default function CollectionPage() {
     setFiles,
     deleteFolder,
     deleteFile,
+    restoreItem,
+    permanentDelete,
   } = useCollection();
 
+  const [activeView, setActiveView] = useState("folders");
   const [openFolders, setOpenFolders] = useState(new Set(["f1"]));
   const [draggingId, setDraggingId] = useState(null);
   const [dragOverTarget, setDragOverTarget] = useState(null);
@@ -57,10 +60,9 @@ export default function CollectionPage() {
 
   const looseFiles = files.filter((file) => file.folderId === null);
   const stats = {
-    csv: files.filter((file) => file.type === "csv").length,
-    xlsx: files.filter((file) => file.type === "xlsx").length,
-    json: files.filter((file) => file.type === "json").length,
     folders: folders.length,
+    exports: 0,
+    deleted: deletedItems.length,
   };
 
   const toggleFolder = (id) => {
@@ -138,11 +140,6 @@ export default function CollectionPage() {
                 <p className="collection-banner-stats">{files.length} 個檔案 · {folders.length} 個資料夾</p>
               </div>
               <div className="d-flex gap-2 align-items-center">
-                <button className="btn-trash" onClick={() => navigate("/trash")} title="垃圾桶">
-                  <i className="ri-delete-bin-line"></i>
-                  垃圾桶
-                  {deletedItems.length > 0 && <span className="trash-badge">{deletedItems.length}</span>}
-                </button>
                 <button className="btn btn-banner" onClick={() => navigate("/workspace")}>
                   <i className="ri-add-line me-1"></i>新增分析
                 </button>
@@ -150,17 +147,21 @@ export default function CollectionPage() {
             </div>
             <div className="row g-3 mt-4">
               {[
-                { icon: "ri-file-chart-line", cls: "stat-csv", val: stats.csv, label: "CSV 檔案" },
-                { icon: "ri-file-excel-line", cls: "stat-xlsx", val: stats.xlsx, label: "Excel 檔案" },
-                { icon: "ri-file-code-line", cls: "stat-json", val: stats.json, label: "JSON 檔案" },
-                { icon: "ri-folder-line", cls: "stat-folder", val: stats.folders, label: "資料夾" },
+                { key: "folders", icon: "ri-folder-line", cls: "stat-folder", val: stats.folders, label: "資料夾", unit: "個資料夾" },
+                { key: "exports", icon: "ri-download-cloud-2-line", cls: "stat-export", val: stats.exports, label: "輸出檔案", unit: "個檔案" },
+                { key: "deleted", icon: "ri-delete-bin-line", cls: "stat-deleted", val: stats.deleted, label: "最近刪除", unit: "個項目" },
               ].map((item) => (
-                <div className="col-6 col-md-3" key={item.label}>
-                  <div className="stat-card">
+                <div className="col-12 col-md-4" key={item.label}>
+                  <button
+                    type="button"
+                    className={`stat-card stat-card-button ${activeView === item.key ? "active" : ""}`}
+                    onClick={() => setActiveView(item.key)}
+                  >
                     <div className={`stat-icon ${item.cls}`}><i className={item.icon}></i></div>
                     <div className="stat-value">{item.val}</div>
                     <div className="stat-label">{item.label}</div>
-                  </div>
+                    <div className="stat-hint">{item.val} {item.unit}</div>
+                  </button>
                 </div>
               ))}
             </div>
@@ -168,6 +169,8 @@ export default function CollectionPage() {
         </section>
 
         <div className="container py-5">
+          {activeView === "folders" && (
+          <>
           <section className="mb-5">
             <h2 className="section-heading">
               <span className="section-icon folder-icon"><i className="ri-folder-2-line"></i></span>
@@ -300,6 +303,64 @@ export default function CollectionPage() {
               )}
             </div>
           </section>
+          </>
+          )}
+
+          {activeView === "exports" && (
+            <section>
+              <h2 className="section-heading">
+                <span className="section-icon export-icon"><i className="ri-download-cloud-2-line"></i></span>
+                輸出檔案
+                <span className="loose-count">{stats.exports} 個</span>
+              </h2>
+              <div className="empty-loose">
+                <i className="ri-download-cloud-2-line"></i>
+                <p>目前沒有輸出檔案。</p>
+              </div>
+            </section>
+          )}
+
+          {activeView === "deleted" && (
+            <section>
+              <h2 className="section-heading">
+                <span className="section-icon deleted-icon"><i className="ri-delete-bin-line"></i></span>
+                最近刪除
+                <span className="loose-count">{deletedItems.length} 個</span>
+              </h2>
+              {deletedItems.length === 0 ? (
+                <div className="empty-loose">
+                  <i className="ri-delete-bin-line"></i>
+                  <p>目前沒有最近刪除的項目。</p>
+                </div>
+              ) : (
+                <div className="deleted-list">
+                  {deletedItems.map((item) => (
+                    <div className="deleted-item" key={item.id}>
+                      <div className="deleted-icon-box">
+                        <i className={item.type === "folder" ? "ri-folder-line" : "ri-file-list-3-line"}></i>
+                      </div>
+                      <div className="deleted-info">
+                        <div className="deleted-name">{item.name}</div>
+                        <div className="deleted-meta">
+                          {item.type === "folder" ? "資料夾" : "檔案"} · 刪除時間 {item.deletedAt || "-"}
+                        </div>
+                      </div>
+                      <div className="deleted-actions">
+                        <button className="btn-deleted-restore" onClick={() => restoreItem(item)}>
+                          <i className="ri-arrow-go-back-line"></i>
+                          還原
+                        </button>
+                        <button className="btn-deleted-remove" onClick={() => permanentDelete(item.id)}>
+                          <i className="ri-delete-bin-2-line"></i>
+                          永久刪除
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
         </div>
       </main>
 
