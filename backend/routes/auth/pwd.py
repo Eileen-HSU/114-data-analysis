@@ -12,6 +12,8 @@ from extensions import db
 from models import User, UserVerification
 
 pwd_bp = Blueprint("pwd", __name__)
+DEFAULT_RESEND_SENDER = "DataAnalysis <onboarding@resend.dev>"
+
 
 
 def taiwan_now():
