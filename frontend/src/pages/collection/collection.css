@@ -74,6 +74,22 @@
   border-radius: 16px;
   padding: 16px;
   border: 1px solid rgba(201,160,160,0.25);
+  width: 100%;
+  text-align: left;
+}
+
+.stat-card-button {
+  min-height: 152px;
+  cursor: pointer;
+  transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s, background 0.2s;
+}
+
+.stat-card-button:hover,
+.stat-card-button.active {
+  background: rgba(255,255,255,0.92);
+  border-color: rgba(63,111,116,0.45);
+  box-shadow: 0 14px 30px rgba(63,111,116,0.14);
+  transform: translateY(-2px);
 }
 
 .stat-icon {
@@ -91,9 +107,12 @@
 .stat-xlsx { background: #e6ecf4; color: #7a96b8; }
 .stat-json { background: #eee8f0; color: #9e82b0; }
 .stat-folder { background: #f0ebe8; color: #b89080; }
+.stat-export { background: #e6ecf4; color: #7a96b8; }
+.stat-deleted { background: #f5e8e6; color: #c97b72; }
 
 .stat-value { font-size: 28px; font-weight: 900; color: #1e1030; }
 .stat-label { color: #6b5b8a; font-size: 13px; margin-top: 2px; }
+.stat-hint { color: #9a8796; font-size: 12px; margin-top: 8px; }
 
 .section-heading {
   display: flex;
@@ -117,6 +136,8 @@
 
 .folder-icon { background: #f5e8e6; color: #c97b72; }
 .loose-icon { background: #e6ecf4; color: #7a96b8; }
+.export-icon { background: #e6ecf4; color: #7a96b8; }
+.deleted-icon { background: #f5e8e6; color: #c97b72; }
 
 .btn-add-folder {
   padding: 8px 16px;
@@ -386,6 +407,88 @@
 
 .empty-loose i { font-size: 32px; margin-bottom: 8px; }
 .empty-loose p { font-size: 15px; margin: 0; }
+
+.deleted-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.deleted-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  background: white;
+  border: 1px solid var(--slate-100);
+  border-radius: 12px;
+}
+
+.deleted-icon-box {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5e8e6;
+  border-radius: 12px;
+  color: #c97b72;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.deleted-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.deleted-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--slate-700);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deleted-meta {
+  color: var(--slate-400);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.deleted-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btn-deleted-restore,
+.btn-deleted-remove {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 700;
+  border: 1px solid;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-deleted-restore {
+  background: #f5f0f0;
+  color: #9a6f6f;
+  border-color: #e8d8d8;
+}
+
+.btn-deleted-remove {
+  background: #fff6f4;
+  color: #c97b72;
+  border-color: #f0d5cf;
+}
 
 /* Empty States */
 .empty-folders {
