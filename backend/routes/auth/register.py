@@ -71,8 +71,9 @@ def register():
             phone_number=data.get('phone_number', ''),
             gender=data.get('gender', ''),
             language=data.get('language', 'zh-TW'),
-            company_name=data.get('company_name', ''),
+            company_name=data.get('company', data.get('company_name', '')),
         )
+        
         db.session.add(new_profile)
         db.session.commit()
 
