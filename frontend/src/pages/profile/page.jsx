@@ -325,9 +325,9 @@ export default function ProfilePage() {
   };
 
   const dashboardCards = [
-    { icon: "ri-bar-chart-line", iconColor: "text-stat-coral", iconBg: "bg-stat-coral", barBg: "bar-coral", num: surveyRecords.length, label: "問卷數", action: scrollToSurveys, activeKey: "surveys" },
     { icon: "ri-profile-line", iconColor: "text-stat-mauve", iconBg: "bg-stat-mauve", barBg: "bar-mauve", label: "基本資料", action: () => setActiveTab("info"), activeKey: "info", ariaLabel: "查看基本資料" },
     { icon: "ri-shield-keyhole-line", iconColor: "text-stat-sky", iconBg: "bg-stat-sky", barBg: "bar-sky", label: "安全設定", action: () => setActiveTab("security"), activeKey: "security", ariaLabel: "查看安全設定" },
+    { icon: "ri-bar-chart-line", iconColor: "text-stat-coral", iconBg: "bg-stat-coral", barBg: "bar-coral", num: surveyRecords.length, label: "問卷數", action: scrollToSurveys, activeKey: "surveys" },
     { icon: "ri-calendar-line", iconColor: "text-stat-teal", iconBg: "bg-stat-teal", barBg: "bar-teal", num: getUsageDays(profile.createdAt), label: "使用天數" },
   ];
 
@@ -366,10 +366,6 @@ export default function ProfilePage() {
                   <h1 className="profile-name">{profile.name}</h1>
                   <p className="profile-email">{user?.email || ""}</p> {/* ── 從 AuthContext 取得 email */}
                 </div>
-                <button className="btn btn-violet ms-auto align-self-end" onClick={handleEditToggle}>
-                  <i className={`${isEditing ? "ri-close-line" : "ri-edit-line"} me-1`}></i>
-                  {isEditing ? "取消編輯" : "編輯資料"}
-                </button>
               </div>
 
               <div className="row g-3 mb-4">
@@ -409,7 +405,13 @@ export default function ProfilePage() {
 
           {activeTab === "info" && (
             <section className="profile-card-inner p-4 p-md-5" ref={editSectionRef}>
-              <h2 className="tab-title">基本資料</h2>
+              <div className="profile-section-header">
+                <h2 className="tab-title mb-0">基本資料</h2>
+                <button className="btn btn-violet" onClick={handleEditToggle}>
+                  <i className={`${isEditing ? "ri-close-line" : "ri-edit-line"} me-1`}></i>
+                  {isEditing ? "取消編輯" : "編輯資料"}
+                </button>
+              </div>
               <div className="row g-4">
                 {infoFields.map((field) => (
                   <div className="col-md-6" key={field.key}>
