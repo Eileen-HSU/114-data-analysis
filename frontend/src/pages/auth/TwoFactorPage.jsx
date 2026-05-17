@@ -152,13 +152,6 @@ export default function TwoFactorPage() {
           </button>
 
           <div className="auth-form-wrapper two-factor-form-wrapper">
-            <div className="d-lg-none text-center mb-4">
-              <div className="mobile-logo">
-                <i className="ri-bar-chart-box-line"></i>
-              </div>
-              <span className="mobile-logo-text">DataAnalysis</span>
-            </div>
-
             {step === "send" && (
               <>
                 <h1 className="auth-title">啟用兩步驟驗證</h1>
