@@ -269,6 +269,7 @@
   opacity: 0;
   transition: opacity 0.2s;
   margin-left: -4px;
+  cursor: grab;
 }
 
 .file-item:hover .drag-handle { opacity: 1; }
