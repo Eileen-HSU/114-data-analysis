@@ -182,8 +182,14 @@
 }
 
 .two-factor-form-wrapper > .forgot-icon-wrap,
-.two-factor-form-wrapper > .forgot-success-icon {
+.two-factor-form-wrapper > .forgot-success-icon,
+.two-factor-form-wrapper .forgot-icon-wrap,
+.two-factor-form-wrapper .forgot-success-icon {
   display: none !important;
+}
+
+.two-factor-form-wrapper .auth-title {
+  margin-top: 0 !important;
 }
 
 .auth-subtitle {
