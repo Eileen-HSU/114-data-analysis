@@ -223,6 +223,27 @@
 
 .forgot-link:hover { color: var(--rose-500); }
 
+.auth-error-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  background: #fff1f2;
+  color: #be5b55;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.auth-error-message i {
+  margin-top: 1px;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
 .btn-auth-submit {
   padding: 16px;
   background: linear-gradient(90deg, var(--rose-400), var(--pink-500));

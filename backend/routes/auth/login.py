@@ -87,11 +87,25 @@ def login():
             )
             db.session.add(verification)
             db.session.commit()
-            send_password_email_via_resend(
-                user.email,
-                "DataAnalysis 登入驗證碼",
-                f"您好，\n\n您的登入驗證碼是：{otp}\n\n請在 10 分鐘內完成驗證。",
-            )
+            try:
+                send_password_email_via_resend(
+                    user.email,
+                    "DataAnalysis 登入驗證碼",
+                    f"您好，\n\n您的登入驗證碼是：{otp}\n\n請在 10 分鐘內完成驗證。",
+                )
+            except Exception as email_error:
+                import logging
+                logging.error(f"2FA email send failed during login: {email_error}", exc_info=True)
+                verification.is_used = True
+                user.email_2fa_enabled = False
+                db.session.commit()
+                token = build_token(user.user_id)
+                return jsonify({
+                    "token": token,
+                    **user_info,
+                    "warning": "雙因子驗證信寄送失敗，已暫時關閉雙因子驗證。請登入後重新設定。",
+                }), 200
+
             pre_auth_token = jwt.encode({
                 'email': user.email,
                 'type': 'pre_auth',
