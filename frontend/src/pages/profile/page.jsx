@@ -85,6 +85,7 @@ export default function ProfilePage() {
   const [twoFactorModal, setTwoFactorModal] = useState(null);
   const [showDisableTwoFactorModal, setShowDisableTwoFactorModal] = useState(false);
   const [twoFactorPassword, setTwoFactorPassword] = useState("");
+  const [showTwoFactorPassword, setShowTwoFactorPassword] = useState(false);
   const [twoFactorPasswordError, setTwoFactorPasswordError] = useState("");
   const [isDisablingTwoFactor, setIsDisablingTwoFactor] = useState(false);
   const [selectedSurvey, setSelectedSurvey] = useState(null);
@@ -278,11 +279,13 @@ export default function ProfilePage() {
     if (isDisablingTwoFactor) return;
     setShowDisableTwoFactorModal(false);
     setTwoFactorPassword("");
+    setShowTwoFactorPassword(false);
     setTwoFactorPasswordError("");
   };
 
   const handleDisable2FA = () => {
     setTwoFactorPassword("");
+    setShowTwoFactorPassword(false);
     setTwoFactorPasswordError("");
     setShowDisableTwoFactorModal(true);
   };
@@ -309,6 +312,7 @@ export default function ProfilePage() {
         setTwoFactorEnabled(false);
         setShowDisableTwoFactorModal(false);
         setTwoFactorPassword("");
+        setShowTwoFactorPassword(false);
         recordActivity({
           text: "關閉雙重驗證",
           icon: "ri-shield-flash-line",
@@ -697,18 +701,28 @@ export default function ProfilePage() {
             <h3>關閉雙因子驗證</h3>
             <p>請輸入目前的登入密碼，確認是你本人操作。</p>
             <label className="profile-confirm-label" htmlFor="disable-2fa-password">密碼</label>
-            <input
-              id="disable-2fa-password"
-              className={`profile-confirm-input ${twoFactorPasswordError ? "has-error" : ""}`}
-              type="password"
-              value={twoFactorPassword}
-              onChange={(e) => {
-                setTwoFactorPassword(e.target.value);
-                setTwoFactorPasswordError("");
-              }}
-              placeholder="請輸入密碼"
-              autoFocus
-            />
+            <div className="profile-confirm-input-wrap">
+              <input
+                id="disable-2fa-password"
+                className={`profile-confirm-input ${twoFactorPasswordError ? "has-error" : ""}`}
+                type={showTwoFactorPassword ? "text" : "password"}
+                value={twoFactorPassword}
+                onChange={(e) => {
+                  setTwoFactorPassword(e.target.value);
+                  setTwoFactorPasswordError("");
+                }}
+                placeholder="請輸入密碼"
+                autoFocus
+              />
+              <button
+                className="profile-confirm-eye"
+                type="button"
+                onClick={() => setShowTwoFactorPassword((prev) => !prev)}
+                aria-label={showTwoFactorPassword ? "隱藏密碼" : "顯示密碼"}
+              >
+                <i className={showTwoFactorPassword ? "ri-eye-off-line" : "ri-eye-line"}></i>
+              </button>
+            </div>
             {twoFactorPasswordError && <div className="profile-confirm-error">{twoFactorPasswordError}</div>}
             <div className="profile-confirm-actions">
               <button className="profile-confirm-secondary" type="button" onClick={closeDisableTwoFactorModal} disabled={isDisablingTwoFactor}>
