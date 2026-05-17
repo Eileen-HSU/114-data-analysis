@@ -708,6 +708,87 @@
   color: var(--slate-700);
 }
 
+.profile-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(5px);
+}
+
+.profile-alert-modal {
+  width: min(420px, 100%);
+  padding: 28px;
+  border-radius: 22px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  background: linear-gradient(180deg, #ffffff 0%, #fff8f8 100%);
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.22);
+  text-align: center;
+}
+
+.profile-alert-icon {
+  width: 58px;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+  border-radius: 18px;
+  font-size: 30px;
+}
+
+.profile-alert-modal.success .profile-alert-icon {
+  background: #edfaf7;
+  color: #3f9f91;
+}
+
+.profile-alert-modal.warning .profile-alert-icon {
+  background: #fff7ed;
+  color: #c47b2a;
+}
+
+.profile-alert-modal.error .profile-alert-icon {
+  background: #fff1f2;
+  color: #d97b72;
+}
+
+.profile-alert-content h3 {
+  margin: 0 0 8px;
+  color: var(--slate-800);
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.profile-alert-content p {
+  margin: 0;
+  color: var(--slate-500);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.profile-alert-primary {
+  width: 100%;
+  margin-top: 24px;
+  padding: 13px 18px;
+  border: none;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #2f7378 0%, #3f7f84 100%);
+  color: white;
+  font-size: 15px;
+  font-weight: 800;
+  box-shadow: 0 14px 30px rgba(47, 115, 120, 0.24);
+  cursor: pointer;
+}
+
+.profile-alert-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 18px 34px rgba(47, 115, 120, 0.28);
+}
+
 /* Device list */
 .device-list {
   border: 1px solid var(--slate-100);

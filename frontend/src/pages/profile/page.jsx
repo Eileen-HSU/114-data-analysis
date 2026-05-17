@@ -82,6 +82,7 @@ export default function ProfilePage() {
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [showTwoFactorNotice, setShowTwoFactorNotice] = useState(false);
   const [showPasswordNotice, setShowPasswordNotice] = useState(false);
+  const [twoFactorModal, setTwoFactorModal] = useState(null);
   const [selectedSurvey, setSelectedSurvey] = useState(null);
   const [surveySearch, setSurveySearch] = useState("");
   const [surveySortOrder, setSurveySortOrder] = useState("desc");
@@ -272,7 +273,11 @@ export default function ProfilePage() {
   const handleDisable2FA = async () => {
     const password = window.prompt("請輸入密碼以確認關閉雙因子驗證：");
     if (!password) {
-      alert("操作已取消：必須輸入密碼");
+      setTwoFactorModal({
+        type: "warning",
+        title: "尚未關閉雙因子驗證",
+        message: "需要輸入密碼確認身分，才能關閉雙因子驗證。",
+      });
       return;
     }
     try {
@@ -291,12 +296,25 @@ export default function ProfilePage() {
           iconBg: "bg-stat-coral",
           iconColor: "text-stat-coral",
         });
+        setTwoFactorModal({
+          type: "success",
+          title: "已關閉雙因子驗證",
+          message: "之後登入時不會再要求輸入雙因子驗證碼。",
+        });
       } else {
-        alert(data.error || "驗證失敗");
+        setTwoFactorModal({
+          type: "error",
+          title: "無法關閉雙因子驗證",
+          message: data.error || "驗證失敗，請確認密碼後再試一次。",
+        });
       }
     } catch (err) {
       console.error("2FA Disable Error:", err);
-      alert("網路連線錯誤，請稍後再試");
+      setTwoFactorModal({
+        type: "error",
+        title: "伺服器發生錯誤",
+        message: "請稍後再試，或確認網路連線是否正常。",
+      });
     }
   };
 
@@ -654,6 +672,23 @@ export default function ProfilePage() {
           <button onClick={() => setShowPasswordNotice(false)} aria-label="關閉通知">
             <i className="ri-close-line"></i>
           </button>
+        </div>
+      )}
+
+      {twoFactorModal && (
+        <div className="profile-modal-backdrop" onClick={() => setTwoFactorModal(null)}>
+          <div className={`profile-alert-modal ${twoFactorModal.type}`} role="alertdialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <div className="profile-alert-icon">
+              <i className={twoFactorModal.type === "success" ? "ri-checkbox-circle-line" : twoFactorModal.type === "warning" ? "ri-error-warning-line" : "ri-close-circle-line"}></i>
+            </div>
+            <div className="profile-alert-content">
+              <h3>{twoFactorModal.title}</h3>
+              <p>{twoFactorModal.message}</p>
+            </div>
+            <button className="profile-alert-primary" type="button" onClick={() => setTwoFactorModal(null)}>
+              知道了
+            </button>
+          </div>
         </div>
       )}
     </>
