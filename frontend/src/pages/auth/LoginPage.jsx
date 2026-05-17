@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/AuthContext";
 import { apiUrl } from "../../lib/api";
@@ -10,6 +10,16 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
+  useEffect(() => {
+    const clearFields = () => {
+      setEmail("");
+      setPassword("");
+    };
+    clearFields();
+    const timer = window.setTimeout(clearFields, 200);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const isTwoFactorRequired = (data) =>
     Boolean(
@@ -117,13 +127,15 @@ export default function LoginPage() {
               </a>
             </p>
 
-            <form onSubmit={handleSubmit} className="auth-form">
+            <form onSubmit={handleSubmit} className="auth-form" autoComplete="off">
               <div className="mb-3">
                 <label className="auth-label">電子郵件</label>
                 <div className="position-relative">
                   <i className="ri-mail-line form-icon"></i>
                   <input
                     type="email"
+                    name="login_email"
+                    autoComplete="off"
                     required
                     className="form-control form-control-custom"
                     placeholder="your@email.com"
@@ -139,6 +151,8 @@ export default function LoginPage() {
                   <i className="ri-lock-line form-icon"></i>
                   <input
                     type={showPassword ? "text" : "password"}
+                    name="login_password"
+                    autoComplete="new-password"
                     required
                     className="form-control form-control-custom pe-5"
                     placeholder="請輸入密碼"

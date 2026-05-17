@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiUrl } from "../../lib/api";
 import "./auth.css";
@@ -12,6 +12,16 @@ export default function TwoFactorPage() {
   const [step, setStep] = useState("send");
   const [sentEmail, setSentEmail] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
+
+  useEffect(() => {
+    const clearFields = () => {
+      if (emailRef.current) emailRef.current.value = "";
+      if (otpRef.current) otpRef.current.value = "";
+    };
+    clearFields();
+    const timer = window.setTimeout(clearFields, 200);
+    return () => window.clearTimeout(timer);
+  }, [step]);
 
   const showError = (msg) => {
     if (errorRef.current) {
@@ -159,7 +169,7 @@ export default function TwoFactorPage() {
                   輸入您的電子郵件，我們會寄送驗證碼確認身分。
                 </p>
 
-                <form onSubmit={sendCode} noValidate>
+                <form onSubmit={sendCode} noValidate autoComplete="off">
                   <div className="mb-4">
                     <label className="auth-label">電子郵件</label>
                     <div className="position-relative">
@@ -167,6 +177,8 @@ export default function TwoFactorPage() {
                       <input
                         ref={emailRef}
                         type="email"
+                        name="two_factor_email"
+                        autoComplete="off"
                         className="form-control form-control-custom"
                         placeholder="your@email.com"
                         onInput={clearError}
@@ -249,6 +261,8 @@ export default function TwoFactorPage() {
                       ref={otpRef}
                       type="text"
                       inputMode="numeric"
+                      name="two_factor_code"
+                      autoComplete="off"
                       maxLength={6}
                       className="form-control form-control-custom"
                       placeholder="請輸入 6 位數驗證碼"

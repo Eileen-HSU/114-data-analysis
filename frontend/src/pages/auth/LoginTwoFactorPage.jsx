@@ -26,6 +26,10 @@ export default function LoginTwoFactorPage() {
 
   useEffect(() => {
     if (!pendingUser) navigate("/login", { replace: true });
+    const clearFields = () => setCode("");
+    clearFields();
+    const timer = window.setTimeout(clearFields, 200);
+    return () => window.clearTimeout(timer);
   }, [navigate, pendingUser]);
 
   const handleSubmit = async (e) => {
@@ -120,7 +124,7 @@ export default function LoginTwoFactorPage() {
               請輸入寄送至 {pendingUser.email} 的 6 位數驗證碼
             </p>
 
-            <form onSubmit={handleSubmit} noValidate>
+            <form onSubmit={handleSubmit} noValidate autoComplete="off">
               <div className="mb-3">
                 <label className="auth-label">驗證碼</label>
                 <div className="position-relative">
@@ -128,6 +132,8 @@ export default function LoginTwoFactorPage() {
                   <input
                     type="text"
                     inputMode="numeric"
+                    name="login_two_factor_code"
+                    autoComplete="off"
                     maxLength={6}
                     className="form-control form-control-custom"
                     placeholder="請輸入 6 位數驗證碼"
