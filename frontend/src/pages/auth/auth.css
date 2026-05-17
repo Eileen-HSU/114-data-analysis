@@ -181,6 +181,11 @@
   margin-bottom: 8px;
 }
 
+.two-factor-form-wrapper > .forgot-icon-wrap,
+.two-factor-form-wrapper > .forgot-success-icon {
+  display: none !important;
+}
+
 .auth-subtitle {
   color: var(--slate-500);
   font-size: 15px;

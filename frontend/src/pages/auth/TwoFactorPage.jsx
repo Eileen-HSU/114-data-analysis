@@ -151,7 +151,7 @@ export default function TwoFactorPage() {
             <span>返回個人資料</span>
           </button>
 
-          <div className="auth-form-wrapper">
+          <div className="auth-form-wrapper two-factor-form-wrapper">
             <div className="d-lg-none text-center mb-4">
               <div className="mobile-logo">
                 <i className="ri-bar-chart-box-line"></i>
@@ -161,9 +161,6 @@ export default function TwoFactorPage() {
 
             {step === "send" && (
               <>
-                <div className="forgot-icon-wrap" style={{ background: "linear-gradient(135deg, #edf2f7, #e8f4f8)", color: "#8fa3b8" }}>
-                  <i className="ri-shield-check-line"></i>
-                </div>
                 <h1 className="auth-title">啟用兩步驟驗證</h1>
                 <p className="auth-subtitle" style={{ marginBottom: 28 }}>
                   輸入您的電子郵件，我們會寄送驗證碼確認身分。
@@ -242,9 +239,6 @@ export default function TwoFactorPage() {
 
             {step === "otp" && (
               <div>
-                <div className="forgot-success-icon" style={{ background: "#edf2f7", color: "#8fa3b8" }}>
-                  <i className="ri-shield-check-line"></i>
-                </div>
                 <h1 className="auth-title" style={{ textAlign: "center" }}>輸入驗證碼</h1>
                 <p style={{ color: "var(--slate-500)", fontSize: 15, lineHeight: 1.7, marginBottom: 8, textAlign: "center" }}>
                   我們已將驗證碼寄送至

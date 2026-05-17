@@ -115,10 +115,7 @@ export default function LoginTwoFactorPage() {
             <span>返回登入</span>
           </button>
 
-          <div className="auth-form-wrapper">
-            <div className="forgot-icon-wrap" style={{ background: "#edf2f7", color: "#8fa3b8" }}>
-              <i className="ri-shield-keyhole-line"></i>
-            </div>
+          <div className="auth-form-wrapper two-factor-form-wrapper">
             <h1 className="auth-title">輸入驗證碼</h1>
             <p className="auth-subtitle" style={{ marginBottom: 28 }}>
               請輸入寄送至 {pendingUser.email} 的 6 位數驗證碼
