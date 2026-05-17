@@ -324,8 +324,10 @@ export default function ProfilePage() {
     }, 0);
   };
 
-  const stats = [
-    { icon: "ri-bar-chart-line", iconColor: "text-stat-coral", iconBg: "bg-stat-coral", barBg: "bar-coral", num: surveyRecords.length, label: "問卷數", action: scrollToSurveys },
+  const dashboardCards = [
+    { icon: "ri-bar-chart-line", iconColor: "text-stat-coral", iconBg: "bg-stat-coral", barBg: "bar-coral", num: surveyRecords.length, label: "問卷數", action: scrollToSurveys, activeKey: "surveys" },
+    { icon: "ri-profile-line", iconColor: "text-stat-mauve", iconBg: "bg-stat-mauve", barBg: "bar-mauve", label: "基本資料", action: () => setActiveTab("info"), activeKey: "info", ariaLabel: "查看基本資料" },
+    { icon: "ri-shield-keyhole-line", iconColor: "text-stat-sky", iconBg: "bg-stat-sky", barBg: "bar-sky", label: "安全設定", action: () => setActiveTab("security"), activeKey: "security", ariaLabel: "查看安全設定" },
     { icon: "ri-calendar-line", iconColor: "text-stat-teal", iconBg: "bg-stat-teal", barBg: "bar-teal", num: getUsageDays(profile.createdAt), label: "使用天數" },
   ];
 
@@ -371,21 +373,21 @@ export default function ProfilePage() {
               </div>
 
               <div className="row g-3 mb-4">
-                {stats.map((stat) => {
-                  const StatTag = stat.action ? "button" : "div";
+                {dashboardCards.map((card) => {
+                  const CardTag = card.action ? "button" : "div";
                   return (
-                    <div className="col-6 col-md-3" key={stat.label}>
-                      <StatTag
-                        type={stat.action ? "button" : undefined}
-                        className={`profile-stat ${stat.action ? "profile-stat-clickable" : ""}`}
-                        onClick={stat.action}
-                        aria-label={stat.action ? "查看我的問卷" : undefined}
+                    <div className="col-6 col-md-3" key={card.label}>
+                      <CardTag
+                        type={card.action ? "button" : undefined}
+                        className={`profile-stat ${card.action ? "profile-stat-clickable" : ""} ${card.activeKey === activeTab ? "profile-stat-active" : ""}`}
+                        onClick={card.action}
+                        aria-label={card.ariaLabel || (card.action ? "查看我的問卷" : undefined)}
                       >
-                        <div className={`stat-top-bar ${stat.barBg}`}></div>
-                        <div className={`stat-icon-box ${stat.iconBg}`}><i className={`${stat.icon} ${stat.iconColor}`}></i></div>
-                        <div className="stat-number">{stat.num}</div>
-                        <div className="stat-label">{stat.label}</div>
-                      </StatTag>
+                        <div className={`stat-top-bar ${card.barBg}`}></div>
+                        <div className={`stat-icon-box ${card.iconBg}`}><i className={`${card.icon} ${card.iconColor}`}></i></div>
+                        {typeof card.num === "number" && <div className="stat-number">{card.num}</div>}
+                        <div className="stat-label">{card.label}</div>
+                      </CardTag>
                     </div>
                   );
                 })}
@@ -396,8 +398,6 @@ export default function ProfilePage() {
 
           <div className="profile-tabs mb-4">
             {[
-              ["info", "基本資料"],
-              ["security", "安全設定"],
               ["activity", "近期活動"],
               ["surveys", "我的問卷"],
             ].map(([key, label]) => (
