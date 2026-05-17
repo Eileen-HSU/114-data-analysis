@@ -33,7 +33,7 @@ class UserProfile(db.Model):
     language = db.Column(db.String(36))
     bio = db.Column(db.String(500))
     location = db.Column(db.String(100))
-    avatar_url = db.Column(db.String(255))
+    # avatar_url = db.Column(db.String(255))
     updated_at = db.Column(db.DateTime(timezone=True), default=taiwan_now, onupdate=taiwan_now)
 
 # T03: User_Verification - 驗證碼機制
@@ -47,9 +47,9 @@ class UserVerification(db.Model):
     expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
     created_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
     target_email = db.Column(db.String(255))
-
+    project_id = db.Column(db.Integer)
     # 分享對話功能使用：綁定驗證碼對應的 Workspace，其餘驗證類型為 None
-    project_id = db.Column(db.Integer, db.ForeignKey('Workspace.project_id'), nullable=True)
+    # project_id = db.Column(db.Integer, db.ForeignKey('Workspace.project_id'), nullable=True)
     attempts = db.Column(db.Integer, default=0, nullable=False)
 
 # T04: Workspace - 專案紀錄
@@ -57,18 +57,19 @@ class Workspace(db.Model):
     __tablename__ = 'Workspace'
     project_id  = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_id     = db.Column(db.Integer, db.ForeignKey('User.user_id'), nullable=False)
-    folder_name  = db.Column(db.String(100), nullable=False) # 分類標籤（使用者自定義，用來歸類專案）
-    chat_name = db.Column(db.String(100), nullable=False) # 專案名稱
+    # folder_name  = db.Column(db.String(100), nullable=False) # 分類標籤（使用者自定義，用來歸類專案）
+    # chat_name = db.Column(db.String(100), nullable=False) # 專案名稱
+    project_name = db.Column(db.String(100), nullable=False) 
     search_tag   = db.Column(db.String(50))
     status      = db.Column(db.String(20), default='Pending')
     created_at  = db.Column(db.DateTime(timezone=True), default=taiwan_now)
     is_deleted  = db.Column(db.Boolean, default=False)
     deleted_at  = db.Column(db.DateTime(timezone=True))
 
-    analyses       = db.relationship('AI_Analysis',     backref='workspace', cascade="all, delete-orphan")
-    chats          = db.relationship('Chat_History',    backref='workspace', cascade="all, delete-orphan")
-    templates      = db.relationship('Survey_Template', backref='workspace', cascade="all, delete-orphan")
-    uploaded_files = db.relationship('UploadedFile',    backref='workspace', cascade="all, delete-orphan")
+    # analyses       = db.relationship('AI_Analysis',     backref='workspace', cascade="all, delete-orphan")
+    # chats          = db.relationship('Chat_History',    backref='workspace', cascade="all, delete-orphan")
+    # templates      = db.relationship('Survey_Template', backref='workspace', cascade="all, delete-orphan")
+    # uploaded_files = db.relationship('UploadedFile',    backref='workspace', cascade="all, delete-orphan")
 '''
 # T05: AI_Analysis - AI分析結果
 class AI_Analysis(db.Model):
@@ -110,15 +111,15 @@ class UploadedFile(db.Model):
 class Survey_Template(db.Model):
     __tablename__ = 'Survey_Template'
     template_id   = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    title         = db.Column(db.String(100), nullable=False)
+    # title         = db.Column(db.String(100), nullable=False)
     project_id    = db.Column(db.Integer, db.ForeignKey('Workspace.project_id'), nullable=True)
     share_uuid    = db.Column(db.String(36), default=lambda: str(uuid.uuid4()), unique=True)
     access_code   = db.Column(db.String(10), unique=True)
     question_json = db.Column(db.JSON, nullable=False)
-    is_active     = db.Column(db.Boolean, default=True)
-    created_at    = db.Column(db.DateTime(timezone=True), default=taiwan_now)
+    # is_active     = db.Column(db.Boolean, default=True)
+    # created_at    = db.Column(db.DateTime(timezone=True), default=taiwan_now)
 
-    responses = db.relationship('Survey_Response', backref='template', cascade="all, delete-orphan")
+    # responses = db.relationship('Survey_Response', backref='template', cascade="all, delete-orphan")
 
 # T09: Survey_Response - 儲存問卷回覆資料
 class Survey_Response(db.Model):
@@ -130,6 +131,7 @@ class Survey_Response(db.Model):
     submitted_at   = db.Column(db.DateTime(timezone=True), default=taiwan_now)
     updated_at     = db.Column(db.DateTime(timezone=True), default=taiwan_now, onupdate=taiwan_now)
 
+"""
 # T10: Admin - 系統設定（金鑰與 AI 提示語）
 class Admin(db.Model):
     __tablename__ = 'Admin'
@@ -139,3 +141,4 @@ class Admin(db.Model):
     system_error_log = db.Column(db.Text)                      # 系統錯誤日誌
     # FIX: 補上 onupdate，確保更新時自動刷新時間戳
     updated_at      = db.Column(db.DateTime(timezone=True), default=taiwan_now, onupdate=taiwan_now)
+"""

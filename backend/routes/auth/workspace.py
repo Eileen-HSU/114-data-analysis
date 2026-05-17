@@ -1,4 +1,3 @@
-import os
 from datetime import timedelta
 
 from flask import Blueprint, jsonify, request
@@ -18,7 +17,6 @@ def workspace_to_dict(w):
     return {
         "project_id":   w.project_id,
         "user_id":      w.user_id,
-        "folder_name":  w.folder_name,
         "project_name": w.project_name,
         "search_tag":   w.search_tag,
         "status":       w.status,
@@ -35,15 +33,13 @@ def create_workspace():
     """建立新專案"""
     data = request.get_json(silent=True) or {}
     user_id      = data.get("user_id")
-    folder_name  = data.get("folder_name")
     project_name = data.get("project_name")
 
-    if not user_id or not folder_name or not project_name:
-        return jsonify({"error": "請提供 user_id、folder_name 與 project_name"}), 400
+    if not user_id or not project_name:
+        return jsonify({"error": "請提供 user_id 與 project_name"}), 400
 
     workspace = Workspace(
         user_id      = user_id,
-        folder_name  = folder_name,
         project_name = project_name,
         search_tag   = data.get("search_tag"),
         status       = data.get("status", "Pending"),
@@ -95,8 +91,6 @@ def update_workspace(project_id):
         return jsonify({"error": "找不到專案"}), 404
 
     data = request.get_json(silent=True) or {}
-    if "folder_name" in data:
-        workspace.folder_name = data["folder_name"]
     if "project_name" in data:
         workspace.project_name = data["project_name"]
     if "search_tag" in data:
@@ -189,7 +183,7 @@ def get_trash(user_id):
 
 def hard_delete_expired_workspaces():
     """刪除所有軟刪除超過 30 天的專案"""
-    from app import app  
+    from app import app  # 避免 circular import
     with app.app_context():
         expiry = taiwan_now() - timedelta(days=SOFT_DELETE_DAYS)
         expired = Workspace.query.filter(
@@ -213,14 +207,11 @@ def hard_delete_expired_workspaces():
 
 def start_scheduler():
     """在 app 啟動時呼叫這個函式來啟動排程"""
-    if os.environ.get("WERKZEUG_RUN_MAIN") != "true":
-        return
-
     scheduler = BackgroundScheduler()
     scheduler.add_job(
         hard_delete_expired_workspaces,
         trigger = "interval",
-        hours   = 15,        # 每 15 小時執行一次
+        hours   = 24,        # 每 24 小時執行一次
         id      = "hard_delete_workspaces",
     )
     scheduler.start()
