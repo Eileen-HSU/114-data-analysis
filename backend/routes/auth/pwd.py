@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta
 import os
 import secrets
-import traceback
-
 import resend
+
+import sib_api_v3_sdk
+from sib_api_v3_sdk.rest import ApiException
 from flask import Blueprint, jsonify, request
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -11,7 +12,6 @@ from extensions import db
 from models import User, UserVerification
 
 pwd_bp = Blueprint("pwd", __name__)
-DEFAULT_RESEND_SENDER = "DataAnalysis <onboarding@resend.dev>"
 
 
 def taiwan_now():
@@ -41,6 +41,40 @@ def send_password_email_via_resend(recipient, subject, body_text):
     })
     return response
 
+'''
+def send_password_email_via_resend(recipient, subject, body_text):
+    api_key = os.getenv("BREVO_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("BREVO_API_KEY is not configured")
+
+    sender_email = os.getenv("BREVO_FROM_EMAIL", "").strip()
+    sender_name = os.getenv("BREVO_FROM_NAME", "DataAnalysis").strip()
+
+    if not sender_email:
+        raise RuntimeError("BREVO_FROM_EMAIL is not configured")
+
+    configuration = sib_api_v3_sdk.Configuration()
+    configuration.api_key["api-key"] = api_key
+
+    api_instance = sib_api_v3_sdk.TransactionalEmailsApi(
+        sib_api_v3_sdk.ApiClient(configuration)
+    )
+
+    html_body = "<p>" + body_text.replace("\n", "<br>") + "</p>"
+
+    send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
+        to=[{"email": recipient}],
+        sender={"email": sender_email, "name": sender_name},
+        subject=subject,
+        text_content=body_text,
+        html_content=html_body,
+    )
+
+    try:
+        api_instance.send_transac_email(send_smtp_email)
+    except ApiException as e:
+        raise RuntimeError(f"Brevo 寄信失敗: {e}")
+'''
 
 def _invalidate_old_codes(email: str, otp_type: str):
     """將同一 email 所有未使用的舊驗證碼標記為已使用"""
@@ -53,9 +87,7 @@ def _invalidate_old_codes(email: str, otp_type: str):
 
 @pwd_bp.route("/api/auth/email-config", methods=["GET"])
 def email_config():
-    return jsonify({
-        "status": "ok",
-    }), 200
+    return jsonify({"status": "ok"}), 200
 
 
 @pwd_bp.route("/api/auth/send-otp", methods=["POST"])
@@ -71,7 +103,6 @@ def send_otp():
     if not user:
         return jsonify({"error": "找不到此 Email 對應的帳號"}), 404
 
-    # 使用密碼學安全的亂數
     otp = str(secrets.randbelow(900000) + 100000)
 
     from_param = "change" if verify_type == "PASSWORD_CHANGE" else "forgot"
@@ -82,7 +113,6 @@ def send_otp():
     reset_link = f"{frontend_url}/reset-password?email={email}&from={from_param}"
 
     try:
-        # 作廢所有同類型的舊驗證碼
         _invalidate_old_codes(email, verify_type)
 
         verification = UserVerification(
@@ -114,31 +144,29 @@ def send_otp():
         db.session.rollback()
         import logging
         logging.error(f"OTP send failed: {e}", exc_info=True)
-        return jsonify({"error": "寶送驗證信失敗、請稍後再試"}), 500
+        return jsonify({"error": "寄送驗證信失敗，請稍後再試"}), 500
 
 
-# 忘記密碼和變更密碼都可以共用這個驗證碼驗證邏輯，前端可傳 type 區分用途
 @pwd_bp.route("/api/auth/reset-password", methods=["POST"])
 def reset_password():
     data = request.get_json(silent=True) or {}
     email = data.get("email")
     otp = data.get("otp")
     new_password = data.get("new_password")
-    verify_type = data.get("type", "PASSWORD_RESET")  # 明確指定類型
+    verify_type = data.get("type", "PASSWORD_RESET")
 
     if not all([email, otp, new_password]):
         return jsonify({"error": "缺少必要欄位"}), 400
 
     record = UserVerification.query.filter_by(
         target_email=email,
-        type=verify_type,   # 加上 type 過濾，避免跨用途驗證碼混用
+        type=verify_type,
         is_used=False,
     ).order_by(UserVerification.created_at.desc()).first()
 
     if not record:
         return jsonify({"error": "驗證碼不存在或已使用"}), 400
 
-    # 先檢查過期，再檢查 hash
     if record.expires_at < taiwan_now():
         return jsonify({"error": "驗證碼已過期"}), 400
 
@@ -148,6 +176,10 @@ def reset_password():
     user = User.query.get(record.user_id)
     if not user:
         return jsonify({"error": "找不到使用者"}), 404
+
+    # 對比新密碼與舊密碼是否相同，如果相同則拒絕更新
+    if check_password_hash(user.password_hash, new_password):
+        return jsonify({"error": "新密碼不能與原本密碼相同"}), 400
 
     try:
         user.password_hash = generate_password_hash(new_password)
@@ -159,4 +191,4 @@ def reset_password():
         db.session.rollback()
         import logging
         logging.error(f"Password reset failed: {e}", exc_info=True)
-        return jsonify({"error": "密碼疆新失敗、請稍後再試"}), 500
+        return jsonify({"error": "密碼更新失敗，請稍後再試"}), 500
