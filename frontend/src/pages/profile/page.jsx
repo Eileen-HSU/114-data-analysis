@@ -277,7 +277,7 @@ export default function ProfilePage() {
     try {
       const res = await fetch(apiUrl('/api/auth/2fa/disable'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user?.token}`,},
         body: JSON.stringify({ email: user?.email, password }),
       });
       const data = await res.json();
