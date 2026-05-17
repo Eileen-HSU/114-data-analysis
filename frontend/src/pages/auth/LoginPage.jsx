@@ -10,6 +10,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
 
   useEffect(() => {
     const clearFields = () => {
@@ -32,6 +33,7 @@ export default function LoginPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setLoginError("");
 
     try {
       const res = await fetch(apiUrl("/api/login"), {
@@ -42,7 +44,7 @@ export default function LoginPage() {
 
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || "登入失敗");
+        setLoginError(data.error || "登入失敗，請確認帳號或密碼是否正確。");
         return;
       }
 
@@ -64,7 +66,7 @@ export default function LoginPage() {
       login(userData);
       navigate("/workspace");
     } catch (err) {
-      alert("連線失敗，請確認後端服務是否正常");
+      setLoginError("連線失敗，請確認後端服務是否正常。");
       console.error(err);
     }
   };
@@ -140,7 +142,10 @@ export default function LoginPage() {
                     className="form-control form-control-custom"
                     placeholder="your@email.com"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      setLoginError("");
+                    }}
                   />
                 </div>
               </div>
@@ -157,7 +162,10 @@ export default function LoginPage() {
                     className="form-control form-control-custom pe-5"
                     placeholder="請輸入密碼"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      setLoginError("");
+                    }}
                   />
                   <button
                     type="button"
@@ -174,6 +182,13 @@ export default function LoginPage() {
                   忘記密碼？
                 </a>
               </div>
+
+              {loginError && (
+                <div className="auth-error-message" role="alert">
+                  <i className="ri-error-warning-line"></i>
+                  <span>{loginError}</span>
+                </div>
+              )}
 
               <button type="submit" className="btn btn-auth-submit w-100">
                 登入
