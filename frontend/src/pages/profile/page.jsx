@@ -74,6 +74,7 @@ export default function ProfilePage() {
   const { activities, recordActivity, clearActivities } = useActivity();
   const avatarInputRef = useRef(null);
   const editSectionRef = useRef(null);
+  const securitySectionRef = useRef(null);
   const surveysSectionRef = useRef(null);
   const [activeTab, setActiveTab] = useState("info");
   const [isEditing, setIsEditing] = useState(false);
@@ -317,6 +318,20 @@ export default function ProfilePage() {
     }, 0);
   };
 
+  const scrollToInfo = () => {
+    setActiveTab("info");
+    setTimeout(() => {
+      editSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
+
+  const scrollToSecurity = () => {
+    setActiveTab("security");
+    setTimeout(() => {
+      securitySectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
+
   const scrollToSurveys = () => {
     setActiveTab("surveys");
     setTimeout(() => {
@@ -325,8 +340,8 @@ export default function ProfilePage() {
   };
 
   const dashboardCards = [
-    { icon: "ri-profile-line", iconColor: "text-stat-mauve", iconBg: "bg-stat-mauve", barBg: "bar-mauve", label: "基本資料", action: () => setActiveTab("info"), activeKey: "info", ariaLabel: "查看基本資料" },
-    { icon: "ri-shield-keyhole-line", iconColor: "text-stat-sky", iconBg: "bg-stat-sky", barBg: "bar-sky", label: "安全設定", action: () => setActiveTab("security"), activeKey: "security", ariaLabel: "查看安全設定" },
+    { icon: "ri-profile-line", iconColor: "text-stat-mauve", iconBg: "bg-stat-mauve", barBg: "bar-mauve", label: "基本資料", action: scrollToInfo, activeKey: "info", ariaLabel: "查看基本資料" },
+    { icon: "ri-shield-keyhole-line", iconColor: "text-stat-sky", iconBg: "bg-stat-sky", barBg: "bar-sky", label: "安全設定", action: scrollToSecurity, activeKey: "security", ariaLabel: "查看安全設定" },
     { icon: "ri-bar-chart-line", iconColor: "text-stat-coral", iconBg: "bg-stat-coral", barBg: "bar-coral", num: surveyRecords.length, label: "問卷數", action: scrollToSurveys, activeKey: "surveys" },
     { icon: "ri-calendar-line", iconColor: "text-stat-teal", iconBg: "bg-stat-teal", barBg: "bar-teal", num: getUsageDays(profile.createdAt), label: "使用天數" },
   ];
@@ -449,7 +464,7 @@ export default function ProfilePage() {
           )}
 
           {activeTab === "security" && (
-            <section className="profile-card-inner p-4 p-md-5">
+            <section className="profile-card-inner p-4 p-md-5" ref={securitySectionRef}>
               <h2 className="tab-title">安全設定</h2>
               <div className="security-item">
                 <div className="d-flex align-items-center gap-3">
