@@ -721,6 +721,7 @@ export default function ProfilePage() {
                 aria-label={showTwoFactorPassword ? "隱藏密碼" : "顯示密碼"}
               >
                 <i className={showTwoFactorPassword ? "ri-eye-off-line" : "ri-eye-line"}></i>
+                <span>{showTwoFactorPassword ? "隱藏" : "顯示"}</span>
               </button>
             </div>
             {twoFactorPasswordError && <div className="profile-confirm-error">{twoFactorPasswordError}</div>}
