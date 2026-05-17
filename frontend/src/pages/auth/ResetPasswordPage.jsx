@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { apiUrl } from "../../lib/api";
@@ -18,6 +18,12 @@ export default function ResetPasswordPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    setOtp("");
+    setNewPassword("");
+    setConfirmPassword("");
+  }, [email, from]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -128,7 +134,7 @@ export default function ResetPasswordPage() {
               正在為 <strong>{email || "您的電子郵件"}</strong> 設定新密碼
             </p>
 
-            <form onSubmit={handleSubmit} noValidate>
+            <form onSubmit={handleSubmit} noValidate autoComplete="off">
               <div className="mb-3">
                 <label className="auth-label">驗證碼</label>
                 <div className="position-relative">
@@ -136,6 +142,8 @@ export default function ResetPasswordPage() {
                   <input
                     type="text"
                     inputMode="numeric"
+                    name="reset_verification_code"
+                    autoComplete="off"
                     maxLength={6}
                     className="form-control form-control-custom"
                     placeholder="請輸入 6 位數驗證碼"
@@ -151,6 +159,8 @@ export default function ResetPasswordPage() {
                   <i className="ri-lock-line form-icon"></i>
                   <input
                     type={showPassword ? "text" : "password"}
+                    name="reset_new_password"
+                    autoComplete="new-password"
                     className="form-control form-control-custom pe-5"
                     placeholder="請輸入新密碼"
                     value={newPassword}
@@ -172,6 +182,8 @@ export default function ResetPasswordPage() {
                   <i className="ri-lock-line form-icon"></i>
                   <input
                     type={showPassword ? "text" : "password"}
+                    name="reset_confirm_password"
+                    autoComplete="new-password"
                     className="form-control form-control-custom"
                     placeholder="請再次輸入新密碼"
                     value={confirmPassword}
