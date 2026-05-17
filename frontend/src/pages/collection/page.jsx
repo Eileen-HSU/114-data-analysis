@@ -42,6 +42,7 @@ export default function CollectionPage() {
   const [renameFileValue, setRenameFileValue] = useState("");
   const [renamingFolderId, setRenamingFolderId] = useState(null);
   const [renameFolderValue, setRenameFolderValue] = useState("");
+  const [fileMenuId, setFileMenuId] = useState(null);
 
   if (!isLoggedIn) {
     return (
@@ -98,6 +99,14 @@ export default function CollectionPage() {
     if (deleteTarget.type === "folder") deleteFolder(deleteTarget.id, deleteTarget.name);
     if (deleteTarget.type === "file") deleteFile(deleteTarget.id, deleteTarget.name);
     setDeleteTarget(null);
+  };
+
+  const openFile = (file) => {
+    if (file.type === "chat" && file.sessionId) {
+      navigate("/workspace", { state: { openSession: { sessionId: file.sessionId } } });
+      return;
+    }
+    navigate("/workspace");
   };
 
   const saveFolderRename = (folderId) => {
@@ -250,8 +259,11 @@ export default function CollectionPage() {
                                   onRenameCancel={() => setRenamingFileId(null)}
                                   onDragStart={() => setDraggingId(file.id)}
                                   onDragEnd={() => setDraggingId(null)}
+                                  menuOpen={fileMenuId === file.id}
+                                  onMenuToggle={() => setFileMenuId((prev) => (prev === file.id ? null : file.id))}
+                                  onMenuClose={() => setFileMenuId(null)}
                                   onDelete={() => setDeleteTarget({ type: "file", id: file.id, name: file.name })}
-                                  onOpen={() => file.type === "chat" && file.sessionId ? navigate("/workspace", { state: { openSession: { sessionId: file.sessionId } } }) : navigate("/workspace")}
+                                  onOpen={() => openFile(file)}
                                 />
                               ))}
                             </div>
@@ -294,8 +306,11 @@ export default function CollectionPage() {
                         onRenameCancel={() => setRenamingFileId(null)}
                         onDragStart={() => setDraggingId(file.id)}
                         onDragEnd={() => setDraggingId(null)}
+                        menuOpen={fileMenuId === file.id}
+                        onMenuToggle={() => setFileMenuId((prev) => (prev === file.id ? null : file.id))}
+                        onMenuClose={() => setFileMenuId(null)}
                         onDelete={() => setDeleteTarget({ type: "file", id: file.id, name: file.name })}
-                        onOpen={() => file.type === "chat" && file.sessionId ? navigate("/workspace", { state: { openSession: { sessionId: file.sessionId } } }) : navigate("/workspace")}
+                        onOpen={() => openFile(file)}
                       />
                     </div>
                   ))}
@@ -398,10 +413,20 @@ export default function CollectionPage() {
   );
 }
 
-function FileRow({ file, compact = false, renamingId, renameValue, onRenameStart, onRenameChange, onRenameSave, onRenameCancel, onDragStart, onDragEnd, onDelete, onOpen }) {
+function FileRow({ file, compact = false, renamingId, renameValue, menuOpen, onMenuToggle, onMenuClose, onRenameStart, onRenameChange, onRenameSave, onRenameCancel, onDragStart, onDragEnd, onDelete, onOpen }) {
   const isRenaming = renamingId === file.id;
   return (
-    <div className={`file-item ${compact ? "compact" : ""}`} draggable onDragStart={onDragStart} onDragEnd={onDragEnd}>
+    <div
+      className={`file-item ${compact ? "compact" : ""}`}
+      draggable
+      onClick={onOpen}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        onMenuToggle();
+      }}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+    >
       <i className="ri-draggable drag-handle"></i>
       <div className={`file-icon file-icon-${file.type}`}>
         <i className={FILE_ICONS[file.type] || "ri-file-line"}></i>
@@ -412,6 +437,7 @@ function FileRow({ file, compact = false, renamingId, renameValue, onRenameStart
             className="form-control form-control-sm"
             value={renameValue}
             autoFocus
+            onClick={(event) => event.stopPropagation()}
             onChange={(event) => onRenameChange(event.target.value)}
             onBlur={onRenameSave}
             onKeyDown={(event) => {
@@ -420,7 +446,15 @@ function FileRow({ file, compact = false, renamingId, renameValue, onRenameStart
             }}
           />
         ) : (
-          <span className="file-name" onDoubleClick={onRenameStart}>{file.name}</span>
+          <span
+            className="file-name"
+            onDoubleClick={(event) => {
+              event.stopPropagation();
+              onRenameStart();
+            }}
+          >
+            {file.name}
+          </span>
         )}
         <div className="file-meta">
           <span className={`file-badge badge-${file.type}`}>{file.type === "chat" ? "Chat" : file.type.toUpperCase()}</span>
@@ -429,8 +463,40 @@ function FileRow({ file, compact = false, renamingId, renameValue, onRenameStart
         </div>
       </div>
       <div className="file-actions">
-        <button className="action-btn-sm" onClick={onOpen} title="開啟"><i className="ri-external-link-line"></i></button>
-        <button className="action-btn-sm" onClick={onDelete} title="刪除"><i className="ri-delete-bin-line"></i></button>
+        <button
+          className="action-btn-sm"
+          onClick={(event) => {
+            event.stopPropagation();
+            onMenuToggle();
+          }}
+          title="更多"
+        >
+          <i className="ri-more-2-fill"></i>
+        </button>
+        {menuOpen && (
+          <div className="file-menu" onClick={(event) => event.stopPropagation()}>
+            <button
+              className="file-menu-item"
+              onClick={() => {
+                onMenuClose();
+                onRenameStart();
+              }}
+            >
+              <i className="ri-edit-line"></i>
+              重新命名
+            </button>
+            <button
+              className="file-menu-item danger"
+              onClick={() => {
+                onMenuClose();
+                onDelete();
+              }}
+            >
+              <i className="ri-delete-bin-line"></i>
+              刪除
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
