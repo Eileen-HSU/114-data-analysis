@@ -256,7 +256,8 @@
   border: 1px solid var(--slate-100);
   border-radius: 12px;
   transition: all 0.2s;
-  cursor: grab;
+  cursor: pointer;
+  position: relative;
 }
 
 .file-item:hover { border-color: #e8b4a8; background: rgba(253,246,245,0.6); }
@@ -332,6 +333,7 @@
   opacity: 0;
   transition: opacity 0.2s;
   flex-shrink: 0;
+  position: relative;
 }
 
 .file-item:hover .file-actions { opacity: 1; }
@@ -369,6 +371,40 @@
 }
 
 .action-btn-sm:hover { color: #c97b72; }
+
+.file-menu {
+  position: absolute;
+  right: 0;
+  top: 24px;
+  z-index: 20;
+  min-width: 132px;
+  padding: 6px;
+  background: white;
+  border: 1px solid var(--slate-100);
+  border-radius: 10px;
+  box-shadow: 0 16px 32px rgba(30,16,48,0.14);
+}
+
+.file-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  border-radius: 7px;
+  color: var(--slate-600);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.file-menu-item:hover { background: var(--slate-50); }
+.file-menu-item.danger { color: #c97b72; }
+.file-menu-item.danger:hover { background: #fff6f4; }
 
 /* Loose Area */
 .loose-area {
