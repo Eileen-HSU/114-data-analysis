@@ -418,16 +418,25 @@ function FileRow({ file, compact = false, renamingId, renameValue, menuOpen, onM
   return (
     <div
       className={`file-item ${compact ? "compact" : ""}`}
-      draggable
       onClick={onOpen}
       onContextMenu={(event) => {
         event.preventDefault();
         onMenuToggle();
       }}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
     >
-      <i className="ri-draggable drag-handle"></i>
+      <i
+        className="ri-draggable drag-handle"
+        draggable
+        onClick={(event) => event.stopPropagation()}
+        onDragStart={(event) => {
+          event.stopPropagation();
+          onDragStart();
+        }}
+        onDragEnd={(event) => {
+          event.stopPropagation();
+          onDragEnd();
+        }}
+      ></i>
       <div className={`file-icon file-icon-${file.type}`}>
         <i className={FILE_ICONS[file.type] || "ri-file-line"}></i>
       </div>
