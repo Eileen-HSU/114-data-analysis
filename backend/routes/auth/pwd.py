@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
 import os
 import secrets
-import resend
 
 import sib_api_v3_sdk
 from sib_api_v3_sdk.rest import ApiException
@@ -12,38 +11,12 @@ from extensions import db
 from models import User, UserVerification
 
 pwd_bp = Blueprint("pwd", __name__)
-DEFAULT_RESEND_SENDER = "DataAnalysis <onboarding@resend.dev>"
-
 
 
 def taiwan_now():
     return datetime.utcnow() + timedelta(hours=8)
 
 
-def send_password_email_via_resend(recipient, subject, body_text):
-    api_key = os.getenv("RESEND_API_KEY", "").strip()
-    if not api_key:
-        raise RuntimeError("RESEND_API_KEY is not configured")
-
-    sender = os.getenv("RESEND_FROM_EMAIL") or os.getenv("MAIL_DEFAULT_SENDER") or DEFAULT_RESEND_SENDER
-    sender = sender.strip()
-    if not sender:
-        sender = DEFAULT_RESEND_SENDER
-    if "gmail.com" in sender.lower():
-        raise RuntimeError("Resend sender cannot be a Gmail address. Use onboarding@resend.dev or a verified domain sender.")
-
-    resend.api_key = api_key
-    html_body = "<p>" + body_text.replace("\n", "<br>") + "</p>"
-    response = resend.Emails.send({
-        "from": sender,
-        "to": [recipient],
-        "subject": subject,
-        "html": html_body,
-        "text": body_text,
-    })
-    return response
-
-'''
 def send_password_email_via_resend(recipient, subject, body_text):
     api_key = os.getenv("BREVO_API_KEY", "").strip()
     if not api_key:
@@ -76,7 +49,7 @@ def send_password_email_via_resend(recipient, subject, body_text):
         api_instance.send_transac_email(send_smtp_email)
     except ApiException as e:
         raise RuntimeError(f"Brevo 寄信失敗: {e}")
-'''
+
 
 def _invalidate_old_codes(email: str, otp_type: str):
     """將同一 email 所有未使用的舊驗證碼標記為已使用"""
@@ -157,9 +130,11 @@ def reset_password():
     new_password = data.get("new_password")
     verify_type = data.get("type", "PASSWORD_RESET")
 
+    # 1. 基本欄位檢查
     if not all([email, otp, new_password]):
         return jsonify({"error": "缺少必要欄位"}), 400
 
+    # 2. 查詢驗證碼
     record = UserVerification.query.filter_by(
         target_email=email,
         type=verify_type,
@@ -167,22 +142,34 @@ def reset_password():
     ).order_by(UserVerification.created_at.desc()).first()
 
     if not record:
-        return jsonify({"error": "驗證碼不存在或已使用"}), 400
+        return jsonify({"error": "驗證碼不存在或已使用，請重新取得"}), 400
 
+    # 3. 檢查是否過期
     if record.expires_at < taiwan_now():
-        return jsonify({"error": "驗證碼已過期"}), 400
+        return jsonify({"error": "驗證碼已過期，請重新取得"}), 400
+
+    # 4. 驗證碼比對
+    if record.attempts >= 5:
+        record.is_used = True
+        db.session.commit()
+        return jsonify({"error": "嘗試次數過多，請重新取得驗證碼"}), 429
 
     if not check_password_hash(record.code_hash, otp):
-        return jsonify({"error": "驗證碼錯誤"}), 400
+        record.attempts += 1
+        db.session.commit()
+        remaining = 5 - record.attempts
+        return jsonify({"error": f"驗證碼錯誤，剩餘 {remaining} 次機會"}), 400
 
+    # 5. 查詢使用者
     user = User.query.get(record.user_id)
     if not user:
         return jsonify({"error": "找不到使用者"}), 404
 
-    # 對比新密碼與舊密碼是否相同，如果相同則拒絕更新
+    # 6. 新密碼不可與原本密碼相同
     if check_password_hash(user.password_hash, new_password):
-        return jsonify({"error": "新密碼不能與原本密碼相同"}), 400
+        return jsonify({"error": "新密碼不可與原本密碼相同，請設定不同的密碼"}), 400
 
+    # 7. 更新密碼
     try:
         user.password_hash = generate_password_hash(new_password)
         record.is_used = True

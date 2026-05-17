@@ -43,7 +43,7 @@ export default function LoginTwoFactorPage() {
       const res = await fetch(apiUrl("/api/auth/2fa/login/two-factor"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: pendingUser.email, otp: trimmedCode }),
+        body: JSON.stringify({ email: pendingUser.email, otp: trimmedCode, pre_auth_token: pendingUser.pre_auth_token }),
       });
 
       const data = await res.json();

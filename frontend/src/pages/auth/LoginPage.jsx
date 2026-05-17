@@ -42,6 +42,7 @@ export default function LoginPage() {
         email: data.email,
         user_id: data.user_id,
         token: data.token,
+        pre_auth_token: data.pre_auth_token,
       };
 
       if (isTwoFactorRequired(data)) {

@@ -32,8 +32,8 @@ export default function ResetPasswordPage() {
       setError("請輸入正確的 6 位數驗證碼。");
       return;
     }
-    if (newPassword.length < 6) {
-      setError("新密碼至少需要 6 個字元。");
+    if (newPassword.length < 8) {
+      setError("新密碼至少需要 8 個字元，並包含英文字母和數字");
       return;
     }
     if (newPassword !== confirmPassword) {
