@@ -19,6 +19,7 @@ export default function ResetPasswordPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [successModalOpen, setSuccessModalOpen] = useState(false);
 
   useEffect(() => {
     const clearFields = () => {
@@ -68,8 +69,7 @@ export default function ResetPasswordPage() {
       // --- 分流跳轉邏輯 ---
       if (isForgotFlow) {
         // 情況 A：從「忘記密碼」進來 -> 提示成功並要求重新登入
-        alert("密碼重設成功，請使用新密碼登入。");
-        navigate("/login", { replace: true });
+        setSuccessModalOpen(true);
       } else {
         // 情況 B：從「修改密碼」進來 (或是預設情況) -> 回到個人資料並顯示通知
         navigate("/profile?password_changed=1", { replace: true });
@@ -225,6 +225,21 @@ export default function ResetPasswordPage() {
           background-position: center center;
         }
       `}</style>
+
+      {successModalOpen && (
+        <div className="auth-modal-backdrop">
+          <div className="auth-success-modal" role="alertdialog" aria-modal="true">
+            <div className="auth-success-icon">
+              <i className="ri-checkbox-circle-line"></i>
+            </div>
+            <h3>密碼重設成功</h3>
+            <p>請使用新密碼重新登入您的帳號。</p>
+            <button type="button" className="auth-success-action" onClick={() => navigate("/login", { replace: true })}>
+              回到登入頁
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
