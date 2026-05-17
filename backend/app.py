@@ -4,6 +4,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request, make_response
 from flask_cors import CORS
+from sqlalchemy import text
 
 from extensions import db, mail
 from routes.auth.two_factor import two_factor_bp
@@ -52,6 +53,40 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db.init_app(app)
 mail.init_app(app)
+
+
+def ensure_column(table_name, column_name, column_definition):
+    exists = db.session.execute(
+        text("""
+            SELECT COUNT(*)
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = :table_name
+              AND COLUMN_NAME = :column_name
+        """),
+        {"table_name": table_name, "column_name": column_name},
+    ).scalar()
+
+    if not exists:
+        db.session.execute(
+            text(f"ALTER TABLE `{table_name}` ADD COLUMN {column_definition}")
+        )
+
+
+def ensure_runtime_schema():
+    with app.app_context():
+        try:
+            ensure_column("User", "email_2fa_enabled", "`email_2fa_enabled` TINYINT(1) DEFAULT 0")
+            ensure_column("User_Verification", "attempts", "`attempts` INT NOT NULL DEFAULT 0")
+            ensure_column("Workspace", "is_deleted", "`is_deleted` TINYINT(1) DEFAULT 0")
+            ensure_column("Workspace", "deleted_at", "`deleted_at` DATETIME NULL")
+            db.session.commit()
+        except Exception as exc:
+            db.session.rollback()
+            app.logger.exception("Runtime schema check failed: %s", exc)
+
+
+ensure_runtime_schema()
 
 app.register_blueprint(register_bp)
 app.register_blueprint(login_bp)
