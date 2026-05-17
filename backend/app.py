@@ -11,7 +11,7 @@ from routes.auth.login import login_bp
 from routes.auth.profile import profile_bp
 from routes.auth.pwd import pwd_bp
 from routes.auth.register import register_bp
-from routes.workspace import workspace_bp, start_scheduler
+from routes.auth.workspace import workspace_bp, start_scheduler
 from routes.auth.survey import survey_bp
 
 load_dotenv()
