@@ -50,7 +50,7 @@ export default function CollectionPage() {
         <Navbar />
         <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f9f7f7" }}>
           <LoginRequiredModal
-            message="請先登入後再查看收藏。"
+            message="請先登入後再查看作品集。"
             onLogin={() => navigate("/login")}
             onCancel={() => navigate("/")}
           />
@@ -144,8 +144,8 @@ export default function CollectionPage() {
           <div className="container position-relative">
             <div className="d-flex align-items-center justify-content-between flex-wrap gap-3">
               <div>
-                <p className="collection-banner-label">My Collection</p>
-                <h1 className="collection-banner-title">我的收藏</h1>
+                <p className="collection-banner-label">My Portfolio</p>
+                <h1 className="collection-banner-title">我的作品集</h1>
                 <p className="collection-banner-stats">{files.length} 個檔案 · {folders.length} 個資料夾</p>
               </div>
               <div className="d-flex gap-2 align-items-center">
