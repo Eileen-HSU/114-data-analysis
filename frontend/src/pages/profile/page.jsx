@@ -318,7 +318,7 @@ export default function ProfilePage() {
         setTwoFactorModal({
           type: "success",
           title: "已關閉雙因子驗證",
-          message: "之後登入時不會再要求輸入雙因子驗證碼。",
+          message: "雙因子驗證已成功關閉，之後登入時不會再要求輸入驗證碼。",
         });
       } else {
         setTwoFactorPasswordError("密碼輸入錯誤，請重新輸入。");
