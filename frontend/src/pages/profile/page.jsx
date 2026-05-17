@@ -83,6 +83,10 @@ export default function ProfilePage() {
   const [showTwoFactorNotice, setShowTwoFactorNotice] = useState(false);
   const [showPasswordNotice, setShowPasswordNotice] = useState(false);
   const [twoFactorModal, setTwoFactorModal] = useState(null);
+  const [showDisableTwoFactorModal, setShowDisableTwoFactorModal] = useState(false);
+  const [twoFactorPassword, setTwoFactorPassword] = useState("");
+  const [twoFactorPasswordError, setTwoFactorPasswordError] = useState("");
+  const [isDisablingTwoFactor, setIsDisablingTwoFactor] = useState(false);
   const [selectedSurvey, setSelectedSurvey] = useState(null);
   const [surveySearch, setSurveySearch] = useState("");
   const [surveySortOrder, setSurveySortOrder] = useState("desc");
@@ -270,26 +274,41 @@ export default function ProfilePage() {
   };
 
   // 雙因子驗證開關 ------------------------------------------------------
-  const handleDisable2FA = async () => {
-    const password = window.prompt("請輸入密碼以確認關閉雙因子驗證：");
+  const closeDisableTwoFactorModal = () => {
+    if (isDisablingTwoFactor) return;
+    setShowDisableTwoFactorModal(false);
+    setTwoFactorPassword("");
+    setTwoFactorPasswordError("");
+  };
+
+  const handleDisable2FA = () => {
+    setTwoFactorPassword("");
+    setTwoFactorPasswordError("");
+    setShowDisableTwoFactorModal(true);
+  };
+
+  const confirmDisable2FA = async (e) => {
+    e.preventDefault();
+    const password = twoFactorPassword.trim();
     if (!password) {
-      setTwoFactorModal({
-        type: "warning",
-        title: "尚未關閉雙因子驗證",
-        message: "需要輸入密碼確認身分，才能關閉雙因子驗證。",
-      });
+      setTwoFactorPasswordError("請先輸入密碼。");
       return;
     }
+
+    setIsDisablingTwoFactor(true);
+    setTwoFactorPasswordError("");
     try {
       const res = await fetch(apiUrl('/api/auth/2fa/disable'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user?.token}`,},
         body: JSON.stringify({ email: user?.email, password }),
       });
-      const data = await res.json();
+      await res.json().catch(() => ({}));
       if (res.ok) {
         localStorage.setItem(twoFactorStorageKey, "false");
         setTwoFactorEnabled(false);
+        setShowDisableTwoFactorModal(false);
+        setTwoFactorPassword("");
         recordActivity({
           text: "關閉雙重驗證",
           icon: "ri-shield-flash-line",
@@ -302,19 +321,13 @@ export default function ProfilePage() {
           message: "之後登入時不會再要求輸入雙因子驗證碼。",
         });
       } else {
-        setTwoFactorModal({
-          type: "error",
-          title: "無法關閉雙因子驗證",
-          message: data.error || "驗證失敗，請確認密碼後再試一次。",
-        });
+        setTwoFactorPasswordError("密碼輸入錯誤，請重新輸入。");
       }
     } catch (err) {
       console.error("2FA Disable Error:", err);
-      setTwoFactorModal({
-        type: "error",
-        title: "伺服器發生錯誤",
-        message: "請稍後再試，或確認網路連線是否正常。",
-      });
+      setTwoFactorPasswordError("伺服器發生錯誤，請稍後再試。");
+    } finally {
+      setIsDisablingTwoFactor(false);
     }
   };
 
@@ -672,6 +685,40 @@ export default function ProfilePage() {
           <button onClick={() => setShowPasswordNotice(false)} aria-label="關閉通知">
             <i className="ri-close-line"></i>
           </button>
+        </div>
+      )}
+
+      {showDisableTwoFactorModal && (
+        <div className="profile-modal-backdrop" onClick={closeDisableTwoFactorModal}>
+          <form className="profile-confirm-modal" role="dialog" aria-modal="true" onSubmit={confirmDisable2FA} onClick={(e) => e.stopPropagation()}>
+            <div className="profile-confirm-icon">
+              <i className="ri-shield-keyhole-line"></i>
+            </div>
+            <h3>關閉雙因子驗證</h3>
+            <p>請輸入目前的登入密碼，確認是你本人操作。</p>
+            <label className="profile-confirm-label" htmlFor="disable-2fa-password">密碼</label>
+            <input
+              id="disable-2fa-password"
+              className={`profile-confirm-input ${twoFactorPasswordError ? "has-error" : ""}`}
+              type="password"
+              value={twoFactorPassword}
+              onChange={(e) => {
+                setTwoFactorPassword(e.target.value);
+                setTwoFactorPasswordError("");
+              }}
+              placeholder="請輸入密碼"
+              autoFocus
+            />
+            {twoFactorPasswordError && <div className="profile-confirm-error">{twoFactorPasswordError}</div>}
+            <div className="profile-confirm-actions">
+              <button className="profile-confirm-secondary" type="button" onClick={closeDisableTwoFactorModal} disabled={isDisablingTwoFactor}>
+                取消
+              </button>
+              <button className="profile-confirm-danger" type="submit" disabled={isDisablingTwoFactor}>
+                {isDisablingTwoFactor ? "確認中..." : "確認關閉"}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 

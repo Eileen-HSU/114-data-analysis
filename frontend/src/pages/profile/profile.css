@@ -720,6 +720,125 @@
   backdrop-filter: blur(5px);
 }
 
+.profile-confirm-modal {
+  width: min(460px, 100%);
+  padding: 30px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  background:
+    radial-gradient(circle at 20% 0%, rgba(201, 160, 160, 0.2), transparent 34%),
+    linear-gradient(180deg, #ffffff 0%, #fff7f7 100%);
+  box-shadow: 0 30px 90px rgba(15, 23, 42, 0.25);
+}
+
+.profile-confirm-icon {
+  width: 58px;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 18px;
+  border-radius: 18px;
+  background: #fdf0ee;
+  color: #b96e68;
+  font-size: 30px;
+}
+
+.profile-confirm-modal h3 {
+  margin: 0 0 8px;
+  color: var(--slate-800);
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.profile-confirm-modal p {
+  margin: 0 0 22px;
+  color: var(--slate-500);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.profile-confirm-label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--slate-700);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.profile-confirm-input {
+  width: 100%;
+  height: 52px;
+  padding: 0 16px;
+  border: 1px solid var(--slate-100);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--slate-800);
+  font-size: 16px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.profile-confirm-input:focus {
+  border-color: #2f7378;
+  box-shadow: 0 0 0 4px rgba(47, 115, 120, 0.12);
+}
+
+.profile-confirm-input.has-error {
+  border-color: #d97b72;
+  box-shadow: 0 0 0 4px rgba(217, 123, 114, 0.12);
+}
+
+.profile-confirm-error {
+  margin-top: 10px;
+  color: #c55f56;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.profile-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.profile-confirm-secondary,
+.profile-confirm-danger {
+  min-width: 112px;
+  padding: 12px 18px;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.profile-confirm-secondary {
+  border: 1px solid var(--slate-100);
+  background: white;
+  color: var(--slate-600);
+}
+
+.profile-confirm-danger {
+  border: none;
+  background: linear-gradient(135deg, #c98686 0%, #b96e68 100%);
+  color: white;
+  box-shadow: 0 14px 30px rgba(185, 110, 104, 0.24);
+}
+
+.profile-confirm-secondary:hover,
+.profile-confirm-danger:hover {
+  transform: translateY(-1px);
+}
+
+.profile-confirm-secondary:disabled,
+.profile-confirm-danger:disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .profile-alert-modal {
   width: min(420px, 100%);
   padding: 28px;
