@@ -6,7 +6,7 @@ resend.api_key = "re_8iZoHx8F_6trPstNJy"
 try:
     r = resend.Emails.send({
         "from": "onboarding@resend.dev",
-        "to": "bingq7943@gmail.com",
+        "to": " ",
         "subject": "本地測試 Resend",
         "html": "<strong>這是一封從本地發出的測試信！</strong>"
     })
