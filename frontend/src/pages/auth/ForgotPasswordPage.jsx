@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import "./auth.css";
 import axios from "axios";
@@ -12,6 +12,15 @@ export default function ForgotPasswordPage() {
   const stepDoneRef = useRef(null);
   const sentEmailRef = useRef(null);
   const submitBtnRef = useRef(null);
+
+  useEffect(() => {
+    const clearFields = () => {
+      if (emailRef.current) emailRef.current.value = "";
+    };
+    clearFields();
+    const timer = window.setTimeout(clearFields, 200);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const showError = (msg) => {
     const el = errorRef.current;
@@ -127,7 +136,7 @@ export default function ForgotPasswordPage() {
                 輸入您的帳號電子郵件，我們將發送密碼重設連結。
               </p>
 
-              <form onSubmit={handleSubmit} noValidate>
+              <form onSubmit={handleSubmit} noValidate autoComplete="off">
                 <div className="mb-4">
                   <label className="auth-label">電子郵件</label>
                   <div className="position-relative">
@@ -135,6 +144,8 @@ export default function ForgotPasswordPage() {
                     <input
                       ref={emailRef}
                       type="email"
+                      name="forgot_password_email"
+                      autoComplete="off"
                       className="form-control form-control-custom"
                       placeholder="your@email.com"
                       onInput={clearError}

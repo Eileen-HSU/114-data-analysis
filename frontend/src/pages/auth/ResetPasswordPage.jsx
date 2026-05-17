@@ -20,9 +20,14 @@ export default function ResetPasswordPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    setOtp("");
-    setNewPassword("");
-    setConfirmPassword("");
+    const clearFields = () => {
+      setOtp("");
+      setNewPassword("");
+      setConfirmPassword("");
+    };
+    clearFields();
+    const timer = window.setTimeout(clearFields, 200);
+    return () => window.clearTimeout(timer);
   }, [email, from]);
 
   const handleSubmit = async (e) => {

@@ -1,13 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../../hooks/AuthContext";
 import axios from "axios";
 import { apiUrl } from "../../lib/api";
 import "./auth.css";
 
 export default function SignUpPage() {
   const navigate = useNavigate();
-  const { login } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [name, setName] = useState("");
@@ -17,6 +15,21 @@ export default function SignUpPage() {
   const [phone, setPhone] = useState("");
   const [company, setCompany] = useState("");
   const [gender, setGender] = useState("");
+
+  useEffect(() => {
+    const clearFields = () => {
+      setName("");
+      setEmail("");
+      setPassword("");
+      setConfirmPassword("");
+      setPhone("");
+      setCompany("");
+      setGender("");
+    };
+    clearFields();
+    const timer = window.setTimeout(clearFields, 200);
+    return () => window.clearTimeout(timer);
+  }, []);
 
 const handleSubmit = async (e) => {
     e.preventDefault();
@@ -101,20 +114,20 @@ const handleSubmit = async (e) => {
               </a>
             </p>
 
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={handleSubmit} autoComplete="off">
               <div className="row g-3 mb-3">
                 <div className="col-md-6">
                   <label className="auth-label">姓名</label>
                   <div className="position-relative">
                     <i className="ri-user-line form-icon"></i>
-                    <input type="text" required className="form-control form-control-custom" placeholder="您的姓名" value={name} onChange={(e) => setName(e.target.value)} />
+                    <input type="text" name="signup_name" autoComplete="off" required className="form-control form-control-custom" placeholder="您的姓名" value={name} onChange={(e) => setName(e.target.value)} />
                   </div>
                 </div>
                 <div className="col-md-6">
                   <label className="auth-label">手機號碼</label>
                   <div className="position-relative">
                     <i className="ri-smartphone-line form-icon"></i>
-                    <input type="tel" className="form-control form-control-custom" placeholder="+886 912 345 678" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                    <input type="tel" name="signup_phone" autoComplete="off" className="form-control form-control-custom" placeholder="+886 912 345 678" value={phone} onChange={(e) => setPhone(e.target.value)} />
                   </div>
                 </div>
               </div>
@@ -124,14 +137,14 @@ const handleSubmit = async (e) => {
                   <label className="auth-label">公司 / 機構</label>
                   <div className="position-relative">
                     <i className="ri-building-line form-icon"></i>
-                    <input type="text" className="form-control form-control-custom" placeholder="您的公司名稱" value={company} onChange={(e) => setCompany(e.target.value)} />
+                    <input type="text" name="signup_company" autoComplete="off" className="form-control form-control-custom" placeholder="您的公司名稱" value={company} onChange={(e) => setCompany(e.target.value)} />
                   </div>
                 </div>
                 <div className="col-md-6">
                   <label className="auth-label">性別</label>
                   <div className="position-relative">
                     <i className="ri-user-heart-line form-icon"></i>
-                    <select className="form-control form-control-custom" value={gender} onChange={(e) => setGender(e.target.value)} style={{ appearance: "none" }}>
+                    <select name="signup_gender" autoComplete="off" className="form-control form-control-custom" value={gender} onChange={(e) => setGender(e.target.value)} style={{ appearance: "none" }}>
                       <option value="">請選擇性別</option>
                       <option value="男">男</option>
                       <option value="女">女</option>
@@ -146,7 +159,7 @@ const handleSubmit = async (e) => {
                 <label className="auth-label">電子郵件</label>
                 <div className="position-relative">
                   <i className="ri-mail-line form-icon"></i>
-                  <input type="email" required className="form-control form-control-custom" placeholder="your@email.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+                  <input type="email" name="signup_email" autoComplete="off" required className="form-control form-control-custom" placeholder="your@email.com" value={email} onChange={(e) => setEmail(e.target.value)} />
                 </div>
               </div>
 
@@ -156,6 +169,8 @@ const handleSubmit = async (e) => {
                   <i className="ri-lock-line form-icon"></i>
                   <input
                     type={showPassword ? "text" : "password"}
+                    name="signup_password"
+                    autoComplete="new-password"
                     required
                     className="form-control form-control-custom pe-5"
                     placeholder="至少 8 個字元"
@@ -174,9 +189,13 @@ const handleSubmit = async (e) => {
                   <i className="ri-lock-2-line form-icon"></i>
                   <input
                     type={showConfirm ? "text" : "password"}
+                    name="signup_confirm_password"
+                    autoComplete="new-password"
                     required
                     className="form-control form-control-custom pe-5"
                     placeholder="再次輸入密碼"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
                   />
                   <button type="button" className="password-toggle" onClick={() => setShowConfirm(!showConfirm)}>
                     <i className={showConfirm ? "ri-eye-off-line" : "ri-eye-line"}></i>

@@ -1,18 +1,25 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./auth.css";
 import axios from "axios";
 import { apiUrl } from "../../lib/api";
-import { useAuth } from "../../hooks/AuthContext";
 
 export default function ChangePasswordPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
   const emailRef = useRef(null);
   const errorRef = useRef(null);
   const submitBtnRef = useRef(null);
   const [step, setStep] = useState("send");
   const [sentEmail, setSentEmail] = useState("");
+
+  useEffect(() => {
+    const clearFields = () => {
+      if (emailRef.current) emailRef.current.value = "";
+    };
+    clearFields();
+    const timer = window.setTimeout(clearFields, 200);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const showError = (msg) => {
     if (errorRef.current) {
@@ -123,7 +130,7 @@ export default function ChangePasswordPage() {
                   輸入您的帳號電子郵件，我們將發送密碼修改連結。
                 </p>
 
-                <form onSubmit={handleSubmit} noValidate>
+                <form onSubmit={handleSubmit} noValidate autoComplete="off">
                   <div className="mb-4">
                     <label className="auth-label">電子郵件</label>
                     <div className="position-relative">
@@ -131,9 +138,10 @@ export default function ChangePasswordPage() {
                       <input
                         ref={emailRef}
                         type="email"
+                        name="change_password_email"
+                        autoComplete="off"
                         className="form-control form-control-custom"
                         placeholder="your@email.com"
-                        defaultValue={user?.email || ""}
                         onInput={clearError}
                       />
                     </div>
