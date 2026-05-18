@@ -212,10 +212,17 @@ export default function WorkspacePage() {
         
         setSessions(formattedSessions);
         
-        if (formattedSessions.length > 0) {
+        if (formattedSessions && formattedSessions.length > 0) {
           const savedId = localStorage.getItem(ACTIVE_WORKSPACE_KEY);
           const restored = formattedSessions.find((s) => s.id === savedId);
-          setActiveSessionId(restored?.id || formattedSessions[0].id);
+          
+          if (restored) {
+            setActiveSessionId(restored.id);
+          } else {
+            setActiveSessionId(formattedSessions[0].id);
+          }
+        } else {
+          setActiveSessionId(null);
         }
       } catch (err) {
         showToast(err.message);
