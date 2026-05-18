@@ -73,7 +73,7 @@ class Workspace(db.Model):
 
     # ── 子資料表關聯 ─────────────────────────────────────────
     chats     = db.relationship('Chat_History',    backref='workspace', cascade="all, delete-orphan")
-    templates = db.relationship('Survey_Template', backref='workspace', cascade="all, delete-orphan")
+    templates = db.relationship('Survey_Template', backref='workspace', passive_deletes=True)
     
 """
 # T05: AI_Analysis - AI分析結果 
@@ -120,7 +120,7 @@ class Survey_Template(db.Model):
     __tablename__ = 'Survey_Template'
     template_id   = db.Column(db.Integer, primary_key=True, autoincrement=True)
     title         = db.Column(db.String(100), nullable=False)
-    project_id    = db.Column(db.Integer, db.ForeignKey('Workspace.project_id'), nullable=True)
+    project_id = db.Column(db.Integer, db.ForeignKey('Workspace.project_id', ondelete="SET NULL"), nullable=True)
     share_uuid    = db.Column(db.String(36), default=lambda: str(uuid.uuid4()), unique=True)
     access_code   = db.Column(db.String(5), nullable=True)     
     question_json = db.Column(db.JSON, nullable=False)
