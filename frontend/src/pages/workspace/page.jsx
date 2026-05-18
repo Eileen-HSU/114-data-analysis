@@ -5,7 +5,6 @@ import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
 import { useAuth } from "../../hooks/AuthContext";
 import { useCollection } from "../../hooks/CollectionContext";
 import { useActivity } from "../../hooks/ActivityContext";
-import { apiUrl } from "../../lib/api"; 
 import "./workspace.css";
 
 const WELCOME_MSG = {
@@ -198,6 +197,7 @@ export default function WorkspacePage() {
   const { isLoggedIn, user } = useAuth();
   const { recordActivity } = useActivity();
 
+
   const { addChatToCollection, addFileToCollection, syncChatTitle, deleteChatSession, workspaceSessions: sessions, setWorkspaceSessions: setSessions } = useCollection();
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [input, setInput] = useState("");
@@ -272,7 +272,7 @@ export default function WorkspacePage() {
     const newSession = {
       id: newId,
       title: sessionTitle,
-      date: new Date().toLocaleDateString(), 
+      date: "2026/4/25",
       messages: [WELCOME_MSG, userMsg],
     };
     setSessions((prev) => [newSession, ...prev]);
@@ -308,56 +308,18 @@ export default function WorkspacePage() {
     const content = buildSurveyChatContent(detail);
     const newId = `survey-${Date.now()}`;
     const userMsg = { id: `u-${Date.now()}`, role: "user", content };
-    const sessionTitle = `問卷分析：${record.title}`;
-
     const newSession = {
       id: newId,
-      title: sessionTitle,
-      date: new Date().toLocaleDateString(), 
+      title: `問卷分析：${record.title}`,
+      date: "2026/4/25",
       messages: [WELCOME_MSG, userMsg],
     };
     setSessions((prev) => [newSession, ...prev]);
     setActiveSessionId(newId);
     setShowSurveyPicker(false);
     setSurveyPickerSearch("");
-    addChatToCollection(sessionTitle, newId);
+    addChatToCollection(`問卷分析：${record.title}`, newId);
     setIsTyping(true);
-
-    try {
-      fetch(apiUrl("/api/workspace"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: user?.user_id || 1, 
-          project_name: sessionTitle,
-          status: "Imported"
-        })
-      })
-      .then(res => {
-        if (!res.ok) throw new Error("Workspace write failed");
-        return res.json();
-      })
-      .then(serverWorkspace => {
-        if (serverWorkspace && serverWorkspace.project_id) {
-          fetch(apiUrl("/api/chat/history"), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              project_id: serverWorkspace.project_id,
-              sender_type: "user",
-              message_content: content
-            })
-          })
-          .then(chatRes => {
-            if (chatRes.ok) console.log("🎉 問卷數據已成功灌入線上資料庫！");
-          });
-        }
-      })
-      .catch(e => console.log("資料庫背景寫入跳過：", e));
-    } catch (err) {
-      console.log("背景通訊異常防禦：", err);
-    }
-
     setTimeout(() => {
       const aiReply = {
         id: `a-${Date.now()}`,
@@ -386,7 +348,7 @@ export default function WorkspacePage() {
     if (!activeSessionId) return;
     const content = attachedFile ? `[檔案：${attachedFile.name}] ${input}` : input;
     const autoTitle = buildAutoSessionTitle(input, attachedFile);
-    const userMsg = { id: `u-${Date.now()}`, role: "user", content };
+    const userMsg = { id: Date.now().toString(), role: "user", content };
     setSessions((prev) =>
       prev.map((s) => {
         if (s.id !== activeSessionId) return s;
@@ -452,13 +414,14 @@ export default function WorkspacePage() {
     const trimmed = renameValue.trim();
     if (trimmed) {
       setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, title: trimmed } : s)));
+      // sync title to collection chat file
       syncChatTitle(id, trimmed);
     }
     setRenamingId(null);
   };
 
   const deleteSession = (sessionId) => {
-    const session = sessions.find((sessionId));
+    const session = sessions.find((s) => s.id === sessionId);
     if (!session) return;
     const ok = window.confirm(`確定要刪除「${session.title}」嗎？刪除後可在作品集的最近刪除中還原。`);
     if (!ok) return;
@@ -484,7 +447,7 @@ export default function WorkspacePage() {
     const newSession = {
       id: newId,
       title,
-      date: new Date().toLocaleDateString(), 
+      date: "2026/4/25",
       messages: [WELCOME_MSG],
     };
     setSessions((prev) => [newSession, ...prev]);
@@ -510,6 +473,7 @@ export default function WorkspacePage() {
   return (
     <>
       <Navbar />
+      {/* Toast */}
       {toastMsg && (
         <div style={{
           position: "fixed", bottom: 32, left: "50%", transform: "translateX(-50%)",
@@ -524,6 +488,7 @@ export default function WorkspacePage() {
       )}
       <div className="workspace-page">
         <div className="workspace-body">
+          {/* Sidebar */}
           <aside className="workspace-sidebar">
             <div className="sidebar-header">
               <div className="d-flex align-items-center justify-content-between mb-3">
@@ -617,6 +582,7 @@ export default function WorkspacePage() {
             </div>
           </aside>
 
+          {/* Main Chat */}
           <main className="workspace-main">
             {activeSession === null ? (
               <div style={{
@@ -671,6 +637,7 @@ export default function WorkspacePage() {
                   <div ref={messagesEndRef}></div>
                 </div>
 
+                {/* Input Area */}
                 <div className="input-area">
                   {attachedFile && (
                     <div className="file-attachment">
@@ -682,6 +649,7 @@ export default function WorkspacePage() {
                     </div>
                   )}
                   <div className="input-wrapper">
+                    {/* Survey Picker Button */}
                     <div className="survey-picker-wrapper" ref={surveyPickerRef}>
                       <button
                         className={`attach-btn survey-pick-btn${showSurveyPicker ? " active" : ""}`}
@@ -751,6 +719,7 @@ export default function WorkspacePage() {
                       )}
                     </div>
 
+                    {/* File Attach Button */}
                     <button
                       className="attach-btn"
                       onClick={() => fileInputRef.current?.click()}
