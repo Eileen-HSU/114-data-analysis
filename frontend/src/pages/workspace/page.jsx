@@ -272,7 +272,7 @@ export default function WorkspacePage() {
     const newSession = {
       id: newId,
       title: sessionTitle,
-      date: "2026/4/25",
+      date: new Date().toLocaleDateString(),
       messages: [WELCOME_MSG, userMsg],
     };
     setSessions((prev) => [newSession, ...prev]);
@@ -311,7 +311,7 @@ export default function WorkspacePage() {
     const newSession = {
       id: newId,
       title: `問卷分析：${record.title}`,
-      date: "2026/4/25",
+      date: new Date().toLocaleDateString(),
       messages: [WELCOME_MSG, userMsg],
     };
     setSessions((prev) => [newSession, ...prev]);
@@ -447,7 +447,7 @@ export default function WorkspacePage() {
     const newSession = {
       id: newId,
       title,
-      date: "2026/4/25",
+      date: new Date().toLocaleDateString(),
       messages: [WELCOME_MSG],
     };
     setSessions((prev) => [newSession, ...prev]);
