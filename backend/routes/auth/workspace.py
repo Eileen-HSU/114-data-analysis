@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from flask import Blueprint, jsonify, request
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from extensions import db
@@ -14,33 +15,41 @@ SOFT_DELETE_DAYS = 30  # 軟刪除後幾天永久刪除
 # ── 工具函式 ────────────────────────────────────────────────
 
 def workspace_to_dict(w):
+    days_left = None
+    if w.deleted_at:
+        days_left = max(0, SOFT_DELETE_DAYS - (taiwan_now() - w.deleted_at).days)
+
     return {
         "project_id":   w.project_id,
         "user_id":      w.user_id,
         "project_name": w.project_name,
+        "folder_name":  w.folder_name,
         "search_tag":   w.search_tag,
         "status":       w.status,
         "created_at":   w.created_at.isoformat() if w.created_at else None,
         "is_deleted":   w.is_deleted,
         "deleted_at":   w.deleted_at.isoformat() if w.deleted_at else None,
+        "days_left":    days_left,
     }
 
 
 # ── 路由 ────────────────────────────────────────────────────
 
 @workspace_bp.route("/api/workspace", methods=["POST"])
+@jwt_required()
 def create_workspace():
     """建立新專案"""
+    current_user_id = get_jwt_identity()
     data = request.get_json(silent=True) or {}
-    user_id      = data.get("user_id")
     project_name = data.get("project_name")
 
-    if not user_id or not project_name:
-        return jsonify({"error": "請提供 user_id 與 project_name"}), 400
+    if not project_name:
+        return jsonify({"error": "請提供 project_name"}), 400
 
     workspace = Workspace(
-        user_id      = user_id,
+        user_id      = current_user_id,
         project_name = project_name,
+        folder_name  = data.get("folder_name"),
         search_tag   = data.get("search_tag"),
         status       = data.get("status", "Pending"),
     )
@@ -54,11 +63,13 @@ def create_workspace():
         return jsonify({"error": str(e)}), 500
 
 
-@workspace_bp.route("/api/workspace/user/<int:user_id>", methods=["GET"])
-def get_workspaces(user_id):
+@workspace_bp.route("/api/workspace/user", methods=["GET"])
+@jwt_required()
+def get_workspaces():
     """取得使用者所有未刪除的專案"""
+    current_user_id = get_jwt_identity()
     workspaces = Workspace.query.filter_by(
-        user_id    = user_id,
+        user_id    = current_user_id,
         is_deleted = False,
     ).order_by(Workspace.created_at.desc()).all()
 
@@ -66,10 +77,13 @@ def get_workspaces(user_id):
 
 
 @workspace_bp.route("/api/workspace/<int:project_id>", methods=["GET"])
+@jwt_required()
 def get_workspace(project_id):
     """取得單一專案"""
+    current_user_id = get_jwt_identity()
     workspace = Workspace.query.filter_by(
         project_id = project_id,
+        user_id    = current_user_id,
         is_deleted = False,
     ).first()
 
@@ -80,10 +94,13 @@ def get_workspace(project_id):
 
 
 @workspace_bp.route("/api/workspace/<int:project_id>", methods=["PUT"])
+@jwt_required()
 def update_workspace(project_id):
     """更新專案資料"""
+    current_user_id = get_jwt_identity()
     workspace = Workspace.query.filter_by(
         project_id = project_id,
+        user_id    = current_user_id,
         is_deleted = False,
     ).first()
 
@@ -91,6 +108,9 @@ def update_workspace(project_id):
         return jsonify({"error": "找不到專案"}), 404
 
     data = request.get_json(silent=True) or {}
+
+    if "folder_name" in data:
+        workspace.folder_name = data["folder_name"]
     if "project_name" in data:
         workspace.project_name = data["project_name"]
     if "search_tag" in data:
@@ -107,10 +127,13 @@ def update_workspace(project_id):
 
 
 @workspace_bp.route("/api/workspace/<int:project_id>", methods=["DELETE"])
+@jwt_required()
 def delete_workspace(project_id):
     """軟刪除專案（30 天後自動永久刪除）"""
+    current_user_id = get_jwt_identity()
     workspace = Workspace.query.filter_by(
         project_id = project_id,
+        user_id    = current_user_id,
         is_deleted = False,
     ).first()
 
@@ -128,10 +151,13 @@ def delete_workspace(project_id):
 
 
 @workspace_bp.route("/api/workspace/<int:project_id>/restore", methods=["POST"])
+@jwt_required()
 def restore_workspace(project_id):
     """還原已軟刪除的專案"""
+    current_user_id = get_jwt_identity()
     workspace = Workspace.query.filter_by(
         project_id = project_id,
+        user_id    = current_user_id,
         is_deleted = True,
     ).first()
 
@@ -149,10 +175,13 @@ def restore_workspace(project_id):
 
 
 @workspace_bp.route("/api/workspace/<int:project_id>/permanent", methods=["DELETE"])
+@jwt_required()
 def permanent_delete_workspace(project_id):
     """永久刪除專案（垃圾桶內手動永久刪除）"""
+    current_user_id = get_jwt_identity()
     workspace = Workspace.query.filter_by(
         project_id = project_id,
+        user_id    = current_user_id,
         is_deleted = True,
     ).first()
 
@@ -168,11 +197,13 @@ def permanent_delete_workspace(project_id):
         return jsonify({"error": str(e)}), 500
 
 
-@workspace_bp.route("/api/workspace/user/<int:user_id>/trash", methods=["GET"])
-def get_trash(user_id):
+@workspace_bp.route("/api/workspace/user/trash", methods=["GET"])
+@jwt_required()
+def get_trash():
     """取得垃圾桶內的專案（軟刪除中）"""
+    current_user_id = get_jwt_identity()
     workspaces = Workspace.query.filter_by(
-        user_id    = user_id,
+        user_id    = current_user_id,
         is_deleted = True,
     ).order_by(Workspace.deleted_at.desc()).all()
 
@@ -181,23 +212,22 @@ def get_trash(user_id):
 
 # ── 自動永久刪除排程 ────────────────────────────────────────
 
-def hard_delete_expired_workspaces():
+def hard_delete_expired_workspaces(app):
     """刪除所有軟刪除超過 30 天的專案"""
-    from app import app  # 避免 circular import
     with app.app_context():
-        expiry = taiwan_now() - timedelta(days=SOFT_DELETE_DAYS)
-        expired = Workspace.query.filter(
-            Workspace.is_deleted == True,
-            Workspace.deleted_at <= expiry,
-        ).all()
-
-        if not expired:
-            return
-
-        for w in expired:
-            db.session.delete(w)
-
         try:
+            expiry = taiwan_now() - timedelta(days=SOFT_DELETE_DAYS)
+            expired = Workspace.query.filter(
+                Workspace.is_deleted == True,
+                Workspace.deleted_at <= expiry,
+            ).all()
+
+            if not expired:
+                return
+
+            for w in expired:
+                db.session.delete(w)
+
             db.session.commit()
             print(f"[Scheduler] 永久刪除 {len(expired)} 個過期專案")
         except Exception as e:
@@ -205,13 +235,14 @@ def hard_delete_expired_workspaces():
             print(f"[Scheduler] 永久刪除失敗：{e}")
 
 
-def start_scheduler():
+def start_scheduler(app):
     """在 app 啟動時呼叫這個函式來啟動排程"""
     scheduler = BackgroundScheduler()
     scheduler.add_job(
         hard_delete_expired_workspaces,
         trigger = "interval",
-        hours   = 24,        # 每 24 小時執行一次
+        hours   = 24,
+        args    = [app],        
         id      = "hard_delete_workspaces",
     )
     scheduler.start()
