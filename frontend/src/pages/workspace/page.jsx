@@ -207,7 +207,6 @@ export default function WorkspacePage() {
         const formattedSessions = data.map(w => ({
           id: w.project_id.toString(),
           title: w.project_name,
-          date: new Date(w.created_at).toLocaleDateString(),
           messages: [WELCOME_MSG] 
         }));
         
