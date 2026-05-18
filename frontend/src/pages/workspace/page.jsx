@@ -11,11 +11,9 @@ const WELCOME_MSG = {
   id: "welcome",
   role: "assistant",
   content:
-    "您好！我是 DataAnalysis 助手。系統目前已與雲端資料庫連線，請上傳您的資料檔案，或匯入您的問卷，我將在後續為您記錄所有對話脈絡。",
+    "您好！我是 DataAnalysis AI 助手。請上傳您的資料檔案（CSV、Excel、JSON 或 TXT），或直接輸入您的分析問題，我將為您提供深度洞察。",
 };
 const ACTIVE_WORKSPACE_KEY = "dataanalysis_active_workspace";
-
-// ── 輔助函式 ────────────────────────────────────────────────
 
 function getStoredSurveyRecords(user) {
   let surveys = [];
@@ -86,7 +84,10 @@ function buildSurveyChatContent(survey) {
 }
 
 function cleanMessageText(text) {
-  return text.replace(/\*\*/g, "").replace(/^[\s\-•]+/, "").trim();
+  return text
+    .replace(/\*\*/g, "")
+    .replace(/^[\s\-•]+/, "")
+    .trim();
 }
 
 function parseAssistantTableRows(content) {
@@ -138,8 +139,40 @@ function PlainMessageContent({ content }) {
   ));
 }
 
-// 這裡只保留文字輸出，方便除錯，拿掉原本的假 Table 邏輯
+function AssistantTableContent({ content }) {
+  const rows = parseAssistantTableRows(content);
+
+  if (rows.length < 2) {
+    return <PlainMessageContent content={content} />;
+  }
+
+  return (
+    <div className="assistant-output-table-wrap">
+      <table className="assistant-output-table">
+        <thead>
+          <tr>
+            <th>項目</th>
+            <th>說明</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={`${row.item}-${index}`}>
+              <td>{row.item}</td>
+              <td>{row.description}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function MessageContent({ message }) {
+  if (message.role === "assistant") {
+    return <AssistantTableContent content={message.content} />;
+  }
+
   return <PlainMessageContent content={message.content} />;
 }
 
@@ -158,15 +191,14 @@ function buildAutoSessionTitle(text, file) {
   return cleaned.length > 18 ? `${cleaned.slice(0, 18)}...` : cleaned;
 }
 
-// ── 主元件 ──────────────────────────────────────────────────
-
 export default function WorkspacePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isLoggedIn, user } = useAuth();
   const { recordActivity } = useActivity();
 
-  const { addChatToCollection, syncChatTitle, deleteChatSession, workspaceSessions: sessions, setWorkspaceSessions: setSessions } = useCollection();
+
+  const { addChatToCollection, addFileToCollection, syncChatTitle, deleteChatSession, workspaceSessions: sessions, setWorkspaceSessions: setSessions } = useCollection();
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -182,6 +214,7 @@ export default function WorkspacePage() {
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const textareaRef = useRef(null);
+  const surveyImportHandled = useRef(false);
   const surveyPickerRef = useRef(null);
 
   const showToast = (msg) => {
@@ -193,44 +226,12 @@ export default function WorkspacePage() {
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
   const messages = activeSession?.messages ?? [];
 
-  // 從後端真實撈取使用者的雲端 Workspace 專案清單
   useEffect(() => {
-    if (!isLoggedIn || !user?.user_id) return;
-    
-    const fetchUserWorkspaces = async () => {
-      try {
-        const res = await fetch(`/api/workspace/user/${user.user_id}`);
-        if (!res.ok) throw new Error("無法載入雲端專案紀錄");
-        const data = await res.json();
-        
-        // 轉化為前端可讀的歷史紀錄陣列
-        const formattedSessions = data.map(w => ({
-          id: w.project_id.toString(),
-          title: w.project_name,
-          messages: [WELCOME_MSG] 
-        }));
-        
-        setSessions(formattedSessions);
-        
-        if (formattedSessions && formattedSessions.length > 0) {
-          const savedId = localStorage.getItem(ACTIVE_WORKSPACE_KEY);
-          const restored = formattedSessions.find((s) => s.id === savedId);
-          
-          if (restored) {
-            setActiveSessionId(restored.id);
-          } else {
-            setActiveSessionId(formattedSessions[0].id);
-          }
-        } else {
-          setActiveSessionId(null);
-        }
-      } catch (err) {
-        showToast(err.message);
-      }
-    };
-    
-    fetchUserWorkspaces();
-  }, [isLoggedIn, user?.user_id]);
+    if (activeSessionId || sessions.length === 0) return;
+    const savedId = localStorage.getItem(ACTIVE_WORKSPACE_KEY);
+    const restored = sessions.find((s) => s.id === savedId);
+    setActiveSessionId(restored?.id || sessions[0].id);
+  }, [activeSessionId, sessions]);
 
   useEffect(() => {
     if (!activeSessionId) return;
@@ -260,77 +261,80 @@ export default function WorkspacePage() {
     window.history.replaceState({}, "");
   }, [location.state]);
 
+  // Handle survey import from profile page
+  useEffect(() => {
+    const state = location.state;
+    if (!state?.surveyImport || surveyImportHandled.current) return;
+    surveyImportHandled.current = true;
+    const { sessionTitle, message } = state.surveyImport;
+    const newId = `survey-${Date.now()}`;
+    const userMsg = { id: `u-${Date.now()}`, role: "user", content: message };
+    const newSession = {
+      id: newId,
+      title: sessionTitle,
+      date: "2026/4/25",
+      messages: [WELCOME_MSG, userMsg],
+    };
+    setSessions((prev) => [newSession, ...prev]);
+    setActiveSessionId(newId);
+    setIsTyping(true);
+    setTimeout(() => {
+      const aiReply = {
+        id: `a-${Date.now()}`,
+        role: "assistant",
+        content:
+          "我已收到您的問卷資料，以下是初步分析結果：\n\n" +
+          "**📊 評分題洞察**\n整體平均分表現良好，可進一步比較不同分組的差異。\n\n" +
+          "**💬 問答題主題分析**\n回覆內容集中在幾個核心議題，建議進行情感分析以量化正負回饋比例。\n\n" +
+          "**💡 建議**\n可進一步詢問：想針對哪道題目深入分析？或需要我生成完整分析報告？",
+      };
+      setSessions((prev) =>
+        prev.map((s) => s.id === newId ? { ...s, messages: [...s.messages, aiReply] } : s)
+      );
+      setIsTyping(false);
+    }, 1800);
+    window.history.replaceState({}, "");
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const appendMessage = useCallback((sessionId, msg) => {
     setSessions((prev) =>
       prev.map((s) => s.id === sessionId ? { ...s, messages: [...s.messages, msg] } : s)
     );
   }, []);
 
-  // 問卷匯入對接：建立 Workspace 專案，並將資料以「使用者訊息」寫入後端 Chat_History 表
-  const handleSelectSurvey = async (record) => {
+  const handleSelectSurvey = (record) => {
     const detail = record.detail;
     if (!detail) return;
-    
     const content = buildSurveyChatContent(detail);
-    const sessionTitle = `問卷分析：${record.title}`;
-    
-    try {
-      setIsTyping(true);
-      setShowSurveyPicker(false);
-      setSurveyPickerSearch("");
-
-      // 呼叫 /api/workspace 路由，寫入一筆專案資料到資料庫
-      const workspaceRes = await fetch("/api/workspace", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: user.user_id,
-          project_name: sessionTitle,
-          status: "Imported" // 標記為問卷已匯入
-        })
-      });
-
-      if (!workspaceRes.ok) throw new Error("資料庫專案建立失敗");
-      const serverWorkspace = await workspaceRes.json();
-      const realProjectId = serverWorkspace.project_id.toString();
-
-      const userMsg = { id: `u-${Date.now()}`, role: "user", content };
-      const newSession = {
-        id: realProjectId,
-        title: sessionTitle,
-        date: new Date().toLocaleDateString(),
-        messages: [WELCOME_MSG, userMsg],
-      };
-      setSessions((prev) => [newSession, ...prev]);
-      setActiveSessionId(realProjectId);
-      addChatToCollection(sessionTitle, realProjectId);
-
-      // 把問卷大文字當作第一筆 Chat_History 寫入 MySQL
-      const saveChatRes = await fetch("/api/chat/history", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          project_id: serverWorkspace.project_id,
-          sender_type: "user",
-          message_content: content
-        })
-      });
-
-      if (!saveChatRes.ok) throw new Error("Chat_History 寫入失敗");
-
-      // 還沒串 AI，在前端手動補一筆純文字提醒，代表資料庫已記錄
-      const localAiReply = {
+    const newId = `survey-${Date.now()}`;
+    const userMsg = { id: `u-${Date.now()}`, role: "user", content };
+    const newSession = {
+      id: newId,
+      title: `問卷分析：${record.title}`,
+      date: "2026/4/25",
+      messages: [WELCOME_MSG, userMsg],
+    };
+    setSessions((prev) => [newSession, ...prev]);
+    setActiveSessionId(newId);
+    setShowSurveyPicker(false);
+    setSurveyPickerSearch("");
+    addChatToCollection(`問卷分析：${record.title}`, newId);
+    setIsTyping(true);
+    setTimeout(() => {
+      const aiReply = {
         id: `a-${Date.now()}`,
         role: "assistant",
-        content: `【系統提示】問卷「${record.title}」的結構化統計大文字已成功寫入資料庫的 Chat_History 表中。目前尚未接通大模型 (Gemini) 運算服務。`
+        content:
+          `我已收到「${record.title}」的問卷資料，以下是初步分析結果：\n\n` +
+          "📊 **評分題洞察**\n整體平均分表現良好，可進一步比較不同分組的差異。\n\n" +
+          "💬 **問答題主題分析**\n回覆內容集中在幾個核心議題，建議進行情感分析以量化正負回饋比例。\n\n" +
+          "💡 **建議**\n可進一步詢問：想針對哪道題目深入分析？或需要我生成完整分析報告？",
       };
-      appendMessage(realProjectId, localAiReply);
-
-    } catch (err) {
-      showToast(`匯入錯誤: ${err.message}`);
-    } finally {
+      setSessions((prev) =>
+        prev.map((s) => s.id === newId ? { ...s, messages: [...s.messages, aiReply] } : s)
+      );
       setIsTyping(false);
-    }
+    }, 1800);
   };
 
   const filteredSurveyPicker = getStoredSurveyRecords(user).filter(
@@ -339,78 +343,47 @@ export default function WorkspacePage() {
       s.code.toLowerCase().includes(surveyPickerSearch.toLowerCase())
   );
 
-  // 3. 🚀 一般訊息對接：傳送訊息給後端，並將對話內容儲存至 Chat_History
-  const sendMessage = async () => {
+  const sendMessage = () => {
     if (!input.trim() && !attachedFile) return;
     if (!activeSessionId) return;
-
     const content = attachedFile ? `[檔案：${attachedFile.name}] ${input}` : input;
     const autoTitle = buildAutoSessionTitle(input, attachedFile);
     const userMsg = { id: Date.now().toString(), role: "user", content };
-    
-    let isNewWorkspace = false;
-    let targetProjectId = activeSessionId;
-
-    // 前端同步亮出使用者打的字
     setSessions((prev) =>
       prev.map((s) => {
         if (s.id !== activeSessionId) return s;
-        if (s.title === "新工作區") isNewWorkspace = true;
+        const shouldAutoTitle = s.title === "新工作區";
         return {
           ...s,
-          title: s.title === "新工作區" ? autoTitle : s.title,
+          title: shouldAutoTitle ? autoTitle : s.title,
           messages: [...s.messages, userMsg],
         };
       })
     );
-
+    const session = sessions.find((s) => s.id === activeSessionId);
+    if (session?.title === "新工作區") {
+      syncChatTitle(activeSessionId, autoTitle);
+    }
+    recordActivity({
+      text: `在工作區送出訊息「${autoTitle}」`,
+      icon: "ri-message-3-line",
+      iconBg: "bg-stat-mauve",
+      iconColor: "text-stat-mauve",
+    });
     setInput("");
     setAttachedFile(null);
     setIsTyping(true);
-
-    try {
-      // 如果原本是新工作區，在發出第一條訊息時，同步去更新後端的專案名稱
-      if (isNewWorkspace) {
-        await fetch(`/api/workspace/${activeSessionId}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ project_name: autoTitle })
-        });
-        syncChatTitle(activeSessionId, autoTitle);
-      }
-
-      recordActivity({
-        text: `在工作區送出訊息「${autoTitle}」`,
-        icon: "ri-message-3-line",
-        iconBg: "bg-stat-mauve",
-        iconColor: "text-stat-mauve",
-      });
-
-      // 🚀 【純資料庫寫入】呼叫後端 API，將這段聊天訊息存入 MySQL 裡的 Chat_History
-      const res = await fetch("/api/chat/history", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          project_id: parseInt(targetProjectId),
-          sender_type: "user",
-          message_content: content
-        })
-      });
-
-      if (!res.ok) throw new Error("Chat_History 寫入失敗");
-
-      // 💡 前端直接返回一個接收成功的提示訊息（因為還沒串 AI）
-      appendMessage(targetProjectId, {
-        id: Date.now().toString(),
-        role: "assistant",
-        content: `【系統接收成功】您的訊息已被安全寫入資料庫。目前未串接 AI 模組，以下為您輸入的內文複誦：\n\n"${content}"`
-      });
-
-    } catch (err) {
-      showToast(`通訊失敗: ${err.message}`);
-    } finally {
+    const sid = activeSessionId;
+    setTimeout(() => {
+      const aiResponses = [
+        "根據您上傳的資料，我發現以下幾個關鍵趨勢：\n\n1. **銷售成長**：Q3 相比 Q2 成長了 23.5%，主要由電子產品類別驅動。\n2. **客戶留存率**：整體留存率為 78%，高於行業平均的 65%。\n3. **異常值**：第 47 行數據存在異常，建議進一步核查。\n\n需要我針對某個特定面向進行更深入的分析嗎？",
+        "我已分析您的問題。根據資料顯示，主要發現如下：\n\n- 數據集包含 1,247 筆記錄，涵蓋 12 個維度\n- 缺失值比例為 2.3%，建議使用均值填補\n- 相關性分析顯示「收入」與「廣告支出」呈強正相關（r=0.87）\n\n是否需要我生成視覺化報告？",
+        "這是個很好的問題！根據統計分析：\n\n**描述性統計**\n- 平均值：4,523\n- 中位數：4,102\n- 標準差：892\n\n**建議**：數據分佈略呈右偏，建議考慮對數轉換以改善模型效果。",
+      ];
+      const reply = aiResponses[Math.floor(Math.random() * aiResponses.length)];
+      appendMessage(sid, { id: Date.now().toString(), role: "assistant", content: reply });
       setIsTyping(false);
-    }
+    }, 1500);
   };
 
   const handleKeyDown = (e) => {
@@ -437,101 +410,50 @@ export default function WorkspacePage() {
     setRenameValue(s.title);
   };
 
-  // 4. 🚀 重新命名對接：同步修改資料庫中的專案名稱
-  const saveRename = async (id) => {
+  const saveRename = (id) => {
     const trimmed = renameValue.trim();
-    if (!trimmed) {
-      setRenamingId(null);
-      return;
-    }
-
-    try {
-      const res = await fetch(`/api/workspace/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_name: trimmed })
-      });
-
-      if (!res.ok) throw new Error("無法同步雲端專案名稱");
-      
+    if (trimmed) {
       setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, title: trimmed } : s)));
+      // sync title to collection chat file
       syncChatTitle(id, trimmed);
-    } catch (err) {
-      showToast(err.message);
-    } finally {
-      setRenamingId(null);
     }
+    setRenamingId(null);
   };
 
-  // 5. 🚀 刪除專案對接：呼叫後端 DELETE 進行軟刪除
-  const deleteSession = async (sessionId) => {
+  const deleteSession = (sessionId) => {
     const session = sessions.find((s) => s.id === sessionId);
     if (!session) return;
     const ok = window.confirm(`確定要刪除「${session.title}」嗎？刪除後可在作品集的最近刪除中還原。`);
     if (!ok) return;
 
-    try {
-      const res = await fetch(`/api/workspace/${sessionId}`, {
-        method: "DELETE"
-      });
-
-      if (!res.ok) throw new Error("刪除雲端專案失敗");
-
-      deleteChatSession(sessionId);
-      setSessions((prev) => prev.filter(s => s.id !== sessionId));
-      setRenamingId(null);
-      setSearchQuery("");
-      
-      if (activeSessionId === sessionId) {
-        const remaining = sessions.filter((s) => s.id !== sessionId);
-        const nextSession = remaining[0] || null;
-        setActiveSessionId(nextSession?.id || null);
-        if (nextSession?.id) {
-          localStorage.setItem(ACTIVE_WORKSPACE_KEY, nextSession.id);
-        } else {
-          localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
-        }
+    deleteChatSession(sessionId);
+    setRenamingId(null);
+    setSearchQuery("");
+    if (activeSessionId === sessionId) {
+      const nextSession = sessions.find((s) => s.id !== sessionId);
+      setActiveSessionId(nextSession?.id || null);
+      if (nextSession?.id) {
+        localStorage.setItem(ACTIVE_WORKSPACE_KEY, nextSession.id);
+      } else {
+        localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
       }
-      showToast("已刪除工作區，並移至最近刪除");
-    } catch (err) {
-      showToast(err.message);
     }
+    showToast("已刪除工作區，並移至最近刪除");
   };
 
-  // 6. 🚀 新增工作區對接：呼叫後端 POST 先建立一筆 project_id
-  const createNewSession = async () => {
-    try {
-      const title = "新工作區";
-      const res = await fetch("/api/workspace", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: user.user_id,
-          project_name: title,
-          status: "Pending"
-        })
-      });
-
-      if (!res.ok) throw new Error("無法在雲端建立新工作區");
-      const serverWorkspace = await res.json();
-      const realProjectId = serverWorkspace.project_id.toString();
-
-      const newSession = {
-        id: realProjectId,
-        title,
-        date: new Date().toLocaleDateString(),
-        messages: [WELCOME_MSG],
-      };
-      
-      setSessions((prev) => [newSession, ...prev]);
-      setActiveSessionId(realProjectId);
-      addChatToCollection(title, realProjectId);
-    } catch (err) {
-      showToast(err.message);
-    }
+  const createNewSession = () => {
+    const newId = Date.now().toString();
+    const title = "新工作區";
+    const newSession = {
+      id: newId,
+      title,
+      date: "2026/4/25",
+      messages: [WELCOME_MSG],
+    };
+    setSessions((prev) => [newSession, ...prev]);
+    setActiveSessionId(newId);
+    addChatToCollection(title, newId);
   };
-
-  // ── 以下為 UI 渲染，無縫完整保留 ──────────────────────────────
 
   if (!isLoggedIn) {
     return (
@@ -551,6 +473,7 @@ export default function WorkspacePage() {
   return (
     <>
       <Navbar />
+      {/* Toast */}
       {toastMsg && (
         <div style={{
           position: "fixed", bottom: 32, left: "50%", transform: "translateX(-50%)",
@@ -565,6 +488,7 @@ export default function WorkspacePage() {
       )}
       <div className="workspace-page">
         <div className="workspace-body">
+          {/* Sidebar */}
           <aside className="workspace-sidebar">
             <div className="sidebar-header">
               <div className="d-flex align-items-center justify-content-between mb-3">
@@ -658,6 +582,7 @@ export default function WorkspacePage() {
             </div>
           </aside>
 
+          {/* Main Chat */}
           <main className="workspace-main">
             {activeSession === null ? (
               <div style={{
@@ -712,6 +637,7 @@ export default function WorkspacePage() {
                   <div ref={messagesEndRef}></div>
                 </div>
 
+                {/* Input Area */}
                 <div className="input-area">
                   {attachedFile && (
                     <div className="file-attachment">
@@ -723,6 +649,7 @@ export default function WorkspacePage() {
                     </div>
                   )}
                   <div className="input-wrapper">
+                    {/* Survey Picker Button */}
                     <div className="survey-picker-wrapper" ref={surveyPickerRef}>
                       <button
                         className={`attach-btn survey-pick-btn${showSurveyPicker ? " active" : ""}`}
@@ -792,6 +719,7 @@ export default function WorkspacePage() {
                       )}
                     </div>
 
+                    {/* File Attach Button */}
                     <button
                       className="attach-btn"
                       onClick={() => fileInputRef.current?.click()}
@@ -808,7 +736,8 @@ export default function WorkspacePage() {
                         const f = e.target.files?.[0];
                         if (!f) return;
                         setAttachedFile(f);
-                        showToast(`「${f.name}」已準備上傳`);
+                        addFileToCollection(f);
+                        showToast(`「${f.name}」已加入作品集`);
                         e.target.value = "";
                       }}
                     />
