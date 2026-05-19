@@ -24,7 +24,6 @@ def generate_unique_access_code():
 # ── 路由 ────────────────────────────────────────────────────
 
 @survey_bp.route('/api/surveys', methods=['POST'])
-@jwt_required()
 def create_survey():
     """建立新問卷"""
     data = request.get_json(silent=True) or {}
