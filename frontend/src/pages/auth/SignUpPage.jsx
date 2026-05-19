@@ -15,6 +15,7 @@ export default function SignUpPage() {
   const [phone, setPhone] = useState("");
   const [company, setCompany] = useState("");
   const [gender, setGender] = useState("");
+  const [alertModal, setAlertModal] = useState(null);
 
   useEffect(() => {
     const clearFields = () => {
@@ -46,13 +47,27 @@ const handleSubmit = async (e) => {
       });
 
       console.log("註冊成功:", response.data);
-      alert("註冊成功！");
-      navigate("/login"); // 註冊成功後自動導向登入頁
+      setAlertModal({
+        type: "success",
+        title: "註冊成功",
+        message: "帳號已建立完成，請前往登入頁登入。",
+        onConfirm: () => navigate("/login"),
+      });
     } catch (error) {
       console.error("註冊失敗:", error);
-      alert(error.response?.data?.error || "註冊失敗，請檢查資料");
+      setAlertModal({
+        type: "error",
+        title: "註冊失敗",
+        message: error.response?.data?.error || "註冊失敗，請檢查資料",
+      });
     }
   }; // <--- 你之前漏掉的這個括號，就是紅屏報錯的元兇
+
+  const closeAlertModal = () => {
+    const onConfirm = alertModal?.onConfirm;
+    setAlertModal(null);
+    if (onConfirm) onConfirm();
+  };
 
   return (
     <div className="auth-page">
@@ -216,6 +231,23 @@ const handleSubmit = async (e) => {
           </div>
         </div>
       </div>
+
+      {alertModal && (
+        <div className="auth-modal-backdrop" onClick={closeAlertModal}>
+          <div className={`auth-alert-modal ${alertModal.type}`} role="alertdialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <div className="auth-alert-icon">
+              <i className={alertModal.type === "success" ? "ri-check-line" : "ri-error-warning-line"}></i>
+            </div>
+            <div className="auth-alert-content">
+              <h3>{alertModal.title}</h3>
+              <p>{alertModal.message}</p>
+            </div>
+            <button className="auth-alert-primary" type="button" onClick={closeAlertModal}>
+              確定
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
