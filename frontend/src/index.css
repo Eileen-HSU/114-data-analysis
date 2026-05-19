@@ -324,6 +324,12 @@ body {
   display: block;
 }
 
+.required-mark {
+  color: #ef4444;
+  margin-left: 4px;
+  font-weight: 700;
+}
+
 /* ============================================
    Text Colors
    ============================================ */
