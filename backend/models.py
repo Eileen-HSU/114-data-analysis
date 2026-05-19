@@ -89,7 +89,7 @@ class AI_Analysis(db.Model):
     chart_data         = db.Column(db.JSON)
     export_status      = db.Column(db.String(20), default='Not Exported') 
     created_at         = db.Column(db.DateTime(timezone=True), default=taiwan_now)
-"""
+
 
 # T06: Chat_History - 儲存對話紀錄
 class Chat_History(db.Model):
@@ -102,7 +102,7 @@ class Chat_History(db.Model):
     created_at      = db.Column(db.DateTime(timezone=True), default=taiwan_now)
     uploaded_files  = db.relationship('UploadedFile', backref='chat', cascade="all, delete-orphan")
 
-"""
+
 # T07: Uploaded_File - 儲存聊天室內上傳的檔案資訊
 class UploadedFile(db.Model):
     __tablename__ = 'Uploaded_File'
@@ -119,7 +119,7 @@ class UploadedFile(db.Model):
 class Survey_Template(db.Model):
     __tablename__ = 'Survey_Template'
     template_id   = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    # title         = db.Column(db.String(100), nullable=False)
+    title         = db.Column(db.String(100), nullable=False)
     project_id = db.Column(db.Integer, db.ForeignKey('Workspace.project_id', ondelete="SET NULL"), nullable=True)
     share_uuid    = db.Column(db.String(36), default=lambda: str(uuid.uuid4()), unique=True)
     access_code   = db.Column(db.String(5), nullable=True)     
