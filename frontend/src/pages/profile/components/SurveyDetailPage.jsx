@@ -123,8 +123,20 @@ export default function SurveyDetailPage({ survey, onBack }) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("overview");
   const [importSuccess, setImportSuccess] = useState(false);
+  const [copyCodeSuccess, setCopyCodeSuccess] = useState(false);
   const ratingQuestions = survey.questions.filter((question) => question.type === "rating");
   const textQuestions = survey.questions.filter((question) => question.type !== "rating");
+
+  const handleCopyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(survey.code);
+      setCopyCodeSuccess(true);
+      setTimeout(() => setCopyCodeSuccess(false), 1600);
+    } catch {
+      setCopyCodeSuccess(false);
+      alert("複製失敗，請手動複製邀請碼");
+    }
+  };
 
   const handleImportToChat = () => {
     setImportSuccess(true);
@@ -152,13 +164,24 @@ export default function SurveyDetailPage({ survey, onBack }) {
             <div className="sdp-topbar-center">
               <h1 className="sdp-topbar-title">{survey.title}</h1>
               <div className="sdp-topbar-meta">
-                <span><i className="ri-key-2-line"></i>{survey.code}</span>
                 <span><i className="ri-calendar-line"></i>{survey.createdAt}</span>
                 <span><i className="ri-user-line"></i>{survey.responses.length} 份回覆</span>
                 <span><i className="ri-question-line"></i>{survey.questions.length} 題</span>
               </div>
             </div>
             <div className="sdp-topbar-right">
+              <div className="sdp-code-card">
+                <div className="sdp-code-label">
+                  <i className="ri-key-2-line"></i>邀請碼
+                </div>
+                <div className="sdp-code-row">
+                  <span className="sdp-code-value">{survey.code}</span>
+                  <button className="sdp-copy-code-btn" onClick={handleCopyCode} type="button">
+                    <i className={copyCodeSuccess ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
+                    {copyCodeSuccess ? "已複製" : "複製 Code"}
+                  </button>
+                </div>
+              </div>
               <div className="sdp-stat-pill">
                 <i className="ri-bar-chart-2-line"></i>
                 <span>{survey.responses.length} responses</span>

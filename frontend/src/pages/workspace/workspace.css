@@ -123,7 +123,8 @@
   margin: 2px 0 0;
 }
 
-.session-edit {
+.session-edit,
+.session-delete {
   opacity: 0;
   width: 24px;
   height: 24px;
@@ -141,8 +142,13 @@
   margin-left: 4px;
 }
 
-.session-item:hover .session-edit { opacity: 1; }
+.session-item:hover .session-edit,
+.session-item:hover .session-delete { opacity: 1; }
 .session-edit:hover { color: var(--rose-500); }
+.session-delete:hover {
+  color: #dc2626;
+  background: #fee2e2;
+}
 
 .sidebar-empty {
   text-align: center;

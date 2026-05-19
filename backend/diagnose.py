@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 診斷腳本：驗證後端資料庫連接與 Survey_Template 表狀態
 """
