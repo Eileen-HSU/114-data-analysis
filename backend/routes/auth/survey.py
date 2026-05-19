@@ -91,6 +91,6 @@ def submit_survey_response(access_code):
         }), 201
 
     except Exception as e:
-        logging.error(f"Survey response submission failed: {e}", exc_info=True)
+        logging.error(f"Survey creation failed: {e}", exc_info=True)
         db.session.rollback()
-        return jsonify({"error": "問卷送出失敗"}), 500
+        return jsonify({"error": "問卷建立失敗", "detail": str(e)}), 500
