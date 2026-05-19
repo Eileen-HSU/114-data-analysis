@@ -1,91 +1,76 @@
-from flask import Blueprint, request, jsonify
-from extensions import db
-import traceback
-import sys
+import logging
 import random
 import string
-from sqlalchemy import text
+
+from flask import Blueprint, request, jsonify
+from flask_jwt_extended import jwt_required, get_jwt_identity
+
+from extensions import db
 from models import Survey_Template, Survey_Response
+
 survey_bp = Blueprint('survey', __name__)
 
-@survey_bp.route('/api/surveys', methods=['POST', 'OPTIONS'])
+
+# ── 工具函式 ────────────────────────────────────────────────
+
+def generate_unique_access_code():
+    """產生不重複的 5 碼邀請碼"""
+    while True:
+        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
+        if not Survey_Template.query.filter_by(access_code=code).first():
+            return code
+
+
+# ── 路由 ────────────────────────────────────────────────────
+
+@survey_bp.route('/api/surveys', methods=['POST'])
+@jwt_required()
 def create_survey():
-    if request.method == "OPTIONS":
-        return "", 200
-    
-    print("\n[CREATE_SURVEY] ========== 接收到 /api/surveys 請求 ==========")
-    print(f"[CREATE_SURVEY] Request Headers: {dict(request.headers)}")
-    print(f"[CREATE_SURVEY] Request JSON: {request.json}")
-    
-    data = request.json
-    if not data:
-        print("[CREATE_SURVEY] 錯誤：request.json 為空或無法解析")
-        return jsonify({"error": "request body 為空或格式錯誤"}), 400
-    if not data.get('title') or not isinstance(data.get('questions'), list):
+    """建立新問卷"""
+    data = request.get_json(silent=True) or {}
+    title     = data.get('title')
+    questions = data.get('questions')
+
+    if not title or not isinstance(questions, list):
         return jsonify({"error": "缺少問卷標題或題目資料"}), 400
-    
+
     try:
-        print(f"[CREATE_SURVEY] 收到的數據: title='{data.get('title')}', questions_count={len(data.get('questions', []))} ")
-        
-        # 問卷可以先獨立建立；若有 Workspace，再附上第一個可用的 project_id。
-        project_id = None
-        try:
-            result = db.session.execute(text("SELECT project_id FROM Workspace LIMIT 1"))
-            workspace_row = result.fetchone()
-            if workspace_row:
-                project_id = workspace_row[0]
-                print(f"[CREATE_SURVEY] 已取得 project_id: {project_id}")
-            else:
-                print("[CREATE_SURVEY] Workspace 表中沒有資料，將以 project_id=None 建立問卷")
-        except Exception as workspace_error:
-            print(f"[CREATE_SURVEY] 無法取得 Workspace project_id，將略過: {workspace_error}")
-        
-        # 自動產生一組 5 碼的隨機邀請碼 (對應 access_code)
-        generated_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
-        print(f"[CREATE_SURVEY] 產生的 access_code: {generated_code}")
-        
-        # 將前端傳來的 title, description, questions 全部包進 question_json
-        survey_title = data.get('title', '未命名問卷')
+        access_code = generate_unique_access_code()
+
+        # title 單獨存入 Survey_Template.title 欄位
+        # question_json 只放 description 與 items，不重複存 title
         survey_content = {
-            "title": survey_title,
             "description": data.get('description'),
-            "items": data.get('questions')
+            "items":       questions,
         }
 
         new_template = Survey_Template(
-            title=survey_title,
-            project_id=project_id,
-            access_code=generated_code,
-            question_json=survey_content
-            # share_uuid 會自動生成，template_id 資料庫會自動遞增
+            project_id    = data.get('project_id'),  # 前端明確傳入，可為 None
+            title         = title,
+            access_code   = access_code,
+            question_json = survey_content,
         )
-        
-        print("[CREATE_SURVEY] 準備插入資料庫...")
+
         db.session.add(new_template)
         db.session.commit()
-        print(f"[CREATE_SURVEY] ✓ 成功插入資料庫，template_id={new_template.template_id}")
-        
+
         return jsonify({
-            "message": "問卷建立成功", 
-            "access_code": generated_code,
-            "template_id": new_template.template_id
+            "message":     "問卷建立成功",
+            "access_code": access_code,
+            "template_id": new_template.template_id,
         }), 201
-        
+
     except Exception as e:
-        print(f"[CREATE_SURVEY] ✗ 寫入失敗: {e}")
-        import traceback
-        traceback.print_exc()
+        logging.error(f"Survey creation failed: {e}", exc_info=True)
         db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "問卷建立失敗"}), 500
 
 
-@survey_bp.route('/api/surveys/<access_code>/responses', methods=['POST', 'OPTIONS'])
+@survey_bp.route('/api/surveys/<access_code>/responses', methods=['POST'])
 def submit_survey_response(access_code):
-    if request.method == "OPTIONS":
-        return "", 200
-    
-    data = request.get_json()
-    if not data or not isinstance(data.get('answers'), dict):
+    """提交問卷回覆"""
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data.get('answers'), dict):
         return jsonify({"error": "缺少問卷答案資料"}), 400
 
     try:
@@ -94,18 +79,18 @@ def submit_survey_response(access_code):
             return jsonify({"error": "找不到此邀請碼對應的問卷"}), 404
 
         response = Survey_Response(
-            template_id=survey.template_id,
-            answer_json=data.get('answers')
+            template_id = survey.template_id,
+            answer_json = data.get('answers'),
         )
         db.session.add(response)
         db.session.commit()
 
         return jsonify({
-            "message": "問卷送出成功",
-            "response_id": response.response_id
+            "message":     "問卷送出成功",
+            "response_id": response.response_id,
         }), 201
 
     except Exception as e:
-        traceback.print_exc()
+        logging.error(f"Survey response submission failed: {e}", exc_info=True)
         db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "問卷送出失敗"}), 500

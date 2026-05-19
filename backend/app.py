@@ -14,7 +14,6 @@ from routes.auth.pwd import pwd_bp
 from routes.auth.register import register_bp
 from routes.auth.workspace import workspace_bp, start_scheduler
 from routes.auth.survey import survey_bp
-# from routes.auth.chat import chat_bp
 
 load_dotenv()
 
@@ -96,19 +95,8 @@ app.register_blueprint(profile_bp)
 app.register_blueprint(two_factor_bp, url_prefix='/api/auth/2fa')
 app.register_blueprint(survey_bp)
 app.register_blueprint(workspace_bp)
-# app.register_blueprint(chat_bp)
 
 start_scheduler()
-
-@app.before_request
-def handle_options():
-    if request.method == "OPTIONS":
-        from flask import make_response
-        res = make_response()
-        res.headers["Access-Control-Allow-Origin"] = "*"
-        res.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-        res.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-        return res
 
 @app.route("/api/2fa/disable", methods=["OPTIONS"])
 def options_2fa_disable():
@@ -141,3 +129,14 @@ def handle_exception(e):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
+
+@app.before_request
+def handle_options():
+    if request.method == "OPTIONS":
+        from flask import make_response
+        res = make_response()
+        res.headers["Access-Control-Allow-Origin"] = "*"
+        res.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        res.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        return res
