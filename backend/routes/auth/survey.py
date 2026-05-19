@@ -1,17 +1,12 @@
 import logging
 import random
 import string
-
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-
 from extensions import db
 from models import Survey_Template, Survey_Response
 
 survey_bp = Blueprint('survey', __name__)
-
-
-# ── 工具函式 ────────────────────────────────────────────────
 
 def generate_unique_access_code():
     """產生不重複的 5 碼邀請碼"""
@@ -19,9 +14,6 @@ def generate_unique_access_code():
         code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
         if not Survey_Template.query.filter_by(access_code=code).first():
             return code
-
-
-# ── 路由 ────────────────────────────────────────────────────
 
 @survey_bp.route('/api/surveys', methods=['POST'])
 @jwt_required()
@@ -36,24 +28,18 @@ def create_survey():
 
     try:
         access_code = generate_unique_access_code()
-
-        # title 單獨存入 Survey_Template.title 欄位
-        # question_json 只放 description 與 items，不重複存 title
         survey_content = {
             "description": data.get('description'),
             "items":       questions,
         }
-
         new_template = Survey_Template(
-            project_id    = data.get('project_id'),  # 前端明確傳入，可為 None
+            project_id    = data.get('project_id'),
             title         = title,
             access_code   = access_code,
             question_json = survey_content,
         )
-
         db.session.add(new_template)
         db.session.commit()
-
         return jsonify({
             "message":     "問卷建立成功",
             "access_code": access_code,
@@ -63,8 +49,7 @@ def create_survey():
     except Exception as e:
         logging.error(f"Survey creation failed: {e}", exc_info=True)
         db.session.rollback()
-        return jsonify({"error": "問卷建立失敗"}), 500
-
+        return jsonify({"error": "問卷建立失敗", "detail": str(e)}), 500  
 
 @survey_bp.route('/api/surveys/<access_code>/responses', methods=['POST'])
 def submit_survey_response(access_code):
@@ -84,13 +69,12 @@ def submit_survey_response(access_code):
         )
         db.session.add(response)
         db.session.commit()
-
         return jsonify({
             "message":     "問卷送出成功",
             "response_id": response.response_id,
         }), 201
 
     except Exception as e:
-        logging.error(f"Survey creation failed: {e}", exc_info=True)
+        logging.error(f"Survey response submission failed: {e}", exc_info=True)
         db.session.rollback()
-        return jsonify({"error": "問卷建立失敗", "detail": str(e)}), 500
+        return jsonify({"error": "問卷送出失敗", "detail": str(e)}), 500
