@@ -1,11 +1,19 @@
 import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../../components/feature/Navbar";
+import { useAuth } from "../../hooks/AuthContext";
 import "./home.css";
 
 export default function HomePage() {
   const navigate = useNavigate();
+  const { isLoggedIn } = useAuth();
   const heroBgRef = useRef(null);
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      navigate("/workspace", { replace: true });
+    }
+  }, [isLoggedIn, navigate]);
 
   useEffect(() => {
     const onScroll = () => {

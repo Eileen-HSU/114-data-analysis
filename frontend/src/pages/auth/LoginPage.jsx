@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/AuthContext";
 import { apiUrl } from "../../lib/api";
@@ -10,6 +10,17 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+
+  useEffect(() => {
+    const clearFields = () => {
+      setEmail("");
+      setPassword("");
+    };
+    clearFields();
+    const timer = window.setTimeout(clearFields, 200);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const isTwoFactorRequired = (data) =>
     Boolean(
@@ -21,47 +32,48 @@ export default function LoginPage() {
     );
 
   const handleSubmit = async (e) => {
-  e.preventDefault();
+    e.preventDefault();
+    setLoginError("");
 
-  try {
-    const res = await fetch(apiUrl("/api/login"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: email,
-        password: password,
-      }),
-    });
+    try {
+      const res = await fetch(apiUrl("/api/login"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
 
-    const data = await res.json();
+      const data = await res.json();
+      if (!res.ok) {
+        setLoginError(data.error || "登入失敗，請確認帳號或密碼是否正確。");
+        return;
+      }
 
-    if (!res.ok) {
-      alert(data.error || "登入失敗");
-      return;
+      const userData = {
+        name: data.user_name,
+        user_name: data.user_name,
+        email: data.email,
+        user_id: data.user_id,
+        token: data.token,
+        pre_auth_token: data.pre_auth_token,
+      };
+
+      if (isTwoFactorRequired(data)) {
+        sessionStorage.setItem("dataanalysis_pending_2fa", JSON.stringify(userData));
+        navigate("/login/two-factor");
+        return;
+      }
+
+      login(userData);
+      navigate("/workspace");
+    } catch (err) {
+      setLoginError("連線失敗，請確認後端服務是否正常。");
+      console.error(err);
     }
-
-    const userData = { name: data.user_name, email: data.email, user_id: data.user_id };
-
-    if (isTwoFactorRequired(data)) {
-      sessionStorage.setItem("dataanalysis_pending_2fa", JSON.stringify(userData));
-      navigate("/login/two-factor");
-      return;
-    }
-
-    // 登入成功
-    login(userData);
-    navigate("/workspace");
-
-  } catch (err) {
-    alert("無法連線至伺服器，請確認後端是否啟動");
-    console.error(err);
-  }
-};
+  };
 
   return (
     <div className="auth-page">
       <div className="row g-0" style={{ minHeight: "100vh" }}>
-        {/* Left Visual */}
         <div className="col-lg-6 d-none d-lg-flex auth-visual">
           <div className="auth-visual-overlay"></div>
           <div className="auth-visual-content">
@@ -93,7 +105,6 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Right Form */}
         <div className="col-lg-6 d-flex align-items-center justify-content-center auth-form-area">
           <button className="back-home-btn" onClick={() => navigate("/")}>
             <div className="back-home-icon">
@@ -103,7 +114,6 @@ export default function LoginPage() {
           </button>
 
           <div className="auth-form-wrapper">
-            {/* Mobile Logo */}
             <div className="d-lg-none text-center mb-4">
               <div className="mobile-logo">
                 <i className="ri-bar-chart-box-line"></i>
@@ -119,18 +129,23 @@ export default function LoginPage() {
               </a>
             </p>
 
-            <form onSubmit={handleSubmit} className="auth-form">
+            <form onSubmit={handleSubmit} className="auth-form" autoComplete="off">
               <div className="mb-3">
                 <label className="auth-label">電子郵件</label>
                 <div className="position-relative">
                   <i className="ri-mail-line form-icon"></i>
                   <input
                     type="email"
+                    name="login_email"
+                    autoComplete="off"
                     required
                     className="form-control form-control-custom"
                     placeholder="your@email.com"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      setLoginError("");
+                    }}
                   />
                 </div>
               </div>
@@ -141,11 +156,16 @@ export default function LoginPage() {
                   <i className="ri-lock-line form-icon"></i>
                   <input
                     type={showPassword ? "text" : "password"}
+                    name="login_password"
+                    autoComplete="new-password"
                     required
                     className="form-control form-control-custom pe-5"
                     placeholder="請輸入密碼"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      setLoginError("");
+                    }}
                   />
                   <button
                     type="button"
@@ -162,6 +182,13 @@ export default function LoginPage() {
                   忘記密碼？
                 </a>
               </div>
+
+              {loginError && (
+                <div className="auth-error-message" role="alert">
+                  <i className="ri-error-warning-line"></i>
+                  <span>{loginError}</span>
+                </div>
+              )}
 
               <button type="submit" className="btn btn-auth-submit w-100">
                 登入

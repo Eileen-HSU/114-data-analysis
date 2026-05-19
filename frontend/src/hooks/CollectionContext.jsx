@@ -1,35 +1,75 @@
 import { createContext, useContext, useEffect, useState } from "react";
+import { useActivity } from "./ActivityContext";
+import { apiUrl } from "../lib/api";
 
 const INIT_FOLDERS = [];
-
 const INIT_FILES = [];
 
 const CollectionContext = createContext(null);
 const WORKSPACE_SESSIONS_KEY = "dataanalysis_workspace_sessions";
+const COLLECTION_FOLDERS_KEY = "dataanalysis_collection_folders";
+const COLLECTION_FILES_KEY = "dataanalysis_collection_files";
+const DELETED_ITEMS_KEY = "dataanalysis_deleted_items";
 
-function loadWorkspaceSessions() {
+function loadArray(key, fallback = []) {
   try {
-    const raw = localStorage.getItem(WORKSPACE_SESSIONS_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const raw = localStorage.getItem(key);
+    const parsed = raw ? JSON.parse(raw) : fallback;
+    return Array.isArray(parsed) ? parsed : fallback;
   } catch {
-    return [];
+    return fallback;
   }
 }
 
-export function CollectionProvider({ children }) {
-  const [folders, setFolders] = useState(INIT_FOLDERS);
-  const [files, setFiles] = useState(INIT_FILES);
-  const [deletedItems, setDeletedItems] = useState([]);
-  const [workspaceSessions, setWorkspaceSessions] = useState(loadWorkspaceSessions);
+function loadWorkspaceSessions() {
+  return loadArray(WORKSPACE_SESSIONS_KEY);
+}
 
-  useEffect(() => {
-    localStorage.setItem(WORKSPACE_SESSIONS_KEY, JSON.stringify(workspaceSessions));
-  }, [workspaceSessions]);
+export function CollectionProvider({ children }) {
+  const { recordActivity } = useActivity();
+  const [folders, setFolders] = useState(() => loadArray(COLLECTION_FOLDERS_KEY, INIT_FOLDERS));
+  const [files, setFiles] = useState(() => loadArray(COLLECTION_FILES_KEY, INIT_FILES));
+  const [deletedItems, setDeletedItems] = useState(() => loadArray(DELETED_ITEMS_KEY));
+  const [workspaceSessions, setWorkspaceSessions] = useState(loadWorkspaceSessions);
 
   const nowString = () => {
     const d = new Date();
     return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   };
+
+  useEffect(() => {
+    localStorage.setItem(WORKSPACE_SESSIONS_KEY, JSON.stringify(workspaceSessions));
+  }, [workspaceSessions]);
+
+  useEffect(() => {
+    localStorage.setItem(COLLECTION_FOLDERS_KEY, JSON.stringify(folders));
+  }, [folders]);
+
+  useEffect(() => {
+    localStorage.setItem(COLLECTION_FILES_KEY, JSON.stringify(files));
+  }, [files]);
+
+  useEffect(() => {
+    localStorage.setItem(DELETED_ITEMS_KEY, JSON.stringify(deletedItems));
+  }, [deletedItems]);
+
+  useEffect(() => {
+    setFiles((prev) => {
+      const existingSessionIds = new Set(prev.filter((f) => f.type === "chat").map((f) => f.sessionId));
+      const missingChatFiles = workspaceSessions
+        .filter((session) => !existingSessionIds.has(session.id))
+        .map((session) => ({
+          id: `chat-${session.id}`,
+          name: session.title,
+          type: "chat",
+          size: "-",
+          folderId: null,
+          createdAt: session.date || nowString(),
+          sessionId: session.id,
+        }));
+      return missingChatFiles.length ? [...missingChatFiles, ...prev] : prev;
+    });
+  }, [workspaceSessions]);
 
   const deleteFolder = (id, name) => {
     const folder = folders.find((f) => f.id === id);
@@ -48,6 +88,12 @@ export function CollectionProvider({ children }) {
     ]);
     setFolders((prev) => prev.filter((f) => f.id !== id));
     setFiles((prev) => prev.map((f) => (f.folderId === id ? { ...f, folderId: null } : f)));
+    recordActivity({
+      text: `刪除資料夾「${name}」`,
+      icon: "ri-folder-reduce-line",
+      iconBg: "bg-stat-coral",
+      iconColor: "text-stat-coral",
+    });
   };
 
   const deleteFile = (id, name) => {
@@ -64,9 +110,67 @@ export function CollectionProvider({ children }) {
       ...prev,
     ]);
     setFiles((prev) => prev.filter((f) => f.id !== id));
+    recordActivity({
+      text: `刪除檔案「${name}」`,
+      icon: "ri-delete-bin-line",
+      iconBg: "bg-stat-coral",
+      iconColor: "text-stat-coral",
+    });
   };
 
-  const restoreItem = (item) => {
+  // ── 軟刪除：移至垃圾桶，同時打後端 API ──────────────────
+  const deleteChatSession = async (sessionId) => {
+    const session = workspaceSessions.find((s) => s.id === sessionId);
+    if (!session) return;
+
+    try {
+      await fetch(apiUrl(`/api/workspace/${session.project_id}`), { method: "DELETE" });
+    } catch (err) {
+      console.error("軟刪除失敗", err);
+    }
+
+    const chatFile = files.find((f) => f.type === "chat" && f.sessionId === sessionId);
+    setDeletedItems((prev) => [
+      {
+        id: `del-${Date.now()}`,
+        name: chatFile?.name || session.title,
+        type: "file",
+        deletedAt: nowString(),
+        originalData: chatFile || {
+          id: `chat-${sessionId}`,
+          name: session.title,
+          type: "chat",
+          size: "-",
+          folderId: null,
+          createdAt: session.date || nowString(),
+          sessionId,
+        },
+        workspaceSession: session,
+        project_id: session.project_id || null,
+      },
+      ...prev,
+    ]);
+    setFiles((prev) => prev.filter((f) => f.sessionId !== sessionId));
+    setWorkspaceSessions((prev) => prev.filter((s) => s.id !== sessionId));
+    recordActivity({
+      text: `刪除工作區 Chat「${chatFile?.name || session.title}」`,
+      icon: "ri-chat-delete-line",
+      iconBg: "bg-stat-coral",
+      iconColor: "text-stat-coral",
+    });
+  };
+
+  // ── 還原：從垃圾桶還原，同時打後端 API ──────────────────
+  const restoreItem = async (item) => {
+      try {
+        await fetch(apiUrl(`/api/workspace/${item.project_id}/restore`), {
+          method: "POST",
+        });
+      } catch (err) {
+        console.error("還原失敗", err);
+      }
+    
+
     if (item.type === "folder") {
       const folder = item.originalData;
       setFolders((prev) => [...prev, folder]);
@@ -83,12 +187,43 @@ export function CollectionProvider({ children }) {
         if (prev.find((f) => f.id === file.id)) return prev;
         return [...prev, file];
       });
+      if (file.type === "chat" && item.workspaceSession) {
+        setWorkspaceSessions((prev) => {
+          if (prev.find((s) => s.id === item.workspaceSession.id)) return prev;
+          return [item.workspaceSession, ...prev];
+        });
+      }
     }
+
     setDeletedItems((prev) => prev.filter((d) => d.id !== item.id));
+    recordActivity({
+      text: `還原「${item.name}」`,
+      icon: "ri-arrow-go-back-line",
+      iconBg: "bg-stat-teal",
+      iconColor: "text-stat-teal",
+    });
   };
 
-  const permanentDelete = (id) => {
+  // ── 永久刪除：從資料庫完全刪除，同時打後端 API ──────────
+  const permanentDelete = async (id) => {
+    const target = deletedItems.find((item) => item.id === id);
+      try {
+        await fetch(apiUrl(`/api/workspace/${target.project_id}/permanent`), {
+          method: "DELETE",
+        });
+      } catch (err) {
+        console.error("永久刪除失敗", err);
+      }
+
     setDeletedItems((prev) => prev.filter((d) => d.id !== id));
+    if (target) {
+      recordActivity({
+        text: `永久刪除「${target.name}」`,
+        icon: "ri-delete-bin-2-line",
+        iconBg: "bg-stat-coral",
+        iconColor: "text-stat-coral",
+      });
+    }
   };
 
   const getFileType = (filename) => {
@@ -117,6 +252,12 @@ export function CollectionProvider({ children }) {
       createdAt: nowString(),
     };
     setFiles((prev) => [newFile, ...prev]);
+    recordActivity({
+      text: `新增檔案「${newFile.name}」到作品集`,
+      icon: "ri-file-add-line",
+      iconBg: "bg-stat-sky",
+      iconColor: "text-stat-sky",
+    });
   };
 
   const addChatToCollection = (title, sessionId) => {
@@ -131,13 +272,17 @@ export function CollectionProvider({ children }) {
       sessionId,
     };
     setFiles((prev) => [newFile, ...prev]);
+    recordActivity({
+      text: `新增工作區 Chat「${title}」`,
+      icon: "ri-chat-new-line",
+      iconBg: "bg-stat-mauve",
+      iconColor: "text-stat-mauve",
+    });
   };
 
   const syncChatTitle = (sessionId, newTitle) => {
     setFiles((prev) =>
-      prev.map((f) =>
-        f.sessionId === sessionId ? { ...f, name: newTitle } : f
-      )
+      prev.map((f) => (f.sessionId === sessionId ? { ...f, name: newTitle } : f))
     );
   };
 
@@ -147,7 +292,7 @@ export function CollectionProvider({ children }) {
       setFolders, setFiles, setWorkspaceSessions,
       deleteFolder, deleteFile,
       restoreItem, permanentDelete,
-      addChatToCollection, addFileToCollection, syncChatTitle,
+      addChatToCollection, addFileToCollection, syncChatTitle, deleteChatSession,
     }}>
       {children}
     </CollectionContext.Provider>

@@ -3,17 +3,15 @@ import { useNavigate } from "react-router-dom";
 import Navbar from "../../components/feature/Navbar";
 import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
 import { useAuth } from "../../hooks/AuthContext";
+import { useActivity } from "../../hooks/ActivityContext";
 import axios from "axios";
 import { apiUrl } from "../../lib/api";
 import "./survey.css";
 
 
 const QUESTION_TYPES = [
-  { value: "short", label: "短答題", icon: "ri-text" },
-  { value: "long", label: "詳答題", icon: "ri-align-left" },
+  { value: "short", label: "問答題", icon: "ri-question-answer-line" },
   { value: "rating", label: "評分題 0-5", icon: "ri-star-line" },
-  { value: "single", label: "單選題", icon: "ri-radio-button-line" },
-  { value: "multiple", label: "複選題", icon: "ri-checkbox-multiple-line" },
 ];
 
 function newQuestion(type = "short") {
@@ -22,7 +20,7 @@ function newQuestion(type = "short") {
     type,
     title: "",
     required: true,
-    options: type === "single" || type === "multiple" ? ["選項 1", "選項 2"] : [],
+    options: [],
   };
 }
 
@@ -34,6 +32,7 @@ function generateCode() {
 export default function CreateSurveyPage() {
   const navigate = useNavigate();
   const { isLoggedIn, user } = useAuth();
+  const { recordActivity } = useActivity();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [questions, setQuestions] = useState([
@@ -44,6 +43,7 @@ export default function CreateSurveyPage() {
   const [copied, setCopied] = useState(false);
 
   const typeMap = useMemo(() => Object.fromEntries(QUESTION_TYPES.map((item) => [item.value, item])), []);
+  const getQuestionType = (type) => typeMap[type] || typeMap.short;
 
   if (!isLoggedIn) {
     return (
@@ -64,40 +64,8 @@ export default function CreateSurveyPage() {
     setQuestions((prev) =>
       prev.map((q) => {
         if (q.id !== id) return q;
-        const next = { ...q, ...patch };
-        if (patch.type === "single" || patch.type === "multiple") {
-          next.options = q.options?.length ? q.options : ["選項 1", "選項 2"];
-        } else if (patch.type) {
-          next.options = [];
-        }
-        return next;
+        return { ...q, ...patch, ...(patch.type ? { options: [] } : {}) };
       })
-    );
-  };
-
-  const updateOption = (questionId, optionIndex, value) => {
-    setQuestions((prev) =>
-      prev.map((q) =>
-        q.id === questionId
-          ? { ...q, options: q.options.map((option, index) => (index === optionIndex ? value : option)) }
-          : q
-      )
-    );
-  };
-
-  const addOption = (questionId) => {
-    setQuestions((prev) =>
-      prev.map((q) => (q.id === questionId ? { ...q, options: [...q.options, `選項 ${q.options.length + 1}`] } : q))
-    );
-  };
-
-  const removeOption = (questionId, optionIndex) => {
-    setQuestions((prev) =>
-      prev.map((q) =>
-        q.id === questionId && q.options.length > 2
-          ? { ...q, options: q.options.filter((_, index) => index !== optionIndex) }
-          : q
-      )
     );
   };
 
@@ -112,9 +80,6 @@ export default function CreateSurveyPage() {
   const validate = () => {
     if (!title.trim()) return "請輸入問卷標題。";
     if (questions.some((q) => !q.title.trim())) return "每個題目都需要填寫題目文字。";
-    if (questions.some((q) => (q.type === "single" || q.type === "multiple") && q.options.some((option) => !option.trim()))) {
-      return "選擇題的每個選項都需要填寫。";
-    }
     return "";
   };
 
@@ -136,28 +101,30 @@ export default function CreateSurveyPage() {
         questions: questions.map((q) => ({
           ...q,
           title: q.title.trim(),
-          options: q.options.map((opt) => opt.trim()),
+          options: (q.options || []).map((opt) => opt.trim()),
         })),
         user_id: user?.user_id
       };
 
       console.log("[FRONTEND] 🚀 準備發送數據至 Aiven...", payload);
 
-      // 3. 發送請求到後端 Render 部署的 /api/submit_form
-      const response = await axios.post(apiUrl("/api/submit_form"), payload);
+      // 3. 發送請求到後端 Render 部署的 /api/surveys
+      const response = await axios.post(apiUrl("/api/surveys"), payload);
 
       if (response.status === 201 || response.status === 200) {
         console.log("[FRONTEND] ✓ 成功存入 Aiven:", response.data);
         
         // 4. 將後端生成的邀請碼顯示在畫面上
         const accessCode = response.data.access_code;
+        const createdAtMs = Date.now();
         const savedSurvey = {
           id: response.data.template_id || `survey-${Date.now()}`,
           title: payload.title,
           description: payload.description,
           questions: payload.questions,
           code: accessCode,
-          createdAt: new Date().toISOString().slice(0, 10),
+          createdAt: new Date(createdAtMs).toISOString().slice(0, 10),
+          createdAtMs,
           responses: [],
           ownerId: user?.user_id,
           ownerEmail: user?.email,
@@ -165,6 +132,12 @@ export default function CreateSurveyPage() {
         const storedSurveys = JSON.parse(localStorage.getItem("surveys") || "{}");
         storedSurveys[accessCode] = savedSurvey;
         localStorage.setItem("surveys", JSON.stringify(storedSurveys));
+        recordActivity({
+          text: `建立問卷「${payload.title}」`,
+          icon: "ri-survey-line",
+          iconBg: "bg-stat-coral",
+          iconColor: "text-stat-coral",
+        });
         setGeneratedCode(accessCode);
         setError("");
       }
@@ -206,11 +179,14 @@ export default function CreateSurveyPage() {
             </div>
           </section>
 
-          {questions.map((question, index) => (
-            <section className="question-card" key={question.id}>
+          {questions.map((question, index) => {
+            const questionType = getQuestionType(question.type);
+
+            return (
+              <section className="question-card" key={question.id}>
               <div className="question-card-header">
                 <div className="question-number">{index + 1}</div>
-                <select className="question-type-select" value={question.type} onChange={(e) => updateQuestion(question.id, { type: e.target.value })}>
+                <select className="question-type-select" value={questionType.value} onChange={(e) => updateQuestion(question.id, { type: e.target.value })}>
                   {QUESTION_TYPES.map((type) => (
                     <option key={type.value} value={type.value}>{type.label}</option>
                   ))}
@@ -229,28 +205,13 @@ export default function CreateSurveyPage() {
 
               <input className="survey-input" value={question.title} onChange={(e) => updateQuestion(question.id, { title: e.target.value })} placeholder={`題目 ${index + 1}`} />
 
-              {(question.type === "single" || question.type === "multiple") && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 14 }}>
-                  {question.options.map((option, optionIndex) => (
-                    <div className="d-flex gap-2" key={optionIndex}>
-                      <input className="survey-input" value={option} onChange={(e) => updateOption(question.id, optionIndex, e.target.value)} />
-                      <button className="question-delete-btn" onClick={() => removeOption(question.id, optionIndex)} type="button">
-                        <i className="ri-close-line"></i>
-                      </button>
-                    </div>
-                  ))}
-                  <button className="btn btn-outline-secondary" onClick={() => addOption(question.id)} type="button" style={{ alignSelf: "flex-start" }}>
-                    <i className="ri-add-line me-1"></i>新增選項
-                  </button>
-                </div>
-              )}
-
               <div className="q-preview" style={{ marginTop: 14 }}>
-                <i className={`${typeMap[question.type].icon} me-1`}></i>
-                {typeMap[question.type].label}
+                <i className={`${questionType.icon} me-1`}></i>
+                {questionType.label}
               </div>
-            </section>
-          ))}
+              </section>
+            );
+          })}
 
           <button className="add-question-area" onClick={() => setQuestions((prev) => [...prev, newQuestion()])} type="button">
             <i className="ri-add-circle-line"></i>

@@ -4,6 +4,7 @@ import Navbar from "../../components/feature/Navbar";
 import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
 import { useAuth } from "../../hooks/AuthContext";
 import { useCollection } from "../../hooks/CollectionContext";
+import { useActivity } from "../../hooks/ActivityContext";
 import "./workspace.css";
 
 const WELCOME_MSG = {
@@ -15,7 +16,14 @@ const WELCOME_MSG = {
 const ACTIVE_WORKSPACE_KEY = "dataanalysis_active_workspace";
 
 function getStoredSurveyRecords(user) {
-  const surveys = Object.values(JSON.parse(localStorage.getItem("surveys") || "{}"));
+  let surveys = [];
+  try {
+    const stored = JSON.parse(localStorage.getItem("surveys") || "{}");
+    surveys = Object.values(stored || {});
+  } catch {
+    surveys = [];
+  }
+
   return surveys
     .filter((survey) => {
       if (!user) return false;
@@ -186,11 +194,11 @@ function buildAutoSessionTitle(text, file) {
 export default function WorkspacePage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, user } = useAuth();
+  const { recordActivity } = useActivity();
 
 
-  const { addChatToCollection, addFileToCollection, syncChatTitle, workspaceSessions: sessions, setWorkspaceSessions: setSessions } = useCollection();
-  const [showLoginModal] = useState(!isLoggedIn);
+  const { addChatToCollection, addFileToCollection, syncChatTitle, deleteChatSession, workspaceSessions: sessions, setWorkspaceSessions: setSessions } = useCollection();
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -264,7 +272,7 @@ export default function WorkspacePage() {
     const newSession = {
       id: newId,
       title: sessionTitle,
-      date: "2026/4/25",
+      date: new Date().toLocaleDateString(),
       messages: [WELCOME_MSG, userMsg],
     };
     setSessions((prev) => [newSession, ...prev]);
@@ -303,7 +311,7 @@ export default function WorkspacePage() {
     const newSession = {
       id: newId,
       title: `問卷分析：${record.title}`,
-      date: "2026/4/25",
+      date: new Date().toLocaleDateString(),
       messages: [WELCOME_MSG, userMsg],
     };
     setSessions((prev) => [newSession, ...prev]);
@@ -356,6 +364,12 @@ export default function WorkspacePage() {
     if (session?.title === "新工作區") {
       syncChatTitle(activeSessionId, autoTitle);
     }
+    recordActivity({
+      text: `在工作區送出訊息「${autoTitle}」`,
+      icon: "ri-message-3-line",
+      iconBg: "bg-stat-mauve",
+      iconColor: "text-stat-mauve",
+    });
     setInput("");
     setAttachedFile(null);
     setIsTyping(true);
@@ -406,13 +420,34 @@ export default function WorkspacePage() {
     setRenamingId(null);
   };
 
+  const deleteSession = (sessionId) => {
+    const session = sessions.find((s) => s.id === sessionId);
+    if (!session) return;
+    const ok = window.confirm(`確定要刪除「${session.title}」嗎？刪除後可在作品集的最近刪除中還原。`);
+    if (!ok) return;
+
+    deleteChatSession(sessionId);
+    setRenamingId(null);
+    setSearchQuery("");
+    if (activeSessionId === sessionId) {
+      const nextSession = sessions.find((s) => s.id !== sessionId);
+      setActiveSessionId(nextSession?.id || null);
+      if (nextSession?.id) {
+        localStorage.setItem(ACTIVE_WORKSPACE_KEY, nextSession.id);
+      } else {
+        localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
+      }
+    }
+    showToast("已刪除工作區，並移至最近刪除");
+  };
+
   const createNewSession = () => {
     const newId = Date.now().toString();
     const title = "新工作區";
     const newSession = {
       id: newId,
       title,
-      date: "2026/4/25",
+      date: new Date().toLocaleDateString(),
       messages: [WELCOME_MSG],
     };
     setSessions((prev) => [newSession, ...prev]);
@@ -420,7 +455,7 @@ export default function WorkspacePage() {
     addChatToCollection(title, newId);
   };
 
-  if (showLoginModal) {
+  if (!isLoggedIn) {
     return (
       <>
         <Navbar />
@@ -533,6 +568,13 @@ export default function WorkspacePage() {
                       title="重新命名"
                     >
                       <i className="ri-pencil-line"></i>
+                    </button>
+                    <button
+                      className="session-delete"
+                      onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
+                      title="刪除工作區"
+                    >
+                      <i className="ri-delete-bin-line"></i>
                     </button>
                   </div>
                 ))

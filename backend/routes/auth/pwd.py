@@ -1,157 +1,183 @@
-from flask import Blueprint, current_app, request, jsonify
+from datetime import datetime, timedelta
+import os
+import secrets
+
+import sib_api_v3_sdk
+from sib_api_v3_sdk.rest import ApiException
+from flask import Blueprint, jsonify, request
+from werkzeug.security import check_password_hash, generate_password_hash
+
 from extensions import db
 from models import User, UserVerification
-from werkzeug.security import generate_password_hash, check_password_hash
-import random
-from datetime import datetime, timedelta
-import traceback
-import os
-import socket
-import smtplib
-from email.mime.text import MIMEText
 
-pwd_bp = Blueprint('pwd', __name__)
+pwd_bp = Blueprint("pwd", __name__)
+
 
 def taiwan_now():
     return datetime.utcnow() + timedelta(hours=8)
 
-class IPv4SMTP(smtplib.SMTP):
-    def _get_socket(self, host, port, timeout):
-        for _family, _socktype, _proto, _canonname, sockaddr in socket.getaddrinfo(
-            host,
-            port,
-            socket.AF_INET,
-            socket.SOCK_STREAM,
-        ):
-            return socket.create_connection(sockaddr, timeout, source_address=self.source_address)
-        raise OSError(f"No IPv4 address found for SMTP host {host}")
 
-class IPv4SMTP_SSL(smtplib.SMTP_SSL):
-    def _get_socket(self, host, port, timeout):
-        raw_socket = IPv4SMTP._get_socket(self, host, port, timeout)
-        return self.context.wrap_socket(raw_socket, server_hostname=host)
+def send_password_email_via_resend(recipient, subject, body_text):
+    api_key = os.getenv("BREVO_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("BREVO_API_KEY is not configured")
 
-# ── 1. 發送驗證碼 (支援修改與重設) ───────────────────────
-def send_password_email(recipient, subject, body):
-    msg = MIMEText(body, "plain", "utf-8")
-    msg["Subject"] = subject
-    msg["From"] = current_app.config["MAIL_DEFAULT_SENDER"]
-    msg["To"] = recipient
+    sender_email = os.getenv("BREVO_FROM_EMAIL", "").strip()
+    sender_name = os.getenv("BREVO_FROM_NAME", "DataAnalysis").strip()
 
-    smtp_class = IPv4SMTP_SSL if current_app.config.get("MAIL_USE_SSL") else IPv4SMTP
-    with smtp_class(
-        current_app.config["MAIL_SERVER"],
-        current_app.config["MAIL_PORT"],
-        timeout=current_app.config.get("MAIL_TIMEOUT", 20),
-    ) as smtp:
-        smtp.ehlo()
-        if current_app.config.get("MAIL_USE_TLS"):
-            smtp.starttls()
-            smtp.ehlo()
-        if current_app.config.get("MAIL_USERNAME") and current_app.config.get("MAIL_PASSWORD"):
-            smtp.login(
-                current_app.config["MAIL_USERNAME"],
-                current_app.config["MAIL_PASSWORD"],
-            )
-        smtp.send_message(msg)
+    if not sender_email:
+        raise RuntimeError("BREVO_FROM_EMAIL is not configured")
 
-@pwd_bp.route('/api/auth/send-otp', methods=['POST'])
+    configuration = sib_api_v3_sdk.Configuration()
+    configuration.api_key["api-key"] = api_key
+
+    api_instance = sib_api_v3_sdk.TransactionalEmailsApi(
+        sib_api_v3_sdk.ApiClient(configuration)
+    )
+
+    html_body = "<p>" + body_text.replace("\n", "<br>") + "</p>"
+
+    send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
+        to=[{"email": recipient}],
+        sender={"email": sender_email, "name": sender_name},
+        subject=subject,
+        text_content=body_text,
+        html_content=html_body,
+    )
+
+    try:
+        api_instance.send_transac_email(send_smtp_email)
+    except ApiException as e:
+        raise RuntimeError(f"Brevo 寄信失敗: {e}")
+
+
+def _invalidate_old_codes(email: str, otp_type: str):
+    """將同一 email 所有未使用的舊驗證碼標記為已使用"""
+    UserVerification.query.filter_by(
+        target_email=email,
+        type=otp_type,
+        is_used=False,
+    ).update({"is_used": True})
+
+
+@pwd_bp.route("/api/auth/email-config", methods=["GET"])
+def email_config():
+    return jsonify({"status": "ok"}), 200
+
+
+@pwd_bp.route("/api/auth/send-otp", methods=["POST"])
 def send_otp():
-    data = request.get_json()
-    email = data.get('email')
-    # 接收前端傳入的 type: 'PASSWORD_CHANGE' 或 'PASSWORD_RESET'
-    verify_type = data.get('type', 'PASSWORD_RESET')
+    data = request.get_json(silent=True) or {}
+    email = data.get("email")
+    verify_type = data.get("type", "PASSWORD_RESET")
 
     if not email:
-        return jsonify({"error": "請提供電子郵件"}), 400
+        return jsonify({"error": "請輸入電子郵件"}), 400
 
     user = User.query.filter_by(email=email).first()
     if not user:
-        return jsonify({"error": "此 Email 尚未註冊"}), 404
+        return jsonify({"error": "找不到此 Email 對應的帳號"}), 404
 
-    # 產生 6 位數隨機碼
-    otp = str(random.randint(100000, 999999))
+    otp = str(secrets.randbelow(900000) + 100000)
 
-    # 如果是從個人資料發起的修改，from=change；如果是登入頁發起的忘記密碼，from=forgot
     from_param = "change" if verify_type == "PASSWORD_CHANGE" else "forgot"
-    
     frontend_url = os.getenv(
         "FRONTEND_URL",
         "https://one14-data-analysis-frontend.onrender.com",
     ).rstrip("/")
     reset_link = f"{frontend_url}/reset-password?email={email}&from={from_param}"
 
-    print(f"DEBUG: 目前生成的連結是 -> {reset_link}")  
-
-    # 寫入驗證紀錄
-    new_verify = UserVerification(
-        user_id=user.user_id,
-        type=verify_type,
-        code_hash=generate_password_hash(otp),  
-        expires_at=taiwan_now() + timedelta(minutes=10),
-        target_email=email,
-        is_used=False
-    )
-
     try:
-        db.session.add(new_verify)
+        _invalidate_old_codes(email, verify_type)
+
+        verification = UserVerification(
+            user_id=user.user_id,
+            type=verify_type,
+            code_hash=generate_password_hash(otp),
+            expires_at=taiwan_now() + timedelta(minutes=10),
+            target_email=email,
+            is_used=False,
+            attempts=0,
+        )
+        db.session.add(verification)
         db.session.commit()
 
-        # 動態調整郵件內容
-        action_text = "修改" if verify_type == "PASSWORD_CHANGE" else "重設"
-        subject = f"【DataAnalysis】{action_text}您的密碼驗證"
+        action_text = "變更密碼" if verify_type == "PASSWORD_CHANGE" else "重設密碼"
+        subject = f"DataAnalysis {action_text}驗證碼"
+        message_body = (
+            f"您好，\n\n"
+            f"您正在進行 {action_text}。\n"
+            f"您的驗證碼是：{otp}\n\n"
+            f"請回到頁面完成操作：\n{reset_link}\n\n"
+            f"此驗證碼將在 10 分鐘後失效。"
+        )
 
-        message_body = f"""您好：
-        
-我們收到了您{action_text}密碼的請求。
-您的驗證碼為：{otp}
-
-您也可以直接點擊下方連結進行{action_text}：
-{reset_link}
-
-(此連結與驗證碼將於 10 分鐘後失效。如果這不是您本人的操作，請忽略此信。)
-"""
-        send_password_email(email, subject, message_body)
+        send_password_email_via_resend(email, subject, message_body)
         return jsonify({"message": f"{action_text}驗證碼已寄出"}), 200
 
     except Exception as e:
         db.session.rollback()
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        import logging
+        logging.error(f"OTP send failed: {e}", exc_info=True)
+        return jsonify({"error": "寄送驗證信失敗，請稍後再試"}), 500
 
-# ── 2. 驗證並執行密碼更新 ───────────────────────────────
-@pwd_bp.route('/api/auth/reset-password', methods=['POST'])
+
+@pwd_bp.route("/api/auth/reset-password", methods=["POST"])
 def reset_password():
-    data = request.get_json()
-    email = data.get('email')
-    otp = data.get('otp')
-    new_password = data.get('new_password')
+    data = request.get_json(silent=True) or {}
+    email = data.get("email")
+    otp = data.get("otp")
+    new_password = data.get("new_password")
+    verify_type = data.get("type", "PASSWORD_RESET")
 
+    # 1. 基本欄位檢查
     if not all([email, otp, new_password]):
         return jsonify({"error": "缺少必要欄位"}), 400
 
+    # 2. 查詢驗證碼
     record = UserVerification.query.filter_by(
         target_email=email,
-        is_used=False
+        type=verify_type,
+        is_used=False,
     ).order_by(UserVerification.created_at.desc()).first()
 
-    if not record or not check_password_hash(record.code_hash, otp):
-        return jsonify({"error": "驗證碼錯誤或無效"}), 400
+    if not record:
+        return jsonify({"error": "驗證碼不存在或已使用，請重新取得"}), 400
 
+    # 3. 檢查是否過期
     if record.expires_at < taiwan_now():
-        return jsonify({"error": "驗證碼已過期"}), 400
+        return jsonify({"error": "驗證碼已過期，請重新取得"}), 400
 
+    # 4. 驗證碼比對
+    if record.attempts >= 5:
+        record.is_used = True
+        db.session.commit()
+        return jsonify({"error": "嘗試次數過多，請重新取得驗證碼"}), 429
+
+    if not check_password_hash(record.code_hash, otp):
+        record.attempts += 1
+        db.session.commit()
+        remaining = 5 - record.attempts
+        return jsonify({"error": f"驗證碼錯誤，剩餘 {remaining} 次機會"}), 400
+
+    # 5. 查詢使用者
     user = User.query.get(record.user_id)
     if not user:
-        return jsonify({"error": "使用者不存在"}), 404
+        return jsonify({"error": "找不到使用者"}), 404
 
+    # 6. 新密碼不可與原本密碼相同
+    if check_password_hash(user.password_hash, new_password):
+        return jsonify({"error": "新密碼不可與原本密碼相同，請設定不同的密碼"}), 400
+
+    # 7. 更新密碼
     try:
-        user.password_hash = generate_password_hash(new_password)  
-        record.is_used = True 
+        user.password_hash = generate_password_hash(new_password)
+        record.is_used = True
         db.session.commit()
-        return jsonify({"message": "密碼更新成功！"}), 200
+        return jsonify({"message": "密碼已更新"}), 200
 
     except Exception as e:
         db.session.rollback()
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        import logging
+        logging.error(f"Password reset failed: {e}", exc_info=True)
+        return jsonify({"error": "密碼更新失敗，請稍後再試"}), 500

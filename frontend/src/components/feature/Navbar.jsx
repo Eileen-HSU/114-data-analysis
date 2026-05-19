@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../hooks/AuthContext";
 
+const DEFAULT_AVATAR = "https://static.readdy.ai/image/db4f710102ca6cc45db44808c8658987/b181cfaad2165c1909b7c8fa8339cbe7.png";
+
 export default function Navbar({ transparent = false }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -61,7 +63,7 @@ export default function Navbar({ transparent = false }) {
         {/* Center Logo */}
         <a
           className="navbar-brand d-flex align-items-center"
-          onClick={() => navigate("/")}
+          onClick={() => navigate(isLoggedIn ? "/workspace" : "/")}
           style={{
             cursor: "pointer",
             textDecoration: "none",
@@ -88,7 +90,7 @@ export default function Navbar({ transparent = false }) {
               >
                 <div className="nav-user-avatar" style={{ overflow: "hidden", background: "transparent", padding: 0 }}>
                   <img
-                    src="https://static.readdy.ai/image/db4f710102ca6cc45db44808c8658987/b181cfaad2165c1909b7c8fa8339cbe7.png"
+                    src={user?.avatar || DEFAULT_AVATAR}
                     alt="頭像"
                     style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }}
                   />

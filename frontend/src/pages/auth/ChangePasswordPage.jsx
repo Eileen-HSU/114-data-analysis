@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./auth.css";
 import axios from "axios";
@@ -11,6 +11,15 @@ export default function ChangePasswordPage() {
   const submitBtnRef = useRef(null);
   const [step, setStep] = useState("send");
   const [sentEmail, setSentEmail] = useState("");
+
+  useEffect(() => {
+    const clearFields = () => {
+      if (emailRef.current) emailRef.current.value = "";
+    };
+    clearFields();
+    const timer = window.setTimeout(clearFields, 200);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const showError = (msg) => {
     if (errorRef.current) {
@@ -47,8 +56,7 @@ export default function ChangePasswordPage() {
       });
 
       if (response.status === 200) {
-        setSentEmail(val);
-        setStep("done");
+        navigate(`/reset-password?email=${encodeURIComponent(val)}&from=change`);
       }
     } catch (error) {
       const errorMsg = error.response?.data?.error || "發送失敗，請稍後再試";
@@ -76,13 +84,13 @@ export default function ChangePasswordPage() {
             </div>
             <h2 className="auth-visual-title">修改您的密碼</h2>
             <p className="auth-visual-desc">
-              為了保護您的帳號安全，我們會發送驗證連結到您的信箱，確認身份後即可設定新密碼。完成後將直接進入工作區。
+              為了保護您的帳號安全，我們會發送驗證連結到您的信箱，確認身份後即可設定新密碼。完成後帳號會保持登入狀態。
             </p>
             <div className="auth-features">
               {[
                 { icon: "ri-mail-send-line", text: "驗證連結發送至您的信箱" },
                 { icon: "ri-time-line", text: "連結 10 分鐘內有效" },
-                { icon: "ri-shield-check-line", text: "修改完成直接導向工作區" },
+                { icon: "ri-shield-check-line", text: "修改完成後回到個人資料" },
               ].map((f, i) => (
                 <div className="auth-feature-item" key={i}>
                   <div className="auth-feature-icon">
@@ -122,7 +130,7 @@ export default function ChangePasswordPage() {
                   輸入您的帳號電子郵件，我們將發送密碼修改連結。
                 </p>
 
-                <form onSubmit={handleSubmit} noValidate>
+                <form onSubmit={handleSubmit} noValidate autoComplete="off">
                   <div className="mb-4">
                     <label className="auth-label">電子郵件</label>
                     <div className="position-relative">
@@ -130,6 +138,8 @@ export default function ChangePasswordPage() {
                       <input
                         ref={emailRef}
                         type="email"
+                        name="change_password_email"
+                        autoComplete="off"
                         className="form-control form-control-custom"
                         placeholder="your@email.com"
                         onInput={clearError}
