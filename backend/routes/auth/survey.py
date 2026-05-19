@@ -42,13 +42,15 @@ def create_survey():
         print(f"[CREATE_SURVEY] 產生的 access_code: {generated_code}")
         
         # 將前端傳來的 title, description, questions 全部包進 question_json
+        survey_title = data.get('title', '未命名問卷')
         survey_content = {
-            "title": data.get('title'),
+            "title": survey_title,
             "description": data.get('description'),
             "items": data.get('questions')
         }
 
         new_template = Survey_Template(
+            title=survey_title,
             project_id=project_id,
             access_code=generated_code,
             question_json=survey_content
