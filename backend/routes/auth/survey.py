@@ -1,6 +1,7 @@
 import logging
 import random
 import string
+import uuid
 
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -48,6 +49,7 @@ def create_survey():
             title         = title,
             access_code   = access_code,
             question_json = survey_content,
+            share_uuid    = str(uuid.uuid4()),  
         )
 
         db.session.add(new_template)
