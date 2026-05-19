@@ -119,7 +119,7 @@ class UploadedFile(db.Model):
 class Survey_Template(db.Model):
     __tablename__ = 'Survey_Template'
     template_id   = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    title         = db.Column(db.String(100), nullable=False)
+    # title         = db.Column(db.String(100), nullable=False)
     project_id = db.Column(db.Integer, db.ForeignKey('Workspace.project_id', ondelete="SET NULL"), nullable=True)
     share_uuid    = db.Column(db.String(36), default=lambda: str(uuid.uuid4()), unique=True)
     access_code   = db.Column(db.String(5), nullable=True)     
