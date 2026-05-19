@@ -196,6 +196,7 @@ const handleSubmit = async (e) => {
                     <i className={showPassword ? "ri-eye-off-line" : "ri-eye-line"}></i>
                   </button>
                 </div>
+                <p className="password-requirement-note">!密碼需有一個字元為大寫，要英文及數字總共8位元!</p>
               </div>
 
               <div className="mb-4">
