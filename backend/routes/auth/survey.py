@@ -8,8 +8,11 @@ from sqlalchemy import text
 from models import Survey_Template, Survey_Response
 survey_bp = Blueprint('survey', __name__)
 
-@survey_bp.route('/api/surveys', methods=['POST'])
+@survey_bp.route('/api/surveys', methods=['POST', 'OPTIONS'])
 def create_survey():
+    if request.method == "OPTIONS":
+        return "", 200
+    
     print("\n[CREATE_SURVEY] ========== 接收到 /api/surveys 請求 ==========")
     print(f"[CREATE_SURVEY] Request Headers: {dict(request.headers)}")
     print(f"[CREATE_SURVEY] Request JSON: {request.json}")
@@ -76,8 +79,11 @@ def create_survey():
         return jsonify({"error": str(e)}), 500
 
 
-@survey_bp.route('/api/surveys/<access_code>/responses', methods=['POST'])
+@survey_bp.route('/api/surveys/<access_code>/responses', methods=['POST', 'OPTIONS'])
 def submit_survey_response(access_code):
+    if request.method == "OPTIONS":
+        return "", 200
+    
     data = request.get_json()
     if not data or not isinstance(data.get('answers'), dict):
         return jsonify({"error": "缺少問卷答案資料"}), 400
