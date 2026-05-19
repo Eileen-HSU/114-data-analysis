@@ -36,7 +36,7 @@ export default function CreateSurveyPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [questions, setQuestions] = useState([
-    newQuestion("short") // 預設一題進行對標測試
+    newQuestion("short")
   ]);
   const [error, setError] = useState("");
   const [generatedCode, setGeneratedCode] = useState("");
@@ -86,7 +86,6 @@ export default function CreateSurveyPage() {
   const handleSaveSurvey = async (e) => {
     if (e) e.preventDefault();
 
-    // 1. 驗證標題
     const validationMessage = validate();
     if (validationMessage) {
       setError(validationMessage);
@@ -94,7 +93,9 @@ export default function CreateSurveyPage() {
     }
 
     try {
-      // 2. 封裝要對象 Aiven 資料庫 question_json 的 payload
+      const auth = JSON.parse(localStorage.getItem("dataanalysis_auth") || "{}");
+      const token = auth.token;
+
       const payload = {
         title: title.trim(),
         description: description.trim(),
@@ -106,15 +107,17 @@ export default function CreateSurveyPage() {
         user_id: user?.user_id
       };
 
-      console.log("[FRONTEND] 🚀 準備發送數據至 Aiven...", payload);
+      console.log("[FRONTEND] 準備發送數據至資料庫", payload);
 
-      // 3. 發送請求到後端 Render 部署的 /api/surveys
-      const response = await axios.post(apiUrl("/api/surveys"), payload);
+      const response = await axios.post(apiUrl("/api/surveys"), payload, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
 
       if (response.status === 201 || response.status === 200) {
-        console.log("[FRONTEND] ✓ 成功存入 Aiven:", response.data);
-        
-        // 4. 將後端生成的邀請碼顯示在畫面上
+        console.log("[FRONTEND] ✓ 成功存入資料庫:", response.data);
+
         const accessCode = response.data.access_code;
         const createdAtMs = Date.now();
         const savedSurvey = {
