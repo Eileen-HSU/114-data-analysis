@@ -188,17 +188,18 @@ export default function TwoFactorPage() {
                   </div>
 
                   <div style={{
-                    background: "#f0f4f8",
-                    border: "1px solid #dce6f0",
+                    background: "#fff1f2",
+                    border: "1.5px solid #fda4af",
                     borderRadius: 12,
                     padding: "14px 16px",
                     marginBottom: 20,
                     display: "flex",
                     gap: 10,
                     alignItems: "flex-start",
+                    boxShadow: "0 8px 18px rgba(244, 63, 94, 0.12)",
                   }}>
-                    <i className="ri-information-line" style={{ color: "#8fa3b8", fontSize: 16, marginTop: 2, flexShrink: 0 }}></i>
-                    <p style={{ fontSize: 13, color: "var(--slate-500)", margin: 0, lineHeight: 1.6 }}>
+                    <i className="ri-information-line" style={{ color: "#e11d48", fontSize: 16, marginTop: 2, flexShrink: 0 }}></i>
+                    <p style={{ fontSize: 13, color: "#be123c", margin: 0, lineHeight: 1.6, fontWeight: 600 }}>
                       啟用後，下次登入時需輸入信箱驗證碼才能進入帳號。
                     </p>
                   </div>
