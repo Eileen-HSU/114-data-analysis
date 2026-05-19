@@ -117,34 +117,34 @@ const handleSubmit = async (e) => {
             <form onSubmit={handleSubmit} autoComplete="off">
               <div className="row g-3 mb-3">
                 <div className="col-md-6">
-                  <label className="auth-label">姓名</label>
+                  <label className="auth-label">姓名<span className="required-mark">*</span></label>
                   <div className="position-relative">
                     <i className="ri-user-line form-icon"></i>
                     <input type="text" name="signup_name" autoComplete="off" required className="form-control form-control-custom" placeholder="您的姓名" value={name} onChange={(e) => setName(e.target.value)} />
                   </div>
                 </div>
                 <div className="col-md-6">
-                  <label className="auth-label">手機號碼</label>
+                  <label className="auth-label">手機號碼<span className="required-mark">*</span></label>
                   <div className="position-relative">
                     <i className="ri-smartphone-line form-icon"></i>
-                    <input type="tel" name="signup_phone" autoComplete="off" className="form-control form-control-custom" placeholder="+886 912 345 678" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                    <input type="tel" name="signup_phone" autoComplete="off" required className="form-control form-control-custom" placeholder="+886 912 345 678" value={phone} onChange={(e) => setPhone(e.target.value)} />
                   </div>
                 </div>
               </div>
 
               <div className="row g-3 mb-3">
                 <div className="col-md-6">
-                  <label className="auth-label">公司 / 機構</label>
+                  <label className="auth-label">公司 / 機構<span className="required-mark">*</span></label>
                   <div className="position-relative">
                     <i className="ri-building-line form-icon"></i>
-                    <input type="text" name="signup_company" autoComplete="off" className="form-control form-control-custom" placeholder="您的公司名稱" value={company} onChange={(e) => setCompany(e.target.value)} />
+                    <input type="text" name="signup_company" autoComplete="off" required className="form-control form-control-custom" placeholder="您的公司名稱" value={company} onChange={(e) => setCompany(e.target.value)} />
                   </div>
                 </div>
                 <div className="col-md-6">
-                  <label className="auth-label">性別</label>
+                  <label className="auth-label">性別<span className="required-mark">*</span></label>
                   <div className="position-relative">
                     <i className="ri-user-heart-line form-icon"></i>
-                    <select name="signup_gender" autoComplete="off" className="form-control form-control-custom" value={gender} onChange={(e) => setGender(e.target.value)} style={{ appearance: "none" }}>
+                    <select name="signup_gender" autoComplete="off" required className="form-control form-control-custom" value={gender} onChange={(e) => setGender(e.target.value)} style={{ appearance: "none" }}>
                       <option value="">請選擇性別</option>
                       <option value="男">男</option>
                       <option value="女">女</option>
@@ -156,7 +156,7 @@ const handleSubmit = async (e) => {
               </div>
 
               <div className="mb-3">
-                <label className="auth-label">電子郵件</label>
+                <label className="auth-label">電子郵件<span className="required-mark">*</span></label>
                 <div className="position-relative">
                   <i className="ri-mail-line form-icon"></i>
                   <input type="email" name="signup_email" autoComplete="off" required className="form-control form-control-custom" placeholder="your@email.com" value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -164,7 +164,7 @@ const handleSubmit = async (e) => {
               </div>
 
               <div className="mb-3">
-                <label className="auth-label">密碼</label>
+                <label className="auth-label">密碼<span className="required-mark">*</span></label>
                 <div className="position-relative">
                   <i className="ri-lock-line form-icon"></i>
                   <input
@@ -184,7 +184,7 @@ const handleSubmit = async (e) => {
               </div>
 
               <div className="mb-4">
-                <label className="auth-label">確認密碼</label>
+                <label className="auth-label">確認密碼<span className="required-mark">*</span></label>
                 <div className="position-relative">
                   <i className="ri-lock-2-line form-icon"></i>
                   <input
