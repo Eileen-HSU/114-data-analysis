@@ -43,7 +43,7 @@ def _invalidate_old_codes(email: str, otp_type: str):
 def login():
     data = request.get_json(silent=True) or {}
     email = data.get("email")
-    password = data.get("password")  # 移除 password_hash
+    password = data.get("password")  
 
     if not email or not password:
         return jsonify({"error": "請輸入電子郵件和密碼"}), 400
