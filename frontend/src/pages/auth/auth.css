@@ -255,6 +255,14 @@
   flex-shrink: 0;
 }
 
+.password-requirement-note {
+  margin: 8px 0 0;
+  color: #e11d48;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
 .auth-modal-backdrop {
   position: fixed;
   inset: 0;
