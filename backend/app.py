@@ -56,13 +56,16 @@ if db_url:
         parsed_url.fragment,
     ))
 
-app.config["SQLALCHEMY_DATABASE_URI"] = db_url
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-import os
+# 優先使用你算出或定義好的 db_url，如果沒有，才去讀取環境變數
+db_url = db_url or os.environ.get('SQLALCHEMY_DATABASE_URI')
 
-# 強制讓 Flask 去讀取環境變數中的資料庫網址與金鑰
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('SQLALCHEMY_DATABASE_URI')
+# 將最終決定的網址塞給 Flask
+app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY')
+
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# 最後再初始化資料庫
 db.init_app(app)
 mail.init_app(app)
 
