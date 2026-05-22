@@ -1,12 +1,35 @@
 import logging
+import os
 import random
 import string
+import jwt
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
 from extensions import db
 from models import Survey_Template, Survey_Response
 
 survey_bp = Blueprint('survey', __name__)
+
+def get_jwt_secret():
+    secret = os.getenv("JWT_SECRET_KEY")
+    if not secret:
+        raise RuntimeError("JWT_SECRET_KEY 環境變數未設定")
+    return secret
+
+
+def verify_token(request):
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None, "Unauthorized"
+
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, get_jwt_secret(), algorithms=["HS256"])
+        return payload.get("user_id"), None
+    except jwt.ExpiredSignatureError:
+        return None, "Token expired"
+    except jwt.InvalidTokenError:
+        return None, "Invalid token"
+
 
 def generate_unique_access_code():
     """產生不重複的 5 碼邀請碼"""
@@ -16,9 +39,12 @@ def generate_unique_access_code():
             return code
 
 @survey_bp.route('/api/surveys', methods=['POST'])
-@jwt_required()
 def create_survey():
     """建立新問卷"""
+    auth_user_id, auth_error = verify_token(request)
+    if auth_error:
+        return jsonify({"error": "Unauthorized"}), 401
+
     data = request.get_json(silent=True) or {}
     title     = data.get('title')
     questions = data.get('questions')

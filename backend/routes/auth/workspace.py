@@ -1,7 +1,8 @@
 from datetime import timedelta
+import os
+import jwt
 
 from flask import Blueprint, jsonify, request
-from flask_jwt_extended import jwt_required, get_jwt_identity
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from extensions import db
@@ -10,6 +11,35 @@ from models import Workspace, taiwan_now
 workspace_bp = Blueprint("workspace", __name__)
 
 SOFT_DELETE_DAYS = 30  # 軟刪除後幾天永久刪除
+
+
+def get_jwt_secret():
+    secret = os.getenv("JWT_SECRET_KEY")
+    if not secret:
+        raise RuntimeError("JWT_SECRET_KEY 環境變數未設定")
+    return secret
+
+
+def verify_token(request):
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None, "Unauthorized"
+
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, get_jwt_secret(), algorithms=["HS256"])
+        return payload.get("user_id"), None
+    except jwt.ExpiredSignatureError:
+        return None, "Token expired"
+    except jwt.InvalidTokenError:
+        return None, "Invalid token"
+
+
+def authorize_request():
+    auth_user_id, error = verify_token(request)
+    if error:
+        return None, jsonify({"error": "Unauthorized"}), 401
+    return auth_user_id, None
 
 
 # ── 工具函式 ────────────────────────────────────────────────
@@ -36,10 +66,11 @@ def workspace_to_dict(w):
 # ── 路由 ────────────────────────────────────────────────────
 
 @workspace_bp.route("/api/workspace", methods=["POST"])
-@jwt_required()
 def create_workspace():
     """建立新專案"""
-    current_user_id = get_jwt_identity()
+    current_user_id, auth_error = authorize_request()
+    if auth_error:
+        return auth_error
     data = request.get_json(silent=True) or {}
     project_name = data.get("project_name")
 
@@ -64,10 +95,11 @@ def create_workspace():
 
 
 @workspace_bp.route("/api/workspace/user", methods=["GET"])
-@jwt_required()
 def get_workspaces():
     """取得使用者所有未刪除的專案"""
-    current_user_id = get_jwt_identity()
+    current_user_id, auth_error = authorize_request()
+    if auth_error:
+        return auth_error
     workspaces = Workspace.query.filter_by(
         user_id    = current_user_id,
         is_deleted = False,
@@ -77,10 +109,11 @@ def get_workspaces():
 
 
 @workspace_bp.route("/api/workspace/<int:project_id>", methods=["GET"])
-@jwt_required()
 def get_workspace(project_id):
     """取得單一專案"""
-    current_user_id = get_jwt_identity()
+    current_user_id, auth_error = authorize_request()
+    if auth_error:
+        return auth_error
     workspace = Workspace.query.filter_by(
         project_id = project_id,
         user_id    = current_user_id,
@@ -94,10 +127,11 @@ def get_workspace(project_id):
 
 
 @workspace_bp.route("/api/workspace/<int:project_id>", methods=["PUT"])
-@jwt_required()
 def update_workspace(project_id):
     """更新專案資料"""
-    current_user_id = get_jwt_identity()
+    current_user_id, auth_error = authorize_request()
+    if auth_error:
+        return auth_error
     workspace = Workspace.query.filter_by(
         project_id = project_id,
         user_id    = current_user_id,
@@ -127,10 +161,11 @@ def update_workspace(project_id):
 
 
 @workspace_bp.route("/api/workspace/<int:project_id>", methods=["DELETE"])
-@jwt_required()
 def delete_workspace(project_id):
     """軟刪除專案（30 天後自動永久刪除）"""
-    current_user_id = get_jwt_identity()
+    current_user_id, auth_error = authorize_request()
+    if auth_error:
+        return auth_error
     workspace = Workspace.query.filter_by(
         project_id = project_id,
         user_id    = current_user_id,
@@ -151,10 +186,11 @@ def delete_workspace(project_id):
 
 
 @workspace_bp.route("/api/workspace/<int:project_id>/restore", methods=["POST"])
-@jwt_required()
 def restore_workspace(project_id):
     """還原已軟刪除的專案"""
-    current_user_id = get_jwt_identity()
+    current_user_id, auth_error = authorize_request()
+    if auth_error:
+        return auth_error
     workspace = Workspace.query.filter_by(
         project_id = project_id,
         user_id    = current_user_id,
@@ -175,10 +211,11 @@ def restore_workspace(project_id):
 
 
 @workspace_bp.route("/api/workspace/<int:project_id>/permanent", methods=["DELETE"])
-@jwt_required()
 def permanent_delete_workspace(project_id):
     """永久刪除專案（垃圾桶內手動永久刪除）"""
-    current_user_id = get_jwt_identity()
+    current_user_id, auth_error = authorize_request()
+    if auth_error:
+        return auth_error
     workspace = Workspace.query.filter_by(
         project_id = project_id,
         user_id    = current_user_id,
@@ -198,10 +235,11 @@ def permanent_delete_workspace(project_id):
 
 
 @workspace_bp.route("/api/workspace/user/trash", methods=["GET"])
-@jwt_required()
 def get_trash():
     """取得垃圾桶內的專案（軟刪除中）"""
-    current_user_id = get_jwt_identity()
+    current_user_id, auth_error = authorize_request()
+    if auth_error:
+        return auth_error
     workspaces = Workspace.query.filter_by(
         user_id    = current_user_id,
         is_deleted = True,
