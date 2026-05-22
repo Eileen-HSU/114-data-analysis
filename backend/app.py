@@ -1,4 +1,6 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from dotenv import load_dotenv
@@ -16,6 +18,12 @@ from routes.auth.workspace import workspace_bp, start_scheduler
 from routes.auth.survey import survey_bp
 
 load_dotenv()
+
+# 如果開發環境沒有設定 JWT_SECRET_KEY，提供一個安全性較低的預設值以利本地開發
+# 在生產環境請務必透過環境變數設定強密鑰
+if not os.environ.get('JWT_SECRET_KEY'):
+    os.environ['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'dev-secret')
+    print('[WARN] JWT_SECRET_KEY 未設定，已使用本機開發預設值（請勿用於生產環境）')
 
 app = Flask(__name__)
 CORS(app,
@@ -50,7 +58,11 @@ if db_url:
 
 app.config["SQLALCHEMY_DATABASE_URI"] = db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+import os
 
+# 強制讓 Flask 去讀取環境變數中的資料庫網址與金鑰
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('SQLALCHEMY_DATABASE_URI')
+app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY')
 db.init_app(app)
 mail.init_app(app)
 
@@ -96,10 +108,12 @@ app.register_blueprint(two_factor_bp, url_prefix='/api/auth/2fa')
 app.register_blueprint(survey_bp)
 app.register_blueprint(workspace_bp)
 
-start_scheduler()
+start_scheduler(app)
 
 @app.route("/api/2fa/disable", methods=["OPTIONS"])
 def options_2fa_disable():
+
+    
     res = make_response()
     res.headers["Access-Control-Allow-Origin"] = "*"
     res.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../../components/feature/Navbar";
 import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
@@ -41,6 +41,25 @@ export default function CreateSurveyPage() {
   const [error, setError] = useState("");
   const [generatedCode, setGeneratedCode] = useState("");
   const [copied, setCopied] = useState(false);
+
+  // 檢查本地 token 是否對本機後端有效，若無效則清除並導向登入
+  useEffect(() => {
+    (async () => {
+      if (!isLoggedIn) return;
+      try {
+        const auth = user || JSON.parse(localStorage.getItem("dataanalysis_auth") || "{}");
+        const token = auth?.token;
+        if (!token) return;
+        const res = await fetch(apiUrl(`/api/profile/${auth.user_id || auth.user_id}`), { headers: { Authorization: `Bearer ${token}` } });
+        if (res.status === 401) {
+          localStorage.removeItem('dataanalysis_auth');
+          navigate('/login');
+        }
+      } catch (e) {
+        // ignore network errors here; creation flow will handle them
+      }
+    })();
+  }, [isLoggedIn, user, navigate]);
 
   const typeMap = useMemo(() => Object.fromEntries(QUESTION_TYPES.map((item) => [item.value, item])), []);
   const getQuestionType = (type) => typeMap[type] || typeMap.short;
@@ -93,8 +112,8 @@ export default function CreateSurveyPage() {
     }
 
     try {
-      const auth = JSON.parse(localStorage.getItem("dataanalysis_auth") || "{}");
-      const token = auth.token;
+      const auth = user || JSON.parse(localStorage.getItem("dataanalysis_auth") || "{}");
+      const token = auth?.token;
 
       const payload = {
         title: title.trim(),
@@ -146,6 +165,13 @@ export default function CreateSurveyPage() {
       }
     } catch (error) {
       console.error("[FRONTEND] ✗ 存入失敗:", error);
+      const status = error?.response?.status;
+      if (status === 401) {
+        alert("授權已過期或無效，請重新登入。\n即將導向登入頁面。");
+        localStorage.removeItem("dataanalysis_auth");
+        navigate('/login');
+        return;
+      }
       alert("資料庫寫入失敗！請確認後端已開啟並連線至 Aiven。");
     }
   };

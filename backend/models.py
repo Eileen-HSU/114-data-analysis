@@ -102,7 +102,6 @@ class Chat_History(db.Model):
     created_at      = db.Column(db.DateTime(timezone=True), default=taiwan_now)
     uploaded_files  = db.relationship('UploadedFile', backref='chat', cascade="all, delete-orphan")
 
-"""
 # T07: Uploaded_File - 儲存聊天室內上傳的檔案資訊
 class UploadedFile(db.Model):
     __tablename__ = 'Uploaded_File'
@@ -113,7 +112,6 @@ class UploadedFile(db.Model):
     file_type   = db.Column(db.String(10), nullable=False)  # csv / xlsx / json / txt
     is_survey   = db.Column(db.Boolean, default=False)      # True: 問卷數據 / False: 一般分析檔案
     uploaded_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
-"""
 
 # T08: Survey_Template - 問卷模板
 class Survey_Template(db.Model):
