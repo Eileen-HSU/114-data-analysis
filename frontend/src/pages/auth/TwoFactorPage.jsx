@@ -201,6 +201,8 @@ export default function TwoFactorPage() {
                     <i className="ri-information-line" style={{ color: "#e11d48", fontSize: 16, marginTop: 2, flexShrink: 0 }}></i>
                     <p style={{ fontSize: 13, color: "#be123c", margin: 0, lineHeight: 1.6, fontWeight: 600 }}>
                       啟用後，下次登入時需輸入信箱驗證碼才能進入帳號。
+                      <br />
+                      寄出的郵件可能存在垃圾郵件中
                     </p>
                   </div>
 

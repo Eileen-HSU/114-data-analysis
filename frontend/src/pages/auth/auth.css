@@ -263,6 +263,34 @@
   line-height: 1.5;
 }
 
+.auth-warning-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  border: 1.5px solid #fda4af;
+  border-radius: 12px;
+  background: #fff1f2;
+  color: #be123c;
+  box-shadow: 0 8px 18px rgba(244, 63, 94, 0.12);
+}
+
+.auth-warning-note i {
+  margin-top: 2px;
+  color: #e11d48;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.auth-warning-note p {
+  margin: 0;
+  color: #be123c;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
 .auth-modal-backdrop {
   position: fixed;
   inset: 0;
