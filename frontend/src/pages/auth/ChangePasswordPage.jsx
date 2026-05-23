@@ -148,6 +148,11 @@ export default function ChangePasswordPage() {
                     <p ref={errorRef} style={{ display: "none", color: "#ef4444", fontSize: 13, marginTop: 6 }}></p>
                   </div>
 
+                  <div className="auth-warning-note">
+                    <i className="ri-information-line"></i>
+                    <p>寄出的郵件可能存在垃圾郵件中</p>
+                  </div>
+
                   <button ref={submitBtnRef} type="submit" className="btn btn-auth-submit w-100 mb-3">
                     發送修改連結
                   </button>
