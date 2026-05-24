@@ -53,10 +53,10 @@
 .auth-logo-text { display: none; }
 
 .auth-logo-img {
-  height: 56px;
+  height: 72px;
   width: auto;
   object-fit: contain;
-  filter: brightness(0) invert(1);
+  filter: drop-shadow(0 10px 24px rgba(58, 33, 92, 0.28));
 }
 
 .auth-visual-title {
@@ -155,23 +155,22 @@
 }
 
 .mobile-logo {
-  width: 40px;
-  height: 40px;
+  width: min(180px, 64vw);
+  height: auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--rose-400), var(--pink-500));
-  border-radius: 10px;
-  color: white;
-  font-size: 20px;
   margin: 0 auto 8px;
 }
 
+.mobile-logo img {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
 .mobile-logo-text {
-  font-size: 24px;
-  font-weight: 900;
-  color: var(--slate-800);
-  letter-spacing: -0.5px;
+  display: none;
 }
 
 .auth-title {

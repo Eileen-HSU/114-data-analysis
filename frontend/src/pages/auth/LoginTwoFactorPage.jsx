@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/AuthContext";
 import { apiUrl } from "../../lib/api";
+import conqightLogo from "../../assets/conqight-logo.png";
 import "./auth.css";
 
 const PENDING_2FA_KEY = "dataanalysis_pending_2fa";
@@ -75,8 +76,8 @@ export default function LoginTwoFactorPage() {
           <div className="auth-visual-content">
             <div className="auth-logo mb-5">
               <img
-                src="https://static.readdy.ai/image/db4f710102ca6cc45db44808c8658987/005555d3f7d205685c5c858369347dc5.png"
-                alt="DATA analysis"
+                src={conqightLogo}
+                alt="CON QIGHT"
                 className="auth-logo-img"
               />
             </div>
