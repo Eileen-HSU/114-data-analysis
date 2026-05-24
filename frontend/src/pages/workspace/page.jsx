@@ -103,7 +103,13 @@ function cleanMessageText(text) {
 
 function parseAssistantTableRows(content) {
   const rows = [];
-  let currentCategory = "摘要";
+  let currentSection = "";
+
+  const getRowTone = (item, description) => {
+    const text = `${item} ${description}`;
+    if (text.includes("建議") || text.includes("可進一步詢問")) return "suggestion";
+    return "";
+  };
 
   content.split("\n").forEach((rawLine) => {
     const line = cleanMessageText(rawLine);
@@ -114,31 +120,29 @@ function parseAssistantTableRows(content) {
     const colonIndex = line.indexOf("：");
 
     if (colonIndex > 0) {
-      const source = numbered ? numbered[2] : line;
-      const sourceColonIndex = source.indexOf("：");
-      const label = source.slice(0, sourceColonIndex).trim();
-      const value = source.slice(sourceColonIndex + 1).trim();
-      rows.push({
-        category: label || currentCategory,
-        content: value,
-      });
+      const label = line.slice(0, colonIndex).trim();
+      const value = line.slice(colonIndex + 1).trim();
+      const item = numbered ? numbered[2].split("：")[0].trim() : label;
+      const description = numbered ? numbered[2].slice(numbered[2].indexOf("：") + 1).trim() : value;
+      rows.push({ item, description, tone: getRowTone(item, description) });
       return;
     }
 
     if (numbered || bullet) {
-      rows.push({
-        category: currentCategory,
-        content: numbered ? numbered[2] : bullet[1],
-      });
+      const item = numbered ? `項目 ${numbered[1]}` : currentSection || "重點";
+      const description = numbered ? numbered[2] : bullet[1];
+      rows.push({ item, description, tone: getRowTone(item, description) });
       return;
     }
 
     if (line.length <= 18) {
-      currentCategory = line;
+      currentSection = line;
+      rows.push({ item: "分類", description: line, tone: getRowTone("分類", line) });
       return;
     }
 
-    rows.push({ category: currentCategory, content: line });
+    const item = currentSection || "摘要";
+    rows.push({ item, description: line, tone: getRowTone(item, line) });
   });
 
   return rows;
@@ -163,15 +167,15 @@ function AssistantTableContent({ content }) {
       <table className="assistant-output-table">
         <thead>
           <tr>
-            <th>分類</th>
-            <th>內容</th>
+            <th>項目</th>
+            <th>說明</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row, index) => (
-            <tr key={`${row.category}-${index}`}>
-              <td>{row.category}</td>
-              <td>{row.content}</td>
+            <tr key={`${row.item}-${index}`} className={row.tone ? `assistant-output-row-${row.tone}` : ""}>
+              <td>{row.item}</td>
+              <td>{row.description}</td>
             </tr>
           ))}
         </tbody>
