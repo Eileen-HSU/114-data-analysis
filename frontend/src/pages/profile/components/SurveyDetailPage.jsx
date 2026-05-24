@@ -53,7 +53,6 @@ function RatingStats({ question, responses, qNum }) {
 
   const avg = answered ? (total / answered).toFixed(1) : "-";
   const max = Math.max(...Object.values(counts), 1);
-  const colors = ["#fca5a5", "#fdba74", "#fde047", "#86efac", "#6ee7b7", "#5eead4"];
 
   return (
     <div className="sdp-rating-card">
@@ -74,12 +73,12 @@ function RatingStats({ question, responses, qNum }) {
         </div>
         <div className="sdp-bars">
           {[0, 1, 2, 3, 4, 5].map((score) => (
-            <div key={score} className="sdp-bar-row">
+            <div key={score} className={`sdp-bar-row ${counts[score] > 0 ? "has-responses" : ""}`}>
               <div className="sdp-bar-score">{score}</div>
               <div className="sdp-bar-track">
-                <div className="sdp-bar-fill" style={{ width: `${(counts[score] / max) * 100}%`, background: colors[score] }} />
+                <div className="sdp-bar-fill" style={{ width: `${(counts[score] / max) * 100}%` }} />
               </div>
-              <div className="sdp-bar-count">{counts[score]}</div>
+              <div className="sdp-bar-count">{counts[score]} 人</div>
             </div>
           ))}
         </div>
