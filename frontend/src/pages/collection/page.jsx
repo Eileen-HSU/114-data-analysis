@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import Navbar from "../../components/feature/Navbar";
 import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
 import { useAuth } from "../../hooks/AuthContext";
@@ -17,6 +17,7 @@ const FILE_ICONS = {
 
 export default function CollectionPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { isLoggedIn } = useAuth();
   const { recordActivity } = useActivity();
   const {
@@ -44,6 +45,13 @@ export default function CollectionPage() {
   const [renamingFolderId, setRenamingFolderId] = useState(null);
   const [renameFolderValue, setRenameFolderValue] = useState("");
   const [fileMenuId, setFileMenuId] = useState(null);
+
+  useEffect(() => {
+    if (location.state?.activeView) {
+      setActiveView(location.state.activeView);
+      window.history.replaceState({}, "");
+    }
+  }, [location.state]);
 
   if (!isLoggedIn) {
     return (
@@ -223,7 +231,7 @@ export default function CollectionPage() {
             <div className="row g-3 mt-4">
               {[
                 { key: "folders", icon: "ri-folder-line", cls: "stat-folder", val: stats.folders, label: "資料夾", unit: "個資料夾" },
-                { key: "exports", icon: "ri-download-cloud-2-line", cls: "stat-export", val: stats.exports, label: "輸出檔案", unit: "個檔案" },
+                { key: "exports", icon: "ri-download-cloud-2-line", cls: "stat-export", val: stats.exports, label: "匯出檔案", unit: "個檔案" },
                 { key: "deleted", icon: "ri-delete-bin-line", cls: "stat-deleted", val: stats.deleted, label: "最近刪除", unit: "個項目" },
               ].map((item) => (
                 <div className="col-12 col-md-4" key={item.label}>
@@ -391,12 +399,12 @@ export default function CollectionPage() {
             <section>
               <h2 className="section-heading">
                 <span className="section-icon export-icon"><i className="ri-download-cloud-2-line"></i></span>
-                輸出檔案
+                匯出檔案
                 <span className="loose-count">{stats.exports} 個</span>
               </h2>
               <div className="empty-loose">
                 <i className="ri-download-cloud-2-line"></i>
-                <p>目前沒有輸出檔案。</p>
+                <p>目前沒有匯出檔案。</p>
               </div>
             </section>
           )}

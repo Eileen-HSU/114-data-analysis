@@ -138,8 +138,6 @@ function parseAssistantTableRows(content) {
     if (line.length <= 18) {
       isSuggestionSection = line.includes("建議");
       currentSection = isSuggestionSection ? "建議" : line;
-      if (isSuggestionSection) return;
-      rows.push({ item: "分類", description: line, tone: getRowTone("分類") });
       return;
     }
 
@@ -158,6 +156,7 @@ function PlainMessageContent({ content }) {
 }
 
 function AssistantTableContent({ content }) {
+  const navigate = useNavigate();
   const rows = parseAssistantTableRows(content);
 
   if (rows.length < 2) {
@@ -182,6 +181,16 @@ function AssistantTableContent({ content }) {
           ))}
         </tbody>
       </table>
+      <div className="assistant-output-actions">
+        <button
+          className="assistant-export-btn"
+          type="button"
+          onClick={() => navigate("/collection", { state: { activeView: "exports" } })}
+        >
+          <i className="ri-download-cloud-2-line"></i>
+          匯出檔案
+        </button>
+      </div>
     </div>
   );
 }
