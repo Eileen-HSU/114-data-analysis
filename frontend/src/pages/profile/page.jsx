@@ -446,9 +446,6 @@ export default function ProfilePage() {
           <section className="profile-card mb-4">
             <div className="profile-cover">
               <img src="https://static.readdy.ai/image/db4f710102ca6cc45db44808c8658987/4a8acdc8a7b54754399ef652077c11e9.png" alt="profile cover" />
-              <button className="btn-logout" onClick={() => navigate("/")}>
-                <i className="ri-logout-box-line me-1"></i>返回首頁
-              </button>
             </div>
 
             <div className="profile-body px-4 px-md-5 pb-4">
