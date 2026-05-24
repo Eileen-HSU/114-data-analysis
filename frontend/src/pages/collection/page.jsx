@@ -28,6 +28,7 @@ export default function CollectionPage() {
     deletedItems,
     setFolders,
     setFiles,
+    setWorkspaceSessions,
     deleteFolder,
     deleteFile,
     restoreItem,
@@ -104,7 +105,11 @@ export default function CollectionPage() {
       await Promise.all(
         folderFiles.map(async (file) => {
           if (file.type === "chat" && file.sessionId) {
-            const session = workspaceSessions.find((s) => s.project_id === Number(file.sessionId));
+            const session = workspaceSessions.find(
+              (s) =>
+                String(s.id) === String(file.sessionId) ||
+                (s.project_id && String(s.project_id) === String(file.sessionId))
+            );
             if (session?.project_id) {
               try {
                 const authUser = JSON.parse(localStorage.getItem("dataanalysis_auth"));
@@ -123,6 +128,14 @@ export default function CollectionPage() {
             }
           }
         })
+      );
+      const folderSessionIds = new Set(folderFiles.map((file) => String(file.sessionId)));
+      setWorkspaceSessions((prev) =>
+        prev.map((session) =>
+          folderSessionIds.has(String(session.id))
+            ? { ...session, folder_name: null }
+            : session
+        )
       );
 
       deleteFolder(deleteTarget.id, deleteTarget.name);
@@ -203,10 +216,21 @@ export default function CollectionPage() {
     setFiles((prev) =>
       prev.map((f) => (f.id === draggingId ? { ...f, folder_name: targetFolderName } : f))
     );
+    setWorkspaceSessions((prev) =>
+      prev.map((session) =>
+        String(session.id) === String(file.sessionId)
+          ? { ...session, folder_name: targetFolderName }
+          : session
+      )
+    );
 
     // 同步資料庫
     if (file.type === "chat" && file.sessionId) {
-      const session = workspaceSessions.find((s) => s.project_id === Number(file.sessionId));
+      const session = workspaceSessions.find(
+        (s) =>
+          String(s.id) === String(file.sessionId) ||
+          (s.project_id && String(s.project_id) === String(file.sessionId))
+      );
       if (session?.project_id) {
         try {
           const authUser = JSON.parse(localStorage.getItem("dataanalysis_auth"));

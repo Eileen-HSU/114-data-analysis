@@ -300,6 +300,7 @@ export default function WorkspacePage() {
               id: existing?.id || String(w.project_id),
               project_id: w.project_id,
               title: w.project_name,
+              folder_name: w.folder_name ?? null,
               date: w.created_at ? new Date(w.created_at).toLocaleDateString() : "",
               messages: existing?.messages || [WELCOME_MSG],
             };
