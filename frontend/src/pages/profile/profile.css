@@ -1234,12 +1234,13 @@
 .sdp-deadline-card {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  padding: 9px 12px;
+  gap: 6px;
+  padding: 8px 12px;
   background: #fff7ed;
   border: 1px solid #fed7aa;
   border-radius: 12px;
   min-width: 290px;
+  margin-left: auto;
 }
 
 .sdp-deadline-row {
@@ -1392,9 +1393,18 @@
 .sdp-tabbar {
   background: white;
   border-bottom: 1px solid var(--slate-100);
-  padding: 0 32px;
+  padding: 6px 32px;
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sdp-tab-group {
+  display: flex;
+  align-items: center;
   gap: 0;
+  align-self: stretch;
 }
 
 .sdp-tab {
@@ -1877,7 +1887,13 @@
   }
 
   .sdp-topbar { padding: 16px 20px; flex-wrap: wrap; }
-  .sdp-tabbar { padding: 0 20px; }
+  .sdp-tabbar {
+    padding: 8px 20px;
+    flex-wrap: wrap;
+  }
+  .sdp-tab-group {
+    width: 100%;
+  }
   .sdp-content { padding: 24px 20px; }
   .sdp-rating-grid { grid-template-columns: 1fr; }
   .sdp-topbar-right {
@@ -1888,5 +1904,6 @@
   .sdp-code-card,
   .sdp-deadline-card {
     width: 100%;
+    margin-left: 0;
   }
 }
