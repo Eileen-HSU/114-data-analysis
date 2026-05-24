@@ -74,7 +74,7 @@ export function CollectionProvider({ children }) {
           name: session.title,
           type: "chat",
           size: "-",
-          folderId: null,
+          folder_name: null,
           createdAt: session.date || nowString(),
           sessionId: session.id,
         }));
@@ -85,7 +85,7 @@ export function CollectionProvider({ children }) {
   const deleteFolder = (id, name) => {
     const folder = folders.find((f) => f.id === id);
     if (!folder) return;
-    const relatedFiles = files.filter((f) => f.folderId === id);
+    const relatedFiles = files.filter((f) => f.folder_name === name);
     setDeletedItems((prev) => [
       {
         id: `del-${Date.now()}`,
@@ -98,7 +98,8 @@ export function CollectionProvider({ children }) {
       ...prev,
     ]);
     setFolders((prev) => prev.filter((f) => f.id !== id));
-    setFiles((prev) => prev.map((f) => (f.folderId === id ? { ...f, folderId: null } : f)));
+    setFiles((prev) => prev.map((f) => (f.folder_name === name ? { ...f, folder_name: null } : f)));
+    
     recordActivity({
       text: `刪除資料夾「${name}」`,
       icon: "ri-folder-reduce-line",
