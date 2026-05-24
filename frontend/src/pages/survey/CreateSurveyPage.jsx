@@ -36,6 +36,7 @@ export default function CreateSurveyPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [identityMode, setIdentityMode] = useState("anonymous");
+  const [deadlineAt, setDeadlineAt] = useState("");
   const [questions, setQuestions] = useState([
     newQuestion("short")
   ]);
@@ -101,6 +102,8 @@ export default function CreateSurveyPage() {
 
   const validate = () => {
     if (!title.trim()) return "請輸入問卷標題。";
+    if (!deadlineAt) return "請設定問卷截止日與時間。";
+    if (new Date(deadlineAt).getTime() <= Date.now()) return "問卷截止時間必須晚於現在。";
     if (questions.some((q) => !q.title.trim())) return "每個題目都需要填寫題目文字。";
     return "";
   };
@@ -122,6 +125,7 @@ export default function CreateSurveyPage() {
         title: title.trim(),
         description: description.trim(),
         identity_mode: identityMode,
+        deadline_at: deadlineAt,
         questions: questions.map((q) => ({
           ...q,
           title: q.title.trim(),
@@ -148,6 +152,7 @@ export default function CreateSurveyPage() {
           title: payload.title,
           description: payload.description,
           identityMode: payload.identity_mode,
+          deadlineAt: payload.deadline_at,
           questions: payload.questions,
           code: accessCode,
           createdAt: new Date(createdAtMs).toISOString().slice(0, 10),
@@ -177,6 +182,10 @@ export default function CreateSurveyPage() {
         alert("授權已過期或無效，請重新登入。\n即將導向登入頁面。");
         localStorage.removeItem("dataanalysis_auth");
         navigate('/login');
+        return;
+      }
+      if (error?.response?.data?.error) {
+        setError(error.response.data.error);
         return;
       }
       alert("資料庫寫入失敗！請確認後端已開啟並連線至 Aiven。");
@@ -239,6 +248,17 @@ export default function CreateSurveyPage() {
                   <span className="identity-option-desc">填答者送出前需填寫身分。</span>
                 </label>
               </div>
+            </div>
+            <div className="survey-deadline-setting">
+              <label className="auth-label">問卷截止日 <span style={{ color: "#ef4444" }}>*</span></label>
+              <input
+                className="survey-input"
+                type="datetime-local"
+                value={deadlineAt}
+                onChange={(e) => setDeadlineAt(e.target.value)}
+                min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
+              />
+              <p className="survey-field-hint">填答者只能在截止時間前送出問卷。</p>
             </div>
           </section>
 

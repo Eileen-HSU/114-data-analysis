@@ -13,6 +13,26 @@ function getStoredSurveys() {
   }
 }
 
+function isSurveyExpired(deadlineAt) {
+  if (!deadlineAt) return false;
+  const deadlineTime = new Date(deadlineAt).getTime();
+  return Number.isFinite(deadlineTime) && Date.now() > deadlineTime;
+}
+
+function formatDeadline(deadlineAt) {
+  if (!deadlineAt) return "";
+  const date = new Date(deadlineAt);
+  if (Number.isNaN(date.getTime())) return deadlineAt;
+  return date.toLocaleString("zh-TW", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
 export default function FillSurveyPage() {
   const navigate = useNavigate(); // 修正點 1：將 navigate 移入組件內部
   const [searchParams] = useSearchParams();
@@ -24,12 +44,21 @@ export default function FillSurveyPage() {
   const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [loadingSurvey, setLoadingSurvey] = useState(false);
+  const [expiredSurvey, setExpiredSurvey] = useState(null);
 
   const questionCount = survey?.questions.length ?? 0;
   const answeredCount = useMemo(() => Object.values(answers).filter((value) => Array.isArray(value) ? value.length > 0 : String(value ?? "").trim()).length, [answers]);
 
   const openSurvey = (found, normalized) => {
+    if (isSurveyExpired(found.deadlineAt)) {
+      setSurvey(null);
+      setExpiredSurvey({ title: found.title, code: normalized, deadlineAt: found.deadlineAt });
+      setError("");
+      setSubmitted(false);
+      return;
+    }
     setSurvey({ ...found, code: normalized, responses: found.responses || [] });
+    setExpiredSurvey(null);
     setAnswers({});
     setRespondentIdentity("");
     setError("");
@@ -53,6 +82,17 @@ export default function FillSurveyPage() {
     setError("");
     try {
       const response = await fetch(apiUrl(`/api/surveys/${encodeURIComponent(normalized)}`));
+      if (response.status === 410) {
+        const expiredData = await response.json().catch(() => ({}));
+        setSurvey(null);
+        setExpiredSurvey({
+          title: expiredData.title || "此問卷",
+          code: expiredData.access_code || normalized,
+          deadlineAt: expiredData.deadline_at || "",
+        });
+        setError("");
+        return;
+      }
       if (!response.ok) {
         setError("找不到這組邀請碼，請確認後再試一次。");
         return;
@@ -64,6 +104,7 @@ export default function FillSurveyPage() {
         title: data.title,
         description: data.description || "",
         identityMode: data.identity_mode || "anonymous",
+        deadlineAt: data.deadline_at || "",
         questions: data.questions || [],
         code: data.access_code || normalized,
         createdAt: data.created_at ? data.created_at.slice(0, 10) : "",
@@ -108,6 +149,13 @@ export default function FillSurveyPage() {
   // 修正點 2：合併後的唯一 handleSubmit
   const handleSubmit = async (e) => {
     if (e) e.preventDefault(); 
+
+    if (isSurveyExpired(survey.deadlineAt)) {
+      setSurvey(null);
+      setExpiredSurvey({ title: survey.title, code: survey.code, deadlineAt: survey.deadlineAt });
+      setError("");
+      return;
+    }
 
     // 檢查必填項目
     if (survey.identityMode === "identified" && !respondentIdentity.trim()) {
@@ -159,6 +207,15 @@ export default function FillSurveyPage() {
           iconColor: "text-stat-teal",
         });
         setSubmitted(true);
+        setError("");
+      } else if (response.status === 410) {
+        const expiredData = await response.json().catch(() => ({}));
+        setSurvey(null);
+        setExpiredSurvey({
+          title: survey.title,
+          code: survey.code,
+          deadlineAt: expiredData.deadline_at || survey.deadlineAt,
+        });
         setError("");
       } else {
         setError("伺服器儲存失敗，請檢查後端連線。");
@@ -227,7 +284,7 @@ export default function FillSurveyPage() {
         </section>
 
         <div className="container pb-5">
-          {!survey && (
+          {!survey && !expiredSurvey && (
             <section className="code-entry-card">
               <div className="code-entry-icon"><i className="ri-key-2-line"></i></div>
               <h2 style={{ textAlign: "center", fontSize: 18, fontWeight: 800 }}>輸入邀請碼</h2>
@@ -239,6 +296,31 @@ export default function FillSurveyPage() {
                 </button>
               </div>
               {error && <p className="code-error-msg" style={{ display: "flex" }}>{error}</p>}
+            </section>
+          )}
+
+          {expiredSurvey && !survey && (
+            <section className="survey-expired-card">
+              <div className="survey-expired-icon"><i className="ri-time-line"></i></div>
+              <h2 className="survey-expired-title">問卷已截止</h2>
+              <p className="survey-expired-desc">
+                {expiredSurvey.title ? `「${expiredSurvey.title}」` : "這份問卷"}已超過填答期限，無法再送出回覆。
+              </p>
+              {expiredSurvey.deadlineAt && (
+                <div className="survey-expired-time">
+                  截止時間：{formatDeadline(expiredSurvey.deadlineAt)}
+                </div>
+              )}
+              <button
+                className="btn-enter-code expired-back-btn"
+                type="button"
+                onClick={() => {
+                  setExpiredSurvey(null);
+                  setCode("");
+                }}
+              >
+                <i className="ri-arrow-left-line"></i>輸入其他邀請碼
+              </button>
             </section>
           )}
 
@@ -254,6 +336,12 @@ export default function FillSurveyPage() {
                     <i className={survey.identityMode === "identified" ? "ri-user-line" : "ri-shield-user-line"}></i>
                     <span>{survey.identityMode === "identified" ? "非匿名" : "匿名"}</span>
                   </div>
+                  {survey.deadlineAt && (
+                    <div className="survey-form-meta-item">
+                      <i className="ri-time-line"></i>
+                      <span>截止 {formatDeadline(survey.deadlineAt)}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
