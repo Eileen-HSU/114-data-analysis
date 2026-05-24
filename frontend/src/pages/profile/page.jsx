@@ -441,7 +441,7 @@ export default function ProfilePage() {
     <>
       <Navbar />
       <main className="profile-page">
-        <div className="container py-5">
+        <div className="profile-container py-4">
           <section className="profile-card mb-4">
             <div className="profile-cover">
               <img src="https://static.readdy.ai/image/db4f710102ca6cc45db44808c8658987/4a8acdc8a7b54754399ef652077c11e9.png" alt="profile cover" />
