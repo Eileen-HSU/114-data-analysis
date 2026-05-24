@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../../../components/feature/Navbar";
 
@@ -13,6 +13,28 @@ const TYPE_LABELS = {
 function displayAnswer(value) {
   if (Array.isArray(value)) return value.join("、");
   return value || "未填";
+}
+
+function toDateTimeLocalValue(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+function formatDeadline(value) {
+  if (!value) return "未設定";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-TW", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
 }
 
 function RatingStats({ question, responses, qNum }) {
@@ -122,13 +144,21 @@ function buildSurveyChatContent(survey) {
   return lines.join("\n");
 }
 
-export default function SurveyDetailPage({ survey, onBack }) {
+export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("overview");
   const [importSuccess, setImportSuccess] = useState(false);
   const [copyCodeSuccess, setCopyCodeSuccess] = useState(false);
+  const [deadlineValue, setDeadlineValue] = useState(toDateTimeLocalValue(survey.deadlineAt));
+  const [deadlineStatus, setDeadlineStatus] = useState("");
+  const [isSavingDeadline, setIsSavingDeadline] = useState(false);
   const ratingQuestions = survey.questions.filter((question) => question.type === "rating");
   const textQuestions = survey.questions.filter((question) => question.type !== "rating");
+
+  useEffect(() => {
+    setDeadlineValue(toDateTimeLocalValue(survey.deadlineAt));
+    setDeadlineStatus("");
+  }, [survey.deadlineAt]);
 
   const handleCopyCode = async () => {
     try {
@@ -155,6 +185,23 @@ export default function SurveyDetailPage({ survey, onBack }) {
     }, 450);
   };
 
+  const handleSaveDeadline = async () => {
+    if (!deadlineValue) {
+      setDeadlineStatus("請選擇截止日期與時間。");
+      return;
+    }
+    setIsSavingDeadline(true);
+    setDeadlineStatus("");
+    try {
+      await onUpdateDeadline?.(survey, deadlineValue);
+      setDeadlineStatus("截止時間已更新。");
+    } catch (error) {
+      setDeadlineStatus(error.message || "截止時間更新失敗。");
+    } finally {
+      setIsSavingDeadline(false);
+    }
+  };
+
   return (
     <>
       <Navbar />
@@ -168,11 +215,31 @@ export default function SurveyDetailPage({ survey, onBack }) {
               <h1 className="sdp-topbar-title">{survey.title}</h1>
               <div className="sdp-topbar-meta">
                 <span><i className="ri-calendar-line"></i>{survey.createdAt}</span>
+                <span><i className="ri-time-line"></i>截止 {formatDeadline(survey.deadlineAt)}</span>
                 <span><i className="ri-user-line"></i>{survey.responses.length} 份回覆</span>
                 <span><i className="ri-question-line"></i>{survey.questions.length} 題</span>
               </div>
             </div>
             <div className="sdp-topbar-right">
+              <div className="sdp-deadline-card">
+                <label className="sdp-code-label" htmlFor="survey-deadline-input">
+                  <i className="ri-time-line"></i>截止時間
+                </label>
+                <div className="sdp-deadline-row">
+                  <input
+                    id="survey-deadline-input"
+                    className="sdp-deadline-input"
+                    type="datetime-local"
+                    value={deadlineValue}
+                    onChange={(event) => setDeadlineValue(event.target.value)}
+                  />
+                  <button className="sdp-deadline-save-btn" onClick={handleSaveDeadline} disabled={isSavingDeadline} type="button">
+                    <i className={isSavingDeadline ? "ri-loader-4-line" : "ri-save-line"}></i>
+                    {isSavingDeadline ? "儲存中" : "儲存"}
+                  </button>
+                </div>
+                {deadlineStatus && <div className="sdp-deadline-status">{deadlineStatus}</div>}
+              </div>
               <div className="sdp-code-card">
                 <div className="sdp-code-label">
                   <i className="ri-key-2-line"></i>邀請碼
