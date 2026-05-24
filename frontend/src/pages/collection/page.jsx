@@ -202,9 +202,10 @@ export default function CollectionPage() {
     event.preventDefault();
     event.stopPropagation();
     setDragOverTarget(null);
-    if (!draggingId) return;
+    const droppedFileId = event.dataTransfer?.getData("text/plain") || draggingId;
+    if (!droppedFileId) return;
 
-    const file = files.find((f) => f.id === draggingId);
+    const file = files.find((f) => f.id === droppedFileId);
     if (!file) return;
 
     // 目標資料夾的 name（拖到未分類時 targetFolderId 為 null）
@@ -214,7 +215,7 @@ export default function CollectionPage() {
 
     // 前端狀態更新
     setFiles((prev) =>
-      prev.map((f) => (f.id === draggingId ? { ...f, folder_name: targetFolderName } : f))
+      prev.map((f) => (f.id === droppedFileId ? { ...f, folder_name: targetFolderName } : f))
     );
     setWorkspaceSessions((prev) =>
       prev.map((session) =>
