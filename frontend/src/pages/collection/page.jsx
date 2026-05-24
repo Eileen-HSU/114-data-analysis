@@ -89,14 +89,13 @@ export default function CollectionPage() {
               try {
                 const authUser = JSON.parse(localStorage.getItem("dataanalysis_auth"));
                 const token = authUser?.token;
-                
                 await fetch(`${import.meta.env.VITE_API_BASE_URL || ""}/api/workspace/${session.project_id}`, {
                   method: "PUT",
                   headers: {
                     "Content-Type": "application/json",
                     ...(token ? { Authorization: `Bearer ${token}` } : {}),
                   },
-                  body: JSON.stringify({ folder_name: null }), 
+                  body: JSON.stringify({ folder_name: null }),
                 });
               } catch (err) {
                 console.error(`更新檔案 ${file.name} 資料庫失敗:`, err);
@@ -105,9 +104,10 @@ export default function CollectionPage() {
           }
         })
       );
+
+      deleteFolder(deleteTarget.id, deleteTarget.name);
     }
 
-    if (deleteTarget.type === "folder") deleteFolder(deleteTarget.id, deleteTarget.name);
     if (deleteTarget.type === "file") deleteFile(deleteTarget.id, deleteTarget.name);
 
     setDeleteTarget(null);
