@@ -66,6 +66,7 @@
   text-align: left;
   position: relative;
   overflow: hidden;
+  text-decoration: none;
 }
 
 .survey-entry-card::before {
