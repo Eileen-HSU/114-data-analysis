@@ -25,6 +25,14 @@ function loadWorkspaceSessions() {
   return loadArray(WORKSPACE_SESSIONS_KEY);
 }
 
+function normalizeCollectionFile(file) {
+  if (!file) return file;
+  return {
+    ...file,
+    folder_name: file.folder_name ?? null,
+  };
+}
+
 // 從 localStorage 取得 token
 function getAuthHeader() {
   try {
@@ -39,7 +47,7 @@ function getAuthHeader() {
 export function CollectionProvider({ children }) {
   const { recordActivity } = useActivity();
   const [folders, setFolders] = useState(() => loadArray(COLLECTION_FOLDERS_KEY, INIT_FOLDERS));
-  const [files, setFiles] = useState(() => loadArray(COLLECTION_FILES_KEY, INIT_FILES));
+  const [files, setFiles] = useState(() => loadArray(COLLECTION_FILES_KEY, INIT_FILES).map(normalizeCollectionFile));
   const [deletedItems, setDeletedItems] = useState(() => loadArray(DELETED_ITEMS_KEY));
   const [workspaceSessions, setWorkspaceSessions] = useState(loadWorkspaceSessions);
 
@@ -158,7 +166,7 @@ export function CollectionProvider({ children }) {
           name: session.title,
           type: "chat",
           size: "-",
-          folderId: null,
+          folder_name: null,
           createdAt: session.date || nowString(),
           sessionId,
         },
@@ -270,7 +278,7 @@ export function CollectionProvider({ children }) {
       name: file.name,
       type,
       size: formatFileSize(file.size),
-      folderId: null,
+      folder_name: null,
       createdAt: nowString(),
     };
     setFiles((prev) => [newFile, ...prev]);
@@ -289,7 +297,7 @@ export function CollectionProvider({ children }) {
       name: title,
       type: "chat",
       size: "—",
-      folderId: null,
+      folder_name: null,
       createdAt,
       sessionId,
     };

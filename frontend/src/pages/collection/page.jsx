@@ -15,6 +15,8 @@ const FILE_ICONS = {
   chat: "ri-chat-ai-line",
 };
 
+const getFileFolderName = (file) => file.folder_name ?? null;
+
 export default function CollectionPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -68,7 +70,7 @@ export default function CollectionPage() {
     );
   }
 
-  const looseFiles = files.filter((file) => file.folder_name === null);
+  const looseFiles = files.filter((file) => getFileFolderName(file) === null);
   const stats = {
     folders: folders.length,
     exports: 0,
@@ -87,7 +89,7 @@ export default function CollectionPage() {
     if (!deleteTarget) return;
 
     if (deleteTarget.type === "folder") {
-      const folderFiles = files.filter((file) => file.folder_name === deleteTarget.name);
+      const folderFiles = files.filter((file) => getFileFolderName(file) === deleteTarget.name);
 
       await Promise.all(
         folderFiles.map(async (file) => {
@@ -264,7 +266,7 @@ export default function CollectionPage() {
             </h2>
             <div className="row g-3">
               {folders.map((folder) => {
-                const folderFiles = files.filter((file) => file.folder_name === folder.name);
+                const folderFiles = files.filter((file) => getFileFolderName(file) === folder.name);
                 const isOpen = openFolders.has(folder.id);
                 const isDragOver = dragOverTarget === folder.id;
                 return (
