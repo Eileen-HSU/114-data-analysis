@@ -229,14 +229,15 @@ export default function ProfilePage() {
       body: JSON.stringify({ deadline_at: nextDeadlineAt }),
     });
 
+    const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
       throw new Error(data.error || "截止時間更新失敗");
     }
 
+    const savedDeadlineAt = data.deadline_at || nextDeadlineAt;
     const storedSurveys = JSON.parse(localStorage.getItem("surveys") || "{}");
     const current = storedSurveys[survey.code] || survey;
-    const updated = { ...current, deadlineAt: nextDeadlineAt };
+    const updated = { ...current, deadlineAt: savedDeadlineAt };
     storedSurveys[survey.code] = updated;
     localStorage.setItem("surveys", JSON.stringify(storedSurveys));
     setSelectedSurvey(updated);
