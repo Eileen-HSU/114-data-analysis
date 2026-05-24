@@ -72,15 +72,24 @@ export default function CollectionPage() {
   }
 
   const filesByFolder = useMemo(() => {
-    const grouping = { loose: [] };
-    files.forEach((file) => {
-      const folderName = getFileFolderName(file);
-      const key = folderName ?? "loose";
-      if (!grouping[key]) grouping[key] = [];
-      grouping[key].push(file);
+    const grouping = {};
+    const assignedFileIds = new Set();
+
+    folders.forEach((folder) => {
+      const memberIds = new Set(folder.fileIds || []);
+      files.forEach((file) => {
+        if (getFileFolderName(file) === folder.name) memberIds.add(file.id);
+      });
+      grouping[folder.name] = files.filter((file) => {
+        const belongsToFolder = memberIds.has(file.id);
+        if (belongsToFolder) assignedFileIds.add(file.id);
+        return belongsToFolder;
+      });
     });
+
+    grouping.loose = files.filter((file) => !assignedFileIds.has(file.id));
     return grouping;
-  }, [files]);
+  }, [files, folders]);
 
   const looseFiles = filesByFolder.loose || [];
   const stats = useMemo(
@@ -148,7 +157,7 @@ export default function CollectionPage() {
 
   const createFolder = () => {
     if (!newFolderName.trim()) return;
-    setFolders((prev) => [...prev, { id: `folder-${Date.now()}`, name: newFolderName.trim() }]);
+    setFolders((prev) => [...prev, { id: `folder-${Date.now()}`, name: newFolderName.trim(), fileIds: [] }]);
     recordActivity({
       text: `建立資料夾「${newFolderName.trim()}」`,
       icon: "ri-folder-add-line",
@@ -216,6 +225,19 @@ export default function CollectionPage() {
     // 前端狀態更新
     setFiles((prev) =>
       prev.map((f) => (f.id === droppedFileId ? { ...f, folder_name: targetFolderName } : f))
+    );
+    setFolders((prev) =>
+      prev.map((folder) => {
+        const currentFileIds = Array.isArray(folder.fileIds) ? folder.fileIds : [];
+        const fileIdsWithoutDropped = currentFileIds.filter((id) => id !== droppedFileId);
+        if (folder.id !== targetFolderId) {
+          return { ...folder, fileIds: fileIdsWithoutDropped };
+        }
+        return {
+          ...folder,
+          fileIds: [...fileIdsWithoutDropped, droppedFileId],
+        };
+      })
     );
     setWorkspaceSessions((prev) =>
       prev.map((session) =>
