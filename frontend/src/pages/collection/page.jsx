@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Navbar from "../../components/feature/Navbar";
 import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
@@ -70,12 +70,22 @@ export default function CollectionPage() {
     );
   }
 
-  const looseFiles = files.filter((file) => getFileFolderName(file) === null);
-  const stats = {
-    folders: folders.length,
-    exports: 0,
-    deleted: deletedItems.length,
-  };
+  const filesByFolder = useMemo(() => {
+    const grouping = { loose: [] };
+    files.forEach((file) => {
+      const folderName = getFileFolderName(file);
+      const key = folderName ?? "loose";
+      if (!grouping[key]) grouping[key] = [];
+      grouping[key].push(file);
+    });
+    return grouping;
+  }, [files]);
+
+  const looseFiles = filesByFolder.loose || [];
+  const stats = useMemo(
+    () => ({ folders: folders.length, exports: 0, deleted: deletedItems.length }),
+    [folders.length, deletedItems.length]
+  );
 
   const toggleFolder = (id) => {
     setOpenFolders((prev) => {
@@ -170,7 +180,14 @@ export default function CollectionPage() {
     setRenamingFileId(null);
   };
 
-  const handleDrop = async (targetFolderId) => {
+  const resetDragState = () => {
+    setDraggingId(null);
+    setDragOverTarget(null);
+  };
+
+  const handleDrop = async (targetFolderId, event) => {
+    event.preventDefault();
+    event.stopPropagation();
     setDragOverTarget(null);
     if (!draggingId) return;
 
@@ -266,16 +283,16 @@ export default function CollectionPage() {
             </h2>
             <div className="row g-3">
               {folders.map((folder) => {
-                const folderFiles = files.filter((file) => getFileFolderName(file) === folder.name);
+                const folderFiles = filesByFolder[folder.name] || [];
                 const isOpen = openFolders.has(folder.id);
                 const isDragOver = dragOverTarget === folder.id;
                 return (
                   <div className="col-md-6 col-lg-4" key={folder.id}>
                     <div
                       className={`folder-card ${isDragOver ? "drag-over" : ""}`}
-                      onDragOver={(event) => { event.preventDefault(); setDragOverTarget(folder.id); }}
+                      onDragOver={(event) => { event.preventDefault(); if (dragOverTarget !== folder.id) setDragOverTarget(folder.id); }}
                       onDragLeave={() => setDragOverTarget(null)}
-                      onDrop={() => handleDrop(folder.id)}
+                      onDrop={(event) => handleDrop(folder.id, event)}
                     >
                       {isDragOver && <div className="folder-drop-hint"><i className="ri-folder-received-line me-2"></i>移到「{folder.name}」</div>}
                       <div className="folder-header" onClick={() => toggleFolder(folder.id)}>
@@ -333,8 +350,8 @@ export default function CollectionPage() {
                                   onRenameChange={setRenameFileValue}
                                   onRenameSave={() => saveFileRename(file.id)}
                                   onRenameCancel={() => setRenamingFileId(null)}
-                                  onDragStart={() => setDraggingId(file.id)}
-                                  onDragEnd={() => setDraggingId(null)}
+                                  onDragStart={() => { setDraggingId(file.id); setDragOverTarget(null); }}
+                                  onDragEnd={resetDragState}
                                   menuOpen={fileMenuId === file.id}
                                   onMenuToggle={() => setFileMenuId((prev) => (prev === file.id ? null : file.id))}
                                   onMenuClose={() => setFileMenuId(null)}
@@ -361,9 +378,9 @@ export default function CollectionPage() {
             </h2>
             <div
               className={`loose-area ${dragOverTarget === "loose" ? "drag-over" : ""}`}
-              onDragOver={(event) => { event.preventDefault(); setDragOverTarget("loose"); }}
+              onDragOver={(event) => { event.preventDefault(); if (dragOverTarget !== "loose") setDragOverTarget("loose"); }}
               onDragLeave={() => setDragOverTarget(null)}
-              onDrop={() => handleDrop(null)}
+              onDrop={(event) => handleDrop(null, event)}
             >
               {dragOverTarget === "loose" && <div className="loose-drop-hint"><i className="ri-file-transfer-line me-2"></i>移到未分類</div>}
               {looseFiles.length === 0 ? (
@@ -380,8 +397,8 @@ export default function CollectionPage() {
                         onRenameChange={setRenameFileValue}
                         onRenameSave={() => saveFileRename(file.id)}
                         onRenameCancel={() => setRenamingFileId(null)}
-                        onDragStart={() => setDraggingId(file.id)}
-                        onDragEnd={() => setDraggingId(null)}
+                        onDragStart={() => { setDraggingId(file.id); setDragOverTarget(null); }}
+                        onDragEnd={resetDragState}
                         menuOpen={fileMenuId === file.id}
                         onMenuToggle={() => setFileMenuId((prev) => (prev === file.id ? null : file.id))}
                         onMenuClose={() => setFileMenuId(null)}
@@ -506,6 +523,8 @@ function FileRow({ file, compact = false, renamingId, renameValue, menuOpen, onM
           return;
         }
         event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.dropEffect = "move";
+        event.dataTransfer.setData("text/plain", file.id);
         onDragStart();
       }}
       onDragEnd={onDragEnd}
