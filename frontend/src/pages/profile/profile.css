@@ -1194,9 +1194,9 @@
 }
 
 .sdp-back-btn:hover {
-  background: var(--violet-50);
-  border-color: var(--violet-200);
-  color: var(--violet-600);
+  background: #fff1f7;
+  border-color: #f7c8dc;
+  color: #b45d86;
 }
 
 .sdp-topbar-center {
@@ -1242,7 +1242,7 @@
   gap: 7px;
   padding: 11px 14px;
   background: #fbf7ff;
-  border: 1px solid var(--violet-100);
+  border: 1px solid #f3d5e4;
   border-radius: 12px;
   min-width: 230px;
 }
@@ -1987,4 +1987,105 @@
     flex-direction: row;
     align-items: center;
   }
+}
+
+/* Soft pink + light blue theme for survey detail */
+.sdp-back-btn:hover,
+.sdp-copy-code-btn:hover {
+  background: #fff1f7;
+  border-color: #f7c8dc;
+  color: #b45d86;
+}
+
+.sdp-code-card,
+.sdp-stat-pill,
+.sdp-tab.active,
+.sdp-rating-summary-bar,
+.sdp-rating-chip {
+  border-color: #f3d5e4;
+}
+
+.sdp-code-card,
+.sdp-tab.active,
+.sdp-rating-chip {
+  background: #fff1f7;
+}
+
+.sdp-deadline-card {
+  background: #f8fcff;
+  border-color: #d9ecfb;
+}
+
+.sdp-deadline-input:focus {
+  border-color: #9dcced;
+  box-shadow: 0 0 0 3px rgba(157, 204, 237, 0.18);
+}
+
+.sdp-deadline-save-btn,
+.sdp-copy-code-btn {
+  color: #b45d86;
+  border-color: #f2c8dc;
+}
+
+.sdp-deadline-status,
+.sdp-stat-pill,
+.sdp-tab.active,
+.sdp-q-badge,
+.sdp-bar-row.has-responses .sdp-bar-score,
+.sdp-bar-row.has-responses .sdp-bar-count,
+.sdp-see-more,
+.sdp-rating-summary-label,
+.sdp-rating-chip-q,
+.sdp-rating-chip-avg,
+.sdp-th-q-num {
+  color: #b45d86;
+}
+
+.sdp-import-btn,
+.sdp-import-btn:hover,
+.sdp-avg-circle,
+.sdp-bar-fill {
+  background: #d98aaa;
+}
+
+.sdp-section-icon,
+.sdp-q-badge-cyan {
+  background: #eaf6fe;
+  color: #5f96bb;
+}
+
+.sdp-section-icon-cyan,
+.sdp-q-badge,
+.sdp-th-q-num {
+  background: #fff1f7;
+}
+
+.sdp-rating-card:hover {
+  border-color: #f3d5e4;
+}
+
+.sdp-bar-row.has-responses {
+  background: #fff4f8;
+}
+
+.sdp-bar-row.has-responses .sdp-bar-score {
+  box-shadow: inset 0 0 0 1px #f3d5e4;
+}
+
+.sdp-bar-track {
+  background: #edf6fc;
+}
+
+.sdp-answer-dot {
+  background: #9dcced;
+}
+
+.sdp-see-more:hover {
+  color: #9f4e74;
+}
+
+.sdp-table-section-header,
+.sdp-tr-even:hover,
+.sdp-tr-odd:hover {
+  background: #f8fcff;
 }
