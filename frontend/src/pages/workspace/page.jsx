@@ -5,6 +5,7 @@ import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
 import { useAuth } from "../../hooks/AuthContext";
 import { useCollection } from "../../hooks/CollectionContext";
 import { useActivity } from "../../hooks/ActivityContext";
+import { apiUrl } from "../../lib/api";
 import "./workspace.css";
 
 const WELCOME_MSG = {
@@ -14,6 +15,16 @@ const WELCOME_MSG = {
     "您好！我是 DataAnalysis AI 助手。請上傳您的資料檔案（CSV、Excel、JSON 或 TXT），或直接輸入您的分析問題，我將為您提供深度洞察。",
 };
 const ACTIVE_WORKSPACE_KEY = "dataanalysis_active_workspace";
+
+function getAuthHeader() {
+  try {
+    const user = JSON.parse(localStorage.getItem("dataanalysis_auth"));
+    const token = user?.token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+}
 
 function getStoredSurveyRecords(user) {
   let surveys = [];
@@ -197,7 +208,6 @@ export default function WorkspacePage() {
   const { isLoggedIn, user } = useAuth();
   const { recordActivity } = useActivity();
 
-
   const { addChatToCollection, addFileToCollection, syncChatTitle, deleteChatSession, workspaceSessions: sessions, setWorkspaceSessions: setSessions } = useCollection();
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [input, setInput] = useState("");
@@ -225,6 +235,48 @@ export default function WorkspacePage() {
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
   const messages = activeSession?.messages ?? [];
+
+  // ── 登入後從後端載入 workspace 列表 ──────────────────────
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    const fetchWorkspaces = async () => {
+      try {
+        const res = await fetch(apiUrl("/api/workspace/user"), {
+          headers: getAuthHeader(),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+
+        setSessions((prev) => {
+          const backendIds = new Set(data.map((w) => String(w.project_id)));
+
+          // 保留本地有但後端沒有的 session（例如問卷分析、尚未存到後端的）
+          const localOnly = prev.filter(
+            (s) => !s.project_id || !backendIds.has(String(s.project_id))
+          );
+
+          // 把後端資料轉成 session 格式，保留本地已有的 messages
+          const fromBackend = data.map((w) => {
+            const existing = prev.find((s) => String(s.project_id) === String(w.project_id));
+            return {
+              id: existing?.id || String(w.project_id),
+              project_id: w.project_id,
+              title: w.project_name,
+              date: w.created_at ? new Date(w.created_at).toLocaleDateString() : "",
+              messages: existing?.messages || [WELCOME_MSG],
+            };
+          });
+
+          return [...localOnly, ...fromBackend];
+        });
+      } catch (err) {
+        console.error("載入 workspace 失敗", err);
+      }
+    };
+
+    fetchWorkspaces();
+  }, [isLoggedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (activeSessionId || sessions.length === 0) return;
@@ -410,12 +462,28 @@ export default function WorkspacePage() {
     setRenameValue(s.title);
   };
 
-  const saveRename = (id) => {
+  // ── 重新命名：同時更新後端 ────────────────────────────────
+  const saveRename = async (id) => {
     const trimmed = renameValue.trim();
     if (trimmed) {
       setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, title: trimmed } : s)));
-      // sync title to collection chat file
       syncChatTitle(id, trimmed);
+
+      const session = sessions.find((s) => s.id === id);
+      if (session?.project_id) {
+        try {
+          await fetch(apiUrl(`/api/workspace/${session.project_id}`), {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              ...getAuthHeader(),
+            },
+            body: JSON.stringify({ project_name: trimmed }),
+          });
+        } catch (err) {
+          console.error("重新命名失敗", err);
+        }
+      }
     }
     setRenamingId(null);
   };
@@ -441,18 +509,45 @@ export default function WorkspacePage() {
     showToast("已刪除工作區，並移至最近刪除");
   };
 
-  const createNewSession = () => {
-    const newId = Date.now().toString();
+  // ── 建立新工作區 ─────────────
+  const createNewSession = async () => {
     const title = "新工作區";
-    const newSession = {
-      id: newId,
+    const tempId = `temp-${Date.now()}`;
+
+    const tempSession = {
+      id: tempId,
       title,
       date: new Date().toLocaleDateString(),
       messages: [WELCOME_MSG],
     };
-    setSessions((prev) => [newSession, ...prev]);
-    setActiveSessionId(newId);
-    addChatToCollection(title, newId);
+    setSessions((prev) => [tempSession, ...prev]);
+    setActiveSessionId(tempId);
+    addChatToCollection(title, tempId);
+
+    try {
+      const res = await fetch(apiUrl("/api/workspace"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeader(),
+        },
+        body: JSON.stringify({ project_name: title }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === tempId
+              ? { ...s, id: String(data.project_id), project_id: data.project_id }
+              : s
+          )
+        );
+        setActiveSessionId(String(data.project_id));
+      }
+    } catch (err) {
+      console.error("新增工作區失敗", err);
+    }
   };
 
   if (!isLoggedIn) {
