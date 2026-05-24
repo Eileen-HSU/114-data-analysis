@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiUrl } from "../../lib/api";
+import conqightLogo from "../../assets/conqight-logo.png";
 import "./auth.css";
 
 export default function TwoFactorPage() {
@@ -117,8 +118,8 @@ export default function TwoFactorPage() {
           <div className="auth-visual-content">
             <div className="auth-logo mb-5">
               <img
-                src="https://static.readdy.ai/image/db4f710102ca6cc45db44808c8658987/005555d3f7d205685c5c858369347dc5.png"
-                alt="DATA analysis"
+                src={conqightLogo}
+                alt="CON QIGHT"
                 className="auth-logo-img"
               />
             </div>

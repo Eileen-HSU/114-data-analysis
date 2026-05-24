@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import "./auth.css";
 import axios from "axios";
 import { apiUrl } from "../../lib/api";
+import conqightLogo from "../../assets/conqight-logo.png";
 
 export default function ForgotPasswordPage() {
   const navigate = useNavigate();
@@ -82,8 +83,8 @@ export default function ForgotPasswordPage() {
           <div className="auth-visual-content">
             <div className="auth-logo mb-5">
               <img
-                src="https://static.readdy.ai/image/db4f710102ca6cc45db44808c8658987/005555d3f7d205685c5c858369347dc5.png"
-                alt="DATA analysis"
+                src={conqightLogo}
+                alt="CON QIGHT"
                 className="auth-logo-img"
               />
             </div>
@@ -121,7 +122,7 @@ export default function ForgotPasswordPage() {
             {/* Mobile Logo */}
             <div className="d-lg-none text-center mb-4">
               <div className="mobile-logo">
-                <i className="ri-bar-chart-box-line"></i>
+                <img src={conqightLogo} alt="CON QIGHT" />
               </div>
               <span className="mobile-logo-text">DataAnalysis</span>
             </div>
