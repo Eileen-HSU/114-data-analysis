@@ -255,6 +255,7 @@ export default function WorkspacePage() {
   const [renameValue, setRenameValue] = useState("");
   const [showSurveyPicker, setShowSurveyPicker] = useState(false);
   const [surveyPickerSearch, setSurveyPickerSearch] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [toastMsg, setToastMsg] = useState(null);
   const toastTimerRef = useRef(null);
 
@@ -547,6 +548,31 @@ export default function WorkspacePage() {
     showToast("已刪除工作區，並移至最近刪除");
   };
 
+  const requestDeleteSession = (sessionId) => {
+    const session = sessions.find((s) => s.id === sessionId);
+    if (!session) return;
+    setDeleteTarget(session);
+  };
+
+  const confirmDeleteSession = () => {
+    if (!deleteTarget) return;
+    const sessionId = deleteTarget.id;
+    deleteChatSession(sessionId);
+    setRenamingId(null);
+    setSearchQuery("");
+    if (activeSessionId === sessionId) {
+      const nextSession = sessions.find((s) => s.id !== sessionId);
+      setActiveSessionId(nextSession?.id || null);
+      if (nextSession?.id) {
+        localStorage.setItem(ACTIVE_WORKSPACE_KEY, nextSession.id);
+      } else {
+        localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
+      }
+    }
+    setDeleteTarget(null);
+    showToast("已刪除工作區，並移至最近刪除");
+  };
+
   // ── 建立新工作區 ─────────────
   const createNewSession = async () => {
     const title = "新工作區";
@@ -703,7 +729,7 @@ export default function WorkspacePage() {
                     </button>
                     <button
                       className="session-delete"
-                      onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
+                      onClick={(e) => { e.stopPropagation(); requestDeleteSession(s.id); }}
                       title="刪除工作區"
                     >
                       <i className="ri-delete-bin-line"></i>
@@ -905,6 +931,25 @@ export default function WorkspacePage() {
           </main>
         </div>
       </div>
+      {deleteTarget && (
+        <div className="workspace-modal-backdrop" onClick={() => setDeleteTarget(null)}>
+          <div className="workspace-alert-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="workspace-alert-icon">
+              <i className="ri-error-warning-line"></i>
+            </div>
+            <h3>刪除工作區</h3>
+            <p>確定要刪除「{deleteTarget.title}」嗎？刪除後可在作品集的最近刪除中還原。</p>
+            <div className="workspace-alert-actions">
+              <button className="workspace-alert-primary" onClick={confirmDeleteSession} type="button">
+                確定
+              </button>
+              <button className="workspace-alert-secondary" onClick={() => setDeleteTarget(null)} type="button">
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
