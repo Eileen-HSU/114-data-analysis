@@ -392,7 +392,7 @@
   min-height: 28px;
   max-height: 144px;
   line-height: 1.5;
-  font-family: 'Noto Sans TC', sans-serif;
+  font-family: "Microsoft JhengHei", "微軟正黑體", Arial, sans-serif;
 }
 
 .input-wrapper textarea::placeholder { color: var(--slate-400); }

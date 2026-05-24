@@ -221,25 +221,6 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
               </div>
             </div>
             <div className="sdp-topbar-right">
-              <div className="sdp-deadline-card">
-                <label className="sdp-code-label" htmlFor="survey-deadline-input">
-                  <i className="ri-time-line"></i>截止時間
-                </label>
-                <div className="sdp-deadline-row">
-                  <input
-                    id="survey-deadline-input"
-                    className="sdp-deadline-input"
-                    type="datetime-local"
-                    value={deadlineValue}
-                    onChange={(event) => setDeadlineValue(event.target.value)}
-                  />
-                  <button className="sdp-deadline-save-btn" onClick={handleSaveDeadline} disabled={isSavingDeadline} type="button">
-                    <i className={isSavingDeadline ? "ri-loader-4-line" : "ri-save-line"}></i>
-                    {isSavingDeadline ? "儲存中" : "儲存"}
-                  </button>
-                </div>
-                {deadlineStatus && <div className="sdp-deadline-status">{deadlineStatus}</div>}
-              </div>
               <div className="sdp-code-card">
                 <div className="sdp-code-label">
                   <i className="ri-key-2-line"></i>邀請碼
@@ -263,12 +244,33 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
             </div>
           </div>
           <div className="sdp-tabbar">
-            <button className={`sdp-tab ${activeTab === "overview" ? "active" : ""}`} onClick={() => setActiveTab("overview")}>
-              <i className="ri-bar-chart-line"></i>總覽
-            </button>
-            <button className={`sdp-tab ${activeTab === "responses" ? "active" : ""}`} onClick={() => setActiveTab("responses")}>
-              <i className="ri-table-line"></i>回覆資料
-            </button>
+            <div className="sdp-tab-group">
+              <button className={`sdp-tab ${activeTab === "overview" ? "active" : ""}`} onClick={() => setActiveTab("overview")}>
+                <i className="ri-bar-chart-line"></i>總覽
+              </button>
+              <button className={`sdp-tab ${activeTab === "responses" ? "active" : ""}`} onClick={() => setActiveTab("responses")}>
+                <i className="ri-table-line"></i>回覆資料
+              </button>
+            </div>
+            <div className="sdp-deadline-card">
+              <label className="sdp-code-label" htmlFor="survey-deadline-input">
+                <i className="ri-time-line"></i>截止時間
+              </label>
+              <div className="sdp-deadline-row">
+                <input
+                  id="survey-deadline-input"
+                  className="sdp-deadline-input"
+                  type="datetime-local"
+                  value={deadlineValue}
+                  onChange={(event) => setDeadlineValue(event.target.value)}
+                />
+                <button className="sdp-deadline-save-btn" onClick={handleSaveDeadline} disabled={isSavingDeadline} type="button">
+                  <i className={isSavingDeadline ? "ri-loader-4-line" : "ri-save-line"}></i>
+                  {isSavingDeadline ? "儲存中" : "儲存"}
+                </button>
+              </div>
+              {deadlineStatus && <div className="sdp-deadline-status">{deadlineStatus}</div>}
+            </div>
           </div>
         </div>
 
