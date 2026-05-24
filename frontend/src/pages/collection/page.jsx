@@ -160,6 +160,47 @@ export default function CollectionPage() {
     setRenamingFileId(null);
   };
 
+  const handleDrop = async (targetFolderId) => {
+    setDragOverTarget(null);
+    if (!draggingId) return;
+
+    const file = files.find((f) => f.id === draggingId);
+    if (!file) return;
+
+    // 目標資料夾的 name（拖到未分類時 targetFolderId 為 null）
+    const targetFolderName = targetFolderId
+      ? folders.find((f) => f.id === targetFolderId)?.name ?? null
+      : null;
+
+    // 前端狀態更新
+    setFiles((prev) =>
+      prev.map((f) => (f.id === draggingId ? { ...f, folder_name: targetFolderName } : f))
+    );
+
+    // 同步資料庫
+    if (file.type === "chat" && file.sessionId) {
+      const session = workspaceSessions.find((s) => s.project_id === Number(file.sessionId));
+      if (session?.project_id) {
+        try {
+          const authUser = JSON.parse(localStorage.getItem("dataanalysis_auth"));
+          const token = authUser?.token;
+          await fetch(`${import.meta.env.VITE_API_BASE_URL || ""}/api/workspace/${session.project_id}`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ folder_name: targetFolderName }),
+          });
+        } catch (err) {
+          console.error("拖曳更新資料庫失敗:", err);
+        }
+      }
+    }
+
+    setDraggingId(null);
+  };
+
   return (
     <>
       <Navbar />
