@@ -156,7 +156,7 @@ def update_workspace(project_id):
     if not workspace:
         return jsonify({"error": "找不到專案"}), 404
 
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
 
     if "folder_name" in data:
         workspace.folder_name = data["folder_name"]

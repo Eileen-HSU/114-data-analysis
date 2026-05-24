@@ -126,13 +126,6 @@ export default function CollectionPage() {
     setShowNewFolderModal(false);
   };
 
-  const confirmDelete = () => {
-    if (!deleteTarget) return;
-    if (deleteTarget.type === "folder") deleteFolder(deleteTarget.id, deleteTarget.name);
-    if (deleteTarget.type === "file") deleteFile(deleteTarget.id, deleteTarget.name);
-    setDeleteTarget(null);
-  };
-
   const openFile = (file) => {
     if (file.type === "chat" && file.sessionId) {
       navigate("/workspace", { state: { openSession: { sessionId: file.sessionId } } });
