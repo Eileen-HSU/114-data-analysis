@@ -56,6 +56,7 @@ def create_survey():
         access_code = generate_unique_access_code()
         survey_content = {
             "description": data.get('description'),
+            "identity_mode": data.get('identity_mode') if data.get('identity_mode') in ["anonymous", "identified"] else "anonymous",
             "items":       questions,
         }
         new_template = Survey_Template(
@@ -90,6 +91,7 @@ def get_survey(access_code):
             "template_id": survey.template_id,
             "title": survey.title,
             "description": question_json.get("description") or "",
+            "identity_mode": question_json.get("identity_mode") or "anonymous",
             "questions": question_json.get("items") or [],
             "access_code": survey.access_code,
             "created_at": survey.created_at.isoformat() if survey.created_at else None,
@@ -113,7 +115,10 @@ def submit_survey_response(access_code):
 
         response = Survey_Response(
             template_id = survey.template_id,
-            answer_json = data.get('answers'),
+            answer_json = {
+                "answers": data.get('answers'),
+                "respondent_identity": data.get('respondent_identity'),
+            },
         )
         db.session.add(response)
         db.session.commit()

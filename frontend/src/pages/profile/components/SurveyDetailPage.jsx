@@ -74,6 +74,7 @@ function ResponseTable({ questions, responses }) {
           <thead>
             <tr>
               <th className="sdp-th sdp-th-idx">#</th>
+              <th className="sdp-th sdp-th-identity">填答人</th>
               <th className="sdp-th sdp-th-time">提交時間</th>
               {questions.map((question, index) => (
                 <th key={question.id} className="sdp-th sdp-th-q">
@@ -86,8 +87,9 @@ function ResponseTable({ questions, responses }) {
           </thead>
           <tbody>
             {responses.map((response, index) => (
-              <tr key={response.respondentId} className={index % 2 === 0 ? "sdp-tr-even" : "sdp-tr-odd"}>
+              <tr key={response.respondentId || index} className={index % 2 === 0 ? "sdp-tr-even" : "sdp-tr-odd"}>
                 <td className="sdp-td sdp-td-idx">{index + 1}</td>
+                <td className="sdp-td sdp-td-identity">{response.respondentIdentity || "匿名"}</td>
                 <td className="sdp-td sdp-td-time">{response.submittedAt}</td>
                 {questions.map((question) => (
                   <td key={question.id} className="sdp-td sdp-td-ans">{displayAnswer(response.answers[question.id])}</td>
@@ -113,7 +115,8 @@ function buildSurveyChatContent(survey) {
   survey.questions.forEach((question, index) => {
     lines.push(`Q${index + 1}. ${question.title}`);
     survey.responses.slice(0, 8).forEach((response, responseIndex) => {
-      lines.push(`  ${responseIndex + 1}. ${displayAnswer(response.answers[question.id])}`);
+      const identityLabel = response.respondentIdentity ? `填答人：${response.respondentIdentity}，` : "";
+      lines.push(`  ${responseIndex + 1}. ${identityLabel}${displayAnswer(response.answers[question.id])}`);
     });
   });
   return lines.join("\n");

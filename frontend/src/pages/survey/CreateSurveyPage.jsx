@@ -35,6 +35,7 @@ export default function CreateSurveyPage() {
   const { recordActivity } = useActivity();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [identityMode, setIdentityMode] = useState("anonymous");
   const [questions, setQuestions] = useState([
     newQuestion("short")
   ]);
@@ -120,6 +121,7 @@ export default function CreateSurveyPage() {
       const payload = {
         title: title.trim(),
         description: description.trim(),
+        identity_mode: identityMode,
         questions: questions.map((q) => ({
           ...q,
           title: q.title.trim(),
@@ -145,6 +147,7 @@ export default function CreateSurveyPage() {
           id: response.data.template_id || `survey-${Date.now()}`,
           title: payload.title,
           description: payload.description,
+          identityMode: payload.identity_mode,
           questions: payload.questions,
           code: accessCode,
           createdAt: new Date(createdAtMs).toISOString().slice(0, 10),
@@ -209,6 +212,33 @@ export default function CreateSurveyPage() {
             <div>
               <label className="auth-label">問卷說明</label>
               <textarea className="survey-input survey-textarea" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="補充填答說明、用途或注意事項" maxLength={500} />
+            </div>
+            <div className="survey-identity-setting">
+              <label className="auth-label">填答身分</label>
+              <div className="survey-identity-options" role="radiogroup" aria-label="填答身分設定">
+                <label className={`survey-identity-option ${identityMode === "anonymous" ? "active" : ""}`}>
+                  <input
+                    type="radio"
+                    name="identity_mode"
+                    value="anonymous"
+                    checked={identityMode === "anonymous"}
+                    onChange={() => setIdentityMode("anonymous")}
+                  />
+                  <span className="identity-option-title">匿名</span>
+                  <span className="identity-option-desc">填答者不需要留下身分。</span>
+                </label>
+                <label className={`survey-identity-option ${identityMode === "identified" ? "active" : ""}`}>
+                  <input
+                    type="radio"
+                    name="identity_mode"
+                    value="identified"
+                    checked={identityMode === "identified"}
+                    onChange={() => setIdentityMode("identified")}
+                  />
+                  <span className="identity-option-title">非匿名</span>
+                  <span className="identity-option-desc">填答者送出前需填寫身分。</span>
+                </label>
+              </div>
             </div>
           </section>
 

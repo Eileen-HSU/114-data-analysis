@@ -20,6 +20,7 @@ export default function FillSurveyPage() {
   const [code, setCode] = useState("");
   const [survey, setSurvey] = useState(null);
   const [answers, setAnswers] = useState({});
+  const [respondentIdentity, setRespondentIdentity] = useState("");
   const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [loadingSurvey, setLoadingSurvey] = useState(false);
@@ -30,6 +31,7 @@ export default function FillSurveyPage() {
   const openSurvey = (found, normalized) => {
     setSurvey({ ...found, code: normalized, responses: found.responses || [] });
     setAnswers({});
+    setRespondentIdentity("");
     setError("");
     setSubmitted(false);
   };
@@ -61,6 +63,7 @@ export default function FillSurveyPage() {
         id: data.template_id || normalized,
         title: data.title,
         description: data.description || "",
+        identityMode: data.identity_mode || "anonymous",
         questions: data.questions || [],
         code: data.access_code || normalized,
         createdAt: data.created_at ? data.created_at.slice(0, 10) : "",
@@ -107,6 +110,11 @@ export default function FillSurveyPage() {
     if (e) e.preventDefault(); 
 
     // 檢查必填項目
+    if (survey.identityMode === "identified" && !respondentIdentity.trim()) {
+      setError("請填寫身分後再送出問卷。");
+      return;
+    }
+
     const missing = survey.questions.some((q) => {
       const value = answers[q.id];
       return q.required && (Array.isArray(value) ? value.length === 0 : !String(value ?? "").trim());
@@ -123,7 +131,10 @@ export default function FillSurveyPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ answers }),
+        body: JSON.stringify({
+          answers,
+          respondent_identity: survey.identityMode === "identified" ? respondentIdentity.trim() : "",
+        }),
       });
 
       if (response.ok) {
@@ -133,7 +144,11 @@ export default function FillSurveyPage() {
           ...existingSurvey,
           responses: [
             ...(existingSurvey.responses || []),
-            { answers, submittedAt: new Date().toISOString() },
+            {
+              answers,
+              respondentIdentity: survey.identityMode === "identified" ? respondentIdentity.trim() : "",
+              submittedAt: new Date().toISOString(),
+            },
           ],
         };
         localStorage.setItem("surveys", JSON.stringify(storedSurveys));
@@ -235,8 +250,28 @@ export default function FillSurveyPage() {
                 <div className="survey-form-meta">
                   <div className="survey-form-meta-item"><i className="ri-question-line"></i><span>{questionCount} 題</span></div>
                   <div className="survey-form-meta-item"><i className="ri-check-line"></i><span>{answeredCount} 題已填</span></div>
+                  <div className="survey-form-meta-item">
+                    <i className={survey.identityMode === "identified" ? "ri-user-line" : "ri-shield-user-line"}></i>
+                    <span>{survey.identityMode === "identified" ? "非匿名" : "匿名"}</span>
+                  </div>
                 </div>
               </div>
+
+              {survey.identityMode === "identified" && (
+                <div className="respondent-identity-card">
+                  <label className="answer-question-label">
+                    <i className="ri-user-line"></i>
+                    填答人身分
+                    <span className="required-star">*</span>
+                  </label>
+                  <input
+                    className="answer-text-input"
+                    value={respondentIdentity}
+                    onChange={(e) => setRespondentIdentity(e.target.value)}
+                    placeholder="請輸入姓名、學號、員工編號或可辨識身分"
+                  />
+                </div>
+              )}
 
               {survey.questions.map((question, index) => (
                 <div className="answer-question" key={question.id}>

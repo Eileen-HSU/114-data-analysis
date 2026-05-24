@@ -81,6 +81,7 @@ function ResponseTable({ questions, responses }) {
           <thead>
             <tr>
               <th className="response-table-th response-table-th-idx">#</th>
+              <th className="response-table-th response-table-th-identity">填答人</th>
               <th className="response-table-th response-table-th-time">提交時間</th>
               {textQuestions.map((q) => (
                 <th key={q.id} className="response-table-th response-table-th-q">
@@ -94,8 +95,9 @@ function ResponseTable({ questions, responses }) {
           </thead>
           <tbody>
             {responses.map((r, idx) => (
-              <tr key={r.respondentId} className={idx % 2 === 0 ? "response-table-row-even" : "response-table-row-odd"}>
+              <tr key={r.respondentId || idx} className={idx % 2 === 0 ? "response-table-row-even" : "response-table-row-odd"}>
                 <td className="response-table-td response-table-td-idx">{idx + 1}</td>
+                <td className="response-table-td response-table-td-identity">{r.respondentIdentity || "匿名"}</td>
                 <td className="response-table-td response-table-td-time">{r.submittedAt}</td>
                 {textQuestions.map((q) => {
                   const ans = r.answers[q.id];
