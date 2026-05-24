@@ -12,7 +12,7 @@ const FILE_ICONS = {
   xlsx: "ri-file-excel-line",
   json: "ri-file-code-line",
   txt: "ri-file-text-line",
-  chat: "ri-chat-ai-line",
+  chat: "ri-chat-3-line",
 };
 
 const getFileFolderName = (file) => file.folder_name ?? null;
