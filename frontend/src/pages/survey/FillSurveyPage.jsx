@@ -145,8 +145,6 @@ export default function FillSurveyPage() {
         });
         setSubmitted(true);
         setError("");
-        // 成功後跳轉
-        setTimeout(() => navigate('/workspace'), 1500); 
       } else {
         setError("伺服器儲存失敗，請檢查後端連線。");
       }
