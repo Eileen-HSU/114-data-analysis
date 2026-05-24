@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Navbar from "../../components/feature/Navbar";
 import "./survey.css";
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiUrl } from "../../lib/api";
 import { useActivity } from "../../hooks/ActivityContext";
 
@@ -15,28 +15,78 @@ function getStoredSurveys() {
 
 export default function FillSurveyPage() {
   const navigate = useNavigate(); // 修正點 1：將 navigate 移入組件內部
+  const [searchParams] = useSearchParams();
   const { recordActivity } = useActivity();
   const [code, setCode] = useState("");
   const [survey, setSurvey] = useState(null);
   const [answers, setAnswers] = useState({});
   const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [loadingSurvey, setLoadingSurvey] = useState(false);
 
   const questionCount = survey?.questions.length ?? 0;
   const answeredCount = useMemo(() => Object.values(answers).filter((value) => Array.isArray(value) ? value.length > 0 : String(value ?? "").trim()).length, [answers]);
 
-  const handleEnterCode = () => {
-    const normalized = code.trim().toUpperCase();
-    const found = getStoredSurveys()[normalized];
-    if (!found) {
-      setError("找不到這組邀請碼，請確認後再試一次。");
-      return;
-    }
+  const openSurvey = (found, normalized) => {
     setSurvey({ ...found, code: normalized, responses: found.responses || [] });
     setAnswers({});
     setError("");
     setSubmitted(false);
   };
+
+  const loadSurveyByCode = async (rawCode) => {
+    const normalized = rawCode.trim().toUpperCase();
+    if (!normalized) {
+      setError("請輸入邀請碼。");
+      return;
+    }
+
+    const localSurvey = getStoredSurveys()[normalized];
+    if (localSurvey) {
+      openSurvey(localSurvey, normalized);
+      return;
+    }
+
+    setLoadingSurvey(true);
+    setError("");
+    try {
+      const response = await fetch(apiUrl(`/api/surveys/${encodeURIComponent(normalized)}`));
+      if (!response.ok) {
+        setError("找不到這組邀請碼，請確認後再試一次。");
+        return;
+      }
+
+      const data = await response.json();
+      const loadedSurvey = {
+        id: data.template_id || normalized,
+        title: data.title,
+        description: data.description || "",
+        questions: data.questions || [],
+        code: data.access_code || normalized,
+        createdAt: data.created_at ? data.created_at.slice(0, 10) : "",
+        responses: [],
+      };
+      openSurvey(loadedSurvey, normalized);
+    } catch (error) {
+      console.error("讀取問卷失敗:", error);
+      setError("伺服器連線失敗，請稍後再試。");
+    } finally {
+      setLoadingSurvey(false);
+    }
+  };
+
+  const handleEnterCode = () => {
+    loadSurveyByCode(code);
+  };
+
+  useEffect(() => {
+    const codeFromLink = searchParams.get("code");
+    if (!codeFromLink || survey) return;
+
+    const normalized = codeFromLink.trim().toUpperCase();
+    setCode(normalized);
+    loadSurveyByCode(normalized);
+  }, [searchParams, survey]);
 
   const setAnswer = (questionId, value) => {
     setAnswers((prev) => ({ ...prev, [questionId]: value }));
@@ -171,8 +221,8 @@ export default function FillSurveyPage() {
               <p style={{ textAlign: "center", color: "var(--slate-500)" }}>請輸入問卷建立後產生的邀請碼</p>
               <div className="code-input-wrapper">
                 <input className={`code-input ${error ? "error" : ""}`} value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === "Enter" && handleEnterCode()} maxLength={12} placeholder="輸入邀請碼" />
-                <button className="btn-enter-code" onClick={handleEnterCode}>
-                  <i className="ri-arrow-right-line"></i>進入
+                <button className="btn-enter-code" onClick={handleEnterCode} disabled={loadingSurvey}>
+                  <i className={loadingSurvey ? "ri-loader-4-line" : "ri-arrow-right-line"}></i>{loadingSurvey ? "讀取中" : "進入"}
                 </button>
               </div>
               {error && <p className="code-error-msg" style={{ display: "flex" }}>{error}</p>}
