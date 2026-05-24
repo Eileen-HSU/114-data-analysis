@@ -103,9 +103,9 @@ body {
 }
 
 .navbar-logo-img {
-  width: clamp(148px, 18vw, 220px);
+  width: clamp(166px, 19vw, 248px);
   height: auto;
-  max-height: 76px;
+  max-height: 82px;
   object-fit: contain;
   display: block;
 }
@@ -376,7 +376,7 @@ body {
    Responsive
    ============================================ */
 @media (max-width: 991px) {
-  .navbar-logo-img { width: 136px; max-height: 68px; }
+  .navbar-logo-img { width: 148px; max-height: 72px; }
   .nav-link-btn span { display: none; }
   .logo-subtitle { display: none; }
 }

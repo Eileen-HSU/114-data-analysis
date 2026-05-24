@@ -1,85 +1,110 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 690 345" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1302 623" role="img" aria-labelledby="title desc">
   <title id="title">CON QIGHT logo</title>
-  <desc id="desc">Lavender CON QIGHT wordmark with a magnifying glass, pink chart line, and glossy orb.</desc>
+  <desc id="desc">Lavender CON QIGHT wordmark with a magnifying-glass C, pink chart line, glossy orb, and underline.</desc>
   <defs>
-    <linearGradient id="orb" x1="0.24" y1="0.08" x2="0.78" y2="0.92">
-      <stop offset="0" stop-color="#ffffff"/>
-      <stop offset="0.25" stop-color="#efd9ff"/>
-      <stop offset="0.56" stop-color="#f3adb8"/>
-      <stop offset="1" stop-color="#b9a3f3"/>
+    <linearGradient id="lavenderStroke" x1="0.05" y1="0.48" x2="0.92" y2="0.48">
+      <stop offset="0" stop-color="#e5b8ff"/>
+      <stop offset="0.55" stop-color="#e9c8ff"/>
+      <stop offset="1" stop-color="#dfb5ff"/>
     </linearGradient>
-    <radialGradient id="orbShade" cx="0.45" cy="0.45" r="0.62">
-      <stop offset="0.1" stop-color="#ffb7c3" stop-opacity="0.88"/>
-      <stop offset="0.7" stop-color="#d7b8fa" stop-opacity="0.38"/>
-      <stop offset="1" stop-color="#856de2" stop-opacity="0.64"/>
+    <linearGradient id="wordFill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f3d6ff"/>
+      <stop offset="0.45" stop-color="#e3b8fb"/>
+      <stop offset="1" stop-color="#d6a9f5"/>
+    </linearGradient>
+    <linearGradient id="pinkLine" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d4748e"/>
+      <stop offset="1" stop-color="#efa4b4"/>
+    </linearGradient>
+    <radialGradient id="orb" cx="0.42" cy="0.34" r="0.72">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.2" stop-color="#f4e2ff"/>
+      <stop offset="0.55" stop-color="#c9b2e8"/>
+      <stop offset="0.78" stop-color="#f3b4c0"/>
+      <stop offset="1" stop-color="#8d77d0"/>
     </radialGradient>
-    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#7e5ad5" flood-opacity="0.24"/>
+    <filter id="softBlur" x="-18%" y="-18%" width="136%" height="136%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="2.8"/>
+      <feOffset dx="0" dy="5" result="offset"/>
+      <feColorMatrix in="offset" type="matrix" values="0 0 0 0 0.45 0 0 0 0 0.25 0 0 0 0 0.72 0 0 0 0.28 0"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
     </filter>
   </defs>
 
-  <rect width="690" height="345" fill="none"/>
+  <rect width="1302" height="623" fill="none"/>
 
   <path
-    d="M267 68C239 25 122 52 55 119 7 167 7 239 65 281c45 33 113 38 185 28"
+    d="M923 132C759 84 572 97 388 161 222 219 110 308 93 405 82 468 124 514 211 532c89 19 211 9 354-5"
     fill="none"
-    stroke="#e9c9ff"
-    stroke-width="43"
+    stroke="url(#lavenderStroke)"
+    stroke-width="58"
     stroke-linecap="round"
     stroke-linejoin="round"
   />
   <path
-    d="M246 79C224 66 151 74 91 119 45 154 32 216 72 251c34 29 92 37 157 30"
+    d="M902 132C734 98 551 115 381 176 232 230 130 313 120 399c-8 63 43 99 139 109 79 8 180 0 293-12"
     fill="none"
-    stroke="#d8b6f6"
-    stroke-width="8"
+    stroke="#f3d8ff"
+    stroke-width="11"
     stroke-linecap="round"
-    opacity="0.6"
+    opacity="0.55"
   />
 
   <path
-    d="M284 222 352 318"
+    d="M545 470 665 596"
     fill="none"
-    stroke="#e9c9ff"
-    stroke-width="23"
+    stroke="url(#lavenderStroke)"
+    stroke-width="59"
     stroke-linecap="round"
   />
 
-  <g fill="#e9c9ff" font-family="Arial Rounded MT Bold, Arial, sans-serif" font-style="italic" font-weight="900">
-    <text x="272" y="93" font-size="109" transform="skewX(-9)">ON</text>
-    <text x="342" y="264" font-size="105" transform="skewX(-9)">IGHT</text>
+  <path
+    d="M717 518c123-2 257-18 393-43"
+    fill="none"
+    stroke="url(#lavenderStroke)"
+    stroke-width="40"
+    stroke-linecap="round"
+  />
+
+  <g fill="url(#wordFill)" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-weight="700">
+    <text x="615" y="279" font-size="168" transform="skewX(-11)">ON</text>
+    <text x="618" y="462" font-size="165" transform="skewX(-11)">GHT</text>
   </g>
 
   <path
-    d="M104 203 139 191 153 124 208 80 271 106 319 137"
+    d="M255 414 314 444 374 410 372 320 430 258 528 266 612 303"
     fill="none"
-    stroke="#efa2ad"
-    stroke-width="8"
+    stroke="url(#pinkLine)"
+    stroke-width="11"
     stroke-linecap="round"
     stroke-linejoin="round"
   />
-  <g fill="#efa2ad">
-    <circle cx="69" cy="158" r="14"/>
-    <circle cx="103" cy="203" r="14"/>
-    <circle cx="153" cy="124" r="14"/>
-    <circle cx="208" cy="80" r="14"/>
-    <circle cx="271" cy="106" r="14"/>
-    <circle cx="319" cy="137" r="14"/>
+  <path
+    d="M390 342c62-45 157-44 216 26"
+    fill="none"
+    stroke="#df8fa3"
+    stroke-width="10"
+    stroke-linecap="round"
+    opacity="0.9"
+  />
+  <g fill="url(#pinkLine)" filter="url(#softBlur)">
+    <ellipse cx="254" cy="414" rx="24" ry="17" transform="rotate(20 254 414)"/>
+    <ellipse cx="314" cy="444" rx="24" ry="17" transform="rotate(-10 314 444)"/>
+    <ellipse cx="374" cy="410" rx="24" ry="17" transform="rotate(-15 374 410)"/>
+    <ellipse cx="372" cy="320" rx="24" ry="17" transform="rotate(-12 372 320)"/>
+    <ellipse cx="430" cy="258" rx="25" ry="17" transform="rotate(8 430 258)"/>
+    <ellipse cx="528" cy="266" rx="25" ry="17" transform="rotate(8 528 266)"/>
+    <ellipse cx="612" cy="303" rx="25" ry="17" transform="rotate(14 612 303)"/>
   </g>
 
-  <path
-    d="M189 151c37-27 91-22 126 26"
-    fill="none"
-    stroke="#efa2ad"
-    stroke-width="7"
-    stroke-linecap="round"
-  />
-
-  <g filter="url(#softShadow)">
-    <ellipse cx="239" cy="197" rx="73" ry="61" fill="url(#orb)"/>
-    <ellipse cx="239" cy="197" rx="73" ry="61" fill="url(#orbShade)" opacity="0.72"/>
-    <ellipse cx="255" cy="176" rx="28" ry="13" fill="#fff" opacity="0.64" transform="rotate(22 255 176)"/>
-    <ellipse cx="207" cy="235" rx="24" ry="7" fill="#fff" opacity="0.5" transform="rotate(-16 207 235)"/>
-    <ellipse cx="239" cy="197" rx="73" ry="61" fill="none" stroke="#f2ddff" stroke-width="5" opacity="0.7"/>
+  <g filter="url(#softBlur)">
+    <ellipse cx="502" cy="383" rx="96" ry="60" transform="rotate(-12 502 383)" fill="url(#orb)"/>
+    <ellipse cx="505" cy="384" rx="84" ry="48" transform="rotate(-12 505 384)" fill="#d6c0ee" opacity="0.28"/>
+    <ellipse cx="469" cy="354" rx="36" ry="13" transform="rotate(-15 469 354)" fill="#fff8ff" opacity="0.78"/>
+    <ellipse cx="540" cy="355" rx="12" ry="7" fill="#fff8ff" opacity="0.55"/>
+    <ellipse cx="553" cy="366" rx="10" ry="6" fill="#fff8ff" opacity="0.45"/>
   </g>
 </svg>
