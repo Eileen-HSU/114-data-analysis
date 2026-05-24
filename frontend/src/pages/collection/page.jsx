@@ -494,24 +494,26 @@ function FileRow({ file, compact = false, renamingId, renameValue, menuOpen, onM
   return (
     <div
       className={`file-item ${compact ? "compact" : ""}`}
+      draggable={!isRenaming}
       onClick={onOpen}
       onContextMenu={(event) => {
         event.preventDefault();
         onMenuToggle();
       }}
+      onDragStart={(event) => {
+        if (isRenaming) {
+          event.preventDefault();
+          return;
+        }
+        event.dataTransfer.effectAllowed = "move";
+        onDragStart();
+      }}
+      onDragEnd={onDragEnd}
     >
       <i
         className="ri-draggable drag-handle"
-        draggable
+        aria-hidden="true"
         onClick={(event) => event.stopPropagation()}
-        onDragStart={(event) => {
-          event.stopPropagation();
-          onDragStart();
-        }}
-        onDragEnd={(event) => {
-          event.stopPropagation();
-          onDragEnd();
-        }}
       ></i>
       <div className={`file-icon file-icon-${file.type}`}>
         <i className={FILE_ICONS[file.type] || "ri-file-line"}></i>
