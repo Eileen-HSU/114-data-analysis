@@ -104,6 +104,7 @@ function cleanMessageText(text) {
 function parseAssistantTableRows(content) {
   const rows = [];
   let currentSection = "";
+  let isSuggestionSection = false;
 
   const getRowTone = (item, description) => {
     const text = `${item} ${description}`;
@@ -122,26 +123,28 @@ function parseAssistantTableRows(content) {
     if (colonIndex > 0) {
       const label = line.slice(0, colonIndex).trim();
       const value = line.slice(colonIndex + 1).trim();
-      const item = numbered ? numbered[2].split("：")[0].trim() : label;
+      const item = isSuggestionSection ? "建議" : numbered ? numbered[2].split("：")[0].trim() : label.replace(/[💡]/g, "").trim();
       const description = numbered ? numbered[2].slice(numbered[2].indexOf("：") + 1).trim() : value;
       rows.push({ item, description, tone: getRowTone(item, description) });
       return;
     }
 
     if (numbered || bullet) {
-      const item = numbered ? `項目 ${numbered[1]}` : currentSection || "重點";
+      const item = isSuggestionSection ? "建議" : numbered ? `項目 ${numbered[1]}` : currentSection || "重點";
       const description = numbered ? numbered[2] : bullet[1];
       rows.push({ item, description, tone: getRowTone(item, description) });
       return;
     }
 
     if (line.length <= 18) {
-      currentSection = line;
+      isSuggestionSection = line.includes("建議");
+      currentSection = isSuggestionSection ? "建議" : line;
+      if (isSuggestionSection) return;
       rows.push({ item: "分類", description: line, tone: getRowTone("分類", line) });
       return;
     }
 
-    const item = currentSection || "摘要";
+    const item = isSuggestionSection ? "建議" : currentSection || "摘要";
     rows.push({ item, description: line, tone: getRowTone(item, line) });
   });
 
@@ -167,8 +170,8 @@ function AssistantTableContent({ content }) {
       <table className="assistant-output-table">
         <thead>
           <tr>
-            <th>項目</th>
-            <th>說明</th>
+            <th>分類</th>
+            <th>分析內容</th>
           </tr>
         </thead>
         <tbody>
