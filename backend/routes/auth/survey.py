@@ -137,6 +137,39 @@ def get_survey(access_code):
         logging.error(f"Survey lookup failed: {e}", exc_info=True)
         return jsonify({"error": "讀取問卷失敗", "detail": str(e)}), 500
 
+@survey_bp.route('/api/surveys/<access_code>/deadline', methods=['PATCH'])
+def update_survey_deadline(access_code):
+    """更新問卷截止時間"""
+    auth_user_id, auth_error = verify_token(request)
+    if auth_error:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(silent=True) or {}
+    deadline_at = data.get("deadline_at")
+    deadline = parse_deadline(deadline_at)
+    if not deadline:
+        return jsonify({"error": "截止時間格式不正確"}), 400
+
+    try:
+        survey = Survey_Template.query.filter_by(access_code=access_code.upper()).first()
+        if not survey:
+            return jsonify({"error": "找不到這份問卷"}), 404
+
+        question_json = dict(survey.question_json or {})
+        question_json["deadline_at"] = deadline_at
+        survey.question_json = question_json
+        db.session.commit()
+        return jsonify({
+            "message": "截止時間已更新",
+            "access_code": survey.access_code,
+            "deadline_at": deadline_at,
+        }), 200
+
+    except Exception as e:
+        logging.error(f"Survey deadline update failed: {e}", exc_info=True)
+        db.session.rollback()
+        return jsonify({"error": "截止時間更新失敗", "detail": str(e)}), 500
+
 @survey_bp.route('/api/surveys/<access_code>/responses', methods=['POST'])
 def submit_survey_response(access_code):
     """提交問卷回覆"""

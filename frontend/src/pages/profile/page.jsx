@@ -33,6 +33,20 @@ function getSurveyTime(createdAt) {
   return Number.isNaN(time) ? 0 : time;
 }
 
+function formatSurveyDeadline(deadlineAt) {
+  if (!deadlineAt) return "未設定截止時間";
+  const date = new Date(deadlineAt);
+  if (Number.isNaN(date.getTime())) return deadlineAt;
+  return new Intl.DateTimeFormat("zh-TW", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
 function formatActivityTime(value) {
   const time = new Date(value).getTime();
   if (!time || Number.isNaN(time)) return "";
@@ -91,6 +105,7 @@ export default function ProfilePage() {
   const [selectedSurvey, setSelectedSurvey] = useState(null);
   const [surveySearch, setSurveySearch] = useState("");
   const [surveySortOrder, setSurveySortOrder] = useState("desc");
+  const [surveyVersion, setSurveyVersion] = useState(0);
   const [avatarSrc, setAvatarSrc] = useState(DEFAULT_AVATAR);
   const [profile, setProfile] = useState({
     name: "",
@@ -174,12 +189,13 @@ export default function ProfilePage() {
     navigate("/profile", { replace: true });
   }, [location.search, navigate, recordActivity]);
 
-  const localSurveys = useMemo(() => getLocalSurveys(user), [user, selectedSurvey, saved]);
+  const localSurveys = useMemo(() => getLocalSurveys(user), [user, selectedSurvey, saved, surveyVersion]);
   const surveyRecords = useMemo(() => localSurveys.map((survey, index) => ({
       id: survey.id || survey.code,
       title: survey.title,
       code: survey.code,
       createdAt: survey.createdAt,
+      deadlineAt: survey.deadlineAt,
       createdAtMs: survey.createdAtMs || getSurveyTime(survey.createdAt) + index,
       responseCount: survey.responses?.length || 0,
       status: "active",
@@ -202,8 +218,40 @@ export default function ProfilePage() {
       });
   }, [surveyRecords, surveySearch, surveySortOrder]);
 
+  const updateSurveyDeadline = async (survey, nextDeadlineAt) => {
+    const auth = user || JSON.parse(localStorage.getItem("dataanalysis_auth") || "{}");
+    const response = await fetch(apiUrl(`/api/surveys/${encodeURIComponent(survey.code)}/deadline`), {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...(auth?.token ? { Authorization: `Bearer ${auth.token}` } : {}),
+      },
+      body: JSON.stringify({ deadline_at: nextDeadlineAt }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || "截止時間更新失敗");
+    }
+
+    const storedSurveys = JSON.parse(localStorage.getItem("surveys") || "{}");
+    const current = storedSurveys[survey.code] || survey;
+    const updated = { ...current, deadlineAt: nextDeadlineAt };
+    storedSurveys[survey.code] = updated;
+    localStorage.setItem("surveys", JSON.stringify(storedSurveys));
+    setSelectedSurvey(updated);
+    setSurveyVersion((version) => version + 1);
+    recordActivity({
+      text: `修改問卷「${survey.title}」截止時間`,
+      icon: "ri-time-line",
+      iconBg: "bg-stat-sky",
+      iconColor: "text-stat-sky",
+    });
+    return updated;
+  };
+
   if (selectedSurvey) {
-    return <SurveyDetailPage survey={selectedSurvey} onBack={() => setSelectedSurvey(null)} />;
+    return <SurveyDetailPage survey={selectedSurvey} onBack={() => setSelectedSurvey(null)} onUpdateDeadline={updateSurveyDeadline} />;
   }
 
   const handleAvatarChange = (event) => {
@@ -638,6 +686,10 @@ export default function ProfilePage() {
                       <strong>{survey.title}</strong>
                       <div style={{ color: "var(--slate-400)", fontSize: 13 }}>
                         邀請碼 {survey.code} · {survey.responseCount} 份回覆 · {survey.createdAt}
+                      </div>
+                      <div className="survey-deadline-meta">
+                        <i className="ri-time-line"></i>
+                        截止 {formatSurveyDeadline(survey.deadlineAt)}
                       </div>
                     </div>
                     <button
