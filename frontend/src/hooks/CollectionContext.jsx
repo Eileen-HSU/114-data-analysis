@@ -86,18 +86,7 @@ export function CollectionProvider({ children }) {
           createdAt: session.date || nowString(),
           sessionId: session.id,
         }));
-
-      const syncedFiles = prev.map((file) => {
-        if (file.type !== "chat") return file;
-        const session = workspaceSessions.find((s) => String(s.id) === String(file.sessionId));
-        if (!session || !Object.prototype.hasOwnProperty.call(session, "folder_name")) return file;
-        return {
-          ...file,
-          folder_name: session.folder_name ?? null,
-        };
-      });
-
-      return missingChatFiles.length ? [...missingChatFiles, ...syncedFiles] : syncedFiles;
+      return missingChatFiles.length ? [...missingChatFiles, ...prev] : prev;
     });
   }, [workspaceSessions]);
 
