@@ -307,6 +307,14 @@ export function CollectionProvider({ children }) {
     );
   };
 
+  const updateSessionId = (oldId, newId) => {
+  setFiles((prev) =>
+    prev.map((f) =>
+      f.sessionId === oldId ? { ...f, sessionId: newId, id: `chat-${newId}` } : f
+    )
+  );
+};
+
   return (
     <CollectionContext.Provider value={{
       folders, files, deletedItems, workspaceSessions,
@@ -314,6 +322,7 @@ export function CollectionProvider({ children }) {
       deleteFolder, deleteFile,
       restoreItem, permanentDelete,
       addChatToCollection, addFileToCollection, syncChatTitle, deleteChatSession,
+      updateSessionId,
     }}>
       {children}
     </CollectionContext.Provider>

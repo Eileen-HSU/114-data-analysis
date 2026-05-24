@@ -208,8 +208,7 @@ export default function WorkspacePage() {
   const { isLoggedIn, user } = useAuth();
   const { recordActivity } = useActivity();
 
-  const { addChatToCollection, addFileToCollection, syncChatTitle, deleteChatSession, workspaceSessions: sessions, setWorkspaceSessions: setSessions } = useCollection();
-  const [activeSessionId, setActiveSessionId] = useState(null);
+  const { addChatToCollection, addFileToCollection, syncChatTitle, deleteChatSession, updateSessionId, workspaceSessions: sessions, setWorkspaceSessions: setSessions } = useCollection();  const [activeSessionId, setActiveSessionId] = useState(null);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [attachedFile, setAttachedFile] = useState(null);
@@ -536,6 +535,7 @@ export default function WorkspacePage() {
 
       if (res.ok) {
         const data = await res.json();
+        const newId = String(data.project_id);
         setSessions((prev) =>
           prev.map((s) =>
             s.id === tempId
@@ -543,6 +543,7 @@ export default function WorkspacePage() {
               : s
           )
         );
+        updateSessionId(tempId, newId);
         setActiveSessionId(String(data.project_id));
       }
     } catch (err) {
