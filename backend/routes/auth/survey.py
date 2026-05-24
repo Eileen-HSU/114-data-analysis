@@ -77,6 +77,28 @@ def create_survey():
         db.session.rollback()
         return jsonify({"error": "問卷建立失敗", "detail": str(e)}), 500  
 
+@survey_bp.route('/api/surveys/<access_code>', methods=['GET'])
+def get_survey(access_code):
+    """用邀請碼取得公開填答用問卷內容"""
+    try:
+        survey = Survey_Template.query.filter_by(access_code=access_code.upper()).first()
+        if not survey or not survey.is_active:
+            return jsonify({"error": "找不到這份問卷"}), 404
+
+        question_json = survey.question_json or {}
+        return jsonify({
+            "template_id": survey.template_id,
+            "title": survey.title,
+            "description": question_json.get("description") or "",
+            "questions": question_json.get("items") or [],
+            "access_code": survey.access_code,
+            "created_at": survey.created_at.isoformat() if survey.created_at else None,
+        }), 200
+
+    except Exception as e:
+        logging.error(f"Survey lookup failed: {e}", exc_info=True)
+        return jsonify({"error": "讀取問卷失敗", "detail": str(e)}), 500
+
 @survey_bp.route('/api/surveys/<access_code>/responses', methods=['POST'])
 def submit_survey_response(access_code):
     """提交問卷回覆"""

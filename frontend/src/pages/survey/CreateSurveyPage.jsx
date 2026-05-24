@@ -40,7 +40,9 @@ export default function CreateSurveyPage() {
   ]);
   const [error, setError] = useState("");
   const [generatedCode, setGeneratedCode] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const shareLink = generatedCode ? `${window.location.origin}/survey/fill?code=${encodeURIComponent(generatedCode)}` : "";
 
   // 檢查本地 token 是否對本機後端有效，若無效則清除並導向登入
   useEffect(() => {
@@ -161,6 +163,8 @@ export default function CreateSurveyPage() {
           iconColor: "text-stat-coral",
         });
         setGeneratedCode(accessCode);
+        setCopiedCode(false);
+        setCopiedLink(false);
         setError("");
       }
     } catch (error) {
@@ -266,17 +270,31 @@ export default function CreateSurveyPage() {
               <div className="invite-code-value">{generatedCode}</div>
             </div>
             <button
-              className={`copy-code-btn ${copied ? "copied" : ""}`}
+              className={`copy-code-btn ${copiedCode ? "copied" : ""}`}
               onClick={() => {
                 navigator.clipboard?.writeText(generatedCode);
-                setCopied(true);
+                setCopiedCode(true);
               }}
             >
-              <i className={copied ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
-              {copied ? "已複製" : "複製邀請碼"}
+              <i className={copiedCode ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
+              {copiedCode ? "已複製" : "複製邀請碼"}
+            </button>
+            <div className="invite-link-box">
+              <div className="invite-code-label">填寫連結</div>
+              <div className="invite-link-value">{shareLink}</div>
+            </div>
+            <button
+              className={`copy-code-btn ${copiedLink ? "copied" : ""}`}
+              onClick={() => {
+                navigator.clipboard?.writeText(shareLink);
+                setCopiedLink(true);
+              }}
+            >
+              <i className={copiedLink ? "ri-checkbox-circle-line" : "ri-link"}></i>
+              {copiedLink ? "已複製連結" : "複製填寫連結"}
             </button>
             <div className="d-flex gap-3">
-              <a href="/survey/fill" className="btn-generate" style={{ flex: 1, padding: "14px", textDecoration: "none", justifyContent: "center" }}>
+              <a href={`/survey/fill?code=${encodeURIComponent(generatedCode)}`} className="btn-generate" style={{ flex: 1, padding: "14px", textDecoration: "none", justifyContent: "center" }}>
                 <i className="ri-pencil-line"></i> 測試填答
               </a>
               <a href="/profile" className="btn-generate" style={{ flex: 1, padding: "14px", background: "var(--slate-100)", color: "var(--slate-600)", textDecoration: "none", justifyContent: "center" }}>

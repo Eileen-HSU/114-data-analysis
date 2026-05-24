@@ -548,6 +548,15 @@
   margin-bottom: 24px;
 }
 
+.invite-link-box {
+  background: #f8fafc;
+  border: 1.5px solid var(--slate-200);
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  text-align: left;
+}
+
 .invite-code-label {
   font-size: 12px;
   font-weight: 700;
@@ -563,6 +572,14 @@
   letter-spacing: 6px;
   color: var(--slate-800);
   font-family: 'Courier New', monospace;
+}
+
+.invite-link-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--slate-700);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .copy-code-btn {
