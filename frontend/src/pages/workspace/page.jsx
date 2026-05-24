@@ -111,14 +111,18 @@ function parseAssistantTableRows(content) {
   let currentSection = "";
   let isSuggestionSection = false;
 
-  const getRowTone = (item) => {
-    if (item === "建議" || item === "可進一步詢問") return "suggestion";
-    return "";
-  };
+  const isSuggestionLabel = (value) => ["建議", "可進一步詢問"].includes(value.replace(/[💡]/g, "").trim());
 
   content.split("\n").forEach((rawLine) => {
     const line = cleanMessageText(rawLine);
     if (!line) return;
+
+    if (line.startsWith("我已收到")) {
+      introLines.push(line);
+      return;
+    }
+
+    if (isSuggestionSection) return;
 
     const numbered = line.match(/^(\d+)\.\s*(.+)$/);
     const bullet = line.match(/^[-]\s*(.+)$/);
@@ -127,22 +131,27 @@ function parseAssistantTableRows(content) {
     if (colonIndex > 0) {
       const label = line.slice(0, colonIndex).trim();
       const value = line.slice(colonIndex + 1).trim();
+      if (isSuggestionLabel(label)) {
+        isSuggestionSection = true;
+        currentSection = "";
+        return;
+      }
       const item = isSuggestionSection ? "建議" : numbered ? numbered[2].split("：")[0].trim() : label.replace(/[💡]/g, "").trim();
       const description = numbered ? numbered[2].slice(numbered[2].indexOf("：") + 1).trim() : value;
-      rows.push({ item, description, tone: getRowTone(item) });
+      rows.push({ item, description });
       return;
     }
 
     if (numbered || bullet) {
       const item = isSuggestionSection ? "建議" : numbered ? `項目 ${numbered[1]}` : currentSection || "重點";
       const description = numbered ? numbered[2] : bullet[1];
-      rows.push({ item, description, tone: getRowTone(item) });
+      rows.push({ item, description });
       return;
     }
 
     if (line.length <= 18) {
       isSuggestionSection = line.includes("建議");
-      currentSection = isSuggestionSection ? "建議" : line;
+      currentSection = isSuggestionSection ? "" : line;
       return;
     }
 
@@ -152,7 +161,7 @@ function parseAssistantTableRows(content) {
     }
 
     const item = isSuggestionSection ? "建議" : currentSection || "摘要";
-    rows.push({ item, description: line, tone: getRowTone(item) });
+    rows.push({ item, description: line });
   });
 
   return { intro: introLines.join("\n"), rows };
