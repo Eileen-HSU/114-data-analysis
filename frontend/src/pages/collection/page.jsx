@@ -60,7 +60,7 @@ export default function CollectionPage() {
     );
   }
 
-  const looseFiles = files.filter((file) => file.folderId === null);
+  const looseFiles = files.filter((file) => file.folder_name === null);
   const stats = {
     folders: folders.length,
     exports: 0,
@@ -79,12 +79,12 @@ export default function CollectionPage() {
     if (!deleteTarget) return;
 
     if (deleteTarget.type === "folder") {
-      const folderFiles = files.filter((file) => file.folderId === deleteTarget.id);
+      const folderFiles = files.filter((file) => file.folder_name === deleteTarget.name);
 
       await Promise.all(
         folderFiles.map(async (file) => {
           if (file.type === "chat" && file.sessionId) {
-            const session = workspaceSessions.find((s) => s.project_id === file.sessionId);
+            const session = workspaceSessions.find((s) => s.project_id === Number(file.sessionId));
             if (session?.project_id) {
               try {
                 const authUser = JSON.parse(localStorage.getItem("dataanalysis_auth"));
@@ -222,7 +222,7 @@ export default function CollectionPage() {
             </h2>
             <div className="row g-3">
               {folders.map((folder) => {
-                const folderFiles = files.filter((file) => file.folderId === folder.id);
+                const folderFiles = files.filter((file) => file.folder_name === folder.name);
                 const isOpen = openFolders.has(folder.id);
                 const isDragOver = dragOverTarget === folder.id;
                 return (
