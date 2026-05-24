@@ -103,7 +103,7 @@ function cleanMessageText(text) {
 
 function parseAssistantTableRows(content) {
   const rows = [];
-  let currentSection = "";
+  let currentCategory = "摘要";
 
   content.split("\n").forEach((rawLine) => {
     const line = cleanMessageText(rawLine);
@@ -114,30 +114,31 @@ function parseAssistantTableRows(content) {
     const colonIndex = line.indexOf("：");
 
     if (colonIndex > 0) {
-      const label = line.slice(0, colonIndex).trim();
-      const value = line.slice(colonIndex + 1).trim();
+      const source = numbered ? numbered[2] : line;
+      const sourceColonIndex = source.indexOf("：");
+      const label = source.slice(0, sourceColonIndex).trim();
+      const value = source.slice(sourceColonIndex + 1).trim();
       rows.push({
-        item: numbered ? numbered[2].split("：")[0].trim() : label,
-        description: numbered ? numbered[2].slice(numbered[2].indexOf("：") + 1).trim() : value,
+        category: label || currentCategory,
+        content: value,
       });
       return;
     }
 
     if (numbered || bullet) {
       rows.push({
-        item: numbered ? `項目 ${numbered[1]}` : currentSection || "重點",
-        description: numbered ? numbered[2] : bullet[1],
+        category: currentCategory,
+        content: numbered ? numbered[2] : bullet[1],
       });
       return;
     }
 
     if (line.length <= 18) {
-      currentSection = line;
-      rows.push({ item: "分類", description: line });
+      currentCategory = line;
       return;
     }
 
-    rows.push({ item: currentSection || "摘要", description: line });
+    rows.push({ category: currentCategory, content: line });
   });
 
   return rows;
@@ -162,15 +163,15 @@ function AssistantTableContent({ content }) {
       <table className="assistant-output-table">
         <thead>
           <tr>
-            <th>項目</th>
-            <th>說明</th>
+            <th>分類</th>
+            <th>內容</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row, index) => (
-            <tr key={`${row.item}-${index}`}>
-              <td>{row.item}</td>
-              <td>{row.description}</td>
+            <tr key={`${row.category}-${index}`}>
+              <td>{row.category}</td>
+              <td>{row.content}</td>
             </tr>
           ))}
         </tbody>
