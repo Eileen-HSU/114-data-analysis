@@ -103,6 +103,7 @@ function cleanMessageText(text) {
 
 function parseAssistantTableRows(content) {
   const rows = [];
+  const introLines = [];
   let currentSection = "";
   let isSuggestionSection = false;
 
@@ -141,11 +142,16 @@ function parseAssistantTableRows(content) {
       return;
     }
 
+    if (!currentSection && !isSuggestionSection) {
+      introLines.push(line);
+      return;
+    }
+
     const item = isSuggestionSection ? "建議" : currentSection || "摘要";
     rows.push({ item, description: line, tone: getRowTone(item) });
   });
 
-  return rows;
+  return { intro: introLines.join("\n"), rows };
 }
 
 function PlainMessageContent({ content }) {
@@ -157,30 +163,33 @@ function PlainMessageContent({ content }) {
 
 function AssistantTableContent({ content }) {
   const navigate = useNavigate();
-  const rows = parseAssistantTableRows(content);
+  const { intro, rows } = parseAssistantTableRows(content);
 
   if (rows.length < 2) {
     return <PlainMessageContent content={content} />;
   }
 
   return (
-    <div className="assistant-output-table-wrap">
-      <table className="assistant-output-table">
-        <thead>
-          <tr>
-            <th>分類</th>
-            <th>分析內容</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => (
-            <tr key={`${row.item}-${index}`} className={row.tone ? `assistant-output-row-${row.tone}` : ""}>
-              <td>{row.item}</td>
-              <td>{row.description}</td>
+    <div className="assistant-output-panel">
+      {intro && <div className="assistant-output-intro"><PlainMessageContent content={intro} /></div>}
+      <div className="assistant-output-table-wrap">
+        <table className="assistant-output-table">
+          <thead>
+            <tr>
+              <th>分類</th>
+              <th>分析內容</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={`${row.item}-${index}`} className={row.tone ? `assistant-output-row-${row.tone}` : ""}>
+                <td>{row.item}</td>
+                <td>{row.description}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       <div className="assistant-output-actions">
         <button
           className="assistant-export-btn"
