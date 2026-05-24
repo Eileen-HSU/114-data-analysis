@@ -74,7 +74,7 @@ body {
    Navigation
    ============================================ */
 #mainNavbar {
-  height: 72px;
+  min-height: 82px;
   transition: all 0.3s ease;
   z-index: 1030;
 }
@@ -97,6 +97,18 @@ body {
 .navbar-transparent .nav-login-btn:hover { color: white; }
 .navbar-transparent .nav-signup-btn { background: rgba(139,92,246,0.75); color: white; border-color: transparent; backdrop-filter: blur(8px); }
 .navbar-transparent .nav-signup-btn:hover { background: rgba(139,92,246,0.95); }
+
+#mainNavbar .container-fluid {
+  min-height: 82px;
+}
+
+.navbar-logo-img {
+  width: clamp(148px, 18vw, 220px);
+  height: auto;
+  max-height: 76px;
+  object-fit: contain;
+  display: block;
+}
 
 .nav-link-btn {
   display: inline-flex;
@@ -364,6 +376,7 @@ body {
    Responsive
    ============================================ */
 @media (max-width: 991px) {
+  .navbar-logo-img { width: 136px; max-height: 68px; }
   .nav-link-btn span { display: none; }
   .logo-subtitle { display: none; }
 }
