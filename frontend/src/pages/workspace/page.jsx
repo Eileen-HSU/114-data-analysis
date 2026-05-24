@@ -625,11 +625,8 @@ export default function WorkspacePage() {
           {/* Sidebar */}
           <aside className="workspace-sidebar">
             <div className="sidebar-header">
-              <div className="d-flex align-items-center justify-content-between mb-3">
+              <div className="d-flex align-items-center mb-3">
                 <span className="sidebar-title">歷史紀錄</span>
-                <button className="btn-new-session" onClick={createNewSession} title="新增工作區">
-                  <i className="ri-add-line"></i>
-                </button>
               </div>
               <div className="sidebar-search">
                 <i className="ri-search-line"></i>
@@ -713,6 +710,11 @@ export default function WorkspacePage() {
                   </div>
                 ))
               )}
+            </div>
+            <div className="sidebar-footer">
+              <button className="btn-new-session sidebar-bottom-add" onClick={createNewSession} title="新增工作區">
+                <i className="ri-add-line"></i>
+              </button>
             </div>
           </aside>
 
