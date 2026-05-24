@@ -207,8 +207,19 @@
 .user-bubble { background: linear-gradient(135deg, var(--rose-400), var(--pink-500)); color: white; }
 .assistant-bubble { background: rgba(255,241,242,0.6); border: 1px solid var(--rose-100); color: var(--slate-700); }
 
-.assistant-output-table-wrap {
+.assistant-output-panel {
   width: min(760px, 100%);
+}
+
+.assistant-output-intro {
+  color: var(--slate-800);
+  font-weight: 900;
+  line-height: 1.65;
+  margin: 0 0 12px;
+}
+
+.assistant-output-table-wrap {
+  width: 100%;
   border: 1px solid var(--rose-100);
   border-radius: 12px;
   background: white;
@@ -276,8 +287,7 @@
 .assistant-output-actions {
   display: flex;
   justify-content: flex-end;
-  padding: 12px 14px 14px;
-  background: white;
+  padding: 12px 2px 0;
 }
 
 .assistant-export-btn {
