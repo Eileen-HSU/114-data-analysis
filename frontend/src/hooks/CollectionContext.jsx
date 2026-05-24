@@ -74,19 +74,30 @@ export function CollectionProvider({ children }) {
 
   useEffect(() => {
     setFiles((prev) => {
-      const existingSessionIds = new Set(prev.filter((f) => f.type === "chat").map((f) => f.sessionId));
+      const existingSessionIds = new Set(prev.filter((f) => f.type === "chat").map((f) => String(f.sessionId)));
       const missingChatFiles = workspaceSessions
-        .filter((session) => !existingSessionIds.has(session.id))
+        .filter((session) => !existingSessionIds.has(String(session.id)))
         .map((session) => ({
           id: `chat-${session.id}`,
           name: session.title,
           type: "chat",
           size: "-",
-          folder_name: null,
+          folder_name: session.folder_name ?? null,
           createdAt: session.date || nowString(),
           sessionId: session.id,
         }));
-      return missingChatFiles.length ? [...missingChatFiles, ...prev] : prev;
+
+      const syncedFiles = prev.map((file) => {
+        if (file.type !== "chat") return file;
+        const session = workspaceSessions.find((s) => String(s.id) === String(file.sessionId));
+        if (!session || !Object.prototype.hasOwnProperty.call(session, "folder_name")) return file;
+        return {
+          ...file,
+          folder_name: session.folder_name ?? null,
+        };
+      });
+
+      return missingChatFiles.length ? [...missingChatFiles, ...syncedFiles] : syncedFiles;
     });
   }, [workspaceSessions]);
 
@@ -107,6 +118,11 @@ export function CollectionProvider({ children }) {
     ]);
     setFolders((prev) => prev.filter((f) => f.id !== id));
     setFiles((prev) => prev.map((f) => (f.folder_name === name ? { ...f, folder_name: null } : f)));
+    setWorkspaceSessions((prev) =>
+      prev.map((session) =>
+        session.folder_name === name ? { ...session, folder_name: null } : session
+      )
+    );
     
     recordActivity({
       text: `刪除資料夾「${name}」`,
