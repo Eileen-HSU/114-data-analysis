@@ -207,6 +207,18 @@ export default function CollectionPage() {
     setDragOverTarget(null);
   };
 
+  const handleFolderDragOver = (targetId, event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "move";
+    if (dragOverTarget !== targetId) setDragOverTarget(targetId);
+  };
+
+  const handleFolderDragLeave = (event) => {
+    if (event.currentTarget.contains(event.relatedTarget)) return;
+    setDragOverTarget(null);
+  };
+
   const handleDrop = async (targetFolderId, event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -337,12 +349,21 @@ export default function CollectionPage() {
                   <div className="col-md-6 col-lg-4" key={folder.id}>
                     <div
                       className={`folder-card ${isDragOver ? "drag-over" : ""}`}
-                      onDragOver={(event) => { event.preventDefault(); if (dragOverTarget !== folder.id) setDragOverTarget(folder.id); }}
-                      onDragLeave={() => setDragOverTarget(null)}
+                      onDragEnter={(event) => handleFolderDragOver(folder.id, event)}
+                      onDragOver={(event) => handleFolderDragOver(folder.id, event)}
+                      onDragLeave={handleFolderDragLeave}
                       onDrop={(event) => handleDrop(folder.id, event)}
                     >
                       {isDragOver && <div className="folder-drop-hint"><i className="ri-folder-received-line me-2"></i>移到「{folder.name}」</div>}
-                      <div className="folder-header" onClick={() => toggleFolder(folder.id)}>
+                      <div
+                        className="folder-header"
+                        onClick={() => {
+                          if (!draggingId) toggleFolder(folder.id);
+                        }}
+                        onDragEnter={(event) => handleFolderDragOver(folder.id, event)}
+                        onDragOver={(event) => handleFolderDragOver(folder.id, event)}
+                        onDrop={(event) => handleDrop(folder.id, event)}
+                      >
                         <div className="folder-icon-box"><i className={isOpen ? "ri-folder-open-line" : "ri-folder-line"}></i></div>
                         <div className="folder-info flex-grow-1">
                           <div className="d-flex align-items-center gap-2">
@@ -381,11 +402,21 @@ export default function CollectionPage() {
                         </div>
                       </div>
                       {isOpen && (
-                        <div className="folder-content">
+                        <div
+                          className="folder-content"
+                          onDragEnter={(event) => handleFolderDragOver(folder.id, event)}
+                          onDragOver={(event) => handleFolderDragOver(folder.id, event)}
+                          onDrop={(event) => handleDrop(folder.id, event)}
+                        >
                           {folderFiles.length === 0 ? (
                             <div className="empty-folder"><i className="ri-drag-move-line"></i><p>拖曳檔案到這裡</p></div>
                           ) : (
-                            <div className="folder-files">
+                            <div
+                              className="folder-files"
+                              onDragEnter={(event) => handleFolderDragOver(folder.id, event)}
+                              onDragOver={(event) => handleFolderDragOver(folder.id, event)}
+                              onDrop={(event) => handleDrop(folder.id, event)}
+                            >
                               {folderFiles.map((file) => (
                                 <FileRow
                                   key={file.id}
