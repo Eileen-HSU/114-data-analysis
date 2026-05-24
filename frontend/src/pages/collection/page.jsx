@@ -84,7 +84,7 @@ export default function CollectionPage() {
       await Promise.all(
         folderFiles.map(async (file) => {
           if (file.type === "chat" && file.sessionId) {
-            const session = workspaceSessions.find((s) => s.id === file.sessionId);
+            const session = workspaceSessions.find((s) => s.project_id === file.sessionId);
             if (session?.project_id) {
               try {
                 const authUser = JSON.parse(localStorage.getItem("dataanalysis_auth"));
