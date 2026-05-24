@@ -59,7 +59,7 @@
 .survey-entry-card {
   background: white;
   border-radius: 24px;
-  padding: 40px 36px;
+  padding: 50px 44px;
   border: 2px solid transparent;
   cursor: pointer;
   transition: all 0.3s;
@@ -96,13 +96,13 @@
 .survey-entry-card.fill:hover { border-color: #8fa3b8; }
 
 .entry-card-icon {
-  width: 64px;
-  height: 64px;
+  width: 72px;
+  height: 72px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 18px;
-  font-size: 28px;
+  font-size: 32px;
   margin-bottom: 24px;
   position: relative;
   z-index: 1;
@@ -119,7 +119,7 @@
 }
 
 .entry-card-title {
-  font-size: 22px;
+  font-size: 26px;
   font-weight: 800;
   color: var(--slate-800);
   margin-bottom: 10px;
@@ -128,7 +128,7 @@
 }
 
 .entry-card-desc {
-  font-size: 15px;
+  font-size: 17px;
   color: var(--slate-500);
   line-height: 1.6;
   margin-bottom: 24px;
