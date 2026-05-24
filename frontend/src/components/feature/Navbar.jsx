@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../hooks/AuthContext";
+import conqightLogo from "../../assets/conqight-logo.svg";
 
 const DEFAULT_AVATAR = "https://static.readdy.ai/image/db4f710102ca6cc45db44808c8658987/b181cfaad2165c1909b7c8fa8339cbe7.png";
 
@@ -73,9 +74,9 @@ export default function Navbar({ transparent = false }) {
           }}
         >
           <img
-            src="https://static.readdy.ai/image/db4f710102ca6cc45db44808c8658987/005555d3f7d205685c5c858369347dc5.png"
-            alt="DATA analysis Logo"
-            style={{ height: "52px", width: "auto", objectFit: "contain" }}
+            src={conqightLogo}
+            alt="CON QIGHT Logo"
+            className="navbar-logo-img"
           />
         </a>
 

@@ -1,7 +1,7 @@
 .profile-page {
   background: white;
   min-height: 100vh;
-  padding-top: 72px;
+  padding-top: 88px;
 }
 
 .profile-card {
@@ -1127,13 +1127,13 @@
   background: #f8f9fb;
   display: flex;
   flex-direction: column;
-  padding-top: 72px;
+  padding-top: 88px;
 }
 
 /* Fixed Header - pinned right below Navbar */
 .sdp-header-fixed {
   position: fixed;
-  top: 72px;
+  top: 88px;
   left: 0;
   right: 0;
   z-index: 99;
