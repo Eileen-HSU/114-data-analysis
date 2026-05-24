@@ -1740,6 +1740,7 @@
 }
 
 .sdp-th-idx { width: 48px; text-align: center; }
+.sdp-th-identity { min-width: 120px; white-space: nowrap; }
 .sdp-th-time { min-width: 140px; white-space: nowrap; }
 .sdp-th-q { min-width: 200px; max-width: 300px; }
 
@@ -1782,6 +1783,7 @@
 }
 
 .sdp-td-idx { text-align: center; color: var(--slate-400); font-weight: 700; font-size: 13px; }
+.sdp-td-identity { color: var(--slate-600); font-weight: 700; white-space: nowrap; }
 .sdp-td-time { color: var(--slate-400); font-size: 13px; white-space: nowrap; }
 .sdp-td-ans { max-width: 300px; }
 

@@ -80,12 +80,16 @@ function buildSurveyChatContent(survey) {
     lines.push("── 問答題回覆 ──");
     textQuestions.forEach((q) => {
       const answers = survey.responses
-        .map((r) => r.answers[q.id])
-        .filter((a) => a && (Array.isArray(a) ? a.length > 0 : a !== ""));
+        .map((response) => ({
+          answer: response.answers[q.id],
+          respondentIdentity: response.respondentIdentity,
+        }))
+        .filter(({ answer }) => answer && (Array.isArray(answer) ? answer.length > 0 : answer !== ""));
       lines.push(`Q${survey.questions.indexOf(q) + 1}. ${q.title}（${answers.length} 人回答）`);
-      answers.forEach((ans, i) => {
-        const text = Array.isArray(ans) ? ans.join("、") : String(ans);
-        lines.push(`   ${i + 1}. ${text}`);
+      answers.forEach(({ answer, respondentIdentity }, i) => {
+        const text = Array.isArray(answer) ? answer.join("、") : String(answer);
+        const identityLabel = respondentIdentity ? `填答人：${respondentIdentity}，` : "";
+        lines.push(`   ${i + 1}. ${identityLabel}${text}`);
       });
       lines.push("");
     });

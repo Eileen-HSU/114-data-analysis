@@ -284,6 +284,52 @@
   min-height: 80px;
 }
 
+.survey-identity-setting {
+  margin-top: 18px;
+}
+
+.survey-identity-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.survey-identity-option {
+  border: 1.5px solid var(--slate-200);
+  border-radius: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 10px;
+  row-gap: 3px;
+  align-items: start;
+}
+
+.survey-identity-option:hover,
+.survey-identity-option.active {
+  border-color: #c9a0a0;
+  background: #faf5f5;
+}
+
+.survey-identity-option input {
+  margin-top: 3px;
+}
+
+.identity-option-title {
+  color: var(--slate-800);
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.identity-option-desc {
+  grid-column: 2;
+  color: var(--slate-500);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 /* Question Card */
 .question-card {
   background: white;
@@ -720,6 +766,14 @@
   margin-bottom: 32px;
   padding-bottom: 24px;
   border-bottom: 1px solid var(--slate-100);
+}
+
+.respondent-identity-card {
+  border: 1.5px solid #dbeafe;
+  border-radius: 14px;
+  background: #f8fbff;
+  padding: 16px 18px;
+  margin-bottom: 24px;
 }
 
 .survey-form-title {
@@ -1434,6 +1488,7 @@
 }
 
 .response-table-th-idx { width: 40px; text-align: center; }
+.response-table-th-identity { min-width: 110px; white-space: nowrap; }
 .response-table-th-time { min-width: 130px; }
 .response-table-th-q { min-width: 180px; max-width: 260px; white-space: normal; }
 
@@ -1466,6 +1521,7 @@
 }
 
 .response-table-td-idx { text-align: center; color: var(--slate-400); font-weight: 600; }
+.response-table-td-identity { color: var(--slate-600); font-weight: 700; white-space: nowrap; }
 .response-table-td-time { color: var(--slate-400); font-size: 12px; white-space: nowrap; }
 .response-table-td-ans { max-width: 260px; }
 
@@ -1481,4 +1537,5 @@
   .code-input-wrapper { flex-direction: column; }
   .create-survey-body { padding: 24px 16px; }
   .survey-form-card, .code-entry-card { padding: 28px 20px; }
+  .survey-identity-options { grid-template-columns: 1fr; }
 }
