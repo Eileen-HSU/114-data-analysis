@@ -75,39 +75,42 @@ export default function CollectionPage() {
     });
   };
 
-  const handleDrop = async (folderId) => {
-    if (!draggingId) return;
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
 
-    const targetFile = files.find((f) => f.id === draggingId);
-    if (!targetFile) return;
+    if (deleteTarget.type === "folder") {
+      const folderFiles = files.filter((file) => file.folderId === deleteTarget.id);
 
-    setFiles((prev) => prev.map((file) => (file.id === draggingId ? { ...file, folderId } : file)));
-
-    if (targetFile.type === "chat" && targetFile.sessionId) {
-      const folderName = folderId === null ? null : folders.find((f) => f.id === folderId)?.name || null;
-      const session = workspaceSessions.find((s) => s.id === targetFile.sessionId);
-
-      if (session?.project_id) {
-        try {
-          const authUser = JSON.parse(localStorage.getItem("dataanalysis_auth"));
-          const token = authUser?.token;
-          
-          await fetch(`${import.meta.env.VITE_API_BASE_URL || ""}/api/workspace/${session.project_id}`, {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            body: JSON.stringify({ folder_name: folderName }), 
-          });
-          console.log("資料庫更新成功！");
-        } catch (err) {
-          console.error("更新資料夾失敗", err);
-        }
-      }
+      await Promise.all(
+        folderFiles.map(async (file) => {
+          if (file.type === "chat" && file.sessionId) {
+            const session = workspaceSessions.find((s) => s.id === file.sessionId);
+            if (session?.project_id) {
+              try {
+                const authUser = JSON.parse(localStorage.getItem("dataanalysis_auth"));
+                const token = authUser?.token;
+                
+                await fetch(`${import.meta.env.VITE_API_BASE_URL || ""}/api/workspace/${session.project_id}`, {
+                  method: "PUT",
+                  headers: {
+                    "Content-Type": "application/json",
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                  },
+                  body: JSON.stringify({ folder_name: null }), 
+                });
+              } catch (err) {
+                console.error(`更新檔案 ${file.name} 資料庫失敗:`, err);
+              }
+            }
+          }
+        })
+      );
     }
-    setDraggingId(null);
-    setDragOverTarget(null);
+
+    if (deleteTarget.type === "folder") deleteFolder(deleteTarget.id, deleteTarget.name);
+    if (deleteTarget.type === "file") deleteFile(deleteTarget.id, deleteTarget.name);
+
+    setDeleteTarget(null);
   };
 
   const createFolder = () => {
