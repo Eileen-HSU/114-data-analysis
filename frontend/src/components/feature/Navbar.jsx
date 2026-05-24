@@ -48,7 +48,7 @@ export default function Navbar({ transparent = false }) {
             style={{ cursor: "pointer" }}
           >
             <i className="ri-add-circle-line"></i>
-            <span>新增工作區</span>
+            <span>分析助理</span>
           </a>
           <a
             className={`nav-link-btn ${location.pathname.startsWith("/survey") ? "active" : ""}`}
