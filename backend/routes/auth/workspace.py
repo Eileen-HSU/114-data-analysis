@@ -10,7 +10,7 @@ from models import Workspace, taiwan_now
 
 workspace_bp = Blueprint("workspace", __name__)
 
-SOFT_DELETE_DAYS = 30  # 軟刪除後幾天永久刪除
+SOFT_DELETE_DAYS = 30
 
 
 def get_jwt_secret():
@@ -38,11 +38,9 @@ def verify_token(request):
 def authorize_request():
     auth_user_id, error = verify_token(request)
     if error:
-        return None, jsonify({"error": "Unauthorized"}), 401
+        return None, (jsonify({"error": "Unauthorized"}), 401)
     return auth_user_id, None
 
-
-# ── 工具函式 ────────────────────────────────────────────────
 
 def workspace_to_dict(w):
     days_left = None
@@ -54,8 +52,6 @@ def workspace_to_dict(w):
         "user_id":      w.user_id,
         "project_name": w.project_name,
         "folder_name":  w.folder_name,
-        "search_tag":   w.search_tag,
-        "status":       w.status,
         "created_at":   w.created_at.isoformat() if w.created_at else None,
         "is_deleted":   w.is_deleted,
         "deleted_at":   w.deleted_at.isoformat() if w.deleted_at else None,
@@ -63,11 +59,48 @@ def workspace_to_dict(w):
     }
 
 
-# ── 路由 ────────────────────────────────────────────────────
+@workspace_bp.route("/api/workspace/user", methods=["GET"])
+def get_workspaces():
+    current_user_id, auth_error = authorize_request()
+    if auth_error:
+        return auth_error
+    workspaces = Workspace.query.filter_by(
+        user_id    = current_user_id,
+        is_deleted = False,
+    ).order_by(Workspace.created_at.desc()).all()
+
+    return jsonify([workspace_to_dict(w) for w in workspaces]), 200
+
+
+@workspace_bp.route("/api/workspace/user/trash", methods=["GET"])
+def get_trash():
+    current_user_id, auth_error = authorize_request()
+    if auth_error:
+        return auth_error
+    workspaces = Workspace.query.filter_by(
+        user_id    = current_user_id,
+        is_deleted = True,
+    ).order_by(Workspace.deleted_at.desc()).all()
+
+    return jsonify([workspace_to_dict(w) for w in workspaces]), 200
+
+
+@workspace_bp.route("/api/workspace/user/folder/<string:folder_name>", methods=["GET"])
+def get_workspaces_by_folder(folder_name):
+    current_user_id, auth_error = authorize_request()
+    if auth_error:
+        return auth_error
+    workspaces = Workspace.query.filter_by(
+        user_id     = current_user_id,
+        folder_name = folder_name,
+        is_deleted  = False,
+    ).order_by(Workspace.created_at.desc()).all()
+
+    return jsonify([workspace_to_dict(w) for w in workspaces]), 200
+
 
 @workspace_bp.route("/api/workspace", methods=["POST"])
 def create_workspace():
-    """建立新專案"""
     current_user_id, auth_error = authorize_request()
     if auth_error:
         return auth_error
@@ -81,8 +114,6 @@ def create_workspace():
         user_id      = current_user_id,
         project_name = project_name,
         folder_name  = data.get("folder_name"),
-        search_tag   = data.get("search_tag"),
-        status       = data.get("status", "Pending"),
     )
 
     try:
@@ -94,23 +125,8 @@ def create_workspace():
         return jsonify({"error": str(e)}), 500
 
 
-@workspace_bp.route("/api/workspace/user", methods=["GET"])
-def get_workspaces():
-    """取得使用者所有未刪除的專案"""
-    current_user_id, auth_error = authorize_request()
-    if auth_error:
-        return auth_error
-    workspaces = Workspace.query.filter_by(
-        user_id    = current_user_id,
-        is_deleted = False,
-    ).order_by(Workspace.created_at.desc()).all()
-
-    return jsonify([workspace_to_dict(w) for w in workspaces]), 200
-
-
 @workspace_bp.route("/api/workspace/<int:project_id>", methods=["GET"])
 def get_workspace(project_id):
-    """取得單一專案"""
     current_user_id, auth_error = authorize_request()
     if auth_error:
         return auth_error
@@ -128,7 +144,6 @@ def get_workspace(project_id):
 
 @workspace_bp.route("/api/workspace/<int:project_id>", methods=["PUT"])
 def update_workspace(project_id):
-    """更新專案資料"""
     current_user_id, auth_error = authorize_request()
     if auth_error:
         return auth_error
@@ -147,10 +162,6 @@ def update_workspace(project_id):
         workspace.folder_name = data["folder_name"]
     if "project_name" in data:
         workspace.project_name = data["project_name"]
-    if "search_tag" in data:
-        workspace.search_tag = data["search_tag"]
-    if "status" in data:
-        workspace.status = data["status"]
 
     try:
         db.session.commit()
@@ -162,7 +173,6 @@ def update_workspace(project_id):
 
 @workspace_bp.route("/api/workspace/<int:project_id>", methods=["DELETE"])
 def delete_workspace(project_id):
-    """軟刪除專案（30 天後自動永久刪除）"""
     current_user_id, auth_error = authorize_request()
     if auth_error:
         return auth_error
@@ -187,7 +197,6 @@ def delete_workspace(project_id):
 
 @workspace_bp.route("/api/workspace/<int:project_id>/restore", methods=["POST"])
 def restore_workspace(project_id):
-    """還原已軟刪除的專案"""
     current_user_id, auth_error = authorize_request()
     if auth_error:
         return auth_error
@@ -212,7 +221,6 @@ def restore_workspace(project_id):
 
 @workspace_bp.route("/api/workspace/<int:project_id>/permanent", methods=["DELETE"])
 def permanent_delete_workspace(project_id):
-    """永久刪除專案（垃圾桶內手動永久刪除）"""
     current_user_id, auth_error = authorize_request()
     if auth_error:
         return auth_error
@@ -234,29 +242,13 @@ def permanent_delete_workspace(project_id):
         return jsonify({"error": str(e)}), 500
 
 
-@workspace_bp.route("/api/workspace/user/trash", methods=["GET"])
-def get_trash():
-    """取得垃圾桶內的專案（軟刪除中）"""
-    current_user_id, auth_error = authorize_request()
-    if auth_error:
-        return auth_error
-    workspaces = Workspace.query.filter_by(
-        user_id    = current_user_id,
-        is_deleted = True,
-    ).order_by(Workspace.deleted_at.desc()).all()
-
-    return jsonify([workspace_to_dict(w) for w in workspaces]), 200
-
-
-# ── 自動永久刪除排程 ────────────────────────────────────────
-
 def hard_delete_expired_workspaces(app):
-    """刪除所有軟刪除超過 30 天的專案"""
     with app.app_context():
         try:
             expiry = taiwan_now() - timedelta(days=SOFT_DELETE_DAYS)
             expired = Workspace.query.filter(
                 Workspace.is_deleted == True,
+                Workspace.deleted_at != None,
                 Workspace.deleted_at <= expiry,
             ).all()
 
@@ -274,13 +266,12 @@ def hard_delete_expired_workspaces(app):
 
 
 def start_scheduler(app):
-    """在 app 啟動時呼叫這個函式來啟動排程"""
     scheduler = BackgroundScheduler()
     scheduler.add_job(
         hard_delete_expired_workspaces,
         trigger = "interval",
         hours   = 24,
-        args    = [app],        
+        args    = [app],
         id      = "hard_delete_workspaces",
     )
     scheduler.start()

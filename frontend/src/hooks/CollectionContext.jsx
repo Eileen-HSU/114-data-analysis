@@ -25,6 +25,17 @@ function loadWorkspaceSessions() {
   return loadArray(WORKSPACE_SESSIONS_KEY);
 }
 
+// 從 localStorage 取得 token
+function getAuthHeader() {
+  try {
+    const user = JSON.parse(localStorage.getItem("dataanalysis_auth"));
+    const token = user?.token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+}
+
 export function CollectionProvider({ children }) {
   const { recordActivity } = useActivity();
   const [folders, setFolders] = useState(() => loadArray(COLLECTION_FOLDERS_KEY, INIT_FOLDERS));
@@ -123,10 +134,15 @@ export function CollectionProvider({ children }) {
     const session = workspaceSessions.find((s) => s.id === sessionId);
     if (!session) return;
 
-    try {
-      await fetch(apiUrl(`/api/workspace/${session.project_id}`), { method: "DELETE" });
-    } catch (err) {
-      console.error("軟刪除失敗", err);
+    if (session.project_id) {
+      try {
+        await fetch(apiUrl(`/api/workspace/${session.project_id}`), {
+          method: "DELETE",
+          headers: getAuthHeader(),
+        });
+      } catch (err) {
+        console.error("軟刪除失敗", err);
+      }
     }
 
     const chatFile = files.find((f) => f.type === "chat" && f.sessionId === sessionId);
@@ -162,14 +178,16 @@ export function CollectionProvider({ children }) {
 
   // ── 還原：從垃圾桶還原，同時打後端 API ──────────────────
   const restoreItem = async (item) => {
+    if (item.project_id) {
       try {
         await fetch(apiUrl(`/api/workspace/${item.project_id}/restore`), {
           method: "POST",
+          headers: getAuthHeader(),
         });
       } catch (err) {
         console.error("還原失敗", err);
       }
-    
+    }
 
     if (item.type === "folder") {
       const folder = item.originalData;
@@ -207,13 +225,16 @@ export function CollectionProvider({ children }) {
   // ── 永久刪除：從資料庫完全刪除，同時打後端 API ──────────
   const permanentDelete = async (id) => {
     const target = deletedItems.find((item) => item.id === id);
+    if (target?.project_id) {
       try {
         await fetch(apiUrl(`/api/workspace/${target.project_id}/permanent`), {
           method: "DELETE",
+          headers: getAuthHeader(),
         });
       } catch (err) {
         console.error("永久刪除失敗", err);
       }
+    }
 
     setDeletedItems((prev) => prev.filter((d) => d.id !== id));
     if (target) {
