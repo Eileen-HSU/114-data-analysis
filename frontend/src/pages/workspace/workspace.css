@@ -255,6 +255,24 @@
   background: rgba(255, 241, 242, 0.5);
 }
 
+.assistant-output-table tr.assistant-output-row-suggestion td {
+  background: #fff8e6;
+  border-bottom-color: #f8e3a2;
+}
+
+.assistant-output-table tr.assistant-output-row-suggestion td:first-child {
+  color: #8a5a00;
+  background: #fff2c7;
+}
+
+.assistant-output-table tr.assistant-output-row-suggestion td:last-child {
+  color: #6b4a00;
+}
+
+.assistant-output-table tr.assistant-output-row-suggestion:hover td {
+  background: #ffefbd;
+}
+
 .typing-bubble { padding: 16px 24px; }
 
 .typing-dots {
