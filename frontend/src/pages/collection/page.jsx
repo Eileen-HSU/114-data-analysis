@@ -75,28 +75,32 @@ export default function CollectionPage() {
     });
   };
 
-  const handleDrop = (folderId) => {
+  const handleDrop = async (folderId) => {
     if (!draggingId) return;
+
+    const targetFile = files.find((f) => f.id === draggingId);
+    if (!targetFile) return;
 
     setFiles((prev) => prev.map((file) => (file.id === draggingId ? { ...file, folderId } : file)));
 
-    const file = files.find((f) => f.id === draggingId);
-    if (file?.type === "chat" && file?.sessionId) {
+    if (targetFile.type === "chat" && targetFile.sessionId) {
       const folderName = folderId === null ? null : folders.find((f) => f.id === folderId)?.name || null;
-      const session = workspaceSessions.find((s) => s.id === file.sessionId);
+      const session = workspaceSessions.find((s) => s.id === targetFile.sessionId);
 
       if (session?.project_id) {
         try {
           const authUser = JSON.parse(localStorage.getItem("dataanalysis_auth"));
           const token = authUser?.token;
+          
           await fetch(`${import.meta.env.VITE_API_BASE_URL || ""}/api/workspace/${session.project_id}`, {
             method: "PUT",
             headers: {
               "Content-Type": "application/json",
               ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
-            body: JSON.stringify({ folder_name: folderName }),
+            body: JSON.stringify({ folder_name: folderName }), 
           });
+          console.log("資料庫更新成功！");
         } catch (err) {
           console.error("更新資料夾失敗", err);
         }
