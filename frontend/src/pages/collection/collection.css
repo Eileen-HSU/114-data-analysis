@@ -282,11 +282,16 @@
   align-items: center;
   justify-content: center;
   border-radius: 12px;
-  font-size: 20px;
+  font-size: 22px;
   flex-shrink: 0;
 }
 
-.file-item.compact .file-icon { width: 36px; height: 36px; font-size: 16px; }
+.file-icon i {
+  display: block;
+  line-height: 1;
+}
+
+.file-item.compact .file-icon { width: 36px; height: 36px; font-size: 18px; }
 
 .file-icon-csv { background: #f5e8e6; color: #c97b72; }
 .file-icon-xlsx { background: #e6ecf4; color: #7a96b8; }
@@ -644,6 +649,6 @@
   border-radius: 50px;
 }
 
-.file-icon-chat { background: #f0ebe8; color: #b89080; }
+.file-icon-chat { background: #f5e8e6; color: #c97b72; }
 .badge-chat { background: #f0ebe8; color: #b89080; border-color: #e8d8d0; }
 .tag-chat { background: #f0ebe8; color: #b89080; border-color: #e8d8d0; }
