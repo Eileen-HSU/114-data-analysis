@@ -3,6 +3,8 @@ import os
 import random
 import string
 import jwt
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from flask import Blueprint, request, jsonify
 from extensions import db
 from models import Survey_Template, Survey_Response
@@ -38,6 +40,22 @@ def generate_unique_access_code():
         if not Survey_Template.query.filter_by(access_code=code).first():
             return code
 
+def parse_deadline(deadline_at):
+    if not deadline_at:
+        return None
+    try:
+        normalized = str(deadline_at).replace("Z", "+00:00")
+        parsed = datetime.fromisoformat(normalized)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=ZoneInfo("Asia/Taipei"))
+        return parsed
+    except ValueError:
+        return None
+
+def is_survey_expired(question_json):
+    deadline = parse_deadline((question_json or {}).get("deadline_at"))
+    return bool(deadline and datetime.now(ZoneInfo("Asia/Taipei")) > deadline)
+
 @survey_bp.route('/api/surveys', methods=['POST'])
 def create_survey():
     """建立新問卷"""
@@ -48,15 +66,23 @@ def create_survey():
     data = request.get_json(silent=True) or {}
     title     = data.get('title')
     questions = data.get('questions')
+    deadline_at = data.get('deadline_at')
 
-    if not title or not isinstance(questions, list):
-        return jsonify({"error": "缺少問卷標題或題目資料"}), 400
+    if not title or not isinstance(questions, list) or not deadline_at:
+        return jsonify({"error": "缺少問卷標題、題目資料或截止時間"}), 400
+
+    deadline = parse_deadline(deadline_at)
+    if not deadline:
+        return jsonify({"error": "截止時間格式不正確"}), 400
+    if deadline <= datetime.now(ZoneInfo("Asia/Taipei")):
+        return jsonify({"error": "截止時間必須晚於現在"}), 400
 
     try:
         access_code = generate_unique_access_code()
         survey_content = {
             "description": data.get('description'),
             "identity_mode": data.get('identity_mode') if data.get('identity_mode') in ["anonymous", "identified"] else "anonymous",
+            "deadline_at": deadline_at,
             "items":       questions,
         }
         new_template = Survey_Template(
@@ -87,11 +113,21 @@ def get_survey(access_code):
             return jsonify({"error": "找不到這份問卷"}), 404
 
         question_json = survey.question_json or {}
+        if is_survey_expired(question_json):
+            return jsonify({
+                "error": "這份問卷已截止",
+                "expired": True,
+                "deadline_at": question_json.get("deadline_at"),
+                "title": survey.title,
+                "access_code": survey.access_code,
+            }), 410
+
         return jsonify({
             "template_id": survey.template_id,
             "title": survey.title,
             "description": question_json.get("description") or "",
             "identity_mode": question_json.get("identity_mode") or "anonymous",
+            "deadline_at": question_json.get("deadline_at"),
             "questions": question_json.get("items") or [],
             "access_code": survey.access_code,
             "created_at": survey.created_at.isoformat() if survey.created_at else None,
@@ -112,6 +148,14 @@ def submit_survey_response(access_code):
         survey = Survey_Template.query.filter_by(access_code=access_code.upper()).first()
         if not survey:
             return jsonify({"error": "找不到此邀請碼對應的問卷"}), 404
+
+        question_json = survey.question_json or {}
+        if is_survey_expired(question_json):
+            return jsonify({
+                "error": "這份問卷已截止",
+                "expired": True,
+                "deadline_at": question_json.get("deadline_at"),
+            }), 410
 
         response = Survey_Response(
             template_id = survey.template_id,
