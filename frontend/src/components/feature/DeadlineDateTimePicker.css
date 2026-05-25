@@ -1,0 +1,256 @@
+.deadline-picker {
+  position: relative;
+  width: 100%;
+}
+
+.deadline-picker-trigger {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--slate-200);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--slate-700);
+  font-size: 14px;
+  font-weight: 800;
+  padding: 0 14px;
+  cursor: pointer;
+  box-shadow: 0 1px 0 rgba(148, 163, 184, 0.08);
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s, transform 0.2s;
+}
+
+.deadline-picker-trigger:hover,
+.deadline-picker-trigger[aria-expanded="true"] {
+  border-color: #f0bdd5;
+  box-shadow: 0 0 0 4px rgba(244, 189, 213, 0.18);
+  background: #fffafd;
+}
+
+.deadline-picker-trigger i {
+  color: #b45d86;
+  font-size: 18px;
+}
+
+.deadline-picker-popover {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  z-index: 260;
+  width: min(620px, calc(100vw - 32px));
+  display: grid;
+  grid-template-columns: minmax(282px, 1fr) 238px;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(243, 213, 228, 0.96);
+  border-radius: 16px;
+  background: rgba(255, 253, 255, 0.99);
+  box-shadow: 0 24px 58px rgba(100, 116, 139, 0.16);
+}
+
+.deadline-picker-calendar,
+.deadline-picker-time {
+  min-width: 0;
+  border: 1px solid #f3dfe9;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fff 0%, #fffafd 100%);
+  padding: 12px;
+}
+
+.deadline-picker-header {
+  display: grid;
+  grid-template-columns: 34px 1fr 34px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.deadline-picker-header span {
+  color: var(--slate-800);
+  font-size: 14px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.deadline-picker-icon-btn {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #ecd7e3;
+  border-radius: 9px;
+  background: white;
+  color: #9b5d82;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.deadline-picker-icon-btn:hover:not(:disabled) {
+  background: #fff1f7;
+  border-color: #f4bdd5;
+}
+
+.deadline-picker-icon-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.deadline-picker-weekdays,
+.deadline-picker-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.deadline-picker-weekdays {
+  margin-bottom: 6px;
+}
+
+.deadline-picker-weekdays span {
+  color: var(--slate-400);
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.deadline-picker-days button,
+.deadline-picker-time-column button {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--slate-700);
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.deadline-picker-days button {
+  aspect-ratio: 1;
+  border-radius: 9px;
+  font-size: 13px;
+}
+
+.deadline-picker-days button:hover:not(:disabled),
+.deadline-picker-time-column button:hover:not(:disabled) {
+  background: #fff1f7;
+  border-color: #f4bdd5;
+  color: #a94e78;
+}
+
+.deadline-picker-days button.selected,
+.deadline-picker-time-column button.selected {
+  background: linear-gradient(135deg, #c16891, #8b5cf6);
+  border-color: transparent;
+  color: white;
+  box-shadow: 0 8px 18px rgba(180, 93, 134, 0.22);
+}
+
+.deadline-picker-days button.today:not(.selected) {
+  border-color: #d8b4fe;
+  color: #7c3aed;
+}
+
+.deadline-picker-days button.muted {
+  color: #b8c2cf;
+}
+
+.deadline-picker-days button:disabled,
+.deadline-picker-time-column button:disabled {
+  color: #cbd5e1;
+  background: transparent;
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.deadline-picker-time {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.deadline-picker-time-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  border: 1px solid #f1d8e5;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #fff1f7, #fbf7ff);
+  color: #a94e78;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.deadline-picker-time-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  min-height: 220px;
+}
+
+.deadline-picker-time-group {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.deadline-picker-time-label {
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: var(--slate-400);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.deadline-picker-time-column {
+  height: 194px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 4px;
+  border: 1px solid #f1e3ec;
+  border-radius: 10px;
+  background: white;
+  scrollbar-width: thin;
+  scrollbar-color: #e9c8da transparent;
+}
+
+.deadline-picker-time-column button {
+  min-height: 32px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.deadline-picker-compact .deadline-picker-trigger {
+  min-height: 34px;
+  border-radius: 9px;
+  font-size: 12px;
+  padding: 0 9px;
+}
+
+.deadline-picker-compact .deadline-picker-popover {
+  left: auto;
+  right: 0;
+}
+
+@media (max-width: 760px) {
+  .deadline-picker-popover {
+    grid-template-columns: 1fr;
+    width: min(360px, calc(100vw - 28px));
+  }
+
+  .deadline-picker-time-columns {
+    min-height: 160px;
+  }
+
+  .deadline-picker-time-column {
+    height: 164px;
+  }
+}

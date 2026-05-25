@@ -1272,6 +1272,11 @@
   gap: 8px;
 }
 
+.sdp-deadline-picker {
+  flex: 1;
+  min-width: 0;
+}
+
 .sdp-deadline-input {
   flex: 1;
   min-width: 0;
