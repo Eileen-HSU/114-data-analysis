@@ -326,6 +326,7 @@ export default function ProfilePage() {
                 gender:       editProfile.gender,
                 location:        editProfile.location,
                 bio:          editProfile.bio,
+                avatar_url:   avatarSrc,
                 updated_at:   new Date().toISOString(),
 
             }),
