@@ -125,13 +125,14 @@ export default function TwoFactorPage() {
             </div>
             <h2 className="auth-visual-title">啟用兩步驟驗證</h2>
             <p className="auth-visual-desc">
-              為您的帳號增加一層保護，登入時需輸入電子郵件驗證碼。
+              <span>為帳號多加一道保護</span>
+              <span>登入時使用信箱驗證碼確認身份</span>
             </p>
             <div className="auth-features">
               {[
                 { icon: "ri-shield-check-line", text: "降低未授權登入風險" },
-                { icon: "ri-mail-send-line", text: "驗證碼會寄送至您的信箱" },
-                { icon: "ri-lock-2-line", text: "可隨時在個人資料中停用" },
+                { icon: "ri-mail-send-line", text: "驗證碼寄送至信箱" },
+                { icon: "ri-lock-2-line", text: "可在個人資料停用" },
               ].map((f, i) => (
                 <div className="auth-feature-item" key={i}>
                   <div className="auth-feature-icon">

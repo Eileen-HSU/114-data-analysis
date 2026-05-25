@@ -86,13 +86,14 @@ const handleSubmit = async (e) => {
             </div>
             <h2 className="auth-visual-title">開始您的分析旅程</h2>
             <p className="auth-visual-desc">
-              建立帳號，立即體驗 AI 驅動的智能資料分析。
+              <span>建立帳號</span>
+              <span>立即體驗 AI 驅動的資料分析</span>
             </p>
             <div className="auth-features">
               {[
-                { icon: "ri-rocket-line", text: "快速上手，立即開始分析" },
-                { icon: "ri-brain-line", text: "AI 智能分析，自然語言提問" },
-                { icon: "ri-shield-check-line", text: "企業級資料安全保護" },
+                { icon: "ri-rocket-line", text: "快速上手" },
+                { icon: "ri-brain-line", text: "自然語言提問" },
+                { icon: "ri-shield-check-line", text: "安全保護您的資料" },
               ].map((f, i) => (
                 <div className="auth-feature-item" key={i}>
                   <div className="auth-feature-icon">
