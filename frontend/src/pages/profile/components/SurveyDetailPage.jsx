@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../../../components/feature/Navbar";
+import DeadlineDateTimePicker from "../../../components/feature/DeadlineDateTimePicker";
 
 const TYPE_LABELS = {
   rating: "評分",
@@ -274,13 +275,13 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
                 <i className="ri-time-line"></i>截止時間
               </label>
               <div className="sdp-deadline-row">
-                <input
+                <DeadlineDateTimePicker
                   id="survey-deadline-input"
-                  className="sdp-deadline-input"
-                  type="datetime-local"
+                  className="sdp-deadline-picker"
                   value={deadlineValue}
                   min={minDeadlineValue}
-                  onChange={(event) => setDeadlineValue(event.target.value)}
+                  onChange={setDeadlineValue}
+                  compact
                 />
                 <button className="sdp-deadline-save-btn" onClick={handleSaveDeadline} disabled={isSavingDeadline} type="button">
                   <i className={isSavingDeadline ? "ri-loader-4-line" : "ri-save-line"}></i>

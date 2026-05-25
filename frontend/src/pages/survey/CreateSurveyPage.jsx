@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../../components/feature/Navbar";
 import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
+import DeadlineDateTimePicker from "../../components/feature/DeadlineDateTimePicker";
 import { useAuth } from "../../hooks/AuthContext";
 import { useActivity } from "../../hooks/ActivityContext";
 import axios from "axios";
@@ -269,13 +270,7 @@ export default function CreateSurveyPage() {
             </div>
             <div className="survey-deadline-setting">
               <label className="auth-label">問卷截止日 <span style={{ color: "#ef4444" }}>*</span></label>
-              <input
-                className="survey-input"
-                type="datetime-local"
-                value={deadlineAt}
-                onChange={(e) => setDeadlineAt(e.target.value)}
-                min={minDeadlineAt}
-              />
+              <DeadlineDateTimePicker value={deadlineAt} min={minDeadlineAt} onChange={setDeadlineAt} />
               <p className="survey-field-hint">填答者只能在截止時間前送出問卷。</p>
             </div>
           </section>
