@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1302 623" role="img" aria-labelledby="title desc">
+  <title id="title">CON QIGHT white logo</title>
+  <desc id="desc">White CON QIGHT wordmark with a magnifying-glass C.</desc>
+  <defs>
+    <filter id="softShadow" x="-18%" y="-18%" width="136%" height="136%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="2.8"/>
+      <feOffset dx="0" dy="5" result="offset"/>
+      <feColorMatrix in="offset" type="matrix" values="0 0 0 0 0.22 0 0 0 0 0.15 0 0 0 0 0.28 0 0 0 0.22 0"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1302" height="623" fill="none"/>
+
+  <path
+    d="M923 132C759 84 572 97 388 161 222 219 110 308 93 405 82 468 124 514 211 532c89 19 211 9 354-5"
+    fill="none"
+    stroke="#fff"
+    stroke-width="58"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M902 132C734 98 551 115 381 176 232 230 130 313 120 399c-8 63 43 99 139 109 79 8 180 0 293-12"
+    fill="none"
+    stroke="#fff"
+    stroke-width="11"
+    stroke-linecap="round"
+    opacity="0.55"
+  />
+
+  <path
+    d="M545 470 665 596"
+    fill="none"
+    stroke="#fff"
+    stroke-width="59"
+    stroke-linecap="round"
+  />
+
+  <path
+    d="M717 518c123-2 257-18 393-43"
+    fill="none"
+    stroke="#fff"
+    stroke-width="40"
+    stroke-linecap="round"
+  />
+
+  <g fill="#fff" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-weight="700">
+    <text x="615" y="279" font-size="168" transform="skewX(-11)">ON</text>
+    <text x="618" y="462" font-size="165" transform="skewX(-11)">GHT</text>
+  </g>
+
+  <path
+    d="M255 414 314 444 374 410 372 320 430 258 528 266 612 303"
+    fill="none"
+    stroke="#fff"
+    stroke-width="11"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M390 342c62-45 157-44 216 26"
+    fill="none"
+    stroke="#fff"
+    stroke-width="10"
+    stroke-linecap="round"
+    opacity="0.9"
+  />
+  <g fill="#fff" filter="url(#softShadow)">
+    <ellipse cx="254" cy="414" rx="24" ry="17" transform="rotate(20 254 414)"/>
+    <ellipse cx="314" cy="444" rx="24" ry="17" transform="rotate(-10 314 444)"/>
+    <ellipse cx="374" cy="410" rx="24" ry="17" transform="rotate(-15 374 410)"/>
+    <ellipse cx="372" cy="320" rx="24" ry="17" transform="rotate(-12 372 320)"/>
+    <ellipse cx="430" cy="258" rx="25" ry="17" transform="rotate(8 430 258)"/>
+    <ellipse cx="528" cy="266" rx="25" ry="17" transform="rotate(8 528 266)"/>
+    <ellipse cx="612" cy="303" rx="25" ry="17" transform="rotate(14 612 303)"/>
+  </g>
+
+  <g filter="url(#softShadow)" fill="#fff">
+    <ellipse cx="502" cy="383" rx="96" ry="60" transform="rotate(-12 502 383)"/>
+    <ellipse cx="469" cy="354" rx="36" ry="13" transform="rotate(-15 469 354)" opacity="0.72"/>
+    <ellipse cx="540" cy="355" rx="12" ry="7" opacity="0.68"/>
+    <ellipse cx="553" cy="366" rx="10" ry="6" opacity="0.58"/>
+  </g>
+</svg>
