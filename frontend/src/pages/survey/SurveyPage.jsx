@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import Navbar from "../../components/feature/Navbar";
+import { useAuth } from "../../hooks/AuthContext";
 import "./survey.css";
 
 function getRecentSurveys() {
@@ -15,7 +16,8 @@ function getRecentSurveys() {
 }
 
 export default function SurveyPage() {
-  const recentSurveys = useMemo(() => getRecentSurveys(), []);
+  const { user } = useAuth();
+  const recentSurveys = useMemo(() => (user ? getRecentSurveys() : []), [user]);
 
   return (
     <>
@@ -78,7 +80,12 @@ export default function SurveyPage() {
                   <a href="/profile" className="survey-profile-link">查看作品集</a>
                 </div>
 
-                {recentSurveys.length > 0 ? (
+                {!user ? (
+                  <div className="survey-activity-empty">
+                    <i className="ri-lock-line"></i>
+                    <span>登入後即可查看最近活動與問卷動態。</span>
+                  </div>
+                ) : recentSurveys.length > 0 ? (
                   <div className="survey-activity-list">
                     {recentSurveys.map((survey) => (
                       <a className="survey-activity-item" href="/profile" key={survey.code}>
