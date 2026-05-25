@@ -6,6 +6,7 @@ import jwt
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from flask import Blueprint, request, jsonify
+from sqlalchemy.orm.attributes import flag_modified
 from extensions import db
 from models import Survey_Template, Survey_Response
 
@@ -162,6 +163,7 @@ def update_survey_deadline(access_code):
         question_json = dict(survey.question_json or {})
         question_json["deadline_at"] = deadline_at
         survey.question_json = question_json
+        flag_modified(survey, "question_json")
         db.session.commit()
         return jsonify({
             "message": "截止時間已更新",
