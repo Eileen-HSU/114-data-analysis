@@ -90,13 +90,14 @@ export default function ForgotPasswordPage() {
             </div>
             <h2 className="auth-visual-title">重設您的密碼</h2>
             <p className="auth-visual-desc">
-              別擔心，我們會發送一封重設連結到您的信箱，幾分鐘內即可完成。
+              <span>輸入您的電子郵件</span>
+              <span>我們會寄送安全重設連結</span>
             </p>
             <div className="auth-features">
               {[
-                { icon: "ri-mail-send-line", text: "安全重設連結發送至信箱" },
+                { icon: "ri-mail-send-line", text: "重設連結寄送至信箱" },
                 { icon: "ri-time-line", text: "連結 30 分鐘內有效" },
-                { icon: "ri-shield-check-line", text: "全程加密保護帳號安全" },
+                { icon: "ri-shield-check-line", text: "全程保護帳號安全" },
               ].map((f, i) => (
                 <div className="auth-feature-item" key={i}>
                   <div className="auth-feature-icon">

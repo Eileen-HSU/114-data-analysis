@@ -83,7 +83,8 @@ export default function LoginTwoFactorPage() {
             </div>
             <h2 className="auth-visual-title">兩步驟驗證</h2>
             <p className="auth-visual-desc">
-              我們已將驗證碼寄到您的電子郵件，請完成驗證後繼續登入。
+              <span>請輸入信箱中的驗證碼</span>
+              <span>完成後即可安全登入</span>
             </p>
             <div className="auth-features">
               {[

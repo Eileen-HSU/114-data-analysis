@@ -99,17 +99,16 @@ export default function ResetPasswordPage() {
               />
             </div>
             <h2 className="auth-visual-title">
-              {isForgotFlow ? "重設您的密碼" : "變更您的密碼"}
+              {isForgotFlow ? "重設您的密碼" : "設定新密碼"}
             </h2>
             <p className="auth-visual-desc">
-              {isForgotFlow
-                ? "請輸入信箱中的驗證碼並設定新密碼，完成後回到登入頁重新登入。"
-                : "請輸入信箱中的驗證碼並設定新密碼，完成後會回到個人資料。"}
+              <span>{isForgotFlow ? "輸入驗證碼" : "確認您的身份"}</span>
+              <span>{isForgotFlow ? "重新設定安全密碼" : "完成後返回個人資料"}</span>
             </p>
             <div className="auth-features">
               {[
                 { icon: "ri-key-2-line", text: "驗證碼 10 分鐘內有效" },
-                { icon: "ri-lock-star-line", text: "新密碼需至少 8 個字元" },
+                { icon: "ri-lock-star-line", text: "新密碼至少 8 個字元" },
                 { icon: "ri-shield-check-line", text: isForgotFlow ? "完成後請重新登入" : "完成後不會登出帳號" },
               ].map((f, i) => (
                 <div className="auth-feature-item" key={i}>

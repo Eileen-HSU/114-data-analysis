@@ -87,13 +87,14 @@ export default function LoginPage() {
             </div>
             <h2 className="auth-visual-title">歡迎回來</h2>
             <p className="auth-visual-desc">
-              繼續您的資料分析旅程。您的作品集與工作區正在等待您。
+              <span>回到您的分析工作區</span>
+              <span>快速整理資料並取得洞察</span>
             </p>
             <div className="auth-features">
               {[
-                { icon: "ri-upload-cloud-2-line", text: "支援 CSV、Excel、JSON 等多種格式" },
-                { icon: "ri-brain-line", text: "AI 智能分析，自然語言提問" },
-                { icon: "ri-folder-chart-line", text: "作品集管理，隨時回顧歷史分析" },
+                { icon: "ri-upload-cloud-2-line", text: "支援多種資料格式" },
+                { icon: "ri-brain-line", text: "AI 智能分析" },
+                { icon: "ri-folder-chart-line", text: "作品集隨時回顧" },
               ].map((f, i) => (
                 <div className="auth-feature-item" key={i}>
                   <div className="auth-feature-icon">

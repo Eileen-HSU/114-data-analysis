@@ -85,13 +85,14 @@ export default function ChangePasswordPage() {
             </div>
             <h2 className="auth-visual-title">修改您的密碼</h2>
             <p className="auth-visual-desc">
-              為了保護您的帳號安全，我們會發送驗證連結到您的信箱，確認身份後即可設定新密碼。完成後帳號會保持登入狀態。
+              <span>保護您的帳號安全</span>
+              <span>我們會寄送驗證連結到您的信箱</span>
             </p>
             <div className="auth-features">
               {[
-                { icon: "ri-mail-send-line", text: "驗證連結發送至您的信箱" },
+                { icon: "ri-mail-send-line", text: "驗證連結寄送至信箱" },
                 { icon: "ri-time-line", text: "連結 10 分鐘內有效" },
-                { icon: "ri-shield-check-line", text: "修改完成後回到個人資料" },
+                { icon: "ri-shield-check-line", text: "完成後回到個人資料" },
               ].map((f, i) => (
                 <div className="auth-feature-item" key={i}>
                   <div className="auth-feature-icon">
