@@ -261,8 +261,8 @@ export default function ProfilePage() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 500 * 1024) {
-      alert("圖片請小於 500KB");
+    if (file.size > 2 * 1024 * 1024) {
+      alert("圖片請小於 2MB");
       return;
     }
 
