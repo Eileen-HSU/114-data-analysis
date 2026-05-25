@@ -114,6 +114,48 @@ export default function ProfilePage() {
   const [editProfile, setEditProfile] = useState(profile);
   const twoFactorStorageKey = `${TWO_FACTOR_KEY_PREFIX}_${getUserStorageId(user)}`;
 
+  const showProfileAlert = ({ type = "error", title, message }) => {
+    setTwoFactorModal({ type, title, message });
+  };
+
+  const alert = (message) => {
+    const text = String(message || "");
+    if (text.includes("2MB")) {
+      showProfileAlert({
+        type: "warning",
+        title: "圖片太大",
+        message: "請選擇小於 2MB 的圖片後再上傳。",
+      });
+      return;
+    }
+
+    if (text.includes("頭像")) {
+      showProfileAlert({
+        type: "error",
+        title: "頭像上傳失敗",
+        message: "目前無法更新頭像，請稍後再試。",
+      });
+      return;
+    }
+
+    if (text.includes("儲存")) {
+      showProfileAlert({
+        type: "error",
+        title: "儲存失敗",
+        message: "目前無法儲存資料，請稍後再試。",
+      });
+      return;
+    }
+
+    showProfileAlert({
+      type: "error",
+      title: text.includes("登入") ? "請重新登入" : "操作失敗",
+      message: text.includes("登入")
+        ? "登入狀態已失效，請重新登入後再試。"
+        : "目前無法完成操作，請稍後再試。",
+    });
+  };
+
   // ── 未登入跳轉 ────────────────────────────────────────────
   useEffect(() => {
     if (user === null) {
