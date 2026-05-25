@@ -1231,8 +1231,8 @@
 }
 
 .sdp-topbar-right {
-  width: min(980px, 100%);
-  flex: 1 1 760px;
+  width: min(760px, 100%);
+  flex: 0 1 760px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -1245,22 +1245,22 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 16px;
-  padding: 11px 16px;
+  gap: 12px;
+  padding: 10px 12px;
   background: #fbf7ff;
   border: 1px solid #f3d5e4;
   border-radius: 12px;
-  min-width: 250px;
-  flex: 0 1 320px;
+  min-width: 220px;
+  flex: 0 0 250px;
 }
 
 .sdp-link-card {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  min-width: 300px;
-  flex: 1 1 380px;
-  padding: 10px 14px;
+  min-width: 260px;
+  flex: 1 1 420px;
+  padding: 9px 12px;
   background: linear-gradient(135deg, #fff7fb, #f8fbff);
   border: 1px solid #f3d5e4;
   border-radius: 12px;
@@ -1281,10 +1281,10 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--slate-700);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
   line-height: 1.2;
-  padding: 8px 10px;
+  padding: 7px 9px;
   border: 1px solid #edf2f7;
   border-radius: 9px;
   background: rgba(255, 255, 255, 0.86);
@@ -1299,7 +1299,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px 14px;
+  padding: 9px 12px;
   background: #fdf8fb;
   border: 1px solid var(--violet-100);
   border-radius: 12px;
@@ -1310,14 +1310,14 @@
 
 .sdp-deadline-card-top {
   width: auto;
-  min-width: 360px;
-  flex: 1 1 390px;
+  min-width: 310px;
+  flex: 1 1 350px;
   margin-left: 0;
 }
 
 .sdp-tabbar .sdp-link-card {
-  flex: 1 1 520px;
-  max-width: 760px;
+  flex: 1 1 360px;
+  max-width: 620px;
   margin-left: 0;
 }
 
@@ -1399,7 +1399,7 @@
 
 .sdp-code-value {
   color: var(--slate-900);
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 900;
   line-height: 1;
   letter-spacing: 0;
@@ -1409,7 +1409,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 8px 11px;
+  padding: 7px 10px;
   background: rgba(255,255,255,0.92);
   color: #6d5dfc;
   border: 1px solid var(--violet-100);
@@ -1433,7 +1433,7 @@
   align-items: center;
   gap: 7px;
   height: 48px;
-  padding: 0 18px;
+  padding: 0 16px;
   background: #b56ad9;
   color: white;
   font-size: 13px;
