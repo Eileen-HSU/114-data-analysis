@@ -35,7 +35,7 @@ class UserProfile(db.Model):
     language     = db.Column(db.String(36))
     bio          = db.Column(db.String(500))
     location     = db.Column(db.String(100))
-    avatar_url   = db.Column(db.String(255))
+    avatar_url   = db.Column(db.Text)
     updated_at   = db.Column(db.DateTime(timezone=True), default=taiwan_now, onupdate=taiwan_now)
 
 
