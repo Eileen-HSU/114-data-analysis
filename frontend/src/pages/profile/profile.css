@@ -1415,6 +1415,15 @@
   color: var(--violet-600);
 }
 
+.sdp-stat-pill-compact {
+  height: 34px;
+  padding: 0 12px;
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
 /* Tab Bar */
 .sdp-tabbar {
   background: rgba(255,255,255,0.78);

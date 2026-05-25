@@ -232,10 +232,6 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
                   </button>
                 </div>
               </div>
-              <div className="sdp-stat-pill">
-                <i className="ri-bar-chart-2-line"></i>
-                <span>{survey.responses.length} responses</span>
-              </div>
               <button className={`sdp-import-btn ${importSuccess ? "sdp-import-btn-success" : ""}`} onClick={handleImportToChat} disabled={importSuccess}>
                 <i className={importSuccess ? "ri-checkbox-circle-line" : "ri-chat-upload-line"}></i>
                 {importSuccess ? "匯入中..." : "匯入 Chat 分析"}
@@ -250,6 +246,10 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
               <button className={`sdp-tab ${activeTab === "responses" ? "active" : ""}`} onClick={() => setActiveTab("responses")}>
                 <i className="ri-table-line"></i>回覆資料
               </button>
+            </div>
+            <div className="sdp-stat-pill sdp-stat-pill-compact">
+              <i className="ri-bar-chart-2-line"></i>
+              <span>{survey.responses.length} responses</span>
             </div>
             <div className="sdp-deadline-card">
               <label className="sdp-code-label" htmlFor="survey-deadline-input">
