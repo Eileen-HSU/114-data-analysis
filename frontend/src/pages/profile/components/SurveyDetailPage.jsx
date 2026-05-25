@@ -264,17 +264,25 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
                   </button>
                 </div>
               </div>
-              <div className="sdp-link-card">
-                <div className="sdp-code-label">
-                  <i className="ri-link"></i>填寫連結
-                </div>
-                <div className="sdp-link-row">
-                  <span className="sdp-link-value" title={surveyLink}>{surveyLink}</span>
-                  <button className="sdp-copy-code-btn sdp-copy-link-btn" onClick={handleCopySurveyLink} type="button">
-                    <i className={copyLinkSuccess ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
-                    {copyLinkSuccess ? "已複製" : "複製連結"}
+              <div className="sdp-deadline-card sdp-deadline-card-top">
+                <label className="sdp-code-label" htmlFor="survey-deadline-input">
+                  <i className="ri-time-line"></i>截止時間
+                </label>
+                <div className="sdp-deadline-row">
+                  <DeadlineDateTimePicker
+                    id="survey-deadline-input"
+                    className="sdp-deadline-picker"
+                    value={deadlineValue}
+                    min={minDeadlineValue}
+                    onChange={setDeadlineValue}
+                    compact
+                  />
+                  <button className="sdp-deadline-save-btn" onClick={handleSaveDeadline} disabled={isSavingDeadline} type="button">
+                    <i className={isSavingDeadline ? "ri-loader-4-line" : "ri-save-line"}></i>
+                    {isSavingDeadline ? "儲存中" : "儲存"}
                   </button>
                 </div>
+                {deadlineStatus && <div className="sdp-deadline-status">{deadlineStatus}</div>}
               </div>
               <button className={`sdp-import-btn ${importSuccess ? "sdp-import-btn-success" : ""}`} onClick={handleImportToChat} disabled={importSuccess}>
                 <i className={importSuccess ? "ri-checkbox-circle-line" : "ri-chat-upload-line"}></i>
@@ -295,25 +303,17 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
               <i className="ri-bar-chart-2-line"></i>
               <span>{survey.responses.length} responses</span>
             </div>
-            <div className="sdp-deadline-card">
-              <label className="sdp-code-label" htmlFor="survey-deadline-input">
-                <i className="ri-time-line"></i>截止時間
-              </label>
-              <div className="sdp-deadline-row">
-                <DeadlineDateTimePicker
-                  id="survey-deadline-input"
-                  className="sdp-deadline-picker"
-                  value={deadlineValue}
-                  min={minDeadlineValue}
-                  onChange={setDeadlineValue}
-                  compact
-                />
-                <button className="sdp-deadline-save-btn" onClick={handleSaveDeadline} disabled={isSavingDeadline} type="button">
-                  <i className={isSavingDeadline ? "ri-loader-4-line" : "ri-save-line"}></i>
-                  {isSavingDeadline ? "儲存中" : "儲存"}
+            <div className="sdp-link-card">
+              <div className="sdp-code-label">
+                <i className="ri-link"></i>填寫連結
+              </div>
+              <div className="sdp-link-row">
+                <span className="sdp-link-value" title={surveyLink}>{surveyLink}</span>
+                <button className="sdp-copy-code-btn sdp-copy-link-btn" onClick={handleCopySurveyLink} type="button">
+                  <i className={copyLinkSuccess ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
+                  {copyLinkSuccess ? "已複製" : "複製連結"}
                 </button>
               </div>
-              {deadlineStatus && <div className="sdp-deadline-status">{deadlineStatus}</div>}
             </div>
           </div>
         </div>

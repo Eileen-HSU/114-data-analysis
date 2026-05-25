@@ -1308,6 +1308,19 @@
   margin-left: auto;
 }
 
+.sdp-deadline-card-top {
+  width: auto;
+  min-width: 360px;
+  flex: 1 1 390px;
+  margin-left: 0;
+}
+
+.sdp-tabbar .sdp-link-card {
+  flex: 1 1 520px;
+  max-width: 760px;
+  margin-left: 0;
+}
+
 .sdp-deadline-row {
   display: flex;
   align-items: center;
