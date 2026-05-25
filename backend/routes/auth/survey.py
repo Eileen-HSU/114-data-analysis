@@ -43,6 +43,7 @@ def generate_unique_access_code():
 def parse_deadline(deadline_at):
     if not deadline_at:
         return None
+
     try:
         normalized = str(deadline_at).replace("Z", "+00:00")
         parsed = datetime.fromisoformat(normalized)
@@ -149,6 +150,9 @@ def update_survey_deadline(access_code):
     deadline = parse_deadline(deadline_at)
     if not deadline:
         return jsonify({"error": "截止時間格式不正確"}), 400
+
+    if deadline <= datetime.now(ZoneInfo("Asia/Taipei")):
+        return jsonify({"error": "截止時間必須晚於現在。"}), 400
 
     try:
         survey = Survey_Template.query.filter_by(access_code=access_code.upper()).first()
