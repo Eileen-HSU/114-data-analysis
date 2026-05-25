@@ -65,6 +65,7 @@ def profile_handler(user_id):
                 "language":     profile.language     if profile else "",
                 "bio":          profile.bio          if profile else "",
                 "location":     profile.location     if profile else "",
+                "avatar_url":   profile.avatar_url   if profile else "",
                 "updated_at":   profile.updated_at.isoformat() if profile and profile.updated_at else ""
             }), 200
         
@@ -84,6 +85,7 @@ def profile_handler(user_id):
             profile.gender       = data.get('gender')       or ''
             profile.bio          = data.get('bio')          or ''
             profile.location     = data.get('location')     or ''
+            profile.avatar_url   = data.get('avatar_url')   or ''
             profile.updated_at    = taiwan_now()
 
             db.session.commit()

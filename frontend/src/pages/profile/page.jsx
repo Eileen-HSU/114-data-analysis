@@ -131,16 +131,21 @@ export default function ProfilePage() {
       .then((res) => res.json())
       .then((data) => {
         const loaded = {
-          name:     data.user_name    || "",
-          phone:    data.phone_number || "",
-          company:  data.company_name || "",
-          gender:   data.gender       || "",
-          location: data.location     || "",
-          bio:      data.bio          || "",
-          createdAt: data.created_at  || "",
+          name:      data.user_name    || "",
+          phone:     data.phone_number || "",
+          company:   data.company_name || "",
+          gender:    data.gender       || "",
+          location:  data.location     || "",
+          bio:       data.bio          || "",
+          createdAt: data.created_at   || "",
         };
         setProfile(loaded);
         setEditProfile(loaded);
+
+        // 清舊快取，從後端讀頭像
+        localStorage.removeItem(avatarStorageKey);
+        setAvatarSrc(data.avatar_url || DEFAULT_AVATAR);
+        updateUser({ avatar: data.avatar_url || DEFAULT_AVATAR });
       })
       .catch((err) => console.error("載入個人資料失敗", err));
   }, [user]);
@@ -148,16 +153,6 @@ export default function ProfilePage() {
   useEffect(() => {
     setTwoFactorEnabled(localStorage.getItem(twoFactorStorageKey) === "true");
   }, [twoFactorStorageKey]);
-
-  useEffect(() => {
-    if (!user) return;
-    const storedAvatar = localStorage.getItem(avatarStorageKey);
-    const nextAvatar = storedAvatar || user.avatar || DEFAULT_AVATAR;
-    setAvatarSrc(nextAvatar);
-    if (storedAvatar && storedAvatar !== user.avatar) {
-      updateUser({ avatar: storedAvatar });
-    }
-  }, [avatarStorageKey, updateUser, user]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -262,22 +257,44 @@ export default function ProfilePage() {
     return <SurveyDetailPage survey={selectedSurvey} onBack={() => setSelectedSurvey(null)} onUpdateDeadline={updateSurveyDeadline} />;
   }
 
-  const handleAvatarChange = (event) => {
+  const handleAvatarChange = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
+
+    if (file.size > 500 * 1024) {
+      alert("圖片請小於 500KB");
+      return;
+    }
+
     const reader = new FileReader();
-    reader.onload = (loadEvent) => {
-      if (loadEvent.target?.result) {
-        const nextAvatar = loadEvent.target.result;
-        localStorage.setItem(avatarStorageKey, nextAvatar);
-        setAvatarSrc(nextAvatar);
-        updateUser({ avatar: nextAvatar });
-        recordActivity({
-          text: "更新個人頭像",
-          icon: "ri-camera-line",
-          iconBg: "bg-stat-mauve",
-          iconColor: "text-stat-mauve",
+    reader.onload = async (loadEvent) => {
+      if (!loadEvent.target?.result) return;
+      const nextAvatar = loadEvent.target.result;
+
+      try {
+        const res = await fetch(apiUrl(`/api/profile/${user.user_id}`), {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${user.token}`,
+          },
+          body: JSON.stringify({ avatar_url: nextAvatar }),
         });
+        if (res.ok) {
+          setAvatarSrc(nextAvatar);
+          updateUser({ avatar: nextAvatar });
+          recordActivity({
+            text: "更新個人頭像",
+            icon: "ri-camera-line",
+            iconBg: "bg-stat-mauve",
+            iconColor: "text-stat-mauve",
+          });
+        } else {
+          alert("頭像上傳失敗，請稍後再試");
+        }
+      } catch (err) {
+        console.error("頭像同步失敗", err);
+        alert("頭像上傳失敗，請稍後再試");
       }
     };
     reader.readAsDataURL(file);
