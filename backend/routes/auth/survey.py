@@ -54,8 +54,19 @@ def parse_deadline(deadline_at):
     except ValueError:
         return None
 
-def is_survey_expired(question_json):
-    deadline = parse_deadline((question_json or {}).get("deadline_at"))
+def deadline_to_iso(deadline):
+    if not deadline:
+        return None
+    return deadline.isoformat()
+
+
+def get_survey_deadline_at(survey, question_json=None):
+    question_json = question_json if question_json is not None else (survey.question_json or {})
+    return deadline_to_iso(survey.due_date) or question_json.get("deadline_at")
+
+
+def is_survey_expired(question_json, due_date=None):
+    deadline = due_date or parse_deadline((question_json or {}).get("deadline_at"))
     return bool(deadline and datetime.now(ZoneInfo("Asia/Taipei")) > deadline)
 
 @survey_bp.route('/api/surveys', methods=['POST'])
@@ -69,6 +80,7 @@ def create_survey():
     title     = data.get('title')
     questions = data.get('questions')
     deadline_at = data.get('deadline_at')
+    identity_mode = data.get('identity_mode') if data.get('identity_mode') in ["anonymous", "identified"] else "anonymous"
 
     if not title or not isinstance(questions, list) or not deadline_at:
         return jsonify({"error": "缺少問卷標題、題目資料或截止時間"}), 400
@@ -83,8 +95,7 @@ def create_survey():
         access_code = generate_unique_access_code()
         survey_content = {
             "description": data.get('description'),
-            "identity_mode": data.get('identity_mode') if data.get('identity_mode') in ["anonymous", "identified"] else "anonymous",
-            "deadline_at": deadline_at,
+            "identity_mode": identity_mode,
             "items":       questions,
         }
         new_template = Survey_Template(
@@ -92,6 +103,9 @@ def create_survey():
             title         = title,
             access_code   = access_code,
             question_json = survey_content,
+            user_id       = auth_user_id,
+            due_date      = deadline,
+            is_anonymous  = identity_mode == "anonymous",
         )
         db.session.add(new_template)
         db.session.commit()
@@ -115,11 +129,14 @@ def get_survey(access_code):
             return jsonify({"error": "找不到這份問卷"}), 404
 
         question_json = survey.question_json or {}
-        if is_survey_expired(question_json):
+        deadline_at = get_survey_deadline_at(survey, question_json)
+        identity_mode = question_json.get("identity_mode") or ("anonymous" if survey.is_anonymous else "identified")
+
+        if is_survey_expired(question_json, survey.due_date):
             return jsonify({
                 "error": "這份問卷已截止",
                 "expired": True,
-                "deadline_at": question_json.get("deadline_at"),
+                "deadline_at": deadline_at,
                 "title": survey.title,
                 "access_code": survey.access_code,
             }), 410
@@ -128,8 +145,8 @@ def get_survey(access_code):
             "template_id": survey.template_id,
             "title": survey.title,
             "description": question_json.get("description") or "",
-            "identity_mode": question_json.get("identity_mode") or "anonymous",
-            "deadline_at": question_json.get("deadline_at"),
+            "identity_mode": identity_mode,
+            "deadline_at": deadline_at,
             "questions": question_json.get("items") or [],
             "access_code": survey.access_code,
             "created_at": survey.created_at.isoformat() if survey.created_at else None,
@@ -161,14 +178,15 @@ def update_survey_deadline(access_code):
             return jsonify({"error": "找不到這份問卷"}), 404
 
         question_json = dict(survey.question_json or {})
-        question_json["deadline_at"] = deadline_at
+        question_json.pop("deadline_at", None)
         survey.question_json = question_json
         flag_modified(survey, "question_json")
+        survey.due_date = deadline
         db.session.commit()
         return jsonify({
             "message": "截止時間已更新",
             "access_code": survey.access_code,
-            "deadline_at": deadline_at,
+            "deadline_at": get_survey_deadline_at(survey, question_json),
         }), 200
 
     except Exception as e:
@@ -189,11 +207,12 @@ def submit_survey_response(access_code):
             return jsonify({"error": "找不到此邀請碼對應的問卷"}), 404
 
         question_json = survey.question_json or {}
-        if is_survey_expired(question_json):
+        deadline_at = get_survey_deadline_at(survey, question_json)
+        if is_survey_expired(question_json, survey.due_date):
             return jsonify({
                 "error": "這份問卷已截止",
                 "expired": True,
-                "deadline_at": question_json.get("deadline_at"),
+                "deadline_at": deadline_at,
             }), 410
 
         response = Survey_Response(
