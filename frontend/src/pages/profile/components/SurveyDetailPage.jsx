@@ -23,6 +23,12 @@ function toDateTimeLocalValue(value) {
   return localDate.toISOString().slice(0, 16);
 }
 
+function getNextDeadlineMin() {
+  const nextMinute = new Date(Date.now() + 60000);
+  nextMinute.setSeconds(0, 0);
+  return toDateTimeLocalValue(nextMinute);
+}
+
 function formatDeadline(value) {
   if (!value) return "未設定";
   const date = new Date(value);
@@ -149,6 +155,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
   const [importSuccess, setImportSuccess] = useState(false);
   const [copyCodeSuccess, setCopyCodeSuccess] = useState(false);
   const [deadlineValue, setDeadlineValue] = useState(toDateTimeLocalValue(survey.deadlineAt));
+  const [minDeadlineValue, setMinDeadlineValue] = useState(() => getNextDeadlineMin());
   const [deadlineStatus, setDeadlineStatus] = useState("");
   const [isSavingDeadline, setIsSavingDeadline] = useState(false);
   const ratingQuestions = survey.questions.filter((question) => question.type === "rating");
@@ -158,6 +165,13 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
     setDeadlineValue(toDateTimeLocalValue(survey.deadlineAt));
     setDeadlineStatus("");
   }, [survey.deadlineAt]);
+
+  useEffect(() => {
+    const updateMinDeadline = () => setMinDeadlineValue(getNextDeadlineMin());
+    updateMinDeadline();
+    const timer = window.setInterval(updateMinDeadline, 30000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const handleCopyCode = async () => {
     try {
@@ -187,6 +201,10 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
   const handleSaveDeadline = async () => {
     if (!deadlineValue) {
       setDeadlineStatus("請選擇截止日期與時間。");
+      return;
+    }
+    if (new Date(deadlineValue).getTime() <= Date.now()) {
+      setDeadlineStatus("截止時間必須晚於現在。");
       return;
     }
     setIsSavingDeadline(true);
@@ -261,6 +279,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
                   className="sdp-deadline-input"
                   type="datetime-local"
                   value={deadlineValue}
+                  min={minDeadlineValue}
                   onChange={(event) => setDeadlineValue(event.target.value)}
                 />
                 <button className="sdp-deadline-save-btn" onClick={handleSaveDeadline} disabled={isSavingDeadline} type="button">

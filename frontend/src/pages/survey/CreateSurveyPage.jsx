@@ -29,6 +29,16 @@ function generateCode() {
   return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
 }
 
+function toDateTimeLocalValue(date) {
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
+function getNextDeadlineMin() {
+  const nextMinute = new Date(Date.now() + 60000);
+  nextMinute.setSeconds(0, 0);
+  return toDateTimeLocalValue(nextMinute);
+}
+
 export default function CreateSurveyPage() {
   const navigate = useNavigate();
   const { isLoggedIn, user } = useAuth();
@@ -41,6 +51,7 @@ export default function CreateSurveyPage() {
     newQuestion("short")
   ]);
   const [error, setError] = useState("");
+  const [minDeadlineAt, setMinDeadlineAt] = useState(() => getNextDeadlineMin());
   const [generatedCode, setGeneratedCode] = useState("");
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -64,6 +75,13 @@ export default function CreateSurveyPage() {
       }
     })();
   }, [isLoggedIn, user, navigate]);
+
+  useEffect(() => {
+    const updateMinDeadline = () => setMinDeadlineAt(getNextDeadlineMin());
+    updateMinDeadline();
+    const timer = window.setInterval(updateMinDeadline, 30000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const typeMap = useMemo(() => Object.fromEntries(QUESTION_TYPES.map((item) => [item.value, item])), []);
   const getQuestionType = (type) => typeMap[type] || typeMap.short;
@@ -256,7 +274,7 @@ export default function CreateSurveyPage() {
                 type="datetime-local"
                 value={deadlineAt}
                 onChange={(e) => setDeadlineAt(e.target.value)}
-                min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
+                min={minDeadlineAt}
               />
               <p className="survey-field-hint">填答者只能在截止時間前送出問卷。</p>
             </div>

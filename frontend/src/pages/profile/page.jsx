@@ -219,6 +219,10 @@ export default function ProfilePage() {
   }, [surveyRecords, surveySearch, surveySortOrder]);
 
   const updateSurveyDeadline = async (survey, nextDeadlineAt) => {
+    if (new Date(nextDeadlineAt).getTime() <= Date.now()) {
+      throw new Error("截止時間必須晚於現在。");
+    }
+
     const auth = user || JSON.parse(localStorage.getItem("dataanalysis_auth") || "{}");
     const response = await fetch(apiUrl(`/api/surveys/${encodeURIComponent(survey.code)}/deadline`), {
       method: "PATCH",
@@ -240,6 +244,9 @@ export default function ProfilePage() {
     const updated = { ...current, deadlineAt: savedDeadlineAt };
     storedSurveys[survey.code] = updated;
     localStorage.setItem("surveys", JSON.stringify(storedSurveys));
+    window.dispatchEvent(new CustomEvent("dataanalysis:surveys-updated", {
+      detail: { code: survey.code, survey: updated },
+    }));
     setSelectedSurvey(updated);
     setSurveyVersion((version) => version + 1);
     recordActivity({

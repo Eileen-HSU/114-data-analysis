@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Navbar from "../../components/feature/Navbar";
 import "./survey.css";
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -49,7 +49,7 @@ export default function FillSurveyPage() {
   const questionCount = survey?.questions.length ?? 0;
   const answeredCount = useMemo(() => Object.values(answers).filter((value) => Array.isArray(value) ? value.length > 0 : String(value ?? "").trim()).length, [answers]);
 
-  const openSurvey = (found, normalized) => {
+  const openSurvey = useCallback((found, normalized) => {
     if (isSurveyExpired(found.deadlineAt)) {
       setSurvey(null);
       setExpiredSurvey({ title: found.title, code: normalized, deadlineAt: found.deadlineAt });
@@ -63,7 +63,7 @@ export default function FillSurveyPage() {
     setRespondentIdentity("");
     setError("");
     setSubmitted(false);
-  };
+  }, []);
 
   const loadSurveyByCode = async (rawCode) => {
     const normalized = rawCode.trim().toUpperCase();
@@ -131,6 +131,27 @@ export default function FillSurveyPage() {
     setCode(normalized);
     loadSurveyByCode(normalized);
   }, [searchParams, survey]);
+
+  useEffect(() => {
+    const refreshOpenSurvey = (event) => {
+      const activeCode = (survey?.code || expiredSurvey?.code || code).trim().toUpperCase();
+      const updatedCode = event?.detail?.code ? String(event.detail.code).trim().toUpperCase() : "";
+      if (!activeCode || (updatedCode && updatedCode !== activeCode)) return;
+
+      const latestSurvey = getStoredSurveys()[activeCode];
+      if (latestSurvey) openSurvey(latestSurvey, activeCode);
+    };
+    const handleStorage = (event) => {
+      if (event.key === "surveys") refreshOpenSurvey(event);
+    };
+
+    window.addEventListener("dataanalysis:surveys-updated", refreshOpenSurvey);
+    window.addEventListener("storage", handleStorage);
+    return () => {
+      window.removeEventListener("dataanalysis:surveys-updated", refreshOpenSurvey);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, [code, expiredSurvey?.code, openSurvey, survey?.code]);
 
   const setAnswer = (questionId, value) => {
     setAnswers((prev) => ({ ...prev, [questionId]: value }));
