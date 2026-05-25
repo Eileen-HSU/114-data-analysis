@@ -9,14 +9,9 @@ import "./profile.css";
 
 const DEFAULT_AVATAR = "https://static.readdy.ai/image/db4f710102ca6cc45db44808c8658987/b181cfaad2165c1909b7c8fa8339cbe7.png";
 const TWO_FACTOR_KEY_PREFIX = "dataanalysis_two_factor_enabled";
-const AVATAR_STORAGE_KEY_PREFIX = "dataanalysis_avatar";
 
 function getUserStorageId(user) {
   return user?.user_id || user?.email || "guest";
-}
-
-function getAvatarStorageKey(user) {
-  return `${AVATAR_STORAGE_KEY_PREFIX}_${getUserStorageId(user)}`;
 }
 
 function getLocalSurveys(user) {
@@ -83,13 +78,13 @@ function getUsageDays(createdAt) {
 export default function ProfilePage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, updateUser } = useAuth(); // ── 從 AuthContext 取得登入用戶
-  console.log('目前登入的 user：', user);
+  const { user, updateUser } = useAuth();
   const { activities, recordActivity, clearActivities } = useActivity();
   const avatarInputRef = useRef(null);
   const editSectionRef = useRef(null);
   const securitySectionRef = useRef(null);
   const surveysSectionRef = useRef(null);
+  const profileLoadedRef = useRef(false);
   const [activeTab, setActiveTab] = useState("info");
   const [isEditing, setIsEditing] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -118,21 +113,21 @@ export default function ProfilePage() {
   });
   const [editProfile, setEditProfile] = useState(profile);
   const twoFactorStorageKey = `${TWO_FACTOR_KEY_PREFIX}_${getUserStorageId(user)}`;
-  const avatarStorageKey = getAvatarStorageKey(user);
 
-  // ── 載入個人資料 ──────────────────────────────────────────
+  // ── 未登入跳轉 ────────────────────────────────────────────
   useEffect(() => {
     if (user === null) {
       navigate("/", { replace: true });
     }
   }, [navigate, user]);
 
+  // ── 載入個人資料 ──────────────────────────────────────────
   useEffect(() => {
     if (user === null) return;
     if (!user?.user_id) return;
 
     fetch(apiUrl(`/api/profile/${user.user_id}`), {
-      headers: { 'Authorization': `Bearer ${user.token}`, }
+      headers: { 'Authorization': `Bearer ${user.token}` }
     })
       .then((res) => res.json())
       .then((data) => {
@@ -146,15 +141,21 @@ export default function ProfilePage() {
           createdAt: data.created_at   || "",
         };
         setProfile(loaded);
-        setEditProfile(loaded);
 
-        // 清舊快取，從後端讀頭像
-        localStorage.removeItem(avatarStorageKey);
+        // 只有第一次載入才設定 editProfile，避免覆蓋使用者正在編輯的內容
+        if (!profileLoadedRef.current) {
+          setEditProfile(loaded);
+          profileLoadedRef.current = true;
+        }
+
+        // 從後端讀取頭貼
+        const oldKey = `dataanalysis_avatar_${getUserStorageId(user)}`;
+        localStorage.removeItem(oldKey);
         setAvatarSrc(data.avatar_url || DEFAULT_AVATAR);
         updateUser({ avatar: data.avatar_url || DEFAULT_AVATAR });
       })
       .catch((err) => console.error("載入個人資料失敗", err));
-  }, [user]);
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setTwoFactorEnabled(localStorage.getItem(twoFactorStorageKey) === "true");
@@ -203,9 +204,9 @@ export default function ProfilePage() {
       local: true,
       detail: survey,
     })), [localSurveys]);
+
   const visibleSurveyRecords = useMemo(() => {
     const keyword = surveySearch.trim().toLowerCase();
-
     return [...surveyRecords]
       .filter((survey) => {
         if (!keyword) return true;
@@ -263,7 +264,7 @@ export default function ProfilePage() {
     return <SurveyDetailPage survey={selectedSurvey} onBack={() => setSelectedSurvey(null)} onUpdateDeadline={updateSurveyDeadline} />;
   }
 
-  const handleAvatarChange = async (event) => {
+  const handleAvatarChange = (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -313,48 +314,46 @@ export default function ProfilePage() {
     }
 
     try {
-        const res = await fetch(apiUrl(`/api/profile/${user.user_id}`), {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${user.token}`,
-            },
-            body: JSON.stringify({
-                user_name:    editProfile.name,
-                phone_number: editProfile.phone,
-                company_name: editProfile.company,
-                gender:       editProfile.gender,
-                location:        editProfile.location,
-                bio:          editProfile.bio,
-                avatar_url:   avatarSrc,
-                updated_at:   new Date().toISOString(),
+      const res = await fetch(apiUrl(`/api/profile/${user.user_id}`), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user.token}`,
+        },
+        body: JSON.stringify({
+          user_name:    editProfile.name,
+          phone_number: editProfile.phone,
+          company_name: editProfile.company,
+          gender:       editProfile.gender,
+          location:     editProfile.location,
+          bio:          editProfile.bio,
+          avatar_url:   avatarSrc,
+          updated_at:   new Date().toISOString(),
+        }),
+      });
 
-            }),
-        });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(result.error || '儲存失敗，請稍後再試');
 
-        const result = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(result.error || '儲存失敗，請稍後再試');
+      setProfile(editProfile);
+      recordActivity({
+        text: "更新個人資料",
+        icon: "ri-user-settings-line",
+        iconBg: "bg-violet-50",
+        iconColor: "text-violet",
+      });
+      setSaved(true);
+      setTimeout(() => {
+        setSaved(false);
+        setIsEditing(false);
+      }, 900);
 
-        setProfile(editProfile);
-        recordActivity({
-          text: "更新個人資料",
-          icon: "ri-user-settings-line",
-          iconBg: "bg-violet-50",
-          iconColor: "text-violet",
-        });
-        setSaved(true);
-        setTimeout(() => {
-            setSaved(false);
-            setIsEditing(false);
-        }, 900);
-
-      } catch (err) {
-          console.error('儲存失敗', err);
-          alert(err.message || '儲存失敗，請稍後再試');
-      }
+    } catch (err) {
+      console.error('儲存失敗', err);
+      alert(err.message || '儲存失敗，請稍後再試');
+    }
   };
 
-  // 雙因子驗證開關 ------------------------------------------------------
   const closeDisableTwoFactorModal = () => {
     if (isDisablingTwoFactor) return;
     setShowDisableTwoFactorModal(false);
@@ -383,7 +382,7 @@ export default function ProfilePage() {
     try {
       const res = await fetch(apiUrl('/api/auth/2fa/disable'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user?.token}`,},
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user?.token}` },
         body: JSON.stringify({ email: user?.email, password }),
       });
       await res.json().catch(() => ({}));
@@ -425,7 +424,6 @@ export default function ProfilePage() {
       handleCancel();
       return;
     }
-
     setActiveTab("info");
     setIsEditing(true);
     setTimeout(() => {
@@ -491,7 +489,7 @@ export default function ProfilePage() {
                 </div>
                 <div className="flex-grow-1 pt-5">
                   <h1 className="profile-name">{profile.name}</h1>
-                  <p className="profile-email">{user?.email || ""}</p> {/* ── 從 AuthContext 取得 email */}
+                  <p className="profile-email">{user?.email || ""}</p>
                 </div>
               </div>
 
@@ -609,10 +607,8 @@ export default function ProfilePage() {
                   className={`two-factor-switch ${twoFactorEnabled ? "enabled" : ""}`}
                   onClick={() => {
                     if (twoFactorEnabled) {
-                      // 如果已經開啟，點擊就是為了關閉
                       handleDisable2FA();
                     } else {
-                      // 如果未開啟，跳轉到開啟頁面
                       navigate("/two-factor");
                     }
                   }}
