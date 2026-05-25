@@ -86,7 +86,8 @@ export default function ChangePasswordPage() {
             <h2 className="auth-visual-title">修改您的密碼</h2>
             <p className="auth-visual-desc">
               <span>保護您的帳號安全</span>
-              <span>我們會寄送驗證連結到您的信箱</span>
+              <span>驗證連結會寄到信箱</span>
+              <span>確認身份後即可設定新密碼</span>
             </p>
             <div className="auth-features">
               {[

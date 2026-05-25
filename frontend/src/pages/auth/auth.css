@@ -123,6 +123,14 @@
   white-space: nowrap;
 }
 
+.auth-visual-login .auth-visual-desc {
+  font-weight: 500;
+}
+
+.auth-visual-login .auth-feature-item span {
+  font-weight: 500;
+}
+
 /* Right Form */
 .auth-form-area {
   padding: 48px;
