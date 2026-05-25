@@ -12,6 +12,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
+  const [alertModal, setAlertModal] = useState(null);
 
   useEffect(() => {
     const clearFields = () => {
@@ -35,6 +36,21 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoginError("");
+
+    if (!email.trim()) {
+      setAlertModal({ title: "登入失敗", message: "請輸入電子郵件。" });
+      return;
+    }
+
+    if (!email.includes("@")) {
+      setAlertModal({ title: "登入失敗", message: `請在電子郵件地址中包含「@」。「${email}」未包含「@」。` });
+      return;
+    }
+
+    if (!password) {
+      setAlertModal({ title: "登入失敗", message: "請輸入密碼。" });
+      return;
+    }
 
     try {
       const res = await fetch(apiUrl("/api/login"), {
@@ -131,7 +147,7 @@ export default function LoginPage() {
               </a>
             </p>
 
-            <form onSubmit={handleSubmit} className="auth-form" autoComplete="off">
+            <form onSubmit={handleSubmit} className="auth-form" autoComplete="off" noValidate>
               <div className="mb-3">
                 <label className="auth-label">電子郵件</label>
                 <div className="position-relative">
@@ -205,6 +221,22 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
+      {alertModal && (
+        <div className="auth-modal-backdrop" onClick={() => setAlertModal(null)}>
+          <div className="auth-alert-modal error" onClick={(event) => event.stopPropagation()}>
+            <div className="auth-alert-icon">
+              <i className="ri-error-warning-line"></i>
+            </div>
+            <div className="auth-alert-content">
+              <h3>{alertModal.title}</h3>
+              <p>{alertModal.message}</p>
+            </div>
+            <button className="auth-alert-primary" onClick={() => setAlertModal(null)} type="button">
+              確定
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
