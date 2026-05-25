@@ -75,7 +75,7 @@ export default function LoginPage() {
   return (
     <div className="auth-page">
       <div className="row g-0" style={{ minHeight: "100vh" }}>
-        <div className="col-lg-6 d-none d-lg-flex auth-visual">
+        <div className="col-lg-6 d-none d-lg-flex auth-visual auth-visual-login">
           <div className="auth-visual-overlay"></div>
           <div className="auth-visual-content">
             <div className="auth-logo mb-5">
