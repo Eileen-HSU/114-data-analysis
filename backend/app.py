@@ -95,6 +95,9 @@ def ensure_runtime_schema():
             ensure_column("User_Verification", "attempts", "`attempts` INT NOT NULL DEFAULT 0")
             ensure_column("Workspace", "is_deleted", "`is_deleted` TINYINT(1) DEFAULT 0")
             ensure_column("Workspace", "deleted_at", "`deleted_at` DATETIME NULL")
+            ensure_column("Survey_Template", "user_id", "`user_id` INT NULL")
+            ensure_column("Survey_Template", "due_date", "`due_date` TIMESTAMP NULL")
+            ensure_column("Survey_Template", "is_anonymous", "`is_anonymous` TINYINT(1) DEFAULT 0")
             db.session.commit()
         except Exception as exc:
             db.session.rollback()

@@ -92,11 +92,14 @@ class Survey_Template(db.Model):
     template_id   = db.Column(db.Integer, primary_key=True, autoincrement=True)
     title         = db.Column(db.String(100), nullable=False)
     project_id    = db.Column(db.Integer, db.ForeignKey('Workspace.project_id'), nullable=True)
-    share_uuid    = db.Column(db.String(36), default=lambda: str(uuid.uuid4()), unique=True)
-    access_code   = db.Column(db.String(5), nullable=True)     
+    share_uuid    = db.Column(db.String(50), default=lambda: str(uuid.uuid4()), unique=True, nullable=False)
+    access_code   = db.Column(db.String(5), nullable=False)
     question_json = db.Column(db.JSON, nullable=False)
     is_active     = db.Column(db.Boolean, default=True)
     created_at    = db.Column(db.DateTime(timezone=True), default=taiwan_now)
+    user_id       = db.Column(db.Integer, nullable=True)
+    due_date      = db.Column(db.DateTime(timezone=True), nullable=True)
+    is_anonymous  = db.Column(db.Boolean, default=False)
 
     # 關聯設定
     responses = db.relationship('Survey_Response', backref='template', cascade="all, delete-orphan")
