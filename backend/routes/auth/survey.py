@@ -37,8 +37,8 @@ def verify_token(request):
 def generate_unique_access_code():
     """產生不重複的 5 碼邀請碼"""
     while True:
-        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
-        if not Survey_Template.query.filter_by(access_code=code).first():
+        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5)).upper()
+        if not Survey_Template.query.filter_by(access_code=code.upper()).first():
             return code
 
 def parse_deadline(deadline_at):
@@ -101,7 +101,7 @@ def create_survey():
         new_template = Survey_Template(
             project_id    = data.get('project_id'),
             title         = title,
-            access_code   = access_code,
+            access_code   = access_code.upper(),
             question_json = survey_content,
             user_id       = auth_user_id,
             due_date      = deadline,
@@ -111,7 +111,7 @@ def create_survey():
         db.session.commit()
         return jsonify({
             "message":     "問卷建立成功",
-            "access_code": access_code,
+            "access_code": access_code.upper(),
             "template_id": new_template.template_id,
         }), 201
 
