@@ -236,6 +236,8 @@
 }
 
 .deadline-picker-compact .deadline-picker-popover {
+  top: auto;
+  bottom: calc(100% + 10px);
   left: auto;
   right: 0;
 }
