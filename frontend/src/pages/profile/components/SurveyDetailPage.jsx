@@ -155,12 +155,14 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [importSuccess, setImportSuccess] = useState(false);
   const [copyCodeSuccess, setCopyCodeSuccess] = useState(false);
+  const [copyLinkSuccess, setCopyLinkSuccess] = useState(false);
   const [deadlineValue, setDeadlineValue] = useState(toDateTimeLocalValue(survey.deadlineAt));
   const [minDeadlineValue, setMinDeadlineValue] = useState(() => getNextDeadlineMin());
   const [deadlineStatus, setDeadlineStatus] = useState("");
   const [isSavingDeadline, setIsSavingDeadline] = useState(false);
   const ratingQuestions = survey.questions.filter((question) => question.type === "rating");
   const textQuestions = survey.questions.filter((question) => question.type !== "rating");
+  const surveyLink = `${window.location.origin}/survey/fill?code=${encodeURIComponent(survey.code)}`;
 
   useEffect(() => {
     setDeadlineValue(toDateTimeLocalValue(survey.deadlineAt));
@@ -182,6 +184,17 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
     } catch {
       setCopyCodeSuccess(false);
       alert("複製失敗，請手動複製邀請碼");
+    }
+  };
+
+  const handleCopySurveyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(surveyLink);
+      setCopyLinkSuccess(true);
+      setTimeout(() => setCopyLinkSuccess(false), 1600);
+    } catch {
+      setCopyLinkSuccess(false);
+      alert("無法複製連結，請手動選取填寫連結。");
     }
   };
 
@@ -248,6 +261,18 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
                   <button className="sdp-copy-code-btn" onClick={handleCopyCode} type="button">
                     <i className={copyCodeSuccess ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
                     {copyCodeSuccess ? "已複製" : "複製 Code"}
+                  </button>
+                </div>
+              </div>
+              <div className="sdp-link-card">
+                <div className="sdp-code-label">
+                  <i className="ri-link"></i>填寫連結
+                </div>
+                <div className="sdp-link-row">
+                  <span className="sdp-link-value" title={surveyLink}>{surveyLink}</span>
+                  <button className="sdp-copy-code-btn sdp-copy-link-btn" onClick={handleCopySurveyLink} type="button">
+                    <i className={copyLinkSuccess ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
+                    {copyLinkSuccess ? "已複製" : "複製連結"}
                   </button>
                 </div>
               </div>

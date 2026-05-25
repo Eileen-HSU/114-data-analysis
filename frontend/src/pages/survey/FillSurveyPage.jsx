@@ -13,6 +13,12 @@ function getStoredSurveys() {
   }
 }
 
+function saveStoredSurvey(code, survey) {
+  const storedSurveys = getStoredSurveys();
+  storedSurveys[code] = survey;
+  localStorage.setItem("surveys", JSON.stringify(storedSurveys));
+}
+
 function isSurveyExpired(deadlineAt) {
   if (!deadlineAt) return false;
   const deadlineTime = new Date(deadlineAt).getTime();
@@ -73,10 +79,6 @@ export default function FillSurveyPage() {
     }
 
     const localSurvey = getStoredSurveys()[normalized];
-    if (localSurvey) {
-      openSurvey(localSurvey, normalized);
-      return;
-    }
 
     setLoadingSurvey(true);
     setError("");
@@ -108,10 +110,18 @@ export default function FillSurveyPage() {
         questions: data.questions || [],
         code: data.access_code || normalized,
         createdAt: data.created_at ? data.created_at.slice(0, 10) : "",
-        responses: [],
+        responses: localSurvey?.responses || [],
+        ownerId: localSurvey?.ownerId,
+        ownerEmail: localSurvey?.ownerEmail,
+        createdAtMs: localSurvey?.createdAtMs,
       };
+      saveStoredSurvey(normalized, loadedSurvey);
       openSurvey(loadedSurvey, normalized);
     } catch (error) {
+      if (localSurvey) {
+        openSurvey(localSurvey, normalized);
+        return;
+      }
       console.error("讀取問卷失敗:", error);
       setError("伺服器連線失敗，請稍後再試。");
     } finally {
