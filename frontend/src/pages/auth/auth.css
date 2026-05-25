@@ -67,7 +67,7 @@
 
 .auth-visual-title {
   font-size: 34px;
-  font-weight: 900;
+  font-weight: 500;
   color: white;
   margin-bottom: 16px;
   line-height: 1.25;
@@ -78,7 +78,7 @@
   color: rgba(255,255,255,0.9);
   font-size: 20px;
   line-height: 1.8;
-  font-weight: 700;
+  font-weight: 400;
   max-width: none;
   margin: 0 auto;
 }
@@ -119,16 +119,16 @@
 .auth-feature-item span {
   color: rgba(255,255,255,0.85);
   font-size: 18px;
-  font-weight: 800;
+  font-weight: 400;
   white-space: nowrap;
 }
 
 .auth-visual-login .auth-visual-desc {
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .auth-visual-login .auth-feature-item span {
-  font-weight: 500;
+  font-weight: 400;
 }
 
 /* Right Form */

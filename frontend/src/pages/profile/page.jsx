@@ -122,6 +122,12 @@ export default function ProfilePage() {
 
   // ── 載入個人資料 ──────────────────────────────────────────
   useEffect(() => {
+    if (user === null) {
+      navigate("/", { replace: true });
+    }
+  }, [navigate, user]);
+
+  useEffect(() => {
     if (user === null) return;
     if (!user?.user_id) return;
 
