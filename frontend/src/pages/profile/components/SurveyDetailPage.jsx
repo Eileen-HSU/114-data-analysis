@@ -254,13 +254,13 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
             <div className="sdp-topbar-right">
               <div className="sdp-code-card">
                 <div className="sdp-code-label">
-                  <i className="ri-key-2-line"></i>邀請碼
+                  <i className="ri-key-2-line"></i>問卷代碼
                 </div>
                 <div className="sdp-code-row">
                   <span className="sdp-code-value">{survey.code}</span>
                   <button className="sdp-copy-code-btn" onClick={handleCopyCode} type="button">
                     <i className={copyCodeSuccess ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
-                    {copyCodeSuccess ? "已複製" : "複製 Code"}
+                    {copyCodeSuccess ? "已複製" : "複製代碼"}
                   </button>
                 </div>
               </div>
