@@ -71,7 +71,6 @@ def profile_handler(user_id):
         
         elif request.method == "PUT":
             data = request.get_json(silent=True) or {}
-            
             user_name = (data.get('user_name') or '').strip()
             if user_name:
                 user.user_name = user_name
@@ -80,14 +79,21 @@ def profile_handler(user_id):
                 profile = UserProfile(user_id=user_id, phone_number='')
                 db.session.add(profile)
 
-            profile.phone_number = data.get('phone_number') or ''
-            profile.company_name = data.get('company_name') or ''
-            profile.gender       = data.get('gender')       or ''
-            profile.bio          = data.get('bio')          or ''
-            profile.location     = data.get('location')     or ''
-            profile.avatar_url   = data.get('avatar_url')   or ''
-            profile.updated_at    = taiwan_now()
+            # 只更新有傳的欄位，沒傳的保留原值
+            if 'phone_number' in data:
+                profile.phone_number = data['phone_number'] or ''
+            if 'company_name' in data:
+                profile.company_name = data['company_name'] or ''
+            if 'gender' in data:
+                profile.gender = data['gender'] or ''
+            if 'bio' in data:
+                profile.bio = data['bio'] or ''
+            if 'location' in data:
+                profile.location = data['location'] or ''
+            if 'avatar_url' in data:
+                profile.avatar_url = data['avatar_url'] or ''
 
+            profile.updated_at = taiwan_now()
             db.session.commit()
             return jsonify({"message": "Profile updated successfully"}), 200
 
