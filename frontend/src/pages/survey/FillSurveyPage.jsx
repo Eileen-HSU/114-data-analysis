@@ -83,7 +83,9 @@ export default function FillSurveyPage() {
     setLoadingSurvey(true);
     setError("");
     try {
-      const response = await fetch(apiUrl(`/api/surveys/${encodeURIComponent(normalized)}`));
+      const response = await fetch(apiUrl(`/api/surveys/${encodeURIComponent(normalized)}`), {
+        cache: "no-store",
+      });
       if (response.status === 410) {
         const expiredData = await response.json().catch(() => ({}));
         setSurvey(null);
