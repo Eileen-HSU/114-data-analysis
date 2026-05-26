@@ -296,8 +296,11 @@ function AssistantTableContent({ content }) {
   const navigate = useNavigate();
   const { intro, rows } = parseAssistantTableRows(content);
   const forceEmptyTable = content.includes(EMPTY_SURVEY_TABLE_MARKER);
+  const displayRows = forceEmptyTable && rows.length === 0
+    ? [{ item: "資料不足", description: "目前問卷內容過少，暫無足夠資料可進行分析。" }]
+    : rows;
 
-  if (rows.length < 2 && !forceEmptyTable) {
+  if (displayRows.length < 2 && !forceEmptyTable) {
     return <PlainMessageContent content={content} />;
   }
 
@@ -313,7 +316,7 @@ function AssistantTableContent({ content }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, index) => (
+            {displayRows.map((row, index) => (
               <tr key={`${row.item}-${index}`} className={row.tone ? `assistant-output-row-${row.tone}` : ""}>
                 <td>{row.item}</td>
                 <td>{row.description}</td>
