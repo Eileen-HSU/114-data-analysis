@@ -254,6 +254,7 @@ export default function WorkspacePage() {
   const [renamingId, setRenamingId] = useState(null);
   const [renameValue, setRenameValue] = useState("");
   const [showSurveyPicker, setShowSurveyPicker] = useState(false);
+  const [showShareMenu, setShowShareMenu] = useState(false);
   const [surveyPickerSearch, setSurveyPickerSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [toastMsg, setToastMsg] = useState(null);
@@ -264,6 +265,7 @@ export default function WorkspacePage() {
   const textareaRef = useRef(null);
   const surveyImportHandled = useRef(false);
   const surveyPickerRef = useRef(null);
+  const shareMenuRef = useRef(null);
 
   const showToast = (msg) => {
     setToastMsg(msg);
@@ -338,10 +340,13 @@ export default function WorkspacePage() {
       if (surveyPickerRef.current && !surveyPickerRef.current.contains(e.target)) {
         setShowSurveyPicker(false);
       }
+      if (shareMenuRef.current && !shareMenuRef.current.contains(e.target)) {
+        setShowShareMenu(false);
+      }
     };
-    if (showSurveyPicker) document.addEventListener("mousedown", handleClickOutside);
+    if (showSurveyPicker || showShareMenu) document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [showSurveyPicker]);
+  }, [showSurveyPicker, showShareMenu]);
 
   // Handle open session from collection
   useEffect(() => {
@@ -747,6 +752,29 @@ export default function WorkspacePage() {
 
           {/* Main Chat */}
           <main className="workspace-main">
+            <div className="workspace-share-float" ref={shareMenuRef}>
+              <button
+                className={`workspace-share-btn${showShareMenu ? " active" : ""}`}
+                type="button"
+                onClick={() => setShowShareMenu((open) => !open)}
+                aria-expanded={showShareMenu}
+              >
+                <i className="ri-share-forward-line"></i>
+                <span>分享</span>
+              </button>
+              {showShareMenu && (
+                <div className="workspace-share-menu">
+                  <button className="workspace-share-option" type="button">
+                    <i className="ri-team-line"></i>
+                    <span>邀請協作</span>
+                  </button>
+                  <button className="workspace-share-option" type="button">
+                    <i className="ri-eye-line"></i>
+                    <span>邀請預覽</span>
+                  </button>
+                </div>
+              )}
+            </div>
             {activeSession === null ? (
               <div style={{
                 flex: 1, display: "flex", flexDirection: "column",
