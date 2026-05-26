@@ -1,23 +1,55 @@
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import Navbar from "../../components/feature/Navbar";
 import { useAuth } from "../../hooks/AuthContext";
+import { apiUrl } from "../../lib/api"; 
 import "./survey.css";
 
-function getRecentSurveys() {
-  try {
-    const stored = JSON.parse(localStorage.getItem("surveys") || "{}");
-    return Object.values(stored || {})
-      .filter((survey) => survey?.title && survey?.code)
-      .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
-      .slice(0, 3);
-  } catch {
-    return [];
-  }
+function getSurveyTime(createdAt) {
+  const time = new Date(createdAt || 0).getTime();
+  return Number.isNaN(time) ? 0 : time;
 }
 
 export default function SurveyPage() {
   const { user } = useAuth();
-  const recentSurveys = useMemo(() => (user ? getRecentSurveys() : []), [user]);
+  
+  // 儲存後端撈回來的問卷狀態
+  const [apiSurveys, setApiSurveys] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // ── 從 API 撈取問卷資料 ─────────────────────────────
+  useEffect(() => {
+    if (!user?.token) return;
+
+    setIsLoading(true);
+    fetch(apiUrl("/api/surveys/mine"), {
+      headers: { 'Authorization': `Bearer ${user.token}` }
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("撈取最近問卷失敗");
+        return res.json();
+      })
+      .then((data) => {
+        setApiSurveys(Array.isArray(data) ? data : []);
+      })
+      .catch((err) => {
+        console.error("載入問卷動態失敗:", err);
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+  }, [user]);
+
+  const recentSurveys = useMemo(() => {
+    if (!user) return [];
+    
+    return [...apiSurveys]
+      .sort((a, b) => {
+        const timeA = getSurveyTime(a.createdAt || a.created_at);
+        const timeB = getSurveyTime(b.createdAt || b.created_at);
+        return timeB - timeA; // 由新到舊
+      })
+      .slice(0, 3);
+  }, [apiSurveys, user]);
 
   return (
     <>
@@ -85,14 +117,21 @@ export default function SurveyPage() {
                     <i className="ri-lock-line"></i>
                     <span>登入後即可查看最近活動與問卷動態。</span>
                   </div>
+                ) : isLoading ? (
+                  <div className="survey-activity-empty">
+                    <i className="ri-loader-4-line ri-spin"></i>
+                    <span>動態載入中...</span>
+                  </div>
                 ) : recentSurveys.length > 0 ? (
                   <div className="survey-activity-list">
                     {recentSurveys.map((survey) => (
                       <a className="survey-activity-item" href="/profile" key={survey.code}>
                         <span className="survey-activity-dot"></span>
                         <div>
-                          <strong>{survey.title}</strong>
-                          <span>{survey.responses?.length || 0} 份回覆 · {survey.code}</span>
+                          <strong>{survey.title || survey.survey_name || "未命名問卷"}</strong>
+                          <span>
+                            {survey.responses?.length || survey.response_count || 0} 份回覆 · {survey.code}
+                          </span>
                         </div>
                       </a>
                     ))}

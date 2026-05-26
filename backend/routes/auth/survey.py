@@ -133,6 +133,40 @@ def create_survey():
         logging.error(f"Survey creation failed: {e}", exc_info=True)
         db.session.rollback()
         return jsonify({"error": "問卷建立失敗", "detail": str(e)}), 500  
+    
+@survey_bp.route('/api/surveys/mine', methods=['GET'])
+def get_user_surveys():
+    """取得目前登入用戶的所有問卷"""
+    auth_user_id, auth_error = verify_token(request)
+    if auth_error:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    try:
+        surveys = Survey_Template.query.filter_by(
+            user_id=auth_user_id,
+            is_active=True
+        ).order_by(Survey_Template.created_at.desc()).all()
+
+        result = []
+        for survey in surveys:
+            question_json = survey.question_json or {}
+            response_count = Survey_Response.query.filter_by(
+                template_id=survey.template_id
+            ).count()
+            result.append({
+                "template_id":    survey.template_id,
+                "title":          survey.title,
+                "access_code":    survey.access_code,
+                "created_at":     survey.created_at.isoformat() if survey.created_at else "",
+                "deadline_at":    get_survey_deadline_at(survey, question_json),
+                "response_count": response_count,
+            })
+
+        return jsonify(result), 200
+
+    except Exception as e:
+        logging.error(f"Get user surveys failed: {e}", exc_info=True)
+        return jsonify({"error": "取得問卷失敗"}), 500
 
 @survey_bp.route('/api/surveys/<access_code>', methods=['GET'])
 def get_survey(access_code):
