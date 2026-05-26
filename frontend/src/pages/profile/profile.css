@@ -21,6 +21,49 @@
   overflow: hidden;
 }
 
+.profile-loading-page {
+  display: grid;
+  place-items: center;
+  padding: 140px 24px 64px;
+  background: #fbfafb;
+}
+
+.profile-survey-loading {
+  width: min(430px, 100%);
+  padding: 34px 28px;
+  border: 1px solid #d9ecfb;
+  border-radius: 18px;
+  background: white;
+  box-shadow: 0 22px 60px rgba(42, 64, 98, 0.1);
+  text-align: center;
+}
+
+.profile-survey-loading-icon {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 16px;
+  border-radius: 16px;
+  background: #eef7ff;
+  color: #6d8faa;
+  font-size: 28px;
+}
+
+.profile-survey-loading h1 {
+  margin: 0 0 8px;
+  color: var(--slate-800);
+  font-size: 22px;
+  font-weight: 850;
+}
+
+.profile-survey-loading p {
+  margin: 0;
+  color: var(--slate-500);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
 .profile-cover {
   position: relative;
   height: 280px;
