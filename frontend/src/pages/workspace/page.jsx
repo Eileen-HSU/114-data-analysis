@@ -15,6 +15,7 @@ const WELCOME_MSG = {
     "您好！我是 DataAnalysis AI 助手。請上傳您的資料檔案（CSV、Excel、JSON 或 TXT），或直接輸入您的分析問題，我將為您提供深度洞察。",
 };
 const ACTIVE_WORKSPACE_KEY = "dataanalysis_active_workspace";
+const EMPTY_SURVEY_TABLE_MARKER = "[[EMPTY_SURVEY_TABLE]]";
 
 function getAuthHeader() {
   try {
@@ -98,6 +99,122 @@ function buildSurveyChatContent(survey) {
   return lines.join("\n");
 }
 
+function hasAnswerValue(answer) {
+  if (Array.isArray(answer)) return answer.length > 0;
+  return answer !== undefined && answer !== null && String(answer).trim() !== "";
+}
+
+function getSurveyStats(survey) {
+  const questions = Array.isArray(survey?.questions) ? survey.questions : [];
+  const responses = Array.isArray(survey?.responses) ? survey.responses : [];
+  const ratingQuestions = questions.filter((q) => q.type === "rating");
+  const textQuestions = questions.filter((q) => q.type !== "rating");
+  const answeredValues = [];
+  const ratingValues = [];
+  const textAnswers = [];
+
+  responses.forEach((response) => {
+    questions.forEach((question) => {
+      const answer = response.answers?.[question.id];
+      if (!hasAnswerValue(answer)) return;
+      answeredValues.push(answer);
+      if (question.type === "rating") {
+        const value = Number(answer);
+        if (!Number.isNaN(value)) ratingValues.push(value);
+        return;
+      }
+      textAnswers.push(Array.isArray(answer) ? answer.join("、") : String(answer));
+    });
+  });
+
+  const ratingAverage = ratingValues.length
+    ? (ratingValues.reduce((sum, value) => sum + value, 0) / ratingValues.length).toFixed(1)
+    : null;
+
+  return {
+    questions,
+    responses,
+    ratingQuestions,
+    textQuestions,
+    answeredValues,
+    ratingAverage,
+    textAnswers,
+  };
+}
+
+function isSurveyContentTooSmall(stats) {
+  return stats.questions.length === 0 || stats.responses.length < 2 || stats.answeredValues.length < 2;
+}
+
+function buildSurveyAnalysisReplyFromSurvey(survey, fallbackTitle = "問卷") {
+  const stats = getSurveyStats(survey);
+  const title = survey?.title || fallbackTitle;
+  const intro = `我已收到「${title}」的問卷資料，以下是初步分析結果：`;
+
+  if (isSurveyContentTooSmall(stats)) {
+    return `${EMPTY_SURVEY_TABLE_MARKER}\n${intro}`;
+  }
+
+  const rows = [];
+  if (stats.ratingQuestions.length > 0) {
+    rows.push(`評分題洞察：共 ${stats.ratingQuestions.length} 題評分題，平均分為 ${stats.ratingAverage ?? "無資料"} / 5，可優先觀察低於平均的題目。`);
+  }
+  if (stats.textQuestions.length > 0) {
+    const sampleQuestion = stats.textQuestions[0]?.title ? `「${stats.textQuestions[0].title}」` : "開放題";
+    rows.push(`問答題主題分析：共收集 ${stats.textAnswers.length} 筆文字回覆，可先從 ${sampleQuestion} 的常見關鍵字整理主要意見。`);
+  }
+  rows.push(`回覆概況：目前共有 ${stats.responses.length} 位填答者、${stats.questions.length} 道題目，已累積 ${stats.answeredValues.length} 筆可分析答案。`);
+  rows.push("改善建議：建議後續比較不同題型或族群的差異，並針對低分題與高頻文字回覆安排追問。");
+
+  return `${intro}\n\n${rows.join("\n")}`;
+}
+
+function parseBuiltInSurveyText(content) {
+  if (!content.includes("📋 問卷名稱：") || !content.includes("🔑 問卷代碼：")) return null;
+  const title = content.match(/📋 問卷名稱：(.+)/)?.[1]?.trim() || "問卷";
+  const responseCount = Number(content.match(/👥 回覆人數：(\d+)/)?.[1] || 0);
+  const questionCount = Number(content.match(/❓ 題目數量：(\d+)/)?.[1] || 0);
+  const answerCount = (content.match(/^\s+\d+\.\s+/gm) || []).length;
+  const hasRating = content.includes("── 評分題統計 ──");
+  const hasText = content.includes("── 問答題回覆 ──");
+  return { title, responseCount, questionCount, answerCount, hasRating, hasText };
+}
+
+function buildSurveyAnalysisReplyFromText(content) {
+  const survey = parseBuiltInSurveyText(content);
+  if (!survey) return null;
+  const intro = `我已收到「${survey.title}」的問卷資料，以下是初步分析結果：`;
+
+  if (survey.questionCount === 0 || survey.responseCount < 2 || survey.answerCount < 2) {
+    return `${EMPTY_SURVEY_TABLE_MARKER}\n${intro}`;
+  }
+
+  const rows = [];
+  if (survey.hasRating) {
+    rows.push("評分題洞察：已偵測到評分題資料，可依各題平均分比較滿意度與落差。");
+  }
+  if (survey.hasText) {
+    rows.push(`問答題主題分析：已偵測到 ${survey.answerCount} 筆文字回覆，可整理高頻主題與正負向意見。`);
+  }
+  rows.push(`回覆概況：目前共有 ${survey.responseCount} 位填答者、${survey.questionCount} 道題目，可進行初步趨勢判讀。`);
+  rows.push("改善建議：建議補充分群欄位或提高回覆數，以提升分析可信度。");
+
+  return `${intro}\n\n${rows.join("\n")}`;
+}
+
+function isGreetingInput(text) {
+  const normalized = text.trim().toLowerCase().replace(/[，。！？、,.!?\s]/g, "");
+  return ["hi", "hello", "hey", "你好", "哈囉", "嗨", "您好"].includes(normalized);
+}
+
+function buildAssistantReply(content, surveyDetail = null, surveyTitle = "問卷") {
+  if (surveyDetail) return buildSurveyAnalysisReplyFromSurvey(surveyDetail, surveyTitle);
+  if (isGreetingInput(content)) return "您好！很高興見到您，請提供要分析的資料或選擇系統內建問卷，我會協助您整理重點。";
+  const surveyReply = buildSurveyAnalysisReplyFromText(content);
+  if (surveyReply) return surveyReply;
+  return "資料不足，無法進行有效分析。請提供系統內建問卷、完整資料檔案，或更明確的分析問題。";
+}
+
 function cleanMessageText(text) {
   return text
     .replace(/\*\*/g, "")
@@ -110,10 +227,11 @@ function parseAssistantTableRows(content) {
   const introLines = [];
   let currentSection = "";
   let isSuggestionSection = false;
+  const visibleContent = content.replace(EMPTY_SURVEY_TABLE_MARKER, "");
 
   const isSuggestionLabel = (value) => ["建議", "可進一步詢問"].includes(value.replace(/[💡]/g, "").trim());
 
-  content.split("\n").forEach((rawLine) => {
+  visibleContent.split("\n").forEach((rawLine) => {
     const line = cleanMessageText(rawLine);
     if (!line) return;
 
@@ -177,8 +295,9 @@ function PlainMessageContent({ content }) {
 function AssistantTableContent({ content }) {
   const navigate = useNavigate();
   const { intro, rows } = parseAssistantTableRows(content);
+  const forceEmptyTable = content.includes(EMPTY_SURVEY_TABLE_MARKER);
 
-  if (rows.length < 2) {
+  if (rows.length < 2 && !forceEmptyTable) {
     return <PlainMessageContent content={content} />;
   }
 
@@ -378,11 +497,7 @@ export default function WorkspacePage() {
       const aiReply = {
         id: `a-${Date.now()}`,
         role: "assistant",
-        content:
-          "我已收到您的問卷資料，以下是初步分析結果：\n\n" +
-          "**📊 評分題洞察**\n整體平均分表現良好，可進一步比較不同分組的差異。\n\n" +
-          "**💬 問答題主題分析**\n回覆內容集中在幾個核心議題，建議進行情感分析以量化正負回饋比例。\n\n" +
-          "**💡 建議**\n可進一步詢問：想針對哪道題目深入分析？或需要我生成完整分析報告？",
+        content: buildAssistantReply(message),
       };
       setSessions((prev) =>
         prev.map((s) => s.id === newId ? { ...s, messages: [...s.messages, aiReply] } : s)
@@ -420,11 +535,7 @@ export default function WorkspacePage() {
       const aiReply = {
         id: `a-${Date.now()}`,
         role: "assistant",
-        content:
-          `我已收到「${record.title}」的問卷資料，以下是初步分析結果：\n\n` +
-          "📊 **評分題洞察**\n整體平均分表現良好，可進一步比較不同分組的差異。\n\n" +
-          "💬 **問答題主題分析**\n回覆內容集中在幾個核心議題，建議進行情感分析以量化正負回饋比例。\n\n" +
-          "💡 **建議**\n可進一步詢問：想針對哪道題目深入分析？或需要我生成完整分析報告？",
+        content: buildAssistantReply(content, detail, record.title),
       };
       setSessions((prev) =>
         prev.map((s) => s.id === newId ? { ...s, messages: [...s.messages, aiReply] } : s)
@@ -471,12 +582,7 @@ export default function WorkspacePage() {
     setIsTyping(true);
     const sid = activeSessionId;
     setTimeout(() => {
-      const aiResponses = [
-        "根據您上傳的資料，我發現以下幾個關鍵趨勢：\n\n1. **銷售成長**：Q3 相比 Q2 成長了 23.5%，主要由電子產品類別驅動。\n2. **客戶留存率**：整體留存率為 78%，高於行業平均的 65%。\n3. **異常值**：第 47 行數據存在異常，建議進一步核查。\n\n需要我針對某個特定面向進行更深入的分析嗎？",
-        "我已分析您的問題。根據資料顯示，主要發現如下：\n\n- 數據集包含 1,247 筆記錄，涵蓋 12 個維度\n- 缺失值比例為 2.3%，建議使用均值填補\n- 相關性分析顯示「收入」與「廣告支出」呈強正相關（r=0.87）\n\n是否需要我生成視覺化報告？",
-        "這是個很好的問題！根據統計分析：\n\n**描述性統計**\n- 平均值：4,523\n- 中位數：4,102\n- 標準差：892\n\n**建議**：數據分佈略呈右偏，建議考慮對數轉換以改善模型效果。",
-      ];
-      const reply = aiResponses[Math.floor(Math.random() * aiResponses.length)];
+      const reply = buildAssistantReply(content);
       appendMessage(sid, { id: Date.now().toString(), role: "assistant", content: reply });
       setIsTyping(false);
     }, 1500);
