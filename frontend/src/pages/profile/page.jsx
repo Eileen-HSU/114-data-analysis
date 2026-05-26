@@ -97,6 +97,7 @@ export default function ProfilePage() {
   
   const [apiSurveys, setApiSurveys] = useState([]);
   const [isLoadingSurveys, setIsLoadingSurveys] = useState(false);
+  const [hasLoadedSurveys, setHasLoadedSurveys] = useState(false);
 
   const [profile, setProfile] = useState({
     name: "",
@@ -193,8 +194,12 @@ export default function ProfilePage() {
   }, [user?.token, user?.user_id, updateUser]); 
 
   useEffect(() => {
-    if (!user?.token) return;
+    if (!user?.token) {
+      setHasLoadedSurveys(true);
+      return;
+    }
 
+    setHasLoadedSurveys(false);
     setIsLoadingSurveys(true);
     fetch(apiUrl("/api/surveys/mine"), {
       headers: { 'Authorization': `Bearer ${user.token}` }
@@ -211,6 +216,7 @@ export default function ProfilePage() {
       })
       .finally(() => {
         setIsLoadingSurveys(false);
+        setHasLoadedSurveys(true);
       });
   }, [user?.token, surveyVersion]); 
 
@@ -329,13 +335,18 @@ export default function ProfilePage() {
     const params = new URLSearchParams(location.search);
     const surveyCode = params.get("survey");
     if (!surveyCode) return;
+    if (!hasLoadedSurveys) return;
 
     const targetSurvey = surveyRecords.find((survey) => survey.code === surveyCode);
-    if (!targetSurvey) return;
+    if (!targetSurvey) {
+      alert("載入問卷詳情失敗");
+      navigate("/profile", { replace: true });
+      return;
+    }
 
     handleOpenSurveyDetail(targetSurvey);
     navigate("/profile", { replace: true });
-  }, [location.search, navigate, selectedSurvey, surveyRecords]);
+  }, [hasLoadedSurveys, location.search, navigate, selectedSurvey, surveyRecords]);
 
   const updateSurveyDeadline = async (survey, nextDeadlineAt) => {
     if (new Date(nextDeadlineAt).getTime() <= Date.now()) {
@@ -369,11 +380,13 @@ export default function ProfilePage() {
     return data;
   };
 
+  const requestedSurveyCode = new URLSearchParams(location.search).get("survey");
+
   if (selectedSurvey) {
     return <SurveyDetailPage survey={selectedSurvey} onBack={() => setSelectedSurvey(null)} onUpdateDeadline={updateSurveyDeadline} />;
   }
 
-  if (isLoadingSurveyDetail) {
+  if (isLoadingSurveyDetail || requestedSurveyCode) {
     return (
       <>
         <Navbar />
