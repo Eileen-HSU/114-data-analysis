@@ -136,7 +136,7 @@ def create_survey():
     
 @survey_bp.route('/api/surveys/mine', methods=['GET'])
 def get_user_surveys():
-    """取得目前登入用戶的所有問卷"""
+    """取得目前登入用戶的所有問卷（包含完整題目與回覆內容）"""
     auth_user_id, auth_error = verify_token(request)
     if auth_error:
         return jsonify({"error": "Unauthorized"}), 401
@@ -150,24 +150,52 @@ def get_user_surveys():
         result = []
         for survey in surveys:
             question_json = survey.question_json or {}
-            response_count = Survey_Response.query.filter_by(
+            
+            items = question_json.get("items") or []
+            questions_data = []
+            for item in items:
+                questions_data.append({
+                    "id": item.get("id"),
+                    "title": item.get("title"),
+                    "type": item.get("type")
+                })
+
+            responses_records = Survey_Response.query.filter_by(
                 template_id=survey.template_id
-            ).count()
+            ).order_by(Survey_Response.created_at.desc()).all()
+
+            responses_data = []
+            for r in responses_records:
+                answer_json = r.answer_json or {}
+                
+                responses_data.append({
+                    "respondentId": r.response_id,
+                    "respondentIdentity": answer_json.get("respondent_identity") or "匿名",
+                    "submittedAt": r.created_at.isoformat() if r.created_at else "",
+                    "answers": answer_json.get("answers") or {}
+                })
+
             result.append({
+                "id":             survey.template_id,
                 "template_id":    survey.template_id,
                 "title":          survey.title,
+                "code":           survey.access_code,        
                 "access_code":    survey.access_code,
+                "createdAt":      survey.created_at.isoformat() if survey.created_at else "",
                 "created_at":     survey.created_at.isoformat() if survey.created_at else "",
+                "deadlineAt":     get_survey_deadline_at(survey, question_json), 
                 "deadline_at":    get_survey_deadline_at(survey, question_json),
-                "response_count": response_count,
+                "responseCount":  len(responses_data),
+                "response_count": len(responses_data),
+                "questions":      questions_data,            
+                "responses":      responses_data             
             })
 
         return jsonify(result), 200
 
     except Exception as e:
         logging.error(f"Get user surveys failed: {e}", exc_info=True)
-        return jsonify({"error": "取得問卷失敗"}), 500
-
+        return jsonify({"error": "取得問卷失敗", "detail": str(e)}), 500
 @survey_bp.route('/api/surveys/<access_code>', methods=['GET'])
 def get_survey(access_code):
     """用邀請碼取得公開填答用問卷內容"""
