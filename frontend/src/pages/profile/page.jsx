@@ -320,6 +320,19 @@ export default function ProfilePage() {
       });
   }, [surveyRecords, surveySearch, surveySortOrder]);
 
+  useEffect(() => {
+    if (selectedSurvey) return;
+    const params = new URLSearchParams(location.search);
+    const surveyCode = params.get("survey");
+    if (!surveyCode) return;
+
+    const targetSurvey = surveyRecords.find((survey) => survey.code === surveyCode);
+    if (!targetSurvey) return;
+
+    setSelectedSurvey(targetSurvey.detail);
+    navigate("/profile", { replace: true });
+  }, [location.search, navigate, selectedSurvey, surveyRecords]);
+
   const updateSurveyDeadline = async (survey, nextDeadlineAt) => {
     if (new Date(nextDeadlineAt).getTime() <= Date.now()) {
       throw new Error("截止時間必須晚於現在。");
