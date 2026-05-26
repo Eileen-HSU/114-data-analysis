@@ -49,8 +49,13 @@ function RatingStats({ question, responses, qNum }) {
   let total = 0;
   let answered = 0;
 
-  responses.forEach((response) => {
-    const value = Number(response.answers[question.id]);
+  if (!question) return null;
+  const safeResponses = Array.isArray(responses) ? responses : [];
+  const qId = question.id !== undefined ? question.id : question.question_id;
+
+  safeResponses.forEach((response) => {
+    if (!response || !response.answers) return;
+    const value = Number(response.answers[qId]);
     if (Number.isFinite(value) && value >= 0 && value <= 5) {
       counts[value] += 1;
       total += value;
@@ -65,7 +70,7 @@ function RatingStats({ question, responses, qNum }) {
     <div className="sdp-rating-card">
       <div className="sdp-rating-card-header">
         <span className="sdp-q-badge">Q{qNum}</span>
-        <span className="sdp-rating-card-title">{question.title}</span>
+        <span className="sdp-rating-card-title">{question.title || question.question_title || "未命名題目"}</span>
       </div>
       <div className="sdp-rating-stats">
         <div className="sdp-avg-block">
@@ -95,6 +100,9 @@ function RatingStats({ question, responses, qNum }) {
 }
 
 function ResponseTable({ questions, responses }) {
+  const safeQuestions = Array.isArray(questions) ? questions : [];
+  const safeResponses = Array.isArray(responses) ? responses : [];
+
   return (
     <div className="sdp-table-wrapper">
       <div className="sdp-table-scroll">
@@ -104,24 +112,34 @@ function ResponseTable({ questions, responses }) {
               <th className="sdp-th sdp-th-idx">#</th>
               <th className="sdp-th sdp-th-identity">填答人</th>
               <th className="sdp-th sdp-th-time">提交時間</th>
-              {questions.map((question, index) => (
-                <th key={question.id} className="sdp-th sdp-th-q">
+              {safeQuestions.map((question, index) => (
+                <th key={question.id || question.question_id || index} className="sdp-th sdp-th-q">
                   <div className="sdp-th-q-num">Q{index + 1}</div>
-                  <div className="sdp-th-q-title">{question.title}</div>
-                  <div className="sdp-th-q-type">{TYPE_LABELS[question.type] || question.type}</div>
+                  <div className="sdp-th-q-title">{question.title || question.question_title || "未命名題目"}</div>
+                  <div className="sdp-th-q-type">
+                    {TYPE_LABELS[question.type || question.question_type] || question.type || question.question_type || "問答"}
+                  </div>
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {responses.map((response, index) => (
-              <tr key={response.respondentId || index} className={index % 2 === 0 ? "sdp-tr-even" : "sdp-tr-odd"}>
+            {safeResponses.map((response, index) => (
+              <tr key={response.respondentId || response.respondent_id || index} className={index % 2 === 0 ? "sdp-tr-even" : "sdp-tr-odd"}>
                 <td className="sdp-td sdp-td-idx">{index + 1}</td>
-                <td className="sdp-td sdp-td-identity">{response.respondentIdentity || "匿名"}</td>
-                <td className="sdp-td sdp-td-time">{response.submittedAt}</td>
-                {questions.map((question) => (
-                  <td key={question.id} className="sdp-td sdp-td-ans">{displayAnswer(response.answers[question.id])}</td>
-                ))}
+                <td className="sdp-td sdp-td-identity">
+                  {response.respondentIdentity || response.respondent_identity || "匿名"}
+                </td>
+                <td className="sdp-td sdp-td-time">{response.submittedAt || response.submitted_at || "—"}</td>
+                {safeQuestions.map((question, qIdx) => {
+                  const qId = question.id !== undefined ? question.id : question.question_id;
+                  const ans = response.answers ? response.answers[qId] : undefined;
+                  return (
+                    <td key={question.id || question.question_id || qIdx} className="sdp-td sdp-td-ans">
+                      {displayAnswer(ans)}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>
@@ -131,20 +149,24 @@ function ResponseTable({ questions, responses }) {
   );
 }
 
-function buildSurveyChatContent(survey) {
+function buildSurveyChatContent(survey, questions, responses) {
   const lines = [
-    `問卷：${survey.title}`,
+    `問卷：${survey.title || survey.survey_name || "未命名問卷"}`,
     `邀請碼：${survey.code}`,
-    `建立日期：${survey.createdAt}`,
-    `回覆數：${survey.responses.length}`,
+    `建立日期：${survey.createdAt || survey.created_at || "—"}`,
+    `回覆數：${responses.length}`,
     "",
     "請協助我分析這份問卷的回答趨勢、可能洞察與後續建議。",
   ];
-  survey.questions.forEach((question, index) => {
-    lines.push(`Q${index + 1}. ${question.title}`);
-    survey.responses.slice(0, 8).forEach((response, responseIndex) => {
-      const identityLabel = response.respondentIdentity ? `填答人：${response.respondentIdentity}，` : "";
-      lines.push(`  ${responseIndex + 1}. ${identityLabel}${displayAnswer(response.answers[question.id])}`);
+  
+  questions.forEach((question, index) => {
+    const qId = question.id !== undefined ? question.id : question.question_id;
+    lines.push(`Q${index + 1}. ${question.title || question.question_title}`);
+    responses.slice(0, 8).forEach((response, responseIndex) => {
+      if (!response || !response.answers) return;
+      const identity = response.respondentIdentity || response.respondent_identity;
+      const identityLabel = identity ? `填答人：${identity}，` : "";
+      lines.push(`  ${responseIndex + 1}. ${identityLabel}${displayAnswer(response.answers[qId])}`);
     });
   });
   return lines.join("\n");
@@ -156,18 +178,25 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
   const [importSuccess, setImportSuccess] = useState(false);
   const [copyCodeSuccess, setCopyCodeSuccess] = useState(false);
   const [copyLinkSuccess, setCopyLinkSuccess] = useState(false);
-  const [deadlineValue, setDeadlineValue] = useState(toDateTimeLocalValue(survey.deadlineAt));
+  
+  // 避免 survey 為空時引發閃退白屏
+  const currentSurvey = survey || {};
+  const questions = Array.isArray(currentSurvey.questions) ? currentSurvey.questions : [];
+  const responses = Array.isArray(currentSurvey.responses) ? currentSurvey.responses : [];
+
+  const [deadlineValue, setDeadlineValue] = useState(toDateTimeLocalValue(currentSurvey.deadlineAt || currentSurvey.deadline_at));
   const [minDeadlineValue, setMinDeadlineValue] = useState(() => getNextDeadlineMin());
   const [deadlineStatus, setDeadlineStatus] = useState("");
   const [isSavingDeadline, setIsSavingDeadline] = useState(false);
-  const ratingQuestions = survey.questions.filter((question) => question.type === "rating");
-  const textQuestions = survey.questions.filter((question) => question.type !== "rating");
-  const surveyLink = `${window.location.origin}/survey/fill?code=${encodeURIComponent(survey.code)}`;
+
+  const ratingQuestions = questions.filter((question) => (question.type || question.question_type) === "rating");
+  const textQuestions = questions.filter((question) => (question.type || question.question_type) !== "rating");
+  const surveyLink = `${window.location.origin}/survey/fill?code=${encodeURIComponent(currentSurvey.code || "")}`;
 
   useEffect(() => {
-    setDeadlineValue(toDateTimeLocalValue(survey.deadlineAt));
+    setDeadlineValue(toDateTimeLocalValue(currentSurvey.deadlineAt || currentSurvey.deadline_at));
     setDeadlineStatus("");
-  }, [survey.deadlineAt]);
+  }, [currentSurvey.deadlineAt, currentSurvey.deadline_at]);
 
   useEffect(() => {
     const updateMinDeadline = () => setMinDeadlineValue(getNextDeadlineMin());
@@ -176,9 +205,11 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
     return () => window.clearInterval(timer);
   }, []);
 
+  if (!survey) return null;
+
   const handleCopyCode = async () => {
     try {
-      await navigator.clipboard.writeText(survey.code);
+      await navigator.clipboard.writeText(currentSurvey.code || "");
       setCopyCodeSuccess(true);
       setTimeout(() => setCopyCodeSuccess(false), 1600);
     } catch {
@@ -204,8 +235,8 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
       navigate("/workspace", {
         state: {
           surveyImport: {
-            sessionTitle: `問卷分析：${survey.title}`,
-            message: buildSurveyChatContent(survey),
+            sessionTitle: `問卷分析：${currentSurvey.title || currentSurvey.survey_name || "未命名問卷"}`,
+            message: buildSurveyChatContent(currentSurvey, questions, responses),
           },
         },
       });
@@ -224,7 +255,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
     setIsSavingDeadline(true);
     setDeadlineStatus("");
     try {
-      await onUpdateDeadline?.(survey, deadlineValue);
+      await onUpdateDeadline?.(currentSurvey, deadlineValue);
       setDeadlineStatus("截止時間已更新。");
     } catch (error) {
       setDeadlineStatus(error.message || "截止時間更新失敗。");
@@ -243,12 +274,12 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
               <i className="ri-arrow-left-line"></i>返回問卷
             </button>
             <div className="sdp-topbar-center">
-              <h1 className="sdp-topbar-title">{survey.title}</h1>
+              <h1 className="sdp-topbar-title">{currentSurvey.title || currentSurvey.survey_name || "未命名問卷"}</h1>
               <div className="sdp-topbar-meta">
-                <span><i className="ri-calendar-line"></i>{survey.createdAt}</span>
-                <span><i className="ri-time-line"></i>截止 {formatDeadline(survey.deadlineAt)}</span>
-                <span><i className="ri-user-line"></i>{survey.responses.length} 份回覆</span>
-                <span><i className="ri-question-line"></i>{survey.questions.length} 題</span>
+                <span><i className="ri-calendar-line"></i>{currentSurvey.createdAt || currentSurvey.created_at || "—"}</span>
+                <span><i className="ri-time-line"></i>截止 {formatDeadline(currentSurvey.deadlineAt || currentSurvey.deadline_at)}</span>
+                <span><i className="ri-user-line"></i>{responses.length} 份回覆</span>
+                <span><i className="ri-question-line"></i>{questions.length} 題</span>
               </div>
             </div>
             <div className="sdp-topbar-right">
@@ -257,7 +288,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
                   <i className="ri-key-2-line"></i>問卷代碼
                 </div>
                 <div className="sdp-code-row">
-                  <span className="sdp-code-value">{survey.code}</span>
+                  <span className="sdp-code-value">{currentSurvey.code}</span>
                   <button className="sdp-copy-code-btn" onClick={handleCopyCode} type="button">
                     <i className={copyCodeSuccess ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
                     {copyCodeSuccess ? "已複製" : "複製代碼"}
@@ -301,7 +332,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
             </div>
             <div className="sdp-stat-pill sdp-stat-pill-compact">
               <i className="ri-bar-chart-2-line"></i>
-              <span>{survey.responses.length} responses</span>
+              <span>{responses.length} responses</span>
             </div>
             <div className="sdp-link-card">
               <div className="sdp-code-label">
@@ -331,7 +362,12 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
                 </div>
                 <div className="sdp-rating-grid">
                   {ratingQuestions.map((question) => (
-                    <RatingStats key={question.id} question={question} responses={survey.responses} qNum={survey.questions.indexOf(question) + 1} />
+                    <RatingStats 
+                      key={question.id || question.question_id} 
+                      question={question} 
+                      responses={responses} 
+                      qNum={questions.indexOf(question) + 1} 
+                    />
                   ))}
                 </div>
               </section>
@@ -346,12 +382,13 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
                 </div>
                 <div className="sdp-text-q-list">
                   {textQuestions.map((question) => {
-                    const answers = survey.responses.map((response) => response.answers[question.id]).filter(Boolean);
+                    const qId = question.id !== undefined ? question.id : question.question_id;
+                    const answers = responses.map((response) => response.answers ? response.answers[qId] : undefined).filter(Boolean);
                     return (
-                      <div className="sdp-text-q-card" key={question.id}>
+                      <div className="sdp-text-q-card" key={question.id || question.question_id}>
                         <div className="sdp-text-q-header">
-                          <span className="sdp-q-badge sdp-q-badge-cyan">Q{survey.questions.indexOf(question) + 1}</span>
-                          <span className="sdp-text-q-title">{question.title}</span>
+                          <span className="sdp-q-badge sdp-q-badge-cyan">Q{questions.indexOf(question) + 1}</span>
+                          <span className="sdp-text-q-title">{question.title || question.question_title}</span>
                           <span className="sdp-text-q-count">{answers.length} 筆</span>
                         </div>
                         <div className="sdp-text-q-answers">
@@ -375,10 +412,10 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
             <div className="sdp-responses">
               <div className="sdp-table-section">
                 <div className="sdp-table-section-header">
-                  <span className="sdp-table-count">共 {survey.responses.length} 份回覆</span>
+                  <span className="sdp-table-count">共 {responses.length} 份回覆</span>
                   <span className="sdp-table-hint">可橫向捲動查看所有題目</span>
                 </div>
-                <ResponseTable questions={survey.questions} responses={survey.responses} />
+                <ResponseTable questions={questions} responses={responses} />
               </div>
             </div>
           )}

@@ -5,8 +5,13 @@ function RatingStats({ question, responses }) {
   let total = 0;
   let answered = 0;
 
-  responses.forEach((r) => {
-    const val = r.answers[question.id];
+  if (!question) return null;
+  const safeResponses = Array.isArray(responses) ? responses : [];
+
+  safeResponses.forEach((r) => {
+    if (!r || !r.answers) return;
+    const qId = question.id !== undefined ? question.id : question.question_id;
+    const val = r.answers[qId];
     if (val !== undefined && val !== "") {
       const num = Number(val);
       if (!isNaN(num) && num >= 0 && num <= 5) {
@@ -70,9 +75,10 @@ function RatingStats({ question, responses }) {
 }
 
 function ResponseTable({ questions, responses }) {
-  const textQuestions = questions.filter((q) => q.type !== "rating");
+  const safeQuestions = Array.isArray(questions) ? questions : [];
+  const safeResponses = Array.isArray(responses) ? responses : [];
 
-  if (textQuestions.length === 0) return null;
+  if (safeQuestions.length === 0) return null;
 
   return (
     <div className="response-table-wrapper">
@@ -83,28 +89,31 @@ function ResponseTable({ questions, responses }) {
               <th className="response-table-th response-table-th-idx">#</th>
               <th className="response-table-th response-table-th-identity">填答人</th>
               <th className="response-table-th response-table-th-time">提交時間</th>
-              {textQuestions.map((q) => (
-                <th key={q.id} className="response-table-th response-table-th-q">
-                  <div className="response-table-q-title">{q.title}</div>
+              {safeQuestions.map((q, i) => (
+                <th key={q.id || q.question_id || i} className="response-table-th response-table-th-q">
+                  <div className="response-table-q-title">{q.title || q.question_title || "未命名題目"}</div>
                   <div className="response-table-q-type">
-                    {{ short: "簡答", long: "詳答", single: "單選", multiple: "多選", rating: "評分" }[q.type]}
+                    {{ short: "簡答", long: "詳答", single: "單選", multiple: "多選", rating: "評分" }[q.type || q.question_type] || "問答"}
                   </div>
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {responses.map((r, idx) => (
-              <tr key={r.respondentId || idx} className={idx % 2 === 0 ? "response-table-row-even" : "response-table-row-odd"}>
+            {safeResponses.map((r, idx) => (
+              <tr key={r.respondentId || r.respondent_id || idx} className={idx % 2 === 0 ? "response-table-row-even" : "response-table-row-odd"}>
                 <td className="response-table-td response-table-td-idx">{idx + 1}</td>
-                <td className="response-table-td response-table-td-identity">{r.respondentIdentity || "匿名"}</td>
-                <td className="response-table-td response-table-td-time">{r.submittedAt}</td>
-                {textQuestions.map((q) => {
-                  const ans = r.answers[q.id];
-                  const display = Array.isArray(ans) ? ans.join("、") : (ans || "—");
+                <td className="response-table-td response-table-td-identity">
+                  {r.respondentIdentity || r.respondent_identity || r.username || "匿名"}
+                </td>
+                <td className="response-table-td response-table-td-time">{r.submittedAt || r.submitted_at || "—"}</td>
+                {safeQuestions.map((q, i) => {
+                  const qId = q.id !== undefined ? q.id : q.question_id;
+                  const ans = r.answers ? r.answers[qId] : undefined;
+                  const display = Array.isArray(ans) ? ans.join("、") : (ans !== undefined && ans !== "" ? String(ans) : "—");
                   return (
-                    <td key={q.id} className="response-table-td response-table-td-ans">
-                      {display || "—"}
+                    <td key={q.id || q.question_id || i} className="response-table-td response-table-td-ans">
+                      {display}
                     </td>
                   );
                 })}
@@ -120,8 +129,14 @@ function ResponseTable({ questions, responses }) {
 export default function SurveyDetailModal({ survey, onClose }) {
   const [activeTab, setActiveTab] = useState("overview");
 
-  const ratingQuestions = survey.questions.filter((q) => q.type === "rating");
-  const textQuestions = survey.questions.filter((q) => q.type !== "rating");
+  // 如果物件根本還沒進來，先回傳 null 阻斷，避免網頁崩潰變空白
+  if (!survey) return null;
+
+  const questions = Array.isArray(survey.questions) ? survey.questions : [];
+  const responses = Array.isArray(survey.responses) ? survey.responses : [];
+
+  const ratingQuestions = questions.filter((q) => (q.type || q.question_type) === "rating");
+  const textQuestions = questions.filter((q) => (q.type || q.question_type) !== "rating");
 
   return (
     <div className="survey-detail-backdrop" onClick={onClose}>
@@ -129,11 +144,11 @@ export default function SurveyDetailModal({ survey, onClose }) {
         {/* Header */}
         <div className="survey-detail-header">
           <div>
-            <h2 className="survey-detail-title">{survey.title}</h2>
+            <h2 className="survey-detail-title">{survey.title || survey.survey_name || "未命名問卷"}</h2>
             <div className="survey-detail-meta">
               <span><i className="ri-key-2-line"></i> {survey.code}</span>
-              <span><i className="ri-calendar-line"></i> {survey.createdAt}</span>
-              <span><i className="ri-user-line"></i> {survey.responses.length} 人回覆</span>
+              <span><i className="ri-calendar-line"></i> {survey.createdAt || survey.created_at || "—"}</span>
+              <span><i className="ri-user-line"></i> {responses.length} 人回覆</span>
             </div>
           </div>
           <button className="survey-detail-close" onClick={onClose}>
@@ -163,7 +178,7 @@ export default function SurveyDetailModal({ survey, onClose }) {
         <div className="survey-detail-body">
           {activeTab === "overview" && (
             <div>
-              {/* Rating Questions - shown first */}
+              {/* Rating Questions */}
               {ratingQuestions.length > 0 && (
                 <div className="survey-detail-section">
                   <div className="survey-detail-section-title">
@@ -171,13 +186,13 @@ export default function SurveyDetailModal({ survey, onClose }) {
                     評分題統計
                   </div>
                   <div className="rating-questions-grid">
-                    {ratingQuestions.map((q, idx) => (
-                      <div key={q.id} className="rating-question-card">
+                    {ratingQuestions.map((q) => (
+                      <div key={q.id || q.question_id} className="rating-question-card">
                         <div className="rating-question-label">
-                          <span className="rating-q-num">Q{survey.questions.indexOf(q) + 1}</span>
-                          {q.title}
+                          <span className="rating-q-num">Q{questions.indexOf(q) + 1}</span>
+                          {q.title || q.question_title}
                         </div>
-                        <RatingStats question={q} responses={survey.responses} />
+                        <RatingStats question={q} responses={responses} />
                       </div>
                     ))}
                   </div>
@@ -193,21 +208,22 @@ export default function SurveyDetailModal({ survey, onClose }) {
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                     {textQuestions.map((q) => {
-                      const answers = survey.responses
-                        .map((r) => r.answers[q.id])
+                      const qId = q.id !== undefined ? q.id : q.question_id;
+                      const answers = responses
+                        .map((r) => r.answers ? r.answers[qId] : undefined)
                         .filter((a) => a && (Array.isArray(a) ? a.length > 0 : a !== ""));
                       return (
-                        <div key={q.id} className="text-q-summary-card">
+                        <div key={q.id || q.question_id} className="text-q-summary-card">
                           <div className="text-q-summary-header">
-                            <span className="text-q-num">Q{survey.questions.indexOf(q) + 1}</span>
-                            <span className="text-q-title">{q.title}</span>
+                            <span className="text-q-num">Q{questions.indexOf(q) + 1}</span>
+                            <span className="text-q-title">{q.title || q.question_title}</span>
                             <span className="text-q-count">{answers.length} 人回答</span>
                           </div>
                           <div className="text-q-answers-preview">
                             {answers.slice(0, 3).map((ans, i) => (
                               <div key={i} className="text-q-answer-item">
                                 <i className="ri-chat-1-line"></i>
-                                <span>{Array.isArray(ans) ? ans.join("、") : ans}</span>
+                                <span>{Array.isArray(ans) ? ans.join("、") : String(ans)}</span>
                               </div>
                             ))}
                             {answers.length > 3 && (
@@ -233,26 +249,24 @@ export default function SurveyDetailModal({ survey, onClose }) {
               <div className="survey-detail-section">
                 <div className="survey-detail-section-title">
                   <i className="ri-table-line"></i>
-                  所有回覆（{survey.responses.length} 筆）
-                  <span style={{ fontSize: 12, color: "var(--slate-400)", fontWeight: 400, marginLeft: 8 }}>
-                    評分題顯示於上方，問答題展開於右側
-                  </span>
+                  所有回覆（{responses.length} 筆）
                 </div>
 
-                {/* Rating summary row at top */}
                 {ratingQuestions.length > 0 && (
                   <div className="responses-rating-row">
                     {ratingQuestions.map((q) => {
                       let total = 0; let cnt = 0;
-                      survey.responses.forEach((r) => {
-                        const v = Number(r.answers[q.id]);
-                        if (!isNaN(v) && r.answers[q.id] !== "") { total += v; cnt++; }
+                      responses.forEach((r) => {
+                        if (!r.answers) return;
+                        const qId = q.id !== undefined ? q.id : q.question_id;
+                        const v = Number(r.answers[qId]);
+                        if (!isNaN(v) && r.answers[qId] !== "") { total += v; cnt++; }
                       });
                       const avg = cnt > 0 ? (total / cnt).toFixed(1) : "—";
                       return (
-                        <div key={q.id} className="responses-rating-chip">
-                          <span className="responses-rating-chip-q">Q{survey.questions.indexOf(q) + 1}</span>
-                          <span className="responses-rating-chip-title">{q.title}</span>
+                        <div key={q.id || q.question_id} className="responses-rating-chip">
+                          <span className="responses-rating-chip-q">Q{questions.indexOf(q) + 1}</span>
+                          <span className="responses-rating-chip-title">{q.title || q.question_title}</span>
                           <span className="responses-rating-chip-avg">平均 {avg} 分</span>
                         </div>
                       );
@@ -260,7 +274,7 @@ export default function SurveyDetailModal({ survey, onClose }) {
                   </div>
                 )}
 
-                <ResponseTable questions={survey.questions} responses={survey.responses} />
+                <ResponseTable questions={questions} responses={responses} />
               </div>
             </div>
           )}
