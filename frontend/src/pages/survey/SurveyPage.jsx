@@ -1,7 +1,7 @@
-import { useMemo, useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Navbar from "../../components/feature/Navbar";
 import { useAuth } from "../../hooks/AuthContext";
-import { apiUrl } from "../../lib/api"; 
+import { apiUrl } from "../../lib/api";
 import "./survey.css";
 
 function getSurveyTime(createdAt) {
@@ -11,21 +11,18 @@ function getSurveyTime(createdAt) {
 
 export default function SurveyPage() {
   const { user } = useAuth();
-  
-  // 儲存後端撈回來的問卷狀態
   const [apiSurveys, setApiSurveys] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // ── 從 API 撈取問卷資料 ─────────────────────────────
   useEffect(() => {
     if (!user?.token) return;
 
     setIsLoading(true);
     fetch(apiUrl("/api/surveys/mine"), {
-      headers: { 'Authorization': `Bearer ${user.token}` }
+      headers: { Authorization: `Bearer ${user.token}` },
     })
       .then((res) => {
-        if (!res.ok) throw new Error("撈取最近問卷失敗");
+        if (!res.ok) throw new Error("載入問卷失敗");
         return res.json();
       })
       .then((data) => {
@@ -41,12 +38,12 @@ export default function SurveyPage() {
 
   const recentSurveys = useMemo(() => {
     if (!user) return [];
-    
+
     return [...apiSurveys]
       .sort((a, b) => {
         const timeA = getSurveyTime(a.createdAt || a.created_at);
         const timeB = getSurveyTime(b.createdAt || b.created_at);
-        return timeB - timeA; // 由新到舊
+        return timeB - timeA;
       })
       .slice(0, 3);
   }, [apiSurveys, user]);
@@ -108,6 +105,7 @@ export default function SurveyPage() {
                   <div>
                     <span className="entry-card-kicker">最近活動</span>
                     <h2>問卷動態</h2>
+                    <p className="survey-activity-note">僅顯示最新的 3 個問卷</p>
                   </div>
                   <a href="/profile" className="survey-profile-link">查看作品集</a>
                 </div>
@@ -124,17 +122,20 @@ export default function SurveyPage() {
                   </div>
                 ) : recentSurveys.length > 0 ? (
                   <div className="survey-activity-list">
-                    {recentSurveys.map((survey) => (
-                      <a className="survey-activity-item" href={`/profile?survey=${encodeURIComponent(survey.code || survey.access_code)}`} key={survey.code || survey.access_code}>
-                        <span className="survey-activity-dot"></span>
-                        <div>
-                          <strong>{survey.title || survey.survey_name || "未命名問卷"}</strong>
-                          <span>
-                            {survey.responses?.length || survey.response_count || 0} 份回覆 · {survey.code}
-                          </span>
-                        </div>
-                      </a>
-                    ))}
+                    {recentSurveys.map((survey) => {
+                      const code = survey.code || survey.access_code;
+                      return (
+                        <a className="survey-activity-item" href={`/profile?survey=${encodeURIComponent(code)}`} key={code}>
+                          <span className="survey-activity-dot"></span>
+                          <div>
+                            <strong>{survey.title || survey.survey_name || "未命名問卷"}</strong>
+                            <span>
+                              {survey.responses?.length || survey.response_count || 0} 份回覆 · {code}
+                            </span>
+                          </div>
+                        </a>
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="survey-activity-empty">
