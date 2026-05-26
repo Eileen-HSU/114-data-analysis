@@ -295,12 +295,13 @@ function PlainMessageContent({ content }) {
 function AssistantTableContent({ content }) {
   const navigate = useNavigate();
   const { intro, rows } = parseAssistantTableRows(content);
-  const forceEmptyTable = content.includes(EMPTY_SURVEY_TABLE_MARKER);
-  const displayRows = forceEmptyTable && rows.length === 0
+  const isSurveyAnalysisReply = intro.includes("問卷資料") && intro.includes("初步分析結果");
+  const shouldFillEmptySurveyRow = rows.length === 0 && (content.includes(EMPTY_SURVEY_TABLE_MARKER) || isSurveyAnalysisReply);
+  const displayRows = shouldFillEmptySurveyRow
     ? [{ item: "資料不足", description: "目前問卷內容過少，暫無足夠資料可進行分析。" }]
     : rows;
 
-  if (displayRows.length < 2 && !forceEmptyTable) {
+  if (displayRows.length < 2 && !shouldFillEmptySurveyRow) {
     return <PlainMessageContent content={content} />;
   }
 
