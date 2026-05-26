@@ -89,6 +89,7 @@ export default function ProfilePage() {
   const [twoFactorPasswordError, setTwoFactorPasswordError] = useState("");
   const [isDisablingTwoFactor, setIsDisablingTwoFactor] = useState(false);
   const [selectedSurvey, setSelectedSurvey] = useState(null);
+  const [isLoadingSurveyDetail, setIsLoadingSurveyDetail] = useState(false);
   const [surveySearch, setSurveySearch] = useState("");
   const [surveySortOrder, setSurveySortOrder] = useState("desc");
   const [surveyVersion, setSurveyVersion] = useState(0);
@@ -269,6 +270,7 @@ export default function ProfilePage() {
     const auth = user || JSON.parse(localStorage.getItem("dataanalysis_auth") || "{}");
     const code = encodeURIComponent(survey.code || survey.access_code);
 
+    setIsLoadingSurveyDetail(true);
     try {
       const headers = auth?.token ? { Authorization: `Bearer ${auth.token}` } : {};
       const [surveyRes, responsesRes] = await Promise.all([
@@ -302,6 +304,8 @@ export default function ProfilePage() {
     } catch (error) {
       console.error("載入問卷詳情失敗:", error);
       alert(error.message || "載入問卷詳情失敗");
+    } finally {
+      setIsLoadingSurveyDetail(false);
     }
   };
 
@@ -367,6 +371,23 @@ export default function ProfilePage() {
 
   if (selectedSurvey) {
     return <SurveyDetailPage survey={selectedSurvey} onBack={() => setSelectedSurvey(null)} onUpdateDeadline={updateSurveyDeadline} />;
+  }
+
+  if (isLoadingSurveyDetail) {
+    return (
+      <>
+        <Navbar />
+        <main className="profile-page profile-loading-page">
+          <div className="profile-survey-loading" role="status" aria-live="polite">
+            <div className="profile-survey-loading-icon">
+              <i className="ri-loader-4-line ri-spin"></i>
+            </div>
+            <h1>正在載入問卷詳情…</h1>
+            <p>正在整理題目、統計與回覆資料，請稍候。</p>
+          </div>
+        </main>
+      </>
+    );
   }
 
   const handleAvatarChange = (e) => {
