@@ -172,6 +172,11 @@ def get_user_surveys():
 def get_survey(access_code):
     """用邀請碼取得公開填答用問卷內容"""
     try:
+        auth_user_id = None
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            auth_user_id, _ = verify_token(request)
+
         survey = Survey_Template.query.filter_by(access_code=access_code.strip().upper()).first()
         if not survey or not survey.is_active:
             return jsonify({"error": "找不到這份問卷"}), 404
@@ -179,8 +184,9 @@ def get_survey(access_code):
         question_json = survey.question_json or {}
         deadline_at = get_survey_deadline_at(survey, question_json)
         identity_mode = question_json.get("identity_mode") or ("anonymous" if survey.is_anonymous else "identified")
+        is_owner = auth_user_id is not None and survey.user_id == auth_user_id
 
-        if is_survey_expired(question_json, survey.due_date):
+        if is_survey_expired(question_json, survey.due_date) and not is_owner:
             return jsonify({
                 "error": "這份問卷已截止",
                 "expired": True,
@@ -189,7 +195,7 @@ def get_survey(access_code):
                 "access_code": survey.access_code,
             }), 410
 
-        return jsonify({
+        response_data = {
             "template_id": survey.template_id,
             "title": survey.title,
             "description": question_json.get("description") or "",
@@ -198,7 +204,11 @@ def get_survey(access_code):
             "questions": question_json.get("items") or [],
             "access_code": survey.access_code,
             "created_at": survey.created_at.isoformat() if survey.created_at else None,
-        }), 200
+        }
+
+        if is_owner and is_survey_expired(question_json, survey.due_date):
+            response_data["expired"] = True
+        return jsonify(response_data), 200
 
     except Exception as e:
         logging.error(f"Survey lookup failed: {e}", exc_info=True)
