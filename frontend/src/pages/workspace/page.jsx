@@ -64,10 +64,9 @@ function getStoredSurveyRecords(user, apiSurveys = []) {
       detail: survey,
     }));
 
-  const localCodes = new Set(localRecords.map((survey) => survey.code).filter(Boolean));
   const backendRecords = apiSurveys
     .map(normalizeSurveyDetail)
-    .filter((survey) => survey.code && !localCodes.has(survey.code))
+    .filter((survey) => survey.code)
     .map((survey) => ({
       id: survey.id,
       title: survey.title,
@@ -76,8 +75,10 @@ function getStoredSurveyRecords(user, apiSurveys = []) {
       responseCount: survey.responses.length,
       detail: survey,
     }));
+  const backendCodes = new Set(backendRecords.map((survey) => survey.code).filter(Boolean));
+  const uniqueLocalRecords = localRecords.filter((survey) => !backendCodes.has(survey.code));
 
-  return [...backendRecords, ...localRecords];
+  return [...backendRecords, ...uniqueLocalRecords];
 }
 
 function buildSurveyChatContent(survey) {
@@ -444,13 +445,13 @@ export default function WorkspacePage() {
   const messages = activeSession?.messages ?? [];
 
   useEffect(() => {
-    if (!isLoggedIn || !user?.token) {
+    const headers = getAuthHeader();
+    if (!isLoggedIn || !headers.Authorization) {
       setApiSurveys([]);
       return;
     }
 
     let cancelled = false;
-    const headers = getAuthHeader();
 
     const fetchSurveyDetails = async () => {
       try {
@@ -491,7 +492,7 @@ export default function WorkspacePage() {
     return () => {
       cancelled = true;
     };
-  }, [isLoggedIn, user?.token]);
+  }, [isLoggedIn, user]);
 
   // ── 登入後從後端載入 workspace 列表 ──────────────────────
   useEffect(() => {
