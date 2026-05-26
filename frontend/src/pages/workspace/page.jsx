@@ -27,7 +27,20 @@ function getAuthHeader() {
   }
 }
 
-function getStoredSurveyRecords(user) {
+function normalizeSurveyDetail(survey) {
+  const code = survey?.code || survey?.access_code;
+  return {
+    ...survey,
+    id: survey?.id || survey?.template_id || code,
+    title: survey?.title || survey?.survey_name || "未命名問卷",
+    code,
+    createdAt: survey?.createdAt || survey?.created_at || "",
+    questions: Array.isArray(survey?.questions) ? survey.questions : [],
+    responses: Array.isArray(survey?.responses) ? survey.responses : [],
+  };
+}
+
+function getStoredSurveyRecords(user, apiSurveys = []) {
   let surveys = [];
   try {
     const stored = JSON.parse(localStorage.getItem("surveys") || "{}");
@@ -36,7 +49,7 @@ function getStoredSurveyRecords(user) {
     surveys = [];
   }
 
-  return surveys
+  const localRecords = surveys
     .filter((survey) => {
       if (!user) return false;
       if (!survey.ownerId && !survey.ownerEmail) return false;
@@ -50,29 +63,46 @@ function getStoredSurveyRecords(user) {
       responseCount: survey.responses?.length || 0,
       detail: survey,
     }));
+
+  const localCodes = new Set(localRecords.map((survey) => survey.code).filter(Boolean));
+  const backendRecords = apiSurveys
+    .map(normalizeSurveyDetail)
+    .filter((survey) => survey.code && !localCodes.has(survey.code))
+    .map((survey) => ({
+      id: survey.id,
+      title: survey.title,
+      code: survey.code,
+      createdAt: survey.createdAt,
+      responseCount: survey.responses.length,
+      detail: survey,
+    }));
+
+  return [...backendRecords, ...localRecords];
 }
 
 function buildSurveyChatContent(survey) {
-  const ratingQuestions = survey.questions.filter((q) => q.type === "rating");
-  const textQuestions = survey.questions.filter((q) => q.type !== "rating");
+  const detail = normalizeSurveyDetail(survey);
+  const ratingQuestions = detail.questions.filter((q) => (q.type || q.question_type) === "rating");
+  const textQuestions = detail.questions.filter((q) => (q.type || q.question_type) !== "rating");
   const lines = [];
-  lines.push(`📋 問卷名稱：${survey.title}`);
-  lines.push(`🔑 問卷代碼：${survey.code}`);
-  lines.push(`📅 建立日期：${survey.createdAt}`);
-  lines.push(`👥 回覆人數：${survey.responses.length} 人`);
-  lines.push(`❓ 題目數量：${survey.questions.length} 道`);
+  lines.push(`📋 問卷名稱：${detail.title}`);
+  lines.push(`🔑 問卷代碼：${detail.code}`);
+  lines.push(`📅 建立日期：${detail.createdAt}`);
+  lines.push(`👥 回覆人數：${detail.responses.length} 人`);
+  lines.push(`❓ 題目數量：${detail.questions.length} 道`);
   lines.push("");
   if (ratingQuestions.length > 0) {
     lines.push("── 評分題統計 ──");
     ratingQuestions.forEach((q) => {
+      const qId = q.id !== undefined ? q.id : q.question_id;
       let total = 0;
       let cnt = 0;
-      survey.responses.forEach((r) => {
-        const v = Number(r.answers[q.id]);
-        if (!isNaN(v) && r.answers[q.id] !== "") { total += v; cnt++; }
+      detail.responses.forEach((r) => {
+        const v = Number(r.answers?.[qId]);
+        if (!isNaN(v) && r.answers?.[qId] !== "") { total += v; cnt++; }
       });
       const avg = cnt > 0 ? (total / cnt).toFixed(1) : "無資料";
-      lines.push(`Q${survey.questions.indexOf(q) + 1}. ${q.title}`);
+      lines.push(`Q${detail.questions.indexOf(q) + 1}. ${q.title || q.question_title}`);
       lines.push(`   平均分：${avg} / 5（${cnt} 人作答）`);
     });
     lines.push("");
@@ -80,13 +110,14 @@ function buildSurveyChatContent(survey) {
   if (textQuestions.length > 0) {
     lines.push("── 問答題回覆 ──");
     textQuestions.forEach((q) => {
-      const answers = survey.responses
+      const qId = q.id !== undefined ? q.id : q.question_id;
+      const answers = detail.responses
         .map((response) => ({
-          answer: response.answers[q.id],
-          respondentIdentity: response.respondentIdentity,
+          answer: response.answers?.[qId],
+          respondentIdentity: response.respondentIdentity || response.respondent_identity,
         }))
         .filter(({ answer }) => answer && (Array.isArray(answer) ? answer.length > 0 : answer !== ""));
-      lines.push(`Q${survey.questions.indexOf(q) + 1}. ${q.title}（${answers.length} 人回答）`);
+      lines.push(`Q${detail.questions.indexOf(q) + 1}. ${q.title || q.question_title}（${answers.length} 人回答）`);
       answers.forEach(({ answer, respondentIdentity }, i) => {
         const text = Array.isArray(answer) ? answer.join("、") : String(answer);
         const identityLabel = respondentIdentity ? `填答人：${respondentIdentity}，` : "";
@@ -105,20 +136,22 @@ function hasAnswerValue(answer) {
 }
 
 function getSurveyStats(survey) {
-  const questions = Array.isArray(survey?.questions) ? survey.questions : [];
-  const responses = Array.isArray(survey?.responses) ? survey.responses : [];
-  const ratingQuestions = questions.filter((q) => q.type === "rating");
-  const textQuestions = questions.filter((q) => q.type !== "rating");
+  const detail = normalizeSurveyDetail(survey);
+  const questions = detail.questions;
+  const responses = detail.responses;
+  const ratingQuestions = questions.filter((q) => (q.type || q.question_type) === "rating");
+  const textQuestions = questions.filter((q) => (q.type || q.question_type) !== "rating");
   const answeredValues = [];
   const ratingValues = [];
   const textAnswers = [];
 
   responses.forEach((response) => {
     questions.forEach((question) => {
-      const answer = response.answers?.[question.id];
+      const qId = question.id !== undefined ? question.id : question.question_id;
+      const answer = response.answers?.[qId];
       if (!hasAnswerValue(answer)) return;
       answeredValues.push(answer);
-      if (question.type === "rating") {
+      if ((question.type || question.question_type) === "rating") {
         const value = Number(answer);
         if (!Number.isNaN(value)) ratingValues.push(value);
         return;
@@ -148,7 +181,7 @@ function isSurveyContentTooSmall(stats) {
 
 function buildSurveyAnalysisReplyFromSurvey(survey, fallbackTitle = "問卷") {
   const stats = getSurveyStats(survey);
-  const title = survey?.title || fallbackTitle;
+  const title = survey?.title || survey?.survey_name || fallbackTitle;
   const intro = `我已收到「${title}」的問卷資料，以下是初步分析結果：`;
 
   if (isSurveyContentTooSmall(stats)) {
@@ -160,7 +193,8 @@ function buildSurveyAnalysisReplyFromSurvey(survey, fallbackTitle = "問卷") {
     rows.push(`評分題洞察：共 ${stats.ratingQuestions.length} 題評分題，平均分為 ${stats.ratingAverage ?? "無資料"} / 5，可優先觀察低於平均的題目。`);
   }
   if (stats.textQuestions.length > 0) {
-    const sampleQuestion = stats.textQuestions[0]?.title ? `「${stats.textQuestions[0].title}」` : "開放題";
+    const sampleTitle = stats.textQuestions[0]?.title || stats.textQuestions[0]?.question_title;
+    const sampleQuestion = sampleTitle ? `「${sampleTitle}」` : "開放題";
     rows.push(`問答題主題分析：共收集 ${stats.textAnswers.length} 筆文字回覆，可先從 ${sampleQuestion} 的常見關鍵字整理主要意見。`);
   }
   rows.push(`回覆概況：目前共有 ${stats.responses.length} 位填答者、${stats.questions.length} 道題目，已累積 ${stats.answeredValues.length} 筆可分析答案。`);
@@ -170,13 +204,22 @@ function buildSurveyAnalysisReplyFromSurvey(survey, fallbackTitle = "問卷") {
 }
 
 function parseBuiltInSurveyText(content) {
-  if (!content.includes("📋 問卷名稱：") || !content.includes("🔑 問卷代碼：")) return null;
-  const title = content.match(/📋 問卷名稱：(.+)/)?.[1]?.trim() || "問卷";
-  const responseCount = Number(content.match(/👥 回覆人數：(\d+)/)?.[1] || 0);
-  const questionCount = Number(content.match(/❓ 題目數量：(\d+)/)?.[1] || 0);
+  const isEmojiSurvey = content.includes("📋 問卷名稱：") && content.includes("🔑 問卷代碼：");
+  const isProfileSurvey = content.includes("問卷：") && content.includes("邀請碼：") && content.includes("回覆數：");
+  if (!isEmojiSurvey && !isProfileSurvey) return null;
+
+  const title = (isEmojiSurvey
+    ? content.match(/📋 問卷名稱：(.+)/)?.[1]
+    : content.match(/問卷：(.+)/)?.[1])?.trim() || "問卷";
+  const responseCount = Number((isEmojiSurvey
+    ? content.match(/👥 回覆人數：(\d+)/)?.[1]
+    : content.match(/回覆數：(\d+)/)?.[1]) || 0);
+  const questionCount = Number((isEmojiSurvey
+    ? content.match(/❓ 題目數量：(\d+)/)?.[1]
+    : (content.match(/^Q\d+\./gm) || []).length) || 0);
   const answerCount = (content.match(/^\s+\d+\.\s+/gm) || []).length;
-  const hasRating = content.includes("── 評分題統計 ──");
-  const hasText = content.includes("── 問答題回覆 ──");
+  const hasRating = content.includes("── 評分題統計 ──") || /^\s+\d+\.\s*[0-5](?:\.0)?\s*$/m.test(content);
+  const hasText = content.includes("── 問答題回覆 ──") || answerCount > 0;
   return { title, responseCount, questionCount, answerCount, hasRating, hasText };
 }
 
@@ -185,7 +228,7 @@ function buildSurveyAnalysisReplyFromText(content) {
   if (!survey) return null;
   const intro = `我已收到「${survey.title}」的問卷資料，以下是初步分析結果：`;
 
-  if (survey.questionCount === 0 || survey.responseCount < 2 || survey.answerCount < 2) {
+  if (survey.questionCount === 0 || survey.answerCount < 2) {
     return `${EMPTY_SURVEY_TABLE_MARKER}\n${intro}`;
   }
 
@@ -379,6 +422,7 @@ export default function WorkspacePage() {
   const [showSurveyPicker, setShowSurveyPicker] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [surveyPickerSearch, setSurveyPickerSearch] = useState("");
+  const [apiSurveys, setApiSurveys] = useState([]);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [toastMsg, setToastMsg] = useState(null);
   const toastTimerRef = useRef(null);
@@ -398,6 +442,56 @@ export default function WorkspacePage() {
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
   const messages = activeSession?.messages ?? [];
+
+  useEffect(() => {
+    if (!isLoggedIn || !user?.token) {
+      setApiSurveys([]);
+      return;
+    }
+
+    let cancelled = false;
+    const headers = getAuthHeader();
+
+    const fetchSurveyDetails = async () => {
+      try {
+        const res = await fetch(apiUrl("/api/surveys/mine"), { headers });
+        if (!res.ok) return;
+        const data = await res.json();
+        const surveys = Array.isArray(data) ? data : [];
+        const detailed = await Promise.all(
+          surveys.map(async (survey) => {
+            const code = survey.code || survey.access_code;
+            if (!code) return normalizeSurveyDetail(survey);
+            try {
+              const [surveyRes, responsesRes] = await Promise.all([
+                fetch(apiUrl(`/api/surveys/${encodeURIComponent(code)}`), { headers }),
+                fetch(apiUrl(`/api/surveys/${encodeURIComponent(code)}/responses`), { headers }),
+              ]);
+              const surveyData = surveyRes.ok ? await surveyRes.json() : {};
+              const responsesData = responsesRes.ok ? await responsesRes.json() : {};
+              return normalizeSurveyDetail({
+                ...survey,
+                ...surveyData,
+                code,
+                access_code: code,
+                responses: responsesData.responses || [],
+              });
+            } catch {
+              return normalizeSurveyDetail(survey);
+            }
+          })
+        );
+        if (!cancelled) setApiSurveys(detailed);
+      } catch (err) {
+        console.error("載入問卷清單失敗", err);
+      }
+    };
+
+    fetchSurveyDetails();
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, user?.token]);
 
   // ── 登入後從後端載入 workspace 列表 ──────────────────────
   useEffect(() => {
@@ -518,7 +612,7 @@ export default function WorkspacePage() {
   }, []);
 
   const handleSelectSurvey = (record) => {
-    const detail = record.detail;
+    const detail = normalizeSurveyDetail(record.detail);
     if (!detail) return;
     const content = buildSurveyChatContent(detail);
     const newId = `survey-${Date.now()}`;
@@ -548,10 +642,11 @@ export default function WorkspacePage() {
     }, 1800);
   };
 
-  const filteredSurveyPicker = getStoredSurveyRecords(user).filter(
+  const surveyPickerRecords = getStoredSurveyRecords(user, apiSurveys);
+  const filteredSurveyPicker = surveyPickerRecords.filter(
     (s) =>
-      s.title.toLowerCase().includes(surveyPickerSearch.toLowerCase()) ||
-      s.code.toLowerCase().includes(surveyPickerSearch.toLowerCase())
+      String(s.title || "").toLowerCase().includes(surveyPickerSearch.toLowerCase()) ||
+      String(s.code || "").toLowerCase().includes(surveyPickerSearch.toLowerCase())
   );
 
   const sendMessage = () => {
