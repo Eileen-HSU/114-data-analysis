@@ -253,6 +253,7 @@
 }
 
 .survey-profile-link {
+  display: none;
   color: #b45d86;
   font-size: 12px;
   font-weight: 850;
