@@ -55,7 +55,7 @@ export default function CreateSurveyPage() {
   const [minDeadlineAt, setMinDeadlineAt] = useState(() => getNextDeadlineMin());
   const [generatedCode, setGeneratedCode] = useState("");
   const [copiedCode, setCopiedCode] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);const shareLink = generatedCode ? `${window.location.origin}/survey/fill?code=${encodeURIComponent(generatedCode)}` : "";
   const shareLink = generatedCode ? `${window.location.origin}/s/${encodeURIComponent(title.trim())}-${generatedCode}` : "";
 
   useEffect(() => {
@@ -356,11 +356,7 @@ export default function CreateSurveyPage() {
               {copiedLink ? "已複製連結" : "複製填寫連結"}
             </button>
             <div className="d-flex gap-3">
-              <a
-                href={`/s/${encodeURIComponent(title.trim())}-${generatedCode}`}
-                className="btn-generate"
-                style={{ flex: 1, padding: "14px", textDecoration: "none", justifyContent: "center" }}
-              >
+              <a href={`/survey/fill?code=${encodeURIComponent(generatedCode)}`} className="btn-generate" style={{ flex: 1, padding: "14px", textDecoration: "none", justifyContent: "center" }}>
                 <i className="ri-pencil-line"></i> 測試填答
               </a>
               <a href="/profile" className="btn-generate" style={{ flex: 1, padding: "14px", background: "var(--slate-100)", color: "var(--slate-600)", textDecoration: "none", justifyContent: "center" }}>
