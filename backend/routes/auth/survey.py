@@ -310,7 +310,7 @@ def get_survey_responses(access_code):
                 "response_id":   r.response_id,
                 "submitted_at":  r.submitted_at.isoformat() if r.submitted_at else None,
                 "answers":       (r.answer_json or {}).get("answers", {}),
-                "respondent_identity": r.res_iden,
+                "respondent_identity": (r.answer_json or {}).get("respondent_identity"),
             })
 
         return jsonify({

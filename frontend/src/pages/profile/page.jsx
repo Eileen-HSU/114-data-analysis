@@ -262,6 +262,47 @@ export default function ProfilePage() {
     }));
   }, [apiSurveys]);
 
+  const handleOpenSurveyDetail = async (survey) => {
+    const auth = user || JSON.parse(localStorage.getItem("dataanalysis_auth") || "{}");
+    const code = encodeURIComponent(survey.code);
+
+    try {
+      const [surveyRes, responsesRes] = await Promise.all([
+        fetch(apiUrl(`/api/surveys/${code}`)),
+        fetch(apiUrl(`/api/surveys/${code}/responses`), {
+          headers: {
+            ...(auth?.token ? { Authorization: `Bearer ${auth.token}` } : {}),
+          },
+        }),
+      ]);
+
+      const surveyData = await surveyRes.json().catch(() => ({}));
+      if (!surveyRes.ok) {
+        throw new Error(surveyData.error || "載入問卷資訊失敗");
+      }
+
+      const responsesData = await responsesRes.json().catch(() => ({}));
+      if (!responsesRes.ok) {
+        throw new Error(responsesData.error || "載入問卷回覆失敗");
+      }
+
+      setSelectedSurvey({
+        ...survey,
+        title: surveyData.title || survey.title,
+        description: surveyData.description,
+        identity_mode: surveyData.identity_mode,
+        identityMode: surveyData.identity_mode,
+        deadline_at: surveyData.deadline_at,
+        deadlineAt: surveyData.deadline_at,
+        questions: surveyData.questions || [],
+        responses: responsesData.responses || [],
+      });
+    } catch (error) {
+      console.error("載入問卷詳情失敗:", error);
+      alert(error.message || "載入問卷詳情失敗");
+    }
+  };
+
   const visibleSurveyRecords = useMemo(() => {
     const keyword = surveySearch.trim().toLowerCase();
     return [...surveyRecords]
@@ -770,7 +811,7 @@ export default function ProfilePage() {
                           iconBg: "bg-stat-coral",
                           iconColor: "text-stat-coral",
                         });
-                        setSelectedSurvey(survey.detail);
+                        handleOpenSurveyDetail(survey);
                       }}
                     >
                       查看詳情
