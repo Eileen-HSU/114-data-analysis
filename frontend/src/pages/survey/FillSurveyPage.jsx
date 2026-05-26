@@ -40,7 +40,7 @@ function formatDeadline(deadlineAt) {
 }
 
 export default function FillSurveyPage() {
-  const navigate = useNavigate();
+  const navigate = useNavigate(); // 修正點 1：將 navigate 移入組件內部
   const [searchParams] = useSearchParams();
   const { recordActivity } = useActivity();
   const [code, setCode] = useState("");

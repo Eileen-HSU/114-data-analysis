@@ -55,9 +55,10 @@ export default function CreateSurveyPage() {
   const [minDeadlineAt, setMinDeadlineAt] = useState(() => getNextDeadlineMin());
   const [generatedCode, setGeneratedCode] = useState("");
   const [copiedCode, setCopiedCode] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);const shareLink = generatedCode ? `${window.location.origin}/survey/fill?code=${encodeURIComponent(generatedCode)}` : "";
-  const shareLink = generatedCode ? `${window.location.origin}/s/${encodeURIComponent(title.trim())}-${generatedCode}` : "";
+  const [copiedLink, setCopiedLink] = useState(false);
+  const shareLink = generatedCode ? `${window.location.origin}/survey/fill?code=${encodeURIComponent(generatedCode)}` : "";
 
+  // 檢查本地 token 是否對本機後端有效，若無效則清除並導向登入
   useEffect(() => {
     (async () => {
       if (!isLoggedIn) return;
