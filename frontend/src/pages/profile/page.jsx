@@ -270,12 +270,11 @@ export default function ProfilePage() {
     const code = encodeURIComponent(survey.code || survey.access_code);
 
     try {
+      const headers = auth?.token ? { Authorization: `Bearer ${auth.token}` } : {};
       const [surveyRes, responsesRes] = await Promise.all([
-        fetch(apiUrl(`/api/surveys/${code}`)),
+        fetch(apiUrl(`/api/surveys/${code}`), { headers }),
         fetch(apiUrl(`/api/surveys/${code}/responses`), {
-          headers: {
-            ...(auth?.token ? { Authorization: `Bearer ${auth.token}` } : {}),
-          },
+          headers,
         }),
       ]);
 
