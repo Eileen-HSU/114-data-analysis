@@ -329,7 +329,7 @@ export default function ProfilePage() {
     const targetSurvey = surveyRecords.find((survey) => survey.code === surveyCode);
     if (!targetSurvey) return;
 
-    setSelectedSurvey(targetSurvey.detail);
+    handleOpenSurveyDetail(targetSurvey);
     navigate("/profile", { replace: true });
   }, [location.search, navigate, selectedSurvey, surveyRecords]);
 

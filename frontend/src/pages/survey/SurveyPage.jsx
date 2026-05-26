@@ -125,7 +125,7 @@ export default function SurveyPage() {
                 ) : recentSurveys.length > 0 ? (
                   <div className="survey-activity-list">
                     {recentSurveys.map((survey) => (
-                      <a className="survey-activity-item" href={`/profile?survey=${encodeURIComponent(survey.code)}`} key={survey.code}>
+                      <a className="survey-activity-item" href={`/profile?survey=${encodeURIComponent(survey.code || survey.access_code)}`} key={survey.code || survey.access_code}>
                         <span className="survey-activity-dot"></span>
                         <div>
                           <strong>{survey.title || survey.survey_name || "未命名問卷"}</strong>
