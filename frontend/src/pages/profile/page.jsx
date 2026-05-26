@@ -14,15 +14,6 @@ function getUserStorageId(user) {
   return user?.user_id || user?.email || "guest";
 }
 
-function getLocalSurveys(user) {
-  const stored = Object.values(JSON.parse(localStorage.getItem("surveys") || "{}"));
-  return stored.filter((survey) => {
-    if (!user) return false;
-    if (!survey.ownerId && !survey.ownerEmail) return false;
-    return survey.ownerId === user?.user_id || survey.ownerEmail === user?.email;
-  });
-}
-
 function getSurveyTime(createdAt) {
   const time = new Date(createdAt || 0).getTime();
   return Number.isNaN(time) ? 0 : time;
@@ -102,6 +93,11 @@ export default function ProfilePage() {
   const [surveySortOrder, setSurveySortOrder] = useState("desc");
   const [surveyVersion, setSurveyVersion] = useState(0);
   const [avatarSrc, setAvatarSrc] = useState(DEFAULT_AVATAR);
+  
+  // 🔥 新增：後端問卷資料與載入狀態
+  const [apiSurveys, setApiSurveys] = useState([]);
+  const [isLoadingSurveys, setIsLoadingSurveys] = useState(false);
+
   const [profile, setProfile] = useState({
     name: "",
     phone: "",
@@ -184,13 +180,11 @@ export default function ProfilePage() {
         };
         setProfile(loaded);
 
-        // 只有第一次載入才設定 editProfile，避免覆蓋使用者正在編輯的內容
         if (!profileLoadedRef.current) {
           setEditProfile(loaded);
           profileLoadedRef.current = true;
         }
 
-        // 從後端讀取頭貼
         const oldKey = `dataanalysis_avatar_${getUserStorageId(user)}`;
         localStorage.removeItem(oldKey);
         setAvatarSrc(data.avatar_url || DEFAULT_AVATAR);
@@ -198,6 +192,30 @@ export default function ProfilePage() {
       })
       .catch((err) => console.error("載入個人資料失敗", err));
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── 🔥 新增：從 API 撈取問卷資料 ─────────────────────────────
+  useEffect(() => {
+    if (!user?.token) return;
+
+    setIsLoadingSurveys(true);
+    fetch(apiUrl("/api/surveys/mine"), {
+      headers: { 'Authorization': `Bearer ${user.token}` }
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("撈取問卷失敗");
+        return res.json();
+      })
+      .then((data) => {
+        // 假設後端回傳的是問卷陣列
+        setApiSurveys(Array.isArray(data) ? data : []);
+      })
+      .catch((err) => {
+        console.error("載入問卷失敗:", err);
+      })
+      .finally(() => {
+        setIsLoadingSurveys(false);
+      });
+  }, [user, surveyVersion]); // 當 surveyVersion 改變時也會重新整理
 
   useEffect(() => {
     setTwoFactorEnabled(localStorage.getItem(twoFactorStorageKey) === "true");
@@ -233,19 +251,21 @@ export default function ProfilePage() {
     navigate("/profile", { replace: true });
   }, [location.search, navigate, recordActivity]);
 
-  const localSurveys = useMemo(() => getLocalSurveys(user), [user, selectedSurvey, saved, surveyVersion]);
-  const surveyRecords = useMemo(() => localSurveys.map((survey, index) => ({
+  // ── 🔥 重構：將原本 localSurveys 改為轉換 API 格式 ──────────────
+  const surveyRecords = useMemo(() => {
+    return apiSurveys.map((survey, index) => ({
       id: survey.id || survey.code,
-      title: survey.title,
+      title: survey.title || survey.survey_name || "未命名問卷", // 兼容後端可能的欄位名如 survey_name
       code: survey.code,
-      createdAt: survey.createdAt,
-      deadlineAt: survey.deadlineAt,
-      createdAtMs: survey.createdAtMs || getSurveyTime(survey.createdAt) + index,
-      responseCount: survey.responses?.length || 0,
-      status: "active",
-      local: true,
+      createdAt: survey.createdAt || survey.created_at,
+      deadlineAt: survey.deadlineAt || survey.deadline_at,
+      createdAtMs: getSurveyTime(survey.createdAt || survey.created_at) + index,
+      responseCount: survey.responses?.length || survey.response_count || 0,
+      status: survey.status || "active",
+      local: false,
       detail: survey,
-    })), [localSurveys]);
+    }));
+  }, [apiSurveys]);
 
   const visibleSurveyRecords = useMemo(() => {
     const keyword = surveySearch.trim().toLowerCase();
@@ -282,24 +302,16 @@ export default function ProfilePage() {
       throw new Error(data.error || "截止時間更新失敗");
     }
 
-    const savedDeadlineAt = data.deadline_at || nextDeadlineAt;
-    const storedSurveys = JSON.parse(localStorage.getItem("surveys") || "{}");
-    const current = storedSurveys[survey.code] || survey;
-    const updated = { ...current, deadlineAt: savedDeadlineAt };
-    storedSurveys[survey.code] = updated;
-    localStorage.setItem("surveys", JSON.stringify(storedSurveys));
-    window.dispatchEvent(new CustomEvent("dataanalysis:surveys-updated", {
-      detail: { code: survey.code, survey: updated },
-    }));
-    setSelectedSurvey(updated);
     setSurveyVersion((version) => version + 1);
+    setSelectedSurvey(null); 
+
     recordActivity({
-      text: `修改問卷「${survey.title}」截止時間`,
+      text: `修改問卷「${survey.title || survey.survey_name}」截止時間`,
       icon: "ri-time-line",
       iconBg: "bg-stat-sky",
       iconColor: "text-stat-sky",
     });
-    return updated;
+    return data;
   };
 
   if (selectedSurvey) {
@@ -316,8 +328,8 @@ export default function ProfilePage() {
       img.src = event.target.result;
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 150;  // 強制最大寬度 150px
-        const MAX_HEIGHT = 150; // 強制最大高度 150px
+        const MAX_WIDTH = 150;
+        const MAX_HEIGHT = 150;
         let width = img.width;
         let height = img.height;
 
@@ -337,11 +349,7 @@ export default function ProfilePage() {
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
-
-        // 🔥 關鍵：壓縮成 jpeg 格式，畫質設為 0.6
         const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
-        
-        // 這裡再塞進你的狀態裡 (例如 setAvatarSrc 或 form 欄位)
         setAvatarSrc(compressedBase64);
       };
     };
@@ -736,17 +744,17 @@ export default function ProfilePage() {
                 </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                {surveyRecords.length === 0 && (
+                {!isLoadingSurveys && surveyRecords.length === 0 && (
                   <div className="profile-field">
                     <span className="field-value">目前還沒有建立問卷。</span>
                   </div>
                 )}
-                {surveyRecords.length > 0 && visibleSurveyRecords.length === 0 && (
+                {!isLoadingSurveys && surveyRecords.length > 0 && visibleSurveyRecords.length === 0 && (
                   <div className="profile-field">
                     <span className="field-value">找不到符合搜尋條件的問卷。</span>
                   </div>
                 )}
-                {visibleSurveyRecords.map((survey) => (
+                {!isLoadingSurveys && visibleSurveyRecords.map((survey) => (
                   <div key={`${survey.id}-${survey.code}`} className="profile-field" style={{ justifyContent: "space-between", gap: 16 }}>
                     <div>
                       <strong>{survey.title}</strong>
