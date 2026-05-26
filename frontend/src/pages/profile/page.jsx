@@ -94,7 +94,6 @@ export default function ProfilePage() {
   const [surveyVersion, setSurveyVersion] = useState(0);
   const [avatarSrc, setAvatarSrc] = useState(DEFAULT_AVATAR);
   
-  // 🔥 新增：後端問卷資料與載入狀態
   const [apiSurveys, setApiSurveys] = useState([]);
   const [isLoadingSurveys, setIsLoadingSurveys] = useState(false);
 
@@ -159,10 +158,9 @@ export default function ProfilePage() {
     }
   }, [navigate, user]);
 
-  // ── 載入個人資料 ──────────────────────────────────────────
+  // ── 載入個人資料 ──────────────────
   useEffect(() => {
-    if (user === null) return;
-    if (!user?.user_id) return;
+    if (!user?.token || !user?.user_id) return;
 
     fetch(apiUrl(`/api/profile/${user.user_id}`), {
       headers: { 'Authorization': `Bearer ${user.token}` }
@@ -191,9 +189,8 @@ export default function ProfilePage() {
         updateUser({ avatar: data.avatar_url || DEFAULT_AVATAR });
       })
       .catch((err) => console.error("載入個人資料失敗", err));
-  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.token, user?.user_id, updateUser]); 
 
-  // ── 🔥 新增：從 API 撈取問卷資料 ─────────────────────────────
   useEffect(() => {
     if (!user?.token) return;
 
@@ -206,7 +203,6 @@ export default function ProfilePage() {
         return res.json();
       })
       .then((data) => {
-        // 假設後端回傳的是問卷陣列
         setApiSurveys(Array.isArray(data) ? data : []);
       })
       .catch((err) => {
@@ -215,7 +211,7 @@ export default function ProfilePage() {
       .finally(() => {
         setIsLoadingSurveys(false);
       });
-  }, [user, surveyVersion]); // 當 surveyVersion 改變時也會重新整理
+  }, [user?.token, surveyVersion]); 
 
   useEffect(() => {
     setTwoFactorEnabled(localStorage.getItem(twoFactorStorageKey) === "true");
@@ -251,11 +247,10 @@ export default function ProfilePage() {
     navigate("/profile", { replace: true });
   }, [location.search, navigate, recordActivity]);
 
-  // ── 🔥 重構：將原本 localSurveys 改為轉換 API 格式 ──────────────
   const surveyRecords = useMemo(() => {
     return apiSurveys.map((survey, index) => ({
       id: survey.id || survey.code,
-      title: survey.title || survey.survey_name || "未命名問卷", // 兼容後端可能的欄位名如 survey_name
+      title: survey.title || survey.survey_name || "未命名問卷", 
       code: survey.code,
       createdAt: survey.createdAt || survey.created_at,
       deadlineAt: survey.deadlineAt || survey.deadline_at,
