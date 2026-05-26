@@ -297,22 +297,20 @@ def get_survey_responses(access_code):
         if not survey or not survey.is_active:
             return jsonify({"error": "找不到這份問卷"}), 404
 
-        # 只有問卷建立者可以看回覆
         if survey.user_id != auth_user_id:
             return jsonify({"error": "無權限查看此問卷回覆"}), 403
 
         responses = Survey_Response.query.filter_by(
             template_id=survey.template_id
-        ).order_by(Survey_Response.created_at.asc()).all()
+        ).order_by(Survey_Response.submitted_at.asc()).all()
 
         result = []
         for r in responses:
-            answer_json = r.answer_json or {}
             result.append({
-                "response_id":          r.response_id,
-                "submitted_at":         r.created_at.isoformat() if r.created_at else None,
-                "answers":              answer_json.get("answers", {}),
-                "respondent_identity":  answer_json.get("respondent_identity"),
+                "response_id":   r.response_id,
+                "submitted_at":  r.submitted_at.isoformat() if r.submitted_at else None,
+                "answers":       (r.answer_json or {}).get("answers", {}),
+                "respondent_identity": r.res_iden,
             })
 
         return jsonify({
