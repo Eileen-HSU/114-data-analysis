@@ -61,7 +61,6 @@
 }
 
 .auth-visual .auth-logo-img {
-  content: url("../../assets/conqight-logo-white.svg");
   filter: drop-shadow(0 10px 24px rgba(255, 255, 255, 0.2));
 }
 
