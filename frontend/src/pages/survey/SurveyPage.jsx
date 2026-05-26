@@ -107,7 +107,6 @@ export default function SurveyPage() {
                     <h2>問卷動態</h2>
                     <p className="survey-activity-note">僅顯示最新的 3 個問卷</p>
                   </div>
-                  <a href="/profile" className="survey-profile-link">查看作品集</a>
                 </div>
 
                 {!user ? (
