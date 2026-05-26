@@ -281,3 +281,48 @@ def submit_survey_response(access_code):
         logging.error(f"Survey response submission failed: {e}", exc_info=True)
         db.session.rollback()
         return jsonify({"error": "問卷送出失敗", "detail": str(e)}), 500
+    
+@survey_bp.route('/api/surveys/<access_code>/responses', methods=['GET'])
+def get_survey_responses(access_code):
+    """取得問卷所有回覆（限問卷建立者）"""
+    auth_user_id, auth_error = verify_token(request)
+    if auth_error:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    try:
+        survey = Survey_Template.query.filter_by(
+            access_code=access_code.strip().upper()
+        ).first()
+
+        if not survey or not survey.is_active:
+            return jsonify({"error": "找不到這份問卷"}), 404
+
+        # 只有問卷建立者可以看回覆
+        if survey.user_id != auth_user_id:
+            return jsonify({"error": "無權限查看此問卷回覆"}), 403
+
+        responses = Survey_Response.query.filter_by(
+            template_id=survey.template_id
+        ).order_by(Survey_Response.created_at.asc()).all()
+
+        result = []
+        for r in responses:
+            answer_json = r.answer_json or {}
+            result.append({
+                "response_id":          r.response_id,
+                "submitted_at":         r.created_at.isoformat() if r.created_at else None,
+                "answers":              answer_json.get("answers", {}),
+                "respondent_identity":  answer_json.get("respondent_identity"),
+            })
+
+        return jsonify({
+            "template_id":    survey.template_id,
+            "title":          survey.title,
+            "access_code":    survey.access_code,
+            "response_count": len(result),
+            "responses":      result,
+        }), 200
+
+    except Exception as e:
+        logging.error(f"Get survey responses failed: {e}", exc_info=True)
+        return jsonify({"error": "取得回覆失敗", "detail": str(e)}), 500
