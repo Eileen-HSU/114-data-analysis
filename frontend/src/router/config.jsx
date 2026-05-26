@@ -29,6 +29,7 @@ const routes = [
   { path: "/survey", element: <SurveyPage /> },
   { path: "/survey/create", element: <CreateSurveyPage /> },
   { path: "/survey/fill", element: <FillSurveyPage /> },
+  { path: "/s/:slug", element: <FillSurveyPage /> },
   { path: "/trash", element: <TrashPage /> },
   { path: "*", element: <HomePage /> },
 ];

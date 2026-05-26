@@ -40,7 +40,8 @@ function formatDeadline(deadlineAt) {
 }
 
 export default function FillSurveyPage() {
-  const navigate = useNavigate(); // 修正點 1：將 navigate 移入組件內部
+  const navigate = useNavigate();
+  const { slug } = useParams();
   const [searchParams] = useSearchParams();
   const { recordActivity } = useActivity();
   const [code, setCode] = useState("");
@@ -136,13 +137,14 @@ export default function FillSurveyPage() {
   };
 
   useEffect(() => {
-    const codeFromLink = searchParams.get("code");
+    const codeFromSlug = slug ? slug.split("-").pop() : null;
+    const codeFromLink = codeFromSlug || searchParams.get("code");
     if (!codeFromLink || survey) return;
 
     const normalized = codeFromLink.trim().toUpperCase();
     setCode(normalized);
     loadSurveyByCode(normalized);
-  }, [searchParams, survey]);
+  }, [searchParams, slug, survey]);
 
   useEffect(() => {
     const refreshOpenSurvey = (event) => {
