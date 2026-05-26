@@ -306,45 +306,44 @@ export default function ProfilePage() {
     return <SurveyDetailPage survey={selectedSurvey} onBack={() => setSelectedSurvey(null)} onUpdateDeadline={updateSurveyDeadline} />;
   }
 
-  const handleAvatarChange = (event) => {
-    const file = event.target.files?.[0];
+  const handleAvatarChange = (e) => {
+    const file = e.target.files[0];
     if (!file) return;
 
-    if (file.size > 1.4 * 1024 * 1024) {
-      alert("圖片請小於 1.4MB。");
-      return;
-    }
-
     const reader = new FileReader();
-    reader.onload = async (loadEvent) => {
-      if (!loadEvent.target?.result) return;
-      const nextAvatar = loadEvent.target.result;
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 150;  // 強制最大寬度 150px
+        const MAX_HEIGHT = 150; // 強制最大高度 150px
+        let width = img.width;
+        let height = img.height;
 
-      try {
-        const res = await fetch(apiUrl(`/api/profile/${user.user_id}`), {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${user.token}`,
-          },
-          body: JSON.stringify({ avatar_url: nextAvatar }),
-        });
-        if (res.ok) {
-          setAvatarSrc(nextAvatar);
-          updateUser({ avatar: nextAvatar });
-          recordActivity({
-            text: "更新個人頭像",
-            icon: "ri-camera-line",
-            iconBg: "bg-stat-mauve",
-            iconColor: "text-stat-mauve",
-          });
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
         } else {
-          alert("頭像上傳失敗，請稍後再試");
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
         }
-      } catch (err) {
-        console.error("頭像同步失敗", err);
-        alert("頭像上傳失敗，請稍後再試");
-      }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // 🔥 關鍵：壓縮成 jpeg 格式，畫質設為 0.6
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
+        
+        // 這裡再塞進你的狀態裡 (例如 setAvatarSrc 或 form 欄位)
+        setAvatarSrc(compressedBase64);
+      };
     };
     reader.readAsDataURL(file);
   };
