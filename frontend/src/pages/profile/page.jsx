@@ -248,23 +248,26 @@ export default function ProfilePage() {
   }, [location.search, navigate, recordActivity]);
 
   const surveyRecords = useMemo(() => {
-    return apiSurveys.map((survey, index) => ({
-      id: survey.id || survey.code,
-      title: survey.title || survey.survey_name || "未命名問卷", 
-      code: survey.code,
-      createdAt: survey.createdAt || survey.created_at,
-      deadlineAt: survey.deadlineAt || survey.deadline_at,
-      createdAtMs: getSurveyTime(survey.createdAt || survey.created_at) + index,
-      responseCount: survey.responses?.length || survey.response_count || 0,
-      status: survey.status || "active",
-      local: false,
-      detail: survey,
-    }));
+    return apiSurveys.map((survey, index) => {
+      const code = survey.code || survey.access_code;
+      return {
+        id: survey.id || code,
+        title: survey.title || survey.survey_name || "未命名問卷", 
+        code,
+        createdAt: survey.createdAt || survey.created_at,
+        deadlineAt: survey.deadlineAt || survey.deadline_at,
+        createdAtMs: getSurveyTime(survey.createdAt || survey.created_at) + index,
+        responseCount: survey.responses?.length || survey.response_count || 0,
+        status: survey.status || "active",
+        local: false,
+        detail: survey,
+      };
+    });
   }, [apiSurveys]);
 
   const handleOpenSurveyDetail = async (survey) => {
     const auth = user || JSON.parse(localStorage.getItem("dataanalysis_auth") || "{}");
-    const code = encodeURIComponent(survey.code);
+    const code = encodeURIComponent(survey.code || survey.access_code);
 
     try {
       const [surveyRes, responsesRes] = await Promise.all([
@@ -324,7 +327,7 @@ export default function ProfilePage() {
     }
 
     const auth = user || JSON.parse(localStorage.getItem("dataanalysis_auth") || "{}");
-    const response = await fetch(apiUrl(`/api/surveys/${encodeURIComponent(survey.code)}/deadline`), {
+    const response = await fetch(apiUrl(`/api/surveys/${encodeURIComponent(survey.code || survey.access_code)}/deadline`), {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
