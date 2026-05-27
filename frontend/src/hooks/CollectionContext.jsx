@@ -194,9 +194,14 @@ export function CollectionProvider({ children }) {
   const restoreItem = async (item) => {
     if (item.project_id) {
       try {
+        const folderName = item.workspaceSession?.folder_name ?? item.originalData?.folder_name ?? null;
         await fetch(apiUrl(`/api/workspace/${item.project_id}/restore`), {
           method: "POST",
-          headers: getAuthHeader(),
+          headers: {
+            "Content-Type": "application/json",
+            ...getAuthHeader(),
+          },
+          body: JSON.stringify({ folder_name: folderName }),
         });
       } catch (err) {
         console.error("還原失敗", err);

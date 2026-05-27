@@ -208,10 +208,13 @@ def restore_workspace(project_id):
 
     if not workspace:
         return jsonify({"error": "找不到已刪除的專案"}), 404
+    
+    data = request.get_json(silent=True) or {}
 
     try:
         workspace.is_deleted = False
         workspace.deleted_at = None
+        workspace.folder_name = data.get("folder_name") 
         db.session.commit()
         return jsonify({"message": "專案已還原"}), 200
     except Exception as e:
