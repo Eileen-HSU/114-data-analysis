@@ -413,7 +413,7 @@ export default function ProfilePage() {
       img.src = event.target.result;
       img.onload = async () => {
         const canvas = document.createElement('canvas');
-        const MAX_SIZE = 100;
+        const MAX_SIZE = 200;
         let width = img.width;
         let height = img.height;
         if (width > height) {
@@ -425,7 +425,7 @@ export default function ProfilePage() {
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
-        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.4);
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.8);
         setAvatarSrc(compressedBase64);
 
         // 立刻儲存頭像
