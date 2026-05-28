@@ -69,8 +69,9 @@ class Workspace(db.Model):
     created_at   = db.Column(db.DateTime(timezone=True), default=taiwan_now)
     
     # ── 子資料表關聯 ─────────────────────────────────────────
-    chats     = db.relationship('Chat_History',    backref='workspace', cascade="all, delete-orphan")
+    chats     = db.relationship('Chat_History', backref='workspace')    
     templates = db.relationship('Survey_Template', backref='workspace')    
+    
 # T05: Chat_History -  對話紀錄
 class Chat_History(db.Model):
     __tablename__ = 'Chat_History'
