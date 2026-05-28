@@ -2,6 +2,8 @@ import logging
 import os
 import random
 import string
+from urllib.parse import urlencode, urlsplit
+from urllib.request import urlopen
 import jwt
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -13,6 +15,7 @@ from models import Survey_Template, Survey_Response
 survey_bp = Blueprint('survey', __name__)
 TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 BASE36_ALPHABET = string.digits + string.ascii_uppercase
+DEFAULT_FRONTEND_ORIGIN = "https://one14-data-analysis-frontend.onrender.com"
 
 def get_jwt_secret():
     secret = os.getenv("JWT_SECRET_KEY")
@@ -84,6 +87,52 @@ def find_survey_by_access_or_short_code(raw_code):
 
 def survey_short_code(survey):
     return encode_survey_short_code(survey.template_id)
+
+
+def is_allowed_short_url_target(url):
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        return False
+
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return False
+
+    allowed_origins = {
+        os.getenv("FRONTEND_PUBLIC_URL", DEFAULT_FRONTEND_ORIGIN).rstrip("/"),
+        DEFAULT_FRONTEND_ORIGIN,
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    }
+    target_origin = f"{parsed.scheme}://{parsed.netloc}"
+    return target_origin in allowed_origins
+
+
+def create_external_short_url(long_url):
+    query = urlencode({"format": "simple", "url": long_url})
+    api_url = f"https://is.gd/create.php?{query}"
+
+    with urlopen(api_url, timeout=5) as response:
+        short_url = response.read().decode("utf-8").strip()
+
+    if not short_url.startswith(("https://is.gd/", "https://v.gd/")):
+        raise ValueError(short_url or "Shortener returned an empty response")
+    return short_url
+
+
+@survey_bp.route('/api/short-links', methods=['POST'])
+def create_short_link():
+    data = request.get_json(silent=True) or {}
+    long_url = (data.get("url") or "").strip()
+
+    if not is_allowed_short_url_target(long_url):
+        return jsonify({"error": "Unsupported URL"}), 400
+
+    try:
+        return jsonify({"short_url": create_external_short_url(long_url)}), 200
+    except Exception as e:
+        logging.warning(f"External short link creation failed: {e}")
+        return jsonify({"error": "Short link creation failed"}), 502
 
 
 def normalize_deadline(deadline):

@@ -7,7 +7,7 @@ import { useAuth } from "../../hooks/AuthContext";
 import { useActivity } from "../../hooks/ActivityContext";
 import axios from "axios";
 import { apiUrl } from "../../lib/api";
-import { buildSurveyFillPath, buildSurveyFillUrl } from "../../lib/surveyLinks";
+import { buildExternalSurveyShortUrl, buildSurveyFillPath, buildSurveyFillUrl } from "../../lib/surveyLinks";
 import "./survey.css";
 
 
@@ -56,9 +56,11 @@ export default function CreateSurveyPage() {
   const [minDeadlineAt, setMinDeadlineAt] = useState(() => getNextDeadlineMin());
   const [generatedCode, setGeneratedCode] = useState("");
   const [generatedShortCode, setGeneratedShortCode] = useState("");
+  const [externalShareLink, setExternalShareLink] = useState("");
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-  const shareLink = generatedCode ? buildSurveyFillUrl(generatedShortCode || generatedCode) : "";
+  const fallbackShareLink = generatedCode ? buildSurveyFillUrl(generatedShortCode || generatedCode) : "";
+  const shareLink = externalShareLink || fallbackShareLink;
 
   // 檢查本地 token 是否對本機後端有效，若無效則清除並導向登入
   useEffect(() => {
@@ -85,6 +87,24 @@ export default function CreateSurveyPage() {
     const timer = window.setInterval(updateMinDeadline, 30000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    const codeForLink = generatedShortCode || generatedCode;
+    if (!codeForLink) {
+      setExternalShareLink("");
+      return;
+    }
+
+    let cancelled = false;
+    setExternalShareLink("");
+    buildExternalSurveyShortUrl(codeForLink).then((shortUrl) => {
+      if (!cancelled) setExternalShareLink(shortUrl);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [generatedCode, generatedShortCode]);
 
   const typeMap = useMemo(() => Object.fromEntries(QUESTION_TYPES.map((item) => [item.value, item])), []);
   const getQuestionType = (type) => typeMap[type] || typeMap.short;
@@ -195,6 +215,7 @@ export default function CreateSurveyPage() {
         });
         setGeneratedCode(accessCode);
         setGeneratedShortCode(shortCode);
+        setExternalShareLink("");
         setCopiedCode(false);
         setCopiedLink(false);
         setError("");
