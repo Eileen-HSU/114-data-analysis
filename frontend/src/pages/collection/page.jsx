@@ -163,7 +163,7 @@ export default function CollectionPage() {
     if (deleteTarget.type === "session") {
       await deleteChatSession(String(deleteTarget.id));
     }
-    
+
     setDeleteTarget(null);
   };
 
@@ -242,39 +242,66 @@ export default function CollectionPage() {
     const droppedFileId = event.dataTransfer?.getData("text/plain") || draggingId;
     if (!droppedFileId) return;
 
-    const file = files.find((f) => f.id === droppedFileId);
-    if (!file) return;
-
     const targetFolderName = targetFolderId
       ? folders.find((f) => f.id === targetFolderId)?.name ?? null
       : null;
 
-    setFiles((prev) =>
-      prev.map((f) => (f.id === droppedFileId ? { ...f, folder_name: targetFolderName } : f))
-    );
-    setFolders((prev) =>
-      prev.map((folder) => {
-        const currentFileIds = Array.isArray(folder.fileIds) ? folder.fileIds : [];
-        const fileIdsWithoutDropped = currentFileIds.filter((id) => id !== droppedFileId);
-        if (folder.id !== targetFolderId) return { ...folder, fileIds: fileIdsWithoutDropped };
-        return { ...folder, fileIds: [...fileIdsWithoutDropped, droppedFileId] };
-      })
-    );
-    setWorkspaceSessions((prev) =>
-      prev.map((session) =>
-        String(session.id) === String(file.sessionId)
-          ? { ...session, folder_name: targetFolderName }
-          : session
-      )
-    );
+    const file = files.find((f) => f.id === droppedFileId);
 
-    if (file.type === "chat" && file.sessionId) {
-      const session = workspaceSessions.find(
-        (s) =>
-          String(s.id) === String(file.sessionId) ||
-          (s.project_id && String(s.project_id) === String(file.sessionId))
+    if (file) {
+      setFiles((prev) =>
+        prev.map((f) => (f.id === droppedFileId ? { ...f, folder_name: targetFolderName } : f))
       );
-      if (session?.project_id) {
+      setFolders((prev) =>
+        prev.map((folder) => {
+          const currentFileIds = Array.isArray(folder.fileIds) ? folder.fileIds : [];
+          const fileIdsWithoutDropped = currentFileIds.filter((id) => id !== droppedFileId);
+          if (folder.id !== targetFolderId) return { ...folder, fileIds: fileIdsWithoutDropped };
+          return { ...folder, fileIds: [...fileIdsWithoutDropped, droppedFileId] };
+        })
+      );
+      setWorkspaceSessions((prev) =>
+        prev.map((session) =>
+          String(session.id) === String(file.sessionId)
+            ? { ...session, folder_name: targetFolderName }
+            : session
+        )
+      );
+      if (file.type === "chat" && file.sessionId) {
+        const session = workspaceSessions.find(
+          (s) =>
+            String(s.id) === String(file.sessionId) ||
+            (s.project_id && String(s.project_id) === String(file.sessionId))
+        );
+        if (session?.project_id) {
+          try {
+            const authUser = JSON.parse(localStorage.getItem("dataanalysis_auth"));
+            const token = authUser?.token;
+            await fetch(`${import.meta.env.VITE_API_BASE_URL || ""}/api/workspace/${session.project_id}`, {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
+              body: JSON.stringify({ folder_name: targetFolderName }),
+            });
+          } catch (err) {
+            console.error("拖曳更新資料庫失敗:", err);
+          }
+        }
+      }
+    } else {
+      const session = workspaceSessions.find((s) => String(s.id) === String(droppedFileId));
+      if (!session) { setDraggingId(null); return; }
+
+      setWorkspaceSessions((prev) =>
+        prev.map((s) =>
+          String(s.id) === String(droppedFileId)
+            ? { ...s, folder_name: targetFolderName }
+            : s
+        )
+      );
+      if (session.project_id) {
         try {
           const authUser = JSON.parse(localStorage.getItem("dataanalysis_auth"));
           const token = authUser?.token;
@@ -287,7 +314,7 @@ export default function CollectionPage() {
             body: JSON.stringify({ folder_name: targetFolderName }),
           });
         } catch (err) {
-          console.error("拖曳更新資料庫失敗:", err);
+          console.error("Session 拖曳更新資料庫失敗:", err);
         }
       }
     }
