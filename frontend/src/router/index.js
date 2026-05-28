@@ -37,7 +37,7 @@ export function AppRoutes() {
       "/survey/fill": "填寫問卷頁面",
     };
 
-    const isShortSurveyPath = /^\/[A-Z0-9]{5,12}$/i.test(path);
+    const isShortSurveyPath = /^\/[A-Z0-9]{1,12}$/i.test(path);
     const label = labels[path] || (path.startsWith("/s/") || path.startsWith("/survey/fill/") || isShortSurveyPath ? labels["/survey/fill"] : "");
 
     if (label) {

@@ -1,5 +1,8 @@
 export function buildSurveyFillPath(code) {
-  const normalizedCode = String(code || "").trim().toUpperCase();
+  const rawCode = typeof code === "object" && code !== null
+    ? code.short_code || code.shortCode || code.access_code || code.code
+    : code;
+  const normalizedCode = String(rawCode || "").trim().toUpperCase();
   return normalizedCode ? `/${encodeURIComponent(normalizedCode)}` : "/survey/fill";
 }
 

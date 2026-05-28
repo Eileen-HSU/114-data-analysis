@@ -55,9 +55,10 @@ export default function CreateSurveyPage() {
   const [error, setError] = useState("");
   const [minDeadlineAt, setMinDeadlineAt] = useState(() => getNextDeadlineMin());
   const [generatedCode, setGeneratedCode] = useState("");
+  const [generatedShortCode, setGeneratedShortCode] = useState("");
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-  const shareLink = generatedCode ? buildSurveyFillUrl(generatedCode) : "";
+  const shareLink = generatedCode ? buildSurveyFillUrl(generatedShortCode || generatedCode) : "";
 
   // 檢查本地 token 是否對本機後端有效，若無效則清除並導向登入
   useEffect(() => {
@@ -166,6 +167,7 @@ export default function CreateSurveyPage() {
         console.log("[FRONTEND] ✓ 成功存入資料庫:", response.data);
 
         const accessCode = response.data.access_code;
+        const shortCode = response.data.short_code || accessCode;
         const createdAtMs = Date.now();
         const savedSurvey = {
           id: response.data.template_id || `survey-${Date.now()}`,
@@ -175,6 +177,7 @@ export default function CreateSurveyPage() {
           deadlineAt: payload.deadline_at,
           questions: payload.questions,
           code: accessCode,
+          shortCode,
           createdAt: new Date(createdAtMs).toISOString().slice(0, 10),
           createdAtMs,
           responses: [],
@@ -191,6 +194,7 @@ export default function CreateSurveyPage() {
           iconColor: "text-stat-coral",
         });
         setGeneratedCode(accessCode);
+        setGeneratedShortCode(shortCode);
         setCopiedCode(false);
         setCopiedLink(false);
         setError("");
@@ -358,7 +362,7 @@ export default function CreateSurveyPage() {
               {copiedLink ? "已複製連結" : "複製填寫連結"}
             </button>
             <div className="d-flex gap-3">
-              <a href={buildSurveyFillPath(generatedCode)} className="btn-generate" style={{ flex: 1, padding: "14px", textDecoration: "none", justifyContent: "center" }}>
+              <a href={buildSurveyFillPath(generatedShortCode || generatedCode)} className="btn-generate" style={{ flex: 1, padding: "14px", textDecoration: "none", justifyContent: "center" }}>
                 <i className="ri-pencil-line"></i> 測試填答
               </a>
               <a href="/profile" className="btn-generate" style={{ flex: 1, padding: "14px", background: "var(--slate-100)", color: "var(--slate-600)", textDecoration: "none", justifyContent: "center" }}>

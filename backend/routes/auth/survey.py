@@ -12,6 +12,7 @@ from models import Survey_Template, Survey_Response
 
 survey_bp = Blueprint('survey', __name__)
 TAIPEI_TZ = ZoneInfo("Asia/Taipei")
+BASE36_ALPHABET = string.digits + string.ascii_uppercase
 
 def get_jwt_secret():
     secret = os.getenv("JWT_SECRET_KEY")
@@ -41,6 +42,48 @@ def generate_unique_access_code():
         code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5)).upper()
         if not Survey_Template.query.filter_by(access_code=code.upper()).first():
             return code
+
+
+def encode_survey_short_code(template_id):
+    template_id = int(template_id or 0)
+    if template_id <= 0:
+        return ""
+
+    chars = []
+    while template_id:
+        template_id, remainder = divmod(template_id, 36)
+        chars.append(BASE36_ALPHABET[remainder])
+    return ''.join(reversed(chars))
+
+
+def decode_survey_short_code(short_code):
+    token = (short_code or "").strip().upper()
+    if not token or any(char not in BASE36_ALPHABET for char in token):
+        return None
+
+    value = 0
+    for char in token:
+        value = value * 36 + BASE36_ALPHABET.index(char)
+    return value or None
+
+
+def find_survey_by_access_or_short_code(raw_code):
+    token = (raw_code or "").strip().upper()
+    if not token:
+        return None
+
+    survey = Survey_Template.query.filter_by(access_code=token).first()
+    if survey:
+        return survey
+
+    template_id = decode_survey_short_code(token)
+    if not template_id:
+        return None
+    return Survey_Template.query.filter_by(template_id=template_id).first()
+
+
+def survey_short_code(survey):
+    return encode_survey_short_code(survey.template_id)
 
 
 def normalize_deadline(deadline):
@@ -126,6 +169,7 @@ def create_survey():
         return jsonify({
             "message":     "問卷建立成功",
             "access_code": access_code.upper(),
+            "short_code":  survey_short_code(new_template),
             "template_id": new_template.template_id,
         }), 201
 
@@ -157,6 +201,7 @@ def get_user_surveys():
                 "template_id":    survey.template_id,
                 "title":          survey.title,
                 "access_code":    survey.access_code,
+                "short_code":     survey_short_code(survey),
                 "created_at":     survey.created_at.isoformat() if survey.created_at else "",
                 "deadline_at":    get_survey_deadline_at(survey, question_json),
                 "response_count": response_count,
@@ -177,7 +222,7 @@ def get_survey(access_code):
         if auth_header.startswith("Bearer "):
             auth_user_id, _ = verify_token(request)
 
-        survey = Survey_Template.query.filter_by(access_code=access_code.strip().upper()).first()
+        survey = find_survey_by_access_or_short_code(access_code)
         if not survey or not survey.is_active:
             return jsonify({"error": "找不到這份問卷"}), 404
 
@@ -193,6 +238,7 @@ def get_survey(access_code):
                 "deadline_at": deadline_at,
                 "title": survey.title,
                 "access_code": survey.access_code,
+                "short_code": survey_short_code(survey),
             }), 410
 
         response_data = {
@@ -203,6 +249,7 @@ def get_survey(access_code):
             "deadline_at": deadline_at,
             "questions": question_json.get("items") or [],
             "access_code": survey.access_code,
+            "short_code": survey_short_code(survey),
             "created_at": survey.created_at.isoformat() if survey.created_at else None,
         }
 
@@ -231,7 +278,7 @@ def update_survey_deadline(access_code):
         return jsonify({"error": "截止時間必須晚於現在。"}), 400
 
     try:
-        survey = Survey_Template.query.filter_by(access_code=access_code.strip().upper()).first()
+        survey = find_survey_by_access_or_short_code(access_code)
         if not survey:
             return jsonify({"error": "找不到這份問卷"}), 404
 
@@ -244,6 +291,7 @@ def update_survey_deadline(access_code):
         return jsonify({
             "message": "截止時間已更新",
             "access_code": survey.access_code,
+            "short_code": survey_short_code(survey),
             "deadline_at": get_survey_deadline_at(survey, question_json),
         }), 200
 
@@ -260,7 +308,7 @@ def submit_survey_response(access_code):
         return jsonify({"error": "缺少問卷答案資料"}), 400
 
     try:
-        survey = Survey_Template.query.filter_by(access_code=access_code.strip().upper()).first()
+        survey = find_survey_by_access_or_short_code(access_code)
         if not survey:
             return jsonify({"error": "找不到此邀請碼對應的問卷"}), 404
 
@@ -300,9 +348,7 @@ def get_survey_responses(access_code):
         return jsonify({"error": "Unauthorized"}), 401
 
     try:
-        survey = Survey_Template.query.filter_by(
-            access_code=access_code.strip().upper()
-        ).first()
+        survey = find_survey_by_access_or_short_code(access_code)
 
         if not survey or not survey.is_active:
             return jsonify({"error": "找不到這份問卷"}), 404
@@ -327,6 +373,7 @@ def get_survey_responses(access_code):
             "template_id":    survey.template_id,
             "title":          survey.title,
             "access_code":    survey.access_code,
+            "short_code":     survey_short_code(survey),
             "response_count": len(result),
             "responses":      result,
         }), 200
