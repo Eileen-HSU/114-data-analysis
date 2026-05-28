@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { useActivity } from "./ActivityContext";
-import { useAuth } from "./AuthContext"; // 確認路徑
+import { useAuth } from "./AuthContext"; 
 import { apiUrl } from "../lib/api";
 
 const CollectionContext = createContext(null);
@@ -31,6 +31,7 @@ function getAuthHeader() {
 }
 
 export function CollectionProvider({ children }) {
+  const { isLoggedIn } = useAuth(); 
   const { recordActivity } = useActivity();
   const [folders, setFolders] = useState(() => loadArray(COLLECTION_FOLDERS_KEY, []));
   const [files, setFiles] = useState(() => loadArray(COLLECTION_FILES_KEY, []));
