@@ -41,7 +41,7 @@ export default function Navbar({ transparent = false }) {
             style={{ cursor: "pointer" }}
           >
             <i className="ri-folder-chart-line"></i>
-            <span>我的作品集</span>
+            <span>專案管理</span>
           </a>
           <a
             className={`nav-link-btn ${location.pathname === "/workspace" ? "active" : ""}`}

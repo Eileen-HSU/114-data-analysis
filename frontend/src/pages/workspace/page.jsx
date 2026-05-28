@@ -867,7 +867,7 @@ export default function WorkspacePage() {
               <i className="ri-loader-4-line"></i>
             </div>
             <h1>正在載入工作區...</h1>
-            <p>正在整理您的作品集、歷史紀錄與分析資料，請稍候。</p>
+            <p>正在整理您的專案管理、歷史對話紀錄與分析資料，請稍候。</p>
           </div>
         </main>
       </>
@@ -896,13 +896,13 @@ export default function WorkspacePage() {
           <aside className="workspace-sidebar">
             <div className="sidebar-header">
               <div className="d-flex align-items-center mb-3">
-                <span className="sidebar-title">歷史紀錄</span>
+                <span className="sidebar-title">歷史對話紀錄</span>
               </div>
               <div className="sidebar-search">
                 <i className="ri-search-line"></i>
                 <input
                   type="text"
-                  placeholder="搜尋歷史紀錄..."
+                  placeholder="搜尋歷史對話紀錄..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
@@ -1166,7 +1166,7 @@ export default function WorkspacePage() {
                         if (!f) return;
                         setAttachedFile(f);
                         addFileToCollection(f);
-                        showToast(`「${f.name}」已加入作品集`);
+                        showToast(`「${f.name}」已加入專案管理`);
                         e.target.value = "";
                       }}
                     />
@@ -1204,7 +1204,7 @@ export default function WorkspacePage() {
               <i className="ri-error-warning-line"></i>
             </div>
             <h3>刪除工作區</h3>
-            <p>確定要刪除「{deleteTarget.title}」嗎？刪除後可在作品集的最近刪除中還原。</p>
+            <p>確定要刪除「{deleteTarget.title}」嗎？刪除後可在專案管理的最近刪除中還原。</p>
             <div className="workspace-alert-actions">
               <button className="workspace-alert-primary" onClick={confirmDeleteSession} type="button">
                 確定
