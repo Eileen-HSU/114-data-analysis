@@ -103,6 +103,7 @@ export default function CollectionPage() {
     });
   };
 
+  // 
   // 刪除
   const confirmDelete = async () => {
     if (!deleteTarget) return;
@@ -334,6 +335,7 @@ export default function CollectionPage() {
         <div className="container py-5">
           {activeView === "folders" && (
             <>
+              {/* 資料夾 */}
               <section className="mb-5">
                 <h2 className="section-heading">
                   <span className="section-icon folder-icon"><i className="ri-folder-2-line"></i></span>
@@ -448,7 +450,8 @@ export default function CollectionPage() {
                 </div>
               </section>
 
-              <section>
+              {/* 未分類檔案 */}
+              <section className="mb-5">
                 <h2 className="section-heading">
                   <span className="section-icon loose-icon"><i className="ri-file-list-3-line"></i></span>
                   未分類檔案
@@ -488,6 +491,56 @@ export default function CollectionPage() {
                     </div>
                   )}
                 </div>
+              </section>
+
+              {/* 工作區 Chat */}
+              <section className="mb-5">
+                <h2 className="section-heading">
+                  <span className="section-icon"><i className="ri-chat-3-line"></i></span>
+                  工作區 Chat
+                  {workspaceSessions.length > 0 && <span className="loose-count">{workspaceSessions.length} 個</span>}
+                </h2>
+                {workspaceSessions.length === 0 ? (
+                  <div className="empty-loose">
+                    <i className="ri-chat-3-line"></i>
+                    <p>目前沒有工作區 Chat。</p>
+                  </div>
+                ) : (
+                  <div className="row g-3">
+                    {workspaceSessions.map((session) => (
+                      <div className="col-md-6 col-lg-4 col-xl-3" key={session.id}>
+                        <div
+                          className="file-item"
+                          onClick={() => navigate("/workspace", { state: { openSession: { sessionId: session.id } } })}
+                          style={{ cursor: "pointer" }}
+                        >
+                          <div className="file-icon file-icon-chat">
+                            <i className="ri-chat-3-line"></i>
+                          </div>
+                          <div className="file-info flex-grow-1">
+                            <span className="file-name">{session.title}</span>
+                            <div className="file-meta">
+                              <span className="file-badge badge-chat">Chat</span>
+                              <span className="file-size">{session.date}</span>
+                            </div>
+                          </div>
+                          <div className="file-actions">
+                            <button
+                              className="action-btn-sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDeleteTarget({ type: "file", id: session.id, name: session.title, sessionId: session.id });
+                              }}
+                              title="刪除"
+                            >
+                              <i className="ri-delete-bin-line"></i>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </section>
             </>
           )}
