@@ -89,7 +89,19 @@ export default function CollectionPage() {
     return grouping;
   }, [files, folders]);
 
+  const sessionsByFolder = useMemo(() => {
+    const grouping = {};
+    const assignedSessionIds = new Set();
+    folders.forEach((folder) => {
+      grouping[folder.name] = workspaceSessions.filter((session) => session.folder_name === folder.name);
+      grouping[folder.name].forEach((session) => assignedSessionIds.add(session.id));
+    });
+    grouping.loose = workspaceSessions.filter((session) => !assignedSessionIds.has(session.id));
+    return grouping;
+  }, [workspaceSessions, folders]);
+
   const looseFiles = filesByFolder.loose || [];
+  const looseSessions = sessionsByFolder.loose || [];
   const stats = useMemo(
     () => ({ folders: folders.length, exports: 0, deleted: deletedItems.length }),
     [folders.length, deletedItems.length]
@@ -379,6 +391,8 @@ export default function CollectionPage() {
                 <div className="row g-3">
                   {folders.map((folder) => {
                     const folderFiles = filesByFolder[folder.name] || [];
+                    const folderSessions = sessionsByFolder[folder.name] || [];
+                    const folderItemCount = folderFiles.length + folderSessions.length;
                     const isOpen = openFolders.has(folder.id);
                     const isDragOver = dragOverTarget === folder.id;
                     return (
@@ -419,7 +433,7 @@ export default function CollectionPage() {
                                     {folder.name}
                                   </span>
                                 )}
-                                <span className="folder-count">{folderFiles.length} 個</span>
+                                <span className="folder-count">{folderItemCount} 個</span>
                               </div>
                               <div className="folder-tags">
                                 {["csv", "xlsx", "json", "txt", "chat"].map((type) => {
@@ -442,7 +456,7 @@ export default function CollectionPage() {
                               onDragOver={(event) => handleFolderDragOver(folder.id, event)}
                               onDrop={(event) => handleDrop(folder.id, event)}
                             >
-                              {folderFiles.length === 0 ? (
+                              {folderItemCount === 0 ? (
                                 <div className="empty-folder"><i className="ri-drag-move-line"></i><p>拖曳檔案到這裡</p></div>
                               ) : (
                                 <div
@@ -467,8 +481,28 @@ export default function CollectionPage() {
                                       menuOpen={fileMenuId === file.id}
                                       onMenuToggle={() => setFileMenuId((prev) => (prev === file.id ? null : file.id))}
                                       onMenuClose={() => setFileMenuId(null)}
-                                      onDelete={() => setDeleteTarget({ type: "session", id: file.id, name: file.name })}
+                                      onDelete={() => setDeleteTarget({ type: file.type === "chat" ? "session" : "file", id: file.id, name: file.name })}
                                       onOpen={() => openFile(file)}
+                                    />
+                                  ))}
+                                  {folderSessions.map((session) => (
+                                    <FileRow
+                                      key={`session-${session.id}`}
+                                      file={{ ...session, name: session.title, type: "chat", size: session.date, sessionId: session.id }}
+                                      compact
+                                      renamingId={renamingFileId}
+                                      renameValue={renameFileValue}
+                                      onRenameStart={() => {}}
+                                      onRenameChange={() => {}}
+                                      onRenameSave={() => {}}
+                                      onRenameCancel={() => {}}
+                                      onDragStart={() => { setDraggingId(session.id); setDragOverTarget(null); }}
+                                      onDragEnd={resetDragState}
+                                      menuOpen={fileMenuId === session.id}
+                                      onMenuToggle={() => setFileMenuId((prev) => (prev === session.id ? null : session.id))}
+                                      onMenuClose={() => setFileMenuId(null)}
+                                      onDelete={() => setDeleteTarget({ type: "session", id: session.id, name: session.title, sessionId: session.id })}
+                                      onOpen={() => navigate("/workspace", { state: { openSession: { sessionId: session.id } } })}
                                     />
                                   ))}
                                 </div>
@@ -487,8 +521,8 @@ export default function CollectionPage() {
                 <h2 className="section-heading">
                   <span className="section-icon loose-icon"><i className="ri-file-list-3-line"></i></span>
                   未分類檔案
-                  {(looseFiles.length + workspaceSessions.length) > 0 && (
-                    <span className="loose-count">{looseFiles.length + workspaceSessions.length} 個</span>
+                  {(looseFiles.length + looseSessions.length) > 0 && (
+                    <span className="loose-count">{looseFiles.length + looseSessions.length} 個</span>
                   )}
                 </h2>
                 <div
@@ -500,7 +534,7 @@ export default function CollectionPage() {
                   {dragOverTarget === "loose" && (
                     <div className="loose-drop-hint"><i className="ri-file-transfer-line me-2"></i>移到未分類</div>
                   )}
-                  {looseFiles.length === 0 && workspaceSessions.length === 0 ? (
+                  {looseFiles.length === 0 && looseSessions.length === 0 ? (
                     <div className="empty-loose"><i className="ri-file-list-3-line"></i><p>目前沒有未分類檔案。</p></div>
                   ) : (
                     <div className="row g-3">
@@ -524,45 +558,24 @@ export default function CollectionPage() {
                           />
                         </div>
                       ))}
-                      {workspaceSessions.map((session) => (
+                      {looseSessions.map((session) => (
                         <div className="col-md-6 col-lg-4 col-xl-3" key={session.id}>
-                          <div
-                            className="file-item"
-                            draggable
-                            onDragStart={(event) => {
-                              event.dataTransfer.effectAllowed = "move";
-                              event.dataTransfer.dropEffect = "move";
-                              event.dataTransfer.setData("text/plain", String(session.id));
-                              setDraggingId(session.id);
-                              setDragOverTarget(null);
-                            }}
+                          <FileRow
+                            file={{ ...session, name: session.title, type: "chat", size: session.date, sessionId: session.id }}
+                            renamingId={renamingFileId}
+                            renameValue={renameFileValue}
+                            onRenameStart={() => {}}
+                            onRenameChange={() => {}}
+                            onRenameSave={() => {}}
+                            onRenameCancel={() => {}}
+                            onDragStart={() => { setDraggingId(session.id); setDragOverTarget(null); }}
                             onDragEnd={resetDragState}
-                            onClick={() => navigate("/workspace", { state: { openSession: { sessionId: session.id } } })}
-                            style={{ cursor: "pointer" }}
-                          >
-                            <div className="file-icon file-icon-chat">
-                              <i className="ri-chat-3-line"></i>
-                            </div>
-                            <div className="file-info flex-grow-1">
-                              <span className="file-name">{session.title}</span>
-                              <div className="file-meta">
-                                <span className="file-badge badge-chat">Chat</span>
-                                <span className="file-size">{session.date}</span>
-                              </div>
-                            </div>
-                            <div className="file-actions">
-                              <button
-                                className="action-btn-sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDeleteTarget({ type: "session", id: session.id, name: session.title, sessionId: session.id });
-                                }}
-                                title="刪除"
-                              >
-                                <i className="ri-delete-bin-line"></i>
-                              </button>
-                            </div>
-                          </div>
+                            menuOpen={fileMenuId === session.id}
+                            onMenuToggle={() => setFileMenuId((prev) => (prev === session.id ? null : session.id))}
+                            onMenuClose={() => setFileMenuId(null)}
+                            onDelete={() => setDeleteTarget({ type: "session", id: session.id, name: session.title, sessionId: session.id })}
+                            onOpen={() => navigate("/workspace", { state: { openSession: { sessionId: session.id } } })}
+                          />
                         </div>
                       ))}
                     </div>
