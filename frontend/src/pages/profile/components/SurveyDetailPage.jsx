@@ -180,6 +180,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
   const [copyCodeSuccess, setCopyCodeSuccess] = useState(false);
   const [copyLinkSuccess, setCopyLinkSuccess] = useState(false);
   const [externalSurveyLink, setExternalSurveyLink] = useState("");
+  const [isShorteningLink, setIsShorteningLink] = useState(false);
   
   // 避免 survey 為空時引發閃退白屏
   const currentSurvey = survey || {};
@@ -194,7 +195,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
   const ratingQuestions = questions.filter((question) => (question.type || question.question_type) === "rating");
   const textQuestions = questions.filter((question) => (question.type || question.question_type) !== "rating");
   const fallbackSurveyLink = buildSurveyFillUrl(currentSurvey);
-  const surveyLink = externalSurveyLink || fallbackSurveyLink;
+  const surveyLink = externalSurveyLink || (!isShorteningLink ? fallbackSurveyLink : "");
 
   useEffect(() => {
     setDeadlineValue(toDateTimeLocalValue(currentSurvey.deadlineAt || currentSurvey.deadline_at));
@@ -204,13 +205,20 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
   useEffect(() => {
     if (!currentSurvey.code && !currentSurvey.access_code && !currentSurvey.shortCode && !currentSurvey.short_code) {
       setExternalSurveyLink("");
+      setIsShorteningLink(false);
       return;
     }
 
     let cancelled = false;
     setExternalSurveyLink("");
+    setIsShorteningLink(true);
     buildExternalSurveyShortUrl(currentSurvey).then((shortUrl) => {
-      if (!cancelled) setExternalSurveyLink(shortUrl);
+      if (cancelled) return;
+      setExternalSurveyLink(shortUrl);
+      setIsShorteningLink(false);
+    }).catch(() => {
+      if (cancelled) return;
+      setIsShorteningLink(false);
     });
 
     return () => {
@@ -239,6 +247,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
   };
 
   const handleCopySurveyLink = async () => {
+    if (!surveyLink) return;
     try {
       await navigator.clipboard.writeText(surveyLink);
       setCopyLinkSuccess(true);
@@ -359,10 +368,10 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
                 <i className="ri-link"></i>填寫連結
               </div>
               <div className="sdp-link-row">
-                <span className="sdp-link-value" title={surveyLink}>{surveyLink}</span>
-                <button className="sdp-copy-code-btn sdp-copy-link-btn" onClick={handleCopySurveyLink} type="button">
-                  <i className={copyLinkSuccess ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
-                  {copyLinkSuccess ? "已複製" : "複製連結"}
+                <span className="sdp-link-value" title={surveyLink}>{isShorteningLink ? "短連結產生中..." : surveyLink}</span>
+                <button className="sdp-copy-code-btn sdp-copy-link-btn" onClick={handleCopySurveyLink} disabled={isShorteningLink || !surveyLink} type="button">
+                  <i className={isShorteningLink ? "ri-loader-4-line" : copyLinkSuccess ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
+                  {isShorteningLink ? "產生中" : copyLinkSuccess ? "已複製" : "複製連結"}
                 </button>
               </div>
             </div>
