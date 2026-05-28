@@ -37,9 +37,12 @@ export function AppRoutes() {
       "/survey/fill": "填寫問卷頁面",
     };
 
-    if (labels[path]) {
+    const isShortSurveyPath = /^\/[A-Z0-9]{5,12}$/i.test(path);
+    const label = labels[path] || (path.startsWith("/s/") || path.startsWith("/survey/fill/") || isShortSurveyPath ? labels["/survey/fill"] : "");
+
+    if (label) {
       recordActivity({
-        text: labels[path],
+        text: label,
         icon: "ri-compass-3-line",
         iconBg: "bg-sky-50",
         iconColor: "text-sky",

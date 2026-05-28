@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../../../components/feature/Navbar";
 import DeadlineDateTimePicker from "../../../components/feature/DeadlineDateTimePicker";
+import { buildSurveyFillUrl } from "../../../lib/surveyLinks";
 
 const TYPE_LABELS = {
   rating: "評分",
@@ -191,7 +192,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
 
   const ratingQuestions = questions.filter((question) => (question.type || question.question_type) === "rating");
   const textQuestions = questions.filter((question) => (question.type || question.question_type) !== "rating");
-  const surveyLink = `${window.location.origin}/survey/fill?code=${encodeURIComponent(currentSurvey.code || "")}`;
+  const surveyLink = buildSurveyFillUrl(currentSurvey.code || "");
 
   useEffect(() => {
     setDeadlineValue(toDateTimeLocalValue(currentSurvey.deadlineAt || currentSurvey.deadline_at));
