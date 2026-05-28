@@ -57,11 +57,10 @@ export default function CreateSurveyPage() {
   const [generatedCode, setGeneratedCode] = useState("");
   const [generatedShortCode, setGeneratedShortCode] = useState("");
   const [externalShareLink, setExternalShareLink] = useState("");
-  const [isShorteningLink, setIsShorteningLink] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const fallbackShareLink = generatedCode ? buildSurveyFillUrl(generatedShortCode || generatedCode) : "";
-  const shareLink = externalShareLink || (!isShorteningLink ? fallbackShareLink : "");
+  const shareLink = externalShareLink || fallbackShareLink;
 
   // 檢查本地 token 是否對本機後端有效，若無效則清除並導向登入
   useEffect(() => {
@@ -88,31 +87,6 @@ export default function CreateSurveyPage() {
     const timer = window.setInterval(updateMinDeadline, 30000);
     return () => window.clearInterval(timer);
   }, []);
-
-  useEffect(() => {
-    const codeForLink = generatedShortCode || generatedCode;
-    if (!codeForLink) {
-      setExternalShareLink("");
-      setIsShorteningLink(false);
-      return;
-    }
-
-    let cancelled = false;
-    setExternalShareLink("");
-    setIsShorteningLink(true);
-    buildExternalSurveyShortUrl(codeForLink).then((shortUrl) => {
-      if (cancelled) return;
-      setExternalShareLink(shortUrl);
-      setIsShorteningLink(false);
-    }).catch(() => {
-      if (cancelled) return;
-      setIsShorteningLink(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [generatedCode, generatedShortCode]);
 
   const typeMap = useMemo(() => Object.fromEntries(QUESTION_TYPES.map((item) => [item.value, item])), []);
   const getQuestionType = (type) => typeMap[type] || typeMap.short;
@@ -196,6 +170,7 @@ export default function CreateSurveyPage() {
 
         const accessCode = response.data.access_code;
         const shortCode = response.data.short_code || accessCode;
+        const externalLink = await buildExternalSurveyShortUrl(shortCode);
         const createdAtMs = Date.now();
         const savedSurvey = {
           id: response.data.template_id || `survey-${Date.now()}`,
@@ -221,10 +196,9 @@ export default function CreateSurveyPage() {
           iconBg: "bg-stat-coral",
           iconColor: "text-stat-coral",
         });
+        setExternalShareLink(externalLink);
         setGeneratedCode(accessCode);
         setGeneratedShortCode(shortCode);
-        setExternalShareLink("");
-        setIsShorteningLink(true);
         setCopiedCode(false);
         setCopiedLink(false);
         setError("");
@@ -379,19 +353,19 @@ export default function CreateSurveyPage() {
             </button>
             <div className="invite-link-box">
               <div className="invite-code-label">填寫連結</div>
-              <div className="invite-link-value">{isShorteningLink ? "短連結產生中..." : shareLink}</div>
+              <div className="invite-link-value">{shareLink}</div>
             </div>
             <button
               className={`copy-code-btn ${copiedLink ? "copied" : ""}`}
-              disabled={isShorteningLink || !shareLink}
+              disabled={!shareLink}
               onClick={() => {
                 if (!shareLink) return;
                 navigator.clipboard?.writeText(shareLink);
                 setCopiedLink(true);
               }}
             >
-              <i className={isShorteningLink ? "ri-loader-4-line" : copiedLink ? "ri-checkbox-circle-line" : "ri-link"}></i>
-              {isShorteningLink ? "產生中" : copiedLink ? "已複製連結" : "複製填寫連結"}
+              <i className={copiedLink ? "ri-checkbox-circle-line" : "ri-link"}></i>
+              {copiedLink ? "已複製連結" : "複製填寫連結"}
             </button>
             <div className="d-flex gap-3">
               <a href={buildSurveyFillPath(generatedShortCode || generatedCode)} className="btn-generate" style={{ flex: 1, padding: "14px", textDecoration: "none", justifyContent: "center" }}>
