@@ -413,7 +413,13 @@ export default function WorkspacePage() {
   const { isLoggedIn, user } = useAuth();
   const { recordActivity } = useActivity();
 
-  const { addChatToCollection, addFileToCollection, syncChatTitle, deleteChatSession, updateSessionId, workspaceSessions: sessions, setWorkspaceSessions: setSessions } = useCollection();  const [activeSessionId, setActiveSessionId] = useState(null);
+  const { 
+    addChatToCollection, addFileToCollection, syncChatTitle, deleteChatSession, updateSessionId, 
+    workspaceSessions: sessions, 
+    setWorkspaceSessions: setSessions,
+  } = useCollection();
+
+  const [activeSessionId, setActiveSessionId] = useState(null);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [attachedFile, setAttachedFile] = useState(null);
@@ -580,7 +586,8 @@ export default function WorkspacePage() {
     const state = location.state;
     if (!state?.surveyImport || surveyImportHandled.current) return;
     surveyImportHandled.current = true;
-    const { sessionTitle, message } = state.surveyImport;
+    const { sessionTitle, message, surveyDetail } = state.surveyImport;
+    const surveyTitle = sessionTitle.replace(/^問卷分析：/, "");
     const newId = `survey-${Date.now()}`;
     const userMsg = { id: `u-${Date.now()}`, role: "user", content: message };
     const newSession = {
@@ -596,7 +603,7 @@ export default function WorkspacePage() {
       const aiReply = {
         id: `a-${Date.now()}`,
         role: "assistant",
-        content: buildAssistantReply(message),
+        content: buildAssistantReply(message, surveyDetail || null, surveyTitle),
       };
       setSessions((prev) =>
         prev.map((s) => s.id === newId ? { ...s, messages: [...s.messages, aiReply] } : s)
@@ -614,50 +621,20 @@ export default function WorkspacePage() {
 
   const handleSelectSurvey = async (record) => {
     const detail = normalizeSurveyDetail(record.detail);
-    if (!detail) return;
+    if (!detail || !activeSessionId) return;
     const content = buildSurveyChatContent(detail);
-    const title = `問卷分析：${record.title}`;
-    const tempId = `survey-${Date.now()}`;
     const userMsg = { id: `u-${Date.now()}`, role: "user", content };
-    const newSession = {
-      id: tempId,
-      title,
-      date: new Date().toLocaleDateString(),
-      messages: [WELCOME_MSG, userMsg],
-    };
-    setSessions((prev) => [newSession, ...prev]);
-    setActiveSessionId(tempId);
-    addChatToCollection(title, tempId);
+
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === activeSessionId ? { ...s, messages: [...s.messages, userMsg] } : s
+      )
+    );
     setShowSurveyPicker(false);
     setSurveyPickerSearch("");
 
-    try {
-      const res = await fetch(apiUrl("/api/workspace"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...getAuthHeader(),
-        },
-        body: JSON.stringify({ project_name: title }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const newId = String(data.project_id);
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === tempId
-              ? { ...s, id: newId, project_id: data.project_id }
-              : s
-          )
-        );
-        updateSessionId(tempId, newId);
-        setActiveSessionId(newId);
-      }
-    } catch (err) {
-      console.error("建立問卷工作區失敗", err);
-    }
-
     setIsTyping(true);
+    const sid = activeSessionId;
     setTimeout(() => {
       const aiReply = {
         id: `a-${Date.now()}`,
@@ -666,9 +643,7 @@ export default function WorkspacePage() {
       };
       setSessions((prev) =>
         prev.map((s) =>
-          s.id === tempId || s.project_id === parseInt(tempId)
-            ? { ...s, messages: [...s.messages, aiReply] }
-            : s
+          s.id === sid ? { ...s, messages: [...s.messages, aiReply] } : s
         )
       );
       setIsTyping(false);
@@ -768,27 +743,6 @@ export default function WorkspacePage() {
       }
     }
     setRenamingId(null);
-  };
-
-  const deleteSession = (sessionId) => {
-    const session = sessions.find((s) => s.id === sessionId);
-    if (!session) return;
-    const ok = window.confirm(`確定要刪除「${session.title}」嗎？刪除後可在作品集的最近刪除中還原。`);
-    if (!ok) return;
-
-    deleteChatSession(sessionId);
-    setRenamingId(null);
-    setSearchQuery("");
-    if (activeSessionId === sessionId) {
-      const nextSession = sessions.find((s) => s.id !== sessionId);
-      setActiveSessionId(nextSession?.id || null);
-      if (nextSession?.id) {
-        localStorage.setItem(ACTIVE_WORKSPACE_KEY, nextSession.id);
-      } else {
-        localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
-      }
-    }
-    showToast("已刪除工作區，並移至最近刪除");
   };
 
   const requestDeleteSession = (sessionId) => {

@@ -387,7 +387,24 @@ export default function ProfilePage() {
   const requestedSurveyCode = new URLSearchParams(location.search).get("survey");
 
   if (selectedSurvey) {
-    return <SurveyDetailPage survey={selectedSurvey} onBack={() => setSelectedSurvey(null)} onUpdateDeadline={updateSurveyDeadline} />;
+    return (
+      <SurveyDetailPage
+        survey={selectedSurvey}
+        onBack={() => setSelectedSurvey(null)}
+        onUpdateDeadline={updateSurveyDeadline}
+        onImportToChat={({ survey, questions, responses, sessionTitle, message }) => {
+          navigate("/workspace", {
+            state: {
+              surveyImport: {
+                sessionTitle,
+                message,
+                surveyDetail: { ...survey, questions, responses },
+              },
+            },
+          });
+        }}
+      />
+    );  
   }
 
   if (isLoadingSurveyDetail || requestedSurveyCode) {
