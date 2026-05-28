@@ -173,7 +173,7 @@ function buildSurveyChatContent(survey, questions, responses) {
   return lines.join("\n");
 }
 
-export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
+export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onImportToChat }) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("overview");
   const [importSuccess, setImportSuccess] = useState(false);
@@ -261,13 +261,12 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
   const handleImportToChat = () => {
     setImportSuccess(true);
     setTimeout(() => {
-      navigate("/workspace", {
-        state: {
-          surveyImport: {
-            sessionTitle: `問卷分析：${currentSurvey.title || currentSurvey.survey_name || "未命名問卷"}`,
-            message: buildSurveyChatContent(currentSurvey, questions, responses),
-          },
-        },
+      onImportToChat?.({
+        survey: currentSurvey,
+        questions,
+        responses,
+        sessionTitle: `問卷分析：${currentSurvey.title || currentSurvey.survey_name || "未命名問卷"}`,
+        message: buildSurveyChatContent(currentSurvey, questions, responses),
       });
     }, 450);
   };
