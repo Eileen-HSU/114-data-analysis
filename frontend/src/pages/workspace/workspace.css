@@ -9,6 +9,64 @@
   height: 100%;
 }
 
+.workspace-entry-loading-page {
+  min-height: calc(100vh - 88px);
+  margin-top: 88px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: #fbf8fb;
+}
+
+.workspace-entry-loading-card {
+  width: min(460px, 100%);
+  padding: 42px 36px 38px;
+  border: 1px solid #cfe4f6;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 28px 80px rgba(42, 64, 98, 0.16);
+  text-align: center;
+}
+
+.workspace-entry-loading-icon {
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
+  border-radius: 18px;
+  background: #edf7ff;
+  color: #6f95b6;
+  font-size: 34px;
+}
+
+.workspace-entry-loading-icon i {
+  display: inline-block;
+  animation: workspace-entry-loading-spin 0.9s linear infinite;
+}
+
+.workspace-entry-loading-card h1 {
+  margin: 0 0 10px;
+  color: var(--slate-800);
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.workspace-entry-loading-card p {
+  margin: 0;
+  color: var(--slate-500);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+@keyframes workspace-entry-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Sidebar */
 .workspace-sidebar {
   width: 272px;
