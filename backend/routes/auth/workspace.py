@@ -173,30 +173,44 @@ def update_workspace(project_id):
         return jsonify({"error": str(e)}), 500
 
 
-@workspace_bp.route("/api/workspace/<int:project_id>", methods=["DELETE"])
+@workspace_bp.route("/api/workspace/<int:project_id>", methods=["DELETE", "PATCH"])
 def delete_workspace(project_id):
     current_user_id, auth_error = authorize_request()
     if auth_error:
         return auth_error
     
+    # 撈出該使用者還沒被軟刪除的專案
     workspace = Workspace.query.filter(
         Workspace.project_id == project_id,
         Workspace.user_id    == current_user_id,
-        Workspace.is_deleted != True,
+        Workspace.is_deleted != True
     ).first()
 
     if not workspace:
-        return jsonify({"error": "找不到專案"}), 404
+        # 如果已經被刪除過了，直接回傳成功，讓前端順利走下去
+        return jsonify({"message": "專案已在垃圾桶中"}), 200
+
+    # 檢查前端是不是送 PATCH 且帶有 body
+    if request.method == "PATCH":
+        data = request.get_json(silent=True) or {}
+        # 即使前端傳 1 或 True，我們都當作要刪除
+        is_deleted_signal = data.get("is_deleted")
+        if is_deleted_signal not in [1, True]:
+            return jsonify({"error": "不合法的 PATCH 參數"}), 400
 
     try:
+        # 執行軟刪除
         workspace.is_deleted = True
         workspace.deleted_at = taiwan_now()
         db.session.commit()
-        return jsonify({"message": "專案已移至垃圾桶，30 天後將永久刪除"}), 200
+        
+        return jsonify({
+            "message": "專案已移至垃圾桶，30 天後將永久刪除",
+            "workspace": workspace_to_dict(workspace)
+        }), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
-
 
 @workspace_bp.route("/api/workspace/<int:project_id>/restore", methods=["POST"])
 def restore_workspace(project_id):
