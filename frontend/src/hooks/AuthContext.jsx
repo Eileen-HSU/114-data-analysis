@@ -44,6 +44,10 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(() => {
     localStorage.removeItem(AUTH_KEY);
+    localStorage.removeItem("dataanalysis_workspace_sessions");
+    localStorage.removeItem("dataanalysis_collection_folders");
+    localStorage.removeItem("dataanalysis_collection_files");
+    localStorage.removeItem("dataanalysis_deleted_items");
     setUser(null);
   }, []);
 

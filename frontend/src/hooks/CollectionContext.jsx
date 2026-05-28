@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { useActivity } from "./ActivityContext";
+import { useAuth } from "./AuthContext"; // 確認路徑
 import { apiUrl } from "../lib/api";
 
 const CollectionContext = createContext(null);
@@ -7,6 +8,7 @@ const WORKSPACE_SESSIONS_KEY = "dataanalysis_workspace_sessions";
 const COLLECTION_FOLDERS_KEY = "dataanalysis_collection_folders";
 const DELETED_ITEMS_KEY = "dataanalysis_deleted_items";
 const COLLECTION_FILES_KEY = "dataanalysis_collection_files";
+
 
 function loadArray(key, fallback = []) {
   try {
@@ -45,6 +47,47 @@ export function CollectionProvider({ children }) {
   useEffect(() => { localStorage.setItem(DELETED_ITEMS_KEY, JSON.stringify(deletedItems)); }, [deletedItems]);
   useEffect(() => { localStorage.setItem(COLLECTION_FILES_KEY, JSON.stringify(files)); }, [files]);
 
+
+  // 登入後從後端同步 workspaceSessions
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    const fetchSessions = async () => {
+      try {
+        const res = await fetch(apiUrl("/api/workspace/user"), {
+          headers: { "Content-Type": "application/json", ...getAuthHeader() },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // 後端資料轉成前端格式
+        const sessions = data.map((w) => ({
+          id: String(w.project_id),
+          project_id: w.project_id,
+          title: w.project_name,
+          folder_name: w.folder_name ?? null,
+          date: w.created_at ? w.created_at.slice(0, 10) : "",
+        }));
+
+        setWorkspaceSessions(sessions);
+
+        // 同時同步 folders：從 folder_name 反推出所有資料夾
+        const folderNames = [...new Set(sessions.map((s) => s.folder_name).filter(Boolean))];
+        setFolders((prev) => {
+          const existingNames = new Set(prev.map((f) => f.name));
+          const newFolders = folderNames
+            .filter((name) => !existingNames.has(name))
+            .map((name) => ({ id: `folder-${name}`, name, fileIds: [] }));
+          return [...prev, ...newFolders];
+        });
+
+      } catch (err) {
+        console.error("同步 workspace 失敗", err);
+      }
+    };
+
+    fetchSessions();
+  }, [isLoggedIn]);
 
   // 新增
   const addChatToCollection = (title, sessionId) => {
