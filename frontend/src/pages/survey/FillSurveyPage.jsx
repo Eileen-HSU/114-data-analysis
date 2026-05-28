@@ -93,6 +93,7 @@ export default function FillSurveyPage() {
         setExpiredSurvey({
           title: expiredData.title || "此問卷",
           code: expiredData.access_code || normalized,
+          shortCode: expiredData.short_code || "",
           deadlineAt: expiredData.deadline_at || "",
         });
         setError("");
@@ -112,6 +113,7 @@ export default function FillSurveyPage() {
         deadlineAt: data.deadline_at || "",
         questions: data.questions || [],
         code: data.access_code || normalized,
+        shortCode: data.short_code || "",
         createdAt: data.created_at ? data.created_at.slice(0, 10) : "",
         responses: localSurvey?.responses || [],
         ownerId: localSurvey?.ownerId,

@@ -257,10 +257,12 @@ export default function ProfilePage() {
   const surveyRecords = useMemo(() => {
     return apiSurveys.map((survey, index) => {
       const code = survey.code || survey.access_code;
+      const shortCode = survey.shortCode || survey.short_code;
       return {
         id: survey.id || code,
         title: survey.title || survey.survey_name || "未命名問卷", 
         code,
+        shortCode,
         createdAt: survey.createdAt || survey.created_at,
         deadlineAt: survey.deadlineAt || survey.deadline_at,
         createdAtMs: getSurveyTime(survey.createdAt || survey.created_at) + index,
@@ -304,6 +306,8 @@ export default function ProfilePage() {
         identityMode: surveyData.identity_mode,
         deadline_at: surveyData.deadline_at,
         deadlineAt: surveyData.deadline_at,
+        short_code: surveyData.short_code || survey.short_code,
+        shortCode: surveyData.short_code || survey.shortCode,
         questions: surveyData.questions || [],
         responses: responsesData.responses || [],
       });
