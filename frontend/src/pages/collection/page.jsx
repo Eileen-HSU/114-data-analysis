@@ -521,7 +521,7 @@ export default function CollectionPage() {
               ) : (
                 <div className="deleted-list">
                   {deletedItems.map((item) => (
-                    <div className="deleted-item" key={item.id}>
+                    <div className="deleted-item" key={item.project_id}>
                       <div className="deleted-icon-box">
                         <i className={item.type === "folder" ? "ri-folder-line" : "ri-file-list-3-line"}></i>
                       </div>
@@ -536,7 +536,7 @@ export default function CollectionPage() {
                           <i className="ri-arrow-go-back-line"></i>
                           還原
                         </button>
-                        <button className="btn-deleted-remove" onClick={() => permanentDelete(item.id)}>
+                        <button className="btn-deleted-remove" onClick={() => permanentDelete(item.project_id)}>
                           <i className="ri-delete-bin-2-line"></i>
                           永久刪除
                         </button>

@@ -11,11 +11,11 @@ export default function TrashPage() {
 
   const handleRestore = (item) => {
     restoreItem(item);
-    setRestoredIds((prev) => new Set(prev).add(item.id));
+    setRestoredIds((prev) => new Set(prev).add(item.project_id));
   };
 
   const handlePermanentDelete = (item) => {
-    permanentDelete(item.id);
+    permanentDelete(item.project_id);
     setPermDeleteTarget(null);
   };
 
@@ -72,9 +72,9 @@ export default function TrashPage() {
 
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {deletedItems.map((item) => {
-                  const isRestored = restoredIds.has(item.id);
+                  const isRestored = restoredIds.has(item.project_id);
                   return (
-                    <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 20px", background: "white", borderRadius: 14, border: "1px solid #f0ebe9", opacity: isRestored ? 0.5 : 1 }}>
+                    <div key={item.project_id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 20px", background: "white", borderRadius: 14, border: "1px solid #f0ebe9", opacity: isRestored ? 0.5 : 1 }}>
                       <div style={{ width: 48, height: 48, flexShrink: 0, background: item.type === "folder" ? "#f5e8e6" : "#edf2f7", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, color: item.type === "folder" ? "#c9a0a0" : "#8fa3b8" }}>
                         <i className={item.type === "folder" ? "ri-folder-line" : "ri-file-line"}></i>
                       </div>

@@ -233,7 +233,7 @@ export function CollectionProvider({ children }) {
       }
     }
 
-    setDeletedItems((prev) => prev.filter((d) => d.id !== item.id));
+    setDeletedItems((prev) => prev.filter((d) => d.project_id !== item.project_id));
     recordActivity({
       text: `還原「${item.name}」`,
       icon: "ri-arrow-go-back-line",
@@ -244,7 +244,7 @@ export function CollectionProvider({ children }) {
 
   // ── 永久刪除：從資料庫完全刪除，同時打後端 API ──────────
   const permanentDelete = async (id) => {
-    const target = deletedItems.find((item) => item.id === id);
+    const target = deletedItems.find((item) => item.project_id === id);
     if (target?.project_id) {
       try {
         await fetch(apiUrl(`/api/workspace/${target.project_id}/permanent`), {
