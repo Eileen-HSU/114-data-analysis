@@ -612,23 +612,50 @@ export default function WorkspacePage() {
     );
   }, []);
 
-  const handleSelectSurvey = (record) => {
+  const handleSelectSurvey = async (record) => {
     const detail = normalizeSurveyDetail(record.detail);
     if (!detail) return;
     const content = buildSurveyChatContent(detail);
-    const newId = `survey-${Date.now()}`;
+    const title = `問卷分析：${record.title}`;
+    const tempId = `survey-${Date.now()}`;
     const userMsg = { id: `u-${Date.now()}`, role: "user", content };
     const newSession = {
-      id: newId,
-      title: `問卷分析：${record.title}`,
+      id: tempId,
+      title,
       date: new Date().toLocaleDateString(),
       messages: [WELCOME_MSG, userMsg],
     };
     setSessions((prev) => [newSession, ...prev]);
-    setActiveSessionId(newId);
+    setActiveSessionId(tempId);
     setShowSurveyPicker(false);
     setSurveyPickerSearch("");
-    addChatToCollection(`問卷分析：${record.title}`, newId);
+
+    try {
+      const res = await fetch(apiUrl("/api/workspace"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeader(),
+        },
+        body: JSON.stringify({ project_name: title }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const newId = String(data.project_id);
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === tempId
+              ? { ...s, id: newId, project_id: data.project_id }
+              : s
+          )
+        );
+        updateSessionId(tempId, newId);
+        setActiveSessionId(newId);
+      }
+    } catch (err) {
+      console.error("建立問卷工作區失敗", err);
+    }
+
     setIsTyping(true);
     setTimeout(() => {
       const aiReply = {
@@ -637,7 +664,11 @@ export default function WorkspacePage() {
         content: buildAssistantReply(content, detail, record.title),
       };
       setSessions((prev) =>
-        prev.map((s) => s.id === newId ? { ...s, messages: [...s.messages, aiReply] } : s)
+        prev.map((s) =>
+          s.id === tempId || s.project_id === parseInt(tempId)
+            ? { ...s, messages: [...s.messages, aiReply] }
+            : s
+        )
       );
       setIsTyping(false);
     }, 1800);

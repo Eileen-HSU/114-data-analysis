@@ -77,6 +77,7 @@ export function CollectionProvider({ children }) {
       const existingSessionIds = new Set(prev.filter((f) => f.type === "chat").map((f) => String(f.sessionId)));
       const missingChatFiles = workspaceSessions
         .filter((session) => !existingSessionIds.has(String(session.id)))
+        .filter((session) => !existingTitles.has(session.title))
         .map((session) => ({
           id: `chat-${session.id}`,
           name: session.title,
