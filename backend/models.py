@@ -1,6 +1,7 @@
 from extensions import db
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from sqlalchemy.dialects.mysql import MEDIUMTEXT
 import uuid
 
 # 定義抓取台灣時間的函式 (UTC+8)
@@ -35,7 +36,7 @@ class UserProfile(db.Model):
     language     = db.Column(db.String(36))
     bio          = db.Column(db.String(500))
     location     = db.Column(db.String(100))
-    avatar_url   = db.Column(db.Mediumtext)
+    avatar_url   = db.Column(MEDIUMTEXT)
     updated_at   = db.Column(db.DateTime(timezone=True), default=taiwan_now, onupdate=taiwan_now)
 
 
