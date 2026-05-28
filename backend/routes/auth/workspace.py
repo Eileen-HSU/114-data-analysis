@@ -227,23 +227,27 @@ def permanent_delete_workspace(project_id):
     current_user_id, auth_error = authorize_request()
     if auth_error:
         return auth_error
+        
     workspace = Workspace.query.filter_by(
         project_id = project_id,
-        user_id    = current_user_id,
-        is_deleted = True,
+        user_id    = current_user_id
     ).first()
 
     if not workspace:
-        return jsonify({"error": "找不到已刪除的專案"}), 404
+        return jsonify({"error": "找不到該專案"}), 404
 
     try:
+        # 在刪除前，先將所有關聯的 Survey_Template 斷開，保留範本本體
+        for template in workspace.templates:
+            template.project_id = None
+        
+        # 執行永久刪除（此時連帶刪除 chats，因為 chats 有設定 delete-orphan）
         db.session.delete(workspace)
         db.session.commit()
-        return jsonify({"message": "專案已永久刪除"}), 200
+        return jsonify({"message": "專案已永久刪除，相關問卷範本已安全保留"}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
-
 
 def hard_delete_expired_workspaces(app):
     with app.app_context():

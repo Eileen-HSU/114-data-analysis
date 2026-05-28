@@ -66,7 +66,9 @@ export function CollectionProvider({ children }) {
           id: String(w.project_id),
           project_id: w.project_id,
           title: w.project_name,
+          name: w.project_name,
           folder_name: w.folder_name ?? null,
+          deletedAt: w.deleted_at ? w.deleted_at.slice(0, 10) : "",
           date: w.created_at ? w.created_at.slice(0, 10) : "",
         }));
 
@@ -247,29 +249,33 @@ export function CollectionProvider({ children }) {
 
 
   // 永久刪除
-  const permanentDelete = async (id) => {
-    const target = deletedItems.find((item) => item.project_id === id);
-    if (target?.project_id) {
-      try {
-        await fetch(apiUrl(`/api/workspace/${target.project_id}/permanent`), {
-          method: "DELETE",
-          headers: getAuthHeader(),
-        });
-      } catch (err) {
-        console.error("永久刪除失敗", err);
-      }
-    }
-    setDeletedItems((prev) => {
-      if (!Array.isArray(prev)) return [];
-      return prev.filter((d) => d.project_id !== id);
-    });
-    if (target) {
-      recordActivity({
-        text: `永久刪除「${target.name}」`,
-        icon: "ri-delete-bin-2-line",
-        iconBg: "bg-stat-coral",
-        iconColor: "text-stat-coral",
+  const permanentDelete = async (projectId) => {
+    try {
+      const authUser = JSON.parse(localStorage.getItem("dataanalysis_auth"));
+      const token = authUser?.token;
+
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ""}/api/workspace/${projectId}/permanent`, {
+        method: "DELETE",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
       });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || "刪除失敗");
+      }
+
+      // 後端成功後，同步更新前端 UI State
+      setDeletedItems((prev) => {
+        if (!Array.isArray(prev)) return [];
+        return prev.filter((item) => item.project_id !== projectId);
+      });
+
+      console.log(`專案 ${projectId} 已永久刪除`);
+    } catch (err) {
+      console.error("永久刪除失敗:", err.message);
+      alert(`刪除失敗: ${err.message}`);
     }
   };
 
