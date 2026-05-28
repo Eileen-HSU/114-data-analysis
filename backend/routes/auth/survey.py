@@ -109,15 +109,37 @@ def is_allowed_short_url_target(url):
 
 
 def create_external_short_url(long_url):
-    query = urlencode({"format": "simple", "url": long_url})
-    api_url = f"https://is.gd/create.php?{query}"
+    providers = [
+        (
+            "tinyurl",
+            f"https://tinyurl.com/api-create.php?{urlencode({'url': long_url})}",
+            ("https://tinyurl.com/",),
+        ),
+        (
+            "is.gd",
+            f"https://is.gd/create.php?{urlencode({'format': 'simple', 'url': long_url})}",
+            ("https://is.gd/",),
+        ),
+        (
+            "v.gd",
+            f"https://v.gd/create.php?{urlencode({'format': 'simple', 'url': long_url})}",
+            ("https://v.gd/",),
+        ),
+    ]
+    errors = []
 
-    with urlopen(api_url, timeout=5) as response:
-        short_url = response.read().decode("utf-8").strip()
+    for provider_name, api_url, allowed_prefixes in providers:
+        try:
+            with urlopen(api_url, timeout=5) as response:
+                short_url = response.read().decode("utf-8").strip()
 
-    if not short_url.startswith(("https://is.gd/", "https://v.gd/")):
-        raise ValueError(short_url or "Shortener returned an empty response")
-    return short_url
+            if short_url.startswith(allowed_prefixes):
+                return short_url
+            errors.append(f"{provider_name}: {short_url or 'empty response'}")
+        except Exception as e:
+            errors.append(f"{provider_name}: {e}")
+
+    raise ValueError("; ".join(errors) or "All shorteners failed")
 
 
 @survey_bp.route('/api/short-links', methods=['POST'])
