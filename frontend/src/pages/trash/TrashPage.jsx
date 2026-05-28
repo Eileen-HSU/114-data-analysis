@@ -15,7 +15,7 @@ export default function TrashPage() {
   };
 
   const handlePermanentDelete = (item) => {
-    permanentDelete(item.project_id);
+    permanentDelete(item);
     setPermDeleteTarget(null);
   };
 
