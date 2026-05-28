@@ -60,6 +60,17 @@ export function CollectionProvider({ children }) {
     localStorage.setItem(COLLECTION_FILES_KEY, JSON.stringify(files));
   }, [files]);
 
+  const addFileToCollection = (file) => {
+  const newFile = {
+    id: `file-${Date.now()}`,
+    name: file.name,
+    size: file.size,
+    type: file.type,
+    date: nowString(),
+  };
+  setFiles((prev) => [newFile, ...prev]);
+};
+
   // ── 資料夾刪除（軟刪除到垃圾桶，純前端）────────────────
   const deleteFolder = (id, name) => {
     const folder = folders.find((f) => f.id === id);
@@ -202,13 +213,16 @@ export function CollectionProvider({ children }) {
   };
 
   const addChatToCollection = (title, sessionId) => {
-    const newSession = {
-      id: sessionId,
-      title,
-      folder_name: null,
-      date: nowString(),
-    };
-    setWorkspaceSessions((prev) => [newSession, ...prev]);
+    setWorkspaceSessions((prev) => {
+      if (prev.find((s) => s.id === sessionId)) return prev; // 防止重複新增
+      const newSession = {
+        id: sessionId,
+        title,
+        folder_name: null,
+        date: nowString(),
+      };
+      return [newSession, ...prev];
+    });
     recordActivity({
       text: `新增工作區 Chat「${title}」`,
       icon: "ri-chat-new-line",
