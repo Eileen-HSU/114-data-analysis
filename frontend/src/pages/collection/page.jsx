@@ -159,6 +159,11 @@ export default function CollectionPage() {
         await deleteChatSession(String(file.sessionId));
       }
     }
+
+    if (deleteTarget.type === "session") {
+      await deleteChatSession(String(deleteTarget.id));
+    }
+    
     setDeleteTarget(null);
   };
 
@@ -435,7 +440,7 @@ export default function CollectionPage() {
                                       menuOpen={fileMenuId === file.id}
                                       onMenuToggle={() => setFileMenuId((prev) => (prev === file.id ? null : file.id))}
                                       onMenuClose={() => setFileMenuId(null)}
-                                      onDelete={() => setDeleteTarget({ type: "file", id: file.id, name: file.name })}
+                                      onDelete={() => setDeleteTarget({ type: "session", id: file.id, name: file.name })}
                                       onOpen={() => openFile(file)}
                                     />
                                   ))}
@@ -514,7 +519,7 @@ export default function CollectionPage() {
                                 className="action-btn-sm"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setDeleteTarget({ type: "file", id: session.id, name: session.title, sessionId: session.id });
+                                  setDeleteTarget({ type: "session", id: session.id, name: session.title, sessionId: session.id });
                                 }}
                                 title="刪除"
                               >
