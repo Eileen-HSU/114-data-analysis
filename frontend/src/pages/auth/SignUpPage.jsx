@@ -20,10 +20,10 @@ export default function SignUpPage() {
   const [alertModal, setAlertModal] = useState(null);
 
   const genderOptions = [
-    { value: "男", label: "男" },
-    { value: "女", label: "女" },
-    { value: "其他", label: "其他" },
-    { value: "不願透露", label: "不願透露" },
+    { value: "男", label: "男", emoji: "👨" },
+    { value: "女", label: "女", emoji: "👩" },
+    { value: "其他", label: "其他", emoji: "✨" },
+    { value: "不願透露", label: "不願透露", emoji: "🤍" },
   ];
   const selectedGenderLabel =
     genderOptions.find((option) => option.value === gender)?.label || "請選擇性別";
@@ -211,7 +211,8 @@ const handleSubmit = async (e) => {
                                 setIsGenderOpen(false);
                               }}
                             >
-                              {option.label}
+                              <span>{option.label}</span>
+                              <span className="auth-select-emoji" aria-hidden="true">{option.emoji}</span>
                             </button>
                           ))}
                         </div>
