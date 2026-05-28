@@ -115,7 +115,6 @@ export default function CollectionPage() {
     });
   };
 
-  // 
   // 刪除
   const confirmDelete = async () => {
     if (!deleteTarget) return;
