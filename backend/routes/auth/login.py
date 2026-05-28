@@ -23,8 +23,9 @@ def get_jwt_secret():
 
 
 def build_token(user_id):
+    exp_time = (taiwan_now() + timedelta(hours=24)).replace(tzinfo=None)
     return jwt.encode(
-        {"user_id": user_id, "exp": taiwan_now() + timedelta(hours=24)},
+        {"user_id": user_id, "exp": exp_time},
         get_jwt_secret(),
         algorithm="HS256",
     )
@@ -80,7 +81,7 @@ def login():
                 user_id=user.user_id,
                 type="2FA",
                 code_hash=generate_password_hash(otp),
-                expires_at=taiwan_now() + timedelta(minutes=10),
+                expires_at=(taiwan_now() + timedelta(minutes=10)).replace(tzinfo=None),
                 target_email=user.email,
                 is_used=False,
                 attempts=0,
@@ -106,10 +107,12 @@ def login():
                     "warning": "雙因子驗證信寄送失敗，已暫時關閉雙因子驗證。請登入後重新設定。",
                 }), 200
 
+            pre_auth_exp = (taiwan_now() + timedelta(minutes=10)).replace(tzinfo=None)
+
             pre_auth_token = jwt.encode({
                 'email': user.email,
                 'type': 'pre_auth',
-                'exp': taiwan_now() + timedelta(minutes=10)
+                'exp': pre_auth_exp
             }, get_jwt_secret(), algorithm="HS256")
 
             return jsonify({"require_2fa": True, "pre_auth_token": pre_auth_token, **user_info}), 200
