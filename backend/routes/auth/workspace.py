@@ -176,10 +176,11 @@ def delete_workspace(project_id):
     current_user_id, auth_error = authorize_request()
     if auth_error:
         return auth_error
-    workspace = Workspace.query.filter_by(
-        project_id = project_id,
-        user_id    = current_user_id,
-        is_deleted = False,
+    
+    workspace = Workspace.query.filter(
+        Workspace.project_id == project_id,
+        Workspace.user_id    == current_user_id,
+        Workspace.is_deleted != True,
     ).first()
 
     if not workspace:
@@ -200,6 +201,7 @@ def restore_workspace(project_id):
     current_user_id, auth_error = authorize_request()
     if auth_error:
         return auth_error
+    
     workspace = Workspace.query.filter_by(
         project_id = project_id,
         user_id    = current_user_id,
@@ -235,6 +237,9 @@ def permanent_delete_workspace(project_id):
 
     if not workspace:
         return jsonify({"error": "找不到該專案"}), 404
+    
+    if not workspace.is_deleted:  
+        return jsonify({"error": "請先移至垃圾桶才能永久刪除"}), 400
 
     try:
         # 1. 安全斷開：把所有關聯的問卷範本 project_id 設為空
