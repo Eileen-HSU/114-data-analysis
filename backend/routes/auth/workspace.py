@@ -237,14 +237,19 @@ def permanent_delete_workspace(project_id):
         return jsonify({"error": "找不到該專案"}), 404
 
     try:
-        # 在刪除前，先將所有關聯的 Survey_Template 斷開，保留範本本體
+        # 1. 安全斷開：把所有關聯的問卷範本 project_id 設為空
         for template in workspace.templates:
             template.project_id = None
+            
+        # 2. 安全斷開：把所有關聯的聊天紀錄 project_id 設為空
+        for chat in workspace.chats:
+            chat.project_id = None
         
-        # 執行永久刪除（此時連帶刪除 chats，因為 chats 有設定 delete-orphan）
+        # 3. 執行永久刪除（單純抹除 Workspace 這一筆資料）
         db.session.delete(workspace)
         db.session.commit()
-        return jsonify({"message": "專案已永久刪除，相關問卷範本已安全保留"}), 200
+        
+        return jsonify({"message": "專案已永久刪除，聊天紀錄與問卷範本已安全保留"}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
