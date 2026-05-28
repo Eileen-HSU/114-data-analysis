@@ -2,6 +2,7 @@ import logging
 import os
 import random
 import string
+import json
 from urllib.parse import urlencode, urlsplit
 from urllib.request import urlopen
 import jwt
@@ -109,11 +110,14 @@ def is_allowed_short_url_target(url):
 
 
 def create_external_short_url(long_url):
+    cuttly_api_key = os.getenv("CUTTLY_API_KEY", "").strip()
     providers = [
-        (
-            "tinyurl",
-            f"https://tinyurl.com/api-create.php?{urlencode({'url': long_url})}",
-            ("https://tinyurl.com/",),
+        *(
+            [(
+                "cuttly",
+                f"https://cutt.ly/api/api.php?{urlencode({'key': cuttly_api_key, 'short': long_url, 'userDomain': '1'})}",
+                ("https://cutt.ly/", "http://cutt.ly/"),
+            )] if cuttly_api_key else []
         ),
         (
             "is.gd",
@@ -125,13 +129,29 @@ def create_external_short_url(long_url):
             f"https://v.gd/create.php?{urlencode({'format': 'simple', 'url': long_url})}",
             ("https://v.gd/",),
         ),
+        (
+            "tinyurl",
+            f"https://tinyurl.com/api-create.php?{urlencode({'url': long_url})}",
+            ("https://tinyurl.com/",),
+        ),
     ]
     errors = []
 
     for provider_name, api_url, allowed_prefixes in providers:
         try:
             with urlopen(api_url, timeout=5) as response:
-                short_url = response.read().decode("utf-8").strip()
+                body = response.read().decode("utf-8").strip()
+
+            if provider_name == "cuttly":
+                payload = json.loads(body)
+                url_info = payload.get("url") or {}
+                short_url = (url_info.get("shortLink") or "").strip()
+                status = url_info.get("status")
+                if status != 7:
+                    errors.append(f"cuttly: status {status}")
+                    continue
+            else:
+                short_url = body
 
             if short_url.startswith(allowed_prefixes):
                 return short_url
