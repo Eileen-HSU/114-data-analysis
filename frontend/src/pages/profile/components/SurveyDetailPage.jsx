@@ -192,7 +192,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
 
   const ratingQuestions = questions.filter((question) => (question.type || question.question_type) === "rating");
   const textQuestions = questions.filter((question) => (question.type || question.question_type) !== "rating");
-  const surveyLink = buildSurveyFillUrl(currentSurvey.code || "");
+  const surveyLink = buildSurveyFillUrl(currentSurvey);
 
   useEffect(() => {
     setDeadlineValue(toDateTimeLocalValue(currentSurvey.deadlineAt || currentSurvey.deadline_at));
