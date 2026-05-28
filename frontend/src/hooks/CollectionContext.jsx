@@ -18,10 +18,6 @@ function loadArray(key, fallback = []) {
   }
 }
 
-function loadWorkspaceSessions() {
-  return loadArray(WORKSPACE_SESSIONS_KEY);
-}
-
 function getAuthHeader() {
   try {
     const user = JSON.parse(localStorage.getItem("dataanalysis_auth"));
@@ -36,51 +32,25 @@ export function CollectionProvider({ children }) {
   const { recordActivity } = useActivity();
   const [folders, setFolders] = useState(() => loadArray(COLLECTION_FOLDERS_KEY, []));
   const [files, setFiles] = useState(() => loadArray(COLLECTION_FILES_KEY, []));
-  const [deletedItems, setDeletedItems] = useState(() => loadArray(DELETED_ITEMS_KEY));
-  const [workspaceSessions, setWorkspaceSessions] = useState(loadWorkspaceSessions);
+  const [deletedItems, setDeletedItems] = useState(() => loadArray(DELETED_ITEMS_KEY, []));
+  const [workspaceSessions, setWorkspaceSessions] = useState(() => loadArray(WORKSPACE_SESSIONS_KEY, []));
 
   const nowString = () => {
     const d = new Date();
     return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   };
 
-  useEffect(() => {
-    localStorage.setItem(WORKSPACE_SESSIONS_KEY, JSON.stringify(workspaceSessions));
-  }, [workspaceSessions]);
+  useEffect(() => { localStorage.setItem(WORKSPACE_SESSIONS_KEY, JSON.stringify(workspaceSessions)); }, [workspaceSessions]);
+  useEffect(() => { localStorage.setItem(COLLECTION_FOLDERS_KEY, JSON.stringify(folders)); }, [folders]);
+  useEffect(() => { localStorage.setItem(DELETED_ITEMS_KEY, JSON.stringify(deletedItems)); }, [deletedItems]);
+  useEffect(() => { localStorage.setItem(COLLECTION_FILES_KEY, JSON.stringify(files)); }, [files]);
 
-  useEffect(() => {
-    localStorage.setItem(COLLECTION_FOLDERS_KEY, JSON.stringify(folders));
-  }, [folders]);
 
-  useEffect(() => {
-    localStorage.setItem(DELETED_ITEMS_KEY, JSON.stringify(deletedItems));
-  }, [deletedItems]);
-
-  useEffect(() => {
-    localStorage.setItem(COLLECTION_FILES_KEY, JSON.stringify(files));
-  }, [files]);
-
-  const addFileToCollection = (file) => {
-  const newFile = {
-    id: `file-${Date.now()}`,
-    name: file.name,
-    size: file.size,
-    type: file.type,
-    date: nowString(),
-  };
-  setFiles((prev) => [newFile, ...prev]);
-};
-
-const addChatToCollection = (title, sessionId) => {
+  // 新增
+  const addChatToCollection = (title, sessionId) => {
     setWorkspaceSessions((prev) => {
-      if (prev.find((s) => s.id === sessionId)) return prev; // 防止重複新增
-      const newSession = {
-        id: sessionId,
-        title,
-        folder_name: null,
-        date: nowString(),
-      };
-      return [newSession, ...prev];
+      if (prev.find((s) => s.id === sessionId)) return prev;
+      return [{ id: sessionId, title, folder_name: null, date: nowString() }, ...prev];
     });
     recordActivity({
       text: `新增工作區 Chat「${title}」`,
@@ -90,25 +60,25 @@ const addChatToCollection = (title, sessionId) => {
     });
   };
 
-  // ── 資料夾刪除（軟刪除到垃圾桶，純前端）────────────────
+  const addFileToCollection = (file) => {
+    setFiles((prev) => [
+      { id: `file-${Date.now()}`, name: file.name, size: file.size, type: file.type, date: nowString() },
+      ...prev,
+    ]);
+  };
+
+
+  // 軟刪除
   const deleteFolder = (id, name) => {
     const folder = folders.find((f) => f.id === id);
     if (!folder) return;
     setDeletedItems((prev) => [
-      {
-        id: `del-${Date.now()}`,
-        name,
-        type: "folder",
-        deletedAt: nowString(),
-        originalData: folder,
-      },
+      { id: `del-${Date.now()}`, name, type: "folder", deletedAt: nowString(), originalData: folder },
       ...prev,
     ]);
     setFolders((prev) => prev.filter((f) => f.id !== id));
     setWorkspaceSessions((prev) =>
-      prev.map((session) =>
-        session.folder_name === name ? { ...session, folder_name: null } : session
-      )
+      prev.map((s) => (s.folder_name === name ? { ...s, folder_name: null } : s))
     );
     recordActivity({
       text: `刪除資料夾「${name}」`,
@@ -118,34 +88,24 @@ const addChatToCollection = (title, sessionId) => {
     });
   };
 
-  // ── Chat 軟刪除：PATCH is_deleted = 1 ────────────────────
   const deleteChatSession = async (sessionId) => {
     const session = workspaceSessions.find((s) => s.id === sessionId);
     if (!session) return;
-
     if (session.project_id) {
       try {
         await fetch(apiUrl(`/api/workspace/${session.project_id}`), {
           method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            ...getAuthHeader(),
-          },
+          headers: { "Content-Type": "application/json", ...getAuthHeader() },
           body: JSON.stringify({ is_deleted: 1 }),
         });
       } catch (err) {
         console.error("軟刪除失敗", err);
       }
     }
-
     setDeletedItems((prev) => [
       {
-        id: `del-${Date.now()}`,
-        name: session.title,
-        type: "chat",
-        deletedAt: nowString(),
-        originalData: session,
-        workspaceSession: session,
+        id: `del-${Date.now()}`, name: session.title, type: "chat", deletedAt: nowString(),
+        originalData: session, workspaceSession: session,
         project_id: session.project_id || null,
       },
       ...prev,
@@ -159,18 +119,15 @@ const addChatToCollection = (title, sessionId) => {
     });
   };
 
-  // ── 還原 ─────────────────────────────────────────────────
+
+  // 還原
   const restoreItem = async (item) => {
     if (item.project_id) {
       try {
-        const folderName =
-          item.workspaceSession?.folder_name ?? item.originalData?.folder_name ?? null;
+        const folderName = item.workspaceSession?.folder_name ?? item.originalData?.folder_name ?? null;
         await fetch(apiUrl(`/api/workspace/${item.project_id}/restore`), {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...getAuthHeader(),
-          },
+          headers: { "Content-Type": "application/json", ...getAuthHeader() },
           body: JSON.stringify({ folder_name: folderName }),
         });
       } catch (err) {
@@ -180,14 +137,7 @@ const addChatToCollection = (title, sessionId) => {
 
     if (item.type === "folder") {
       setFolders((prev) => [...prev, item.originalData]);
-      setWorkspaceSessions((prev) =>
-        prev.map((session) =>
-          session.folder_name === null && item.originalData.name
-            ? session
-            : session
-        )
-      );
-    } else {
+    } else if (item.workspaceSession) {
       // chat
       setWorkspaceSessions((prev) => {
         if (prev.find((s) => s.id === item.workspaceSession.id)) return prev;
@@ -204,10 +154,10 @@ const addChatToCollection = (title, sessionId) => {
     });
   };
 
-  // ── 永久刪除：DELETE 從資料庫完全移除 ───────────────────
+
+  // 永久刪除
   const permanentDelete = async (id) => {
     const target = deletedItems.find((item) => item.project_id === id);
-
     if (target?.project_id) {
       try {
         await fetch(apiUrl(`/api/workspace/${target.project_id}/permanent`), {
@@ -218,9 +168,10 @@ const addChatToCollection = (title, sessionId) => {
         console.error("永久刪除失敗", err);
       }
     }
-
-    setDeletedItems((prev) => prev.filter((d) => d.project_id !== id));
-
+    setDeletedItems((prev) => {
+      if (!Array.isArray(prev)) return [];
+      return prev.filter((d) => d.project_id !== id);
+    });
     if (target) {
       recordActivity({
         text: `永久刪除「${target.name}」`,
@@ -231,49 +182,26 @@ const addChatToCollection = (title, sessionId) => {
     }
   };
 
-  const deleteFile = (id, name) => {
-    const file = files.find((f) => f.id === id);
-    if (!file) return;
-    setDeletedItems((prev) => [
-      {
-        id: `del-${Date.now()}`,
-        name,
-        type: "file",
-        deletedAt: nowString(),
-        originalData: file,
-      },
-      ...prev,
-    ]);
-    setFiles((prev) => prev.filter((f) => f.id !== id));
-    recordActivity({
-      text: `刪除檔案「${name}」`,
-      icon: "ri-file-reduce-line",
-      iconBg: "bg-stat-coral",
-      iconColor: "text-stat-coral",
-    });
-  };
 
+  // 同步工具
   const syncChatTitle = (sessionId, newTitle) => {
-    setWorkspaceSessions((prev) =>
-      prev.map((s) => (s.id === sessionId ? { ...s, title: newTitle } : s))
-    );
+    setWorkspaceSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, title: newTitle } : s)));
   };
 
   const updateSessionId = (oldId, newId) => {
-    setWorkspaceSessions((prev) =>
-      prev.map((s) => (s.id === oldId ? { ...s, id: newId } : s))
-    );
+    setWorkspaceSessions((prev) => prev.map((s) => (s.id === oldId ? { ...s, id: newId } : s)));
   };
 
   return (
     <CollectionContext.Provider
       value={{
-        folders, files, deletedItems, workspaceSessions,  
-        setFolders, setFiles, setWorkspaceSessions,        
-        deleteFolder, deleteFile, deleteChatSession,
-        restoreItem, permanentDelete,
-        addChatToCollection, syncChatTitle,
-        updateSessionId,
+        folders, files, deletedItems, workspaceSessions,
+        setFolders, setFiles, setWorkspaceSessions,
+        addChatToCollection, addFileToCollection,
+        deleteFolder, deleteChatSession,
+        restoreItem,
+        permanentDelete,
+        syncChatTitle, updateSessionId,
       }}
     >
       {children}
