@@ -6,6 +6,7 @@ const CollectionContext = createContext(null);
 const WORKSPACE_SESSIONS_KEY = "dataanalysis_workspace_sessions";
 const COLLECTION_FOLDERS_KEY = "dataanalysis_collection_folders";
 const DELETED_ITEMS_KEY = "dataanalysis_deleted_items";
+const COLLECTION_FILES_KEY = "dataanalysis_collection_files";
 
 function loadArray(key, fallback = []) {
   try {
@@ -34,6 +35,7 @@ function getAuthHeader() {
 export function CollectionProvider({ children }) {
   const { recordActivity } = useActivity();
   const [folders, setFolders] = useState(() => loadArray(COLLECTION_FOLDERS_KEY, []));
+  const [files, setFiles] = useState(() => loadArray(COLLECTION_FILES_KEY, []));
   const [deletedItems, setDeletedItems] = useState(() => loadArray(DELETED_ITEMS_KEY));
   const [workspaceSessions, setWorkspaceSessions] = useState(loadWorkspaceSessions);
 
@@ -53,6 +55,10 @@ export function CollectionProvider({ children }) {
   useEffect(() => {
     localStorage.setItem(DELETED_ITEMS_KEY, JSON.stringify(deletedItems));
   }, [deletedItems]);
+
+  useEffect(() => {
+    localStorage.setItem(COLLECTION_FILES_KEY, JSON.stringify(files));
+  }, [files]);
 
   // ── 資料夾刪除（軟刪除到垃圾桶，純前端）────────────────
   const deleteFolder = (id, name) => {
@@ -226,8 +232,8 @@ export function CollectionProvider({ children }) {
   return (
     <CollectionContext.Provider
       value={{
-        folders, deletedItems, workspaceSessions,
-        setFolders, setWorkspaceSessions,
+        folders, files, deletedItems, workspaceSessions,  
+        setFolders, setFiles, setWorkspaceSessions,        
         deleteFolder, deleteChatSession,
         restoreItem, permanentDelete,
         addChatToCollection, syncChatTitle,
