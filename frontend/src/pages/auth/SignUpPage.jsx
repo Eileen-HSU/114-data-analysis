@@ -16,7 +16,17 @@ export default function SignUpPage() {
   const [phone, setPhone] = useState("");
   const [company, setCompany] = useState("");
   const [gender, setGender] = useState("");
+  const [isGenderOpen, setIsGenderOpen] = useState(false);
   const [alertModal, setAlertModal] = useState(null);
+
+  const genderOptions = [
+    { value: "男", label: "男" },
+    { value: "女", label: "女" },
+    { value: "其他", label: "其他" },
+    { value: "不願透露", label: "不願透露" },
+  ];
+  const selectedGenderLabel =
+    genderOptions.find((option) => option.value === gender)?.label || "請選擇性別";
 
   useEffect(() => {
     const clearFields = () => {
@@ -35,6 +45,15 @@ export default function SignUpPage() {
 
 const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (!gender) {
+      setAlertModal({
+        type: "error",
+        title: "請選擇性別",
+        message: "請先選擇性別後再建立帳號。",
+      });
+      return;
+    }
     
     try {
       // 將所有數據包裹在一個物件中作為 axios.post 的第二個參數
@@ -161,13 +180,43 @@ const handleSubmit = async (e) => {
                   <label className="auth-label">性別<span className="required-mark">*</span></label>
                   <div className="position-relative">
                     <i className="ri-user-heart-line form-icon"></i>
-                    <select name="signup_gender" autoComplete="off" required className="form-control form-control-custom" value={gender} onChange={(e) => setGender(e.target.value)} style={{ appearance: "none" }}>
-                      <option value="">請選擇性別</option>
-                      <option value="男">男</option>
-                      <option value="女">女</option>
-                      <option value="其他">其他</option>
-                      <option value="不願透露">不願透露</option>
-                    </select>
+                    <div className={`auth-select ${isGenderOpen ? "open" : ""}`}>
+                      <button
+                        type="button"
+                        className={`form-control form-control-custom auth-select-trigger ${gender ? "" : "is-placeholder"}`}
+                        aria-haspopup="listbox"
+                        aria-expanded={isGenderOpen}
+                        onClick={() => setIsGenderOpen((open) => !open)}
+                        onBlur={(event) => {
+                          if (!event.currentTarget.parentElement?.contains(event.relatedTarget)) {
+                            setIsGenderOpen(false);
+                          }
+                        }}
+                      >
+                        <span>{selectedGenderLabel}</span>
+                        <i className="ri-arrow-down-s-line auth-select-chevron"></i>
+                      </button>
+                      {isGenderOpen && (
+                        <div className="auth-select-menu" role="listbox">
+                          {genderOptions.map((option) => (
+                            <button
+                              type="button"
+                              key={option.value}
+                              role="option"
+                              aria-selected={gender === option.value}
+                              className={`auth-select-option ${gender === option.value ? "selected" : ""}`}
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => {
+                                setGender(option.value);
+                                setIsGenderOpen(false);
+                              }}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
