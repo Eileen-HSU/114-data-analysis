@@ -432,6 +432,7 @@ export default function WorkspacePage() {
   const [apiSurveys, setApiSurveys] = useState([]);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [toastMsg, setToastMsg] = useState(null);
+  const [isEntryLoading, setIsEntryLoading] = useState(() => sessionStorage.getItem("dataanalysis_login_loading") === "1");
   const toastTimerRef = useRef(null);
 
   const messagesEndRef = useRef(null);
@@ -502,7 +503,11 @@ export default function WorkspacePage() {
 
   // ── 登入後從後端載入 workspace 列表 ──────────────────────
   useEffect(() => {
-    if (!isLoggedIn) return;
+    if (!isLoggedIn) {
+      setIsEntryLoading(false);
+      sessionStorage.removeItem("dataanalysis_login_loading");
+      return;
+    }
 
     const fetchWorkspaces = async () => {
       try {
@@ -537,6 +542,15 @@ export default function WorkspacePage() {
         });
       } catch (err) {
         console.error("載入 workspace 失敗", err);
+      } finally {
+        if (sessionStorage.getItem("dataanalysis_login_loading") === "1") {
+          window.setTimeout(() => {
+            sessionStorage.removeItem("dataanalysis_login_loading");
+            setIsEntryLoading(false);
+          }, 450);
+        } else {
+          setIsEntryLoading(false);
+        }
       }
     };
 
@@ -839,6 +853,23 @@ export default function WorkspacePage() {
             onCancel={() => navigate("/")}
           />
         </div>
+      </>
+    );
+  }
+
+  if (isEntryLoading) {
+    return (
+      <>
+        <Navbar />
+        <main className="workspace-entry-loading-page">
+          <div className="workspace-entry-loading-card" role="status" aria-live="polite">
+            <div className="workspace-entry-loading-icon">
+              <i className="ri-loader-4-line"></i>
+            </div>
+            <h1>正在載入工作區...</h1>
+            <p>正在整理您的作品集、歷史紀錄與分析資料，請稍候。</p>
+          </div>
+        </main>
       </>
     );
   }

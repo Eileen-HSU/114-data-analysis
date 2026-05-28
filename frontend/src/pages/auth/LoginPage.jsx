@@ -57,6 +57,8 @@ export default function LoginPage() {
 
     try {
       setIsSubmitting(true);
+      sessionStorage.setItem("dataanalysis_login_loading", "1");
+      await new Promise((resolve) => requestAnimationFrame(resolve));
       const res = await fetch(apiUrl("/api/login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -66,6 +68,7 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) {
         setIsSubmitting(false);
+        sessionStorage.removeItem("dataanalysis_login_loading");
         setLoginError(data.error || "登入失敗，請確認帳號或密碼是否正確。");
         return;
       }
@@ -81,6 +84,7 @@ export default function LoginPage() {
 
       if (isTwoFactorRequired(data)) {
         sessionStorage.setItem("dataanalysis_pending_2fa", JSON.stringify(userData));
+        sessionStorage.removeItem("dataanalysis_login_loading");
         navigate("/login/two-factor");
         return;
       }
@@ -89,6 +93,7 @@ export default function LoginPage() {
       navigate("/workspace");
     } catch (err) {
       setIsSubmitting(false);
+      sessionStorage.removeItem("dataanalysis_login_loading");
       setLoginError("連線失敗，請確認後端服務是否正常。");
       console.error(err);
     }
