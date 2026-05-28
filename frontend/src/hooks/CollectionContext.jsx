@@ -251,21 +251,13 @@ export function CollectionProvider({ children }) {
   // 永久刪除
   const permanentDelete = async (item, isFolder) => {
     if (isFolder) {
-      // 資料夾純前端處理，不打後端
       setDeletedItems((prev) => {
         if (!Array.isArray(prev)) return [];
-        return prev
-          .filter((d) => d.name !== item.name || d.type !== "folder")
-          .map((d) =>
-            d.folder_name === item.folder_name
-              ? { ...d, folder_name: null }
-              : d
-          );
+        return prev.filter((d) => d.id !== item.id);
       });
       return;
     }
 
-    // 只有專案才打後端
     try {
       const authUser = JSON.parse(localStorage.getItem("dataanalysis_auth"));
       const token = authUser?.token;
@@ -278,21 +270,19 @@ export function CollectionProvider({ children }) {
           },
         }
       );
-
       if (!response.ok) {
         const errData = await response.json();
         throw new Error(errData.error || "刪除失敗");
       }
       setDeletedItems((prev) => {
         if (!Array.isArray(prev)) return [];
-        return prev.filter((d) => d.project_id !== item.project_id);
+        return prev.filter((d) => d.id !== item.id);  // 用 id
       });
     } catch (err) {
       console.error(err.message);
       alert(err.message);
     }
   };
-
 
   // 同步工具
   const syncChatTitle = (sessionId, newTitle) => {
