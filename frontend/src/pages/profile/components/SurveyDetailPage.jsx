@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../../../components/feature/Navbar";
 import DeadlineDateTimePicker from "../../../components/feature/DeadlineDateTimePicker";
-import { buildSurveyFillUrl } from "../../../lib/surveyLinks";
+import { buildExternalSurveyShortUrl, buildSurveyFillUrl } from "../../../lib/surveyLinks";
 
 const TYPE_LABELS = {
   rating: "評分",
@@ -179,6 +179,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
   const [importSuccess, setImportSuccess] = useState(false);
   const [copyCodeSuccess, setCopyCodeSuccess] = useState(false);
   const [copyLinkSuccess, setCopyLinkSuccess] = useState(false);
+  const [externalSurveyLink, setExternalSurveyLink] = useState("");
   
   // 避免 survey 為空時引發閃退白屏
   const currentSurvey = survey || {};
@@ -192,12 +193,30 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline }) {
 
   const ratingQuestions = questions.filter((question) => (question.type || question.question_type) === "rating");
   const textQuestions = questions.filter((question) => (question.type || question.question_type) !== "rating");
-  const surveyLink = buildSurveyFillUrl(currentSurvey);
+  const fallbackSurveyLink = buildSurveyFillUrl(currentSurvey);
+  const surveyLink = externalSurveyLink || fallbackSurveyLink;
 
   useEffect(() => {
     setDeadlineValue(toDateTimeLocalValue(currentSurvey.deadlineAt || currentSurvey.deadline_at));
     setDeadlineStatus("");
   }, [currentSurvey.deadlineAt, currentSurvey.deadline_at]);
+
+  useEffect(() => {
+    if (!currentSurvey.code && !currentSurvey.access_code && !currentSurvey.shortCode && !currentSurvey.short_code) {
+      setExternalSurveyLink("");
+      return;
+    }
+
+    let cancelled = false;
+    setExternalSurveyLink("");
+    buildExternalSurveyShortUrl(currentSurvey).then((shortUrl) => {
+      if (!cancelled) setExternalSurveyLink(shortUrl);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentSurvey.code, currentSurvey.access_code, currentSurvey.shortCode, currentSurvey.short_code]);
 
   useEffect(() => {
     const updateMinDeadline = () => setMinDeadlineValue(getNextDeadlineMin());
