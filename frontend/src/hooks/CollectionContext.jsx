@@ -71,6 +71,25 @@ export function CollectionProvider({ children }) {
   setFiles((prev) => [newFile, ...prev]);
 };
 
+const addChatToCollection = (title, sessionId) => {
+    setWorkspaceSessions((prev) => {
+      if (prev.find((s) => s.id === sessionId)) return prev; // 防止重複新增
+      const newSession = {
+        id: sessionId,
+        title,
+        folder_name: null,
+        date: nowString(),
+      };
+      return [newSession, ...prev];
+    });
+    recordActivity({
+      text: `新增工作區 Chat「${title}」`,
+      icon: "ri-chat-new-line",
+      iconBg: "bg-stat-mauve",
+      iconColor: "text-stat-mauve",
+    });
+  };
+
   // ── 資料夾刪除（軟刪除到垃圾桶，純前端）────────────────
   const deleteFolder = (id, name) => {
     const folder = folders.find((f) => f.id === id);
@@ -212,22 +231,25 @@ export function CollectionProvider({ children }) {
     }
   };
 
-  const addChatToCollection = (title, sessionId) => {
-    setWorkspaceSessions((prev) => {
-      if (prev.find((s) => s.id === sessionId)) return prev; // 防止重複新增
-      const newSession = {
-        id: sessionId,
-        title,
-        folder_name: null,
-        date: nowString(),
-      };
-      return [newSession, ...prev];
-    });
+  const deleteFile = (id, name) => {
+    const file = files.find((f) => f.id === id);
+    if (!file) return;
+    setDeletedItems((prev) => [
+      {
+        id: `del-${Date.now()}`,
+        name,
+        type: "file",
+        deletedAt: nowString(),
+        originalData: file,
+      },
+      ...prev,
+    ]);
+    setFiles((prev) => prev.filter((f) => f.id !== id));
     recordActivity({
-      text: `新增工作區 Chat「${title}」`,
-      icon: "ri-chat-new-line",
-      iconBg: "bg-stat-mauve",
-      iconColor: "text-stat-mauve",
+      text: `刪除檔案「${name}」`,
+      icon: "ri-file-reduce-line",
+      iconBg: "bg-stat-coral",
+      iconColor: "text-stat-coral",
     });
   };
 
@@ -248,7 +270,7 @@ export function CollectionProvider({ children }) {
       value={{
         folders, files, deletedItems, workspaceSessions,  
         setFolders, setFiles, setWorkspaceSessions,        
-        deleteFolder, deleteChatSession,
+        deleteFolder, deleteFile, deleteChatSession,
         restoreItem, permanentDelete,
         addChatToCollection, syncChatTitle,
         updateSessionId,
