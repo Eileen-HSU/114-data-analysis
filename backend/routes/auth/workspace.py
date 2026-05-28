@@ -45,7 +45,9 @@ def authorize_request():
 def workspace_to_dict(w):
     days_left = None
     if w.deleted_at:
-        days_left = max(0, SOFT_DELETE_DAYS - (taiwan_now() - w.deleted_at).days)
+        now_naive = taiwan_now().replace(tzinfo=None)
+        deleted_at_naive = w.deleted_at.replace(tzinfo=None)
+        days_left = max(0, SOFT_DELETE_DAYS - (now_naive - deleted_at_naive).days)
 
     return {
         "project_id":   w.project_id,
