@@ -75,9 +75,9 @@ export function CollectionProvider({ children }) {
   useEffect(() => {
     setFiles((prev) => {
       const existingSessionIds = new Set(prev.filter((f) => f.type === "chat").map((f) => String(f.sessionId)));
+      const existingTitles = new Set(prev.filter((f) => f.type === "chat").map((f) => f.name));
       const missingChatFiles = workspaceSessions
-        .filter((session) => !existingSessionIds.has(String(session.id)))
-        .filter((session) => !existingTitles.has(session.title))
+        .filter((session) => !existingSessionIds.has(String(session.id)) && !existingTitles.has(session.title))
         .map((session) => ({
           id: `chat-${session.id}`,
           name: session.title,
@@ -89,7 +89,7 @@ export function CollectionProvider({ children }) {
         }));
       return missingChatFiles.length ? [...missingChatFiles, ...prev] : prev;
     });
-  }, [workspaceSessions]);
+}, [workspaceSessions]);
 
   const deleteFolder = (id, name) => {
     const folder = folders.find((f) => f.id === id);
