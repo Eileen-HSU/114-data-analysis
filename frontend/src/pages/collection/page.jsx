@@ -528,6 +528,15 @@ export default function CollectionPage() {
                         <div className="col-md-6 col-lg-4 col-xl-3" key={session.id}>
                           <div
                             className="file-item"
+                            draggable
+                            onDragStart={(event) => {
+                              event.dataTransfer.effectAllowed = "move";
+                              event.dataTransfer.dropEffect = "move";
+                              event.dataTransfer.setData("text/plain", String(session.id));
+                              setDraggingId(session.id);
+                              setDragOverTarget(null);
+                            }}
+                            onDragEnd={resetDragState}
                             onClick={() => navigate("/workspace", { state: { openSession: { sessionId: session.id } } })}
                             style={{ cursor: "pointer" }}
                           >
