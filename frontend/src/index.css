@@ -361,6 +361,17 @@ a[class*="btn"] i {
   font-weight: 700;
 }
 
+.ri-spin {
+  display: inline-block;
+  animation: icon-spin 0.9s linear infinite;
+}
+
+@keyframes icon-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* ============================================
    Text Colors
    ============================================ */
