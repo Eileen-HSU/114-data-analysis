@@ -75,7 +75,7 @@ export default function SurveyPage() {
               <div className="entry-card-copy">
                 <h2 className="entry-card-title">建立問卷</h2>
                 <p className="entry-card-desc">
-                  新增題目、設定截止時間，產生可分享的邀請碼，適合整理作品集訪談、產品回饋或課堂調查。
+                  新增題目、設定截止時間，產生可分享的邀請碼，適合整理專案訪談、產品回饋或課堂調查。
                 </p>
               </div>
               <div className="entry-card-footer">

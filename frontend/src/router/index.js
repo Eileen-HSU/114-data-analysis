@@ -29,7 +29,7 @@ export function AppRoutes() {
 
     const labels = {
       "/workspace": "進入工作區",
-      "/collection": "查看作品集",
+      "/collection": "查看專案管理",
       "/trash": "查看最近刪除",
       "/profile": "查看個人資料",
       "/survey": "進入問卷調查",

@@ -45,7 +45,7 @@ export default function HomePage() {
           </h1>
           <p className="hero-subtitle">
             上傳 CSV、Excel、JSON 或文字檔案，即可獲得由先進 AI 驅動的即時深度分析。
-            儲存成果、整理作品集，隨時回顧洞察。
+            儲存成果、整理專案，隨時回顧洞察。
           </p>
           <div className="hero-buttons">
             <button className="btn btn-hero-primary" onClick={() => navigate("/signup")}>
@@ -58,7 +58,7 @@ export default function HomePage() {
           <div className="hero-tags">
             <span className="hero-tag"><i className="ri-file-excel-2-line me-1"></i>支援 CSV / Excel / JSON</span>
             <span className="hero-tag"><i className="ri-brain-line me-1"></i>AI 智能分析</span>
-            <span className="hero-tag"><i className="ri-folder-chart-line me-1"></i>作品集管理</span>
+            <span className="hero-tag"><i className="ri-folder-chart-line me-1"></i>專案管理</span>
             <span className="hero-tag"><i className="ri-shield-check-line me-1"></i>安全加密</span>
           </div>
         </div>
@@ -83,7 +83,7 @@ export default function HomePage() {
             {[
               { icon: "ri-upload-cloud-2-line", iconBg: "bg-lavender-50", iconColor: "text-lavender", tag: "核心功能", tagClass: "tag-lavender", title: "輕鬆上傳檔案", desc: "拖放您的 CSV、Excel、JSON 或文字檔案。系統即時處理並準備好您的資料進行分析。" },
               { icon: "ri-brain-line", iconBg: "bg-mauve-50", iconColor: "text-mauve", tag: "AI 驅動", tagClass: "tag-mauve", title: "AI 智能分析", desc: "用自然語言提問，獲得智能洞察。我們的 AI 理解上下文，提供有意義的分析結果。" },
-              { icon: "ri-folder-chart-line", iconBg: "bg-periwinkle-50", iconColor: "text-periwinkle", tag: "組織管理", tagClass: "tag-periwinkle", title: "作品集管理", desc: "將分析檔案整理到資料夾中。建立個人知識庫，隨時回顧您的洞察成果。" },
+              { icon: "ri-folder-chart-line", iconBg: "bg-periwinkle-50", iconColor: "text-periwinkle", tag: "組織管理", tagClass: "tag-periwinkle", title: "專案管理", desc: "將分析檔案整理到資料夾中。建立個人知識庫，隨時回顧您的洞察成果。" },
               { icon: "ri-history-line", iconBg: "bg-lavender-50", iconColor: "text-lavender", tag: "自動儲存", tagClass: "tag-lavender", title: "工作階段歷史", desc: "每個分析工作階段都會自動儲存。從上次中斷的地方繼續，或開啟全新工作區。" },
               { icon: "ri-table-line", iconBg: "bg-mauve-50", iconColor: "text-mauve", tag: "資料呈現", tagClass: "tag-mauve", title: "表格化報告", desc: "將分析結果以清晰的表格呈現，結構化數據一目了然，方便比對與匯出。" },
               { icon: "ri-survey-line", iconBg: "bg-periwinkle-50", iconColor: "text-periwinkle", tag: "問卷調查", tagClass: "tag-periwinkle", title: "問卷建立與分析", desc: "快速建立問卷並收集回覆，AI 自動彙整結果，輕鬆掌握受訪者的意見與趨勢。" },
@@ -118,7 +118,7 @@ export default function HomePage() {
               { num: "1", numBg: "bg-lavender-100", numColor: "text-lavender", iconBg: "bg-lavender-50", icon: "ri-user-add-line", iconColor: "text-lavender", title: "建立帳號", desc: "幾秒鐘內完成註冊，馬上開始使用。" },
               { num: "2", numBg: "bg-mauve-100", numColor: "text-mauve", iconBg: "bg-mauve-50", icon: "ri-upload-2-line", iconColor: "text-mauve", title: "上傳您的資料", desc: "將檔案拖放到工作區。支援 CSV、Excel、JSON 和純文字格式。" },
               { num: "3", numBg: "bg-periwinkle-100", numColor: "text-periwinkle", iconBg: "bg-periwinkle-50", icon: "ri-chat-3-line", iconColor: "text-periwinkle", title: "提出您的問題", desc: "用自然語言輸入分析問題。AI 將處理並回應詳細的洞察結果。" },
-              { num: "4", numBg: "bg-lavender-100", numColor: "text-lavender", iconBg: "bg-lavender-50", icon: "ri-save-line", iconColor: "text-lavender", title: "儲存與整理", desc: "將分析儲存到我的作品集。建立資料夾，按專案整理您的工作。" },
+              { num: "4", numBg: "bg-lavender-100", numColor: "text-lavender", iconBg: "bg-lavender-50", icon: "ri-save-line", iconColor: "text-lavender", title: "儲存與整理", desc: "將分析儲存到專案管理。建立資料夾，按專案整理您的工作。" },
             ].map((s, i) => (
               <div className="col-md-6 col-lg-3" key={i}>
                 <div className="step-card">

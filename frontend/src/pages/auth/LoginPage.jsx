@@ -121,7 +121,7 @@ export default function LoginPage() {
               {[
                 { icon: "ri-upload-cloud-2-line", text: "支援多種資料格式" },
                 { icon: "ri-brain-line", text: "AI 智能分析" },
-                { icon: "ri-folder-chart-line", text: "作品集隨時回顧" },
+                { icon: "ri-folder-chart-line", text: "專案管理隨時回顧" },
               ].map((f, i) => (
                 <div className="auth-feature-item" key={i}>
                   <div className="auth-feature-icon">
