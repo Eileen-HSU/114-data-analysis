@@ -13,6 +13,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [alertModal, setAlertModal] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     const clearFields = () => {
@@ -37,6 +38,8 @@ export default function LoginPage() {
     e.preventDefault();
     setLoginError("");
 
+    if (isSubmitting) return;
+
     if (!email.trim()) {
       setAlertModal({ title: "登入失敗", message: "請輸入電子郵件。" });
       return;
@@ -53,6 +56,7 @@ export default function LoginPage() {
     }
 
     try {
+      setIsSubmitting(true);
       const res = await fetch(apiUrl("/api/login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -61,6 +65,7 @@ export default function LoginPage() {
 
       const data = await res.json();
       if (!res.ok) {
+        setIsSubmitting(false);
         setLoginError(data.error || "登入失敗，請確認帳號或密碼是否正確。");
         return;
       }
@@ -83,6 +88,7 @@ export default function LoginPage() {
       login(userData);
       navigate("/workspace");
     } catch (err) {
+      setIsSubmitting(false);
       setLoginError("連線失敗，請確認後端服務是否正常。");
       console.error(err);
     }
@@ -208,8 +214,8 @@ export default function LoginPage() {
                 </div>
               )}
 
-              <button type="submit" className="btn btn-auth-submit w-100">
-                登入
+              <button type="submit" className="btn btn-auth-submit w-100" disabled={isSubmitting}>
+                {isSubmitting ? "登入中..." : "登入"}
               </button>
             </form>
 
@@ -234,6 +240,17 @@ export default function LoginPage() {
             <button className="auth-alert-primary" onClick={() => setAlertModal(null)} type="button">
               確定
             </button>
+          </div>
+        </div>
+      )}
+      {isSubmitting && (
+        <div className="auth-loading-backdrop" role="status" aria-live="polite">
+          <div className="auth-loading-card">
+            <div className="auth-loading-icon">
+              <i className="ri-loader-4-line"></i>
+            </div>
+            <h2>正在登入帳號...</h2>
+            <p>正在確認您的帳號資料，請稍候。</p>
           </div>
         </div>
       )}
