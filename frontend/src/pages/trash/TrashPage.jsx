@@ -15,7 +15,8 @@ export default function TrashPage() {
   };
 
   const handlePermanentDelete = (item) => {
-    permanentDelete(item);
+    const isFolder = item.type === "folder"; 
+    permanentDelete(item, isFolder);
     setPermDeleteTarget(null);
   };
 

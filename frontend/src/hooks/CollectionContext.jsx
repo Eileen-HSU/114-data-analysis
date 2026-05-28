@@ -249,44 +249,44 @@ export function CollectionProvider({ children }) {
 
 
   // 永久刪除
-  const permanentDelete = async (projectId) => {
+  const permanentDelete = async (item, isFolder) => {
+    if (isFolder) {
+      // 資料夾純前端處理，不打後端
+      setDeletedItems((prev) => {
+        if (!Array.isArray(prev)) return [];
+        return prev
+          .filter((d) => d.name !== item.name || d.type !== "folder")
+          .map((d) =>
+            d.folder_name === item.folder_name
+              ? { ...d, folder_name: null }
+              : d
+          );
+      });
+      return;
+    }
 
-    const url = `${import.meta.env.VITE_API_BASE_URL || ""}/api/workspace/${item.project_id}/permanent?is_folder=${isFolder}`;
-
+    // 只有專案才打後端
     try {
       const authUser = JSON.parse(localStorage.getItem("dataanalysis_auth"));
       const token = authUser?.token;
-
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ""}/api/workspace/${projectId}/permanent`, {
-        method: "DELETE",
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE_URL || ""}/api/workspace/${item.project_id}/permanent`,
+        {
+          method: "DELETE",
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        }
+      );
 
       if (!response.ok) {
         const errData = await response.json();
         throw new Error(errData.error || "刪除失敗");
       }
-
-      // 後端成功後，同步更新前端 UI State
       setDeletedItems((prev) => {
         if (!Array.isArray(prev)) return [];
-        
-        if (isFolder) {
-          const filtered = prev.filter((d) => d.name !== item.name || d.type !== "folder");
-          
-          return filtered.map((d) => 
-            d.folder_name === item.folder_name 
-              ? { ...d, folder_name: null } 
-              : d
-          );
-        } else {
-          return prev.filter((d) => d.project_id !== item.project_id);
-        }
+        return prev.filter((d) => d.project_id !== item.project_id);
       });
-
-      console.log("資料夾永久刪除成功");
     } catch (err) {
       console.error(err.message);
       alert(err.message);
