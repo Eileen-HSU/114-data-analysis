@@ -2,13 +2,9 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { useActivity } from "./ActivityContext";
 import { apiUrl } from "../lib/api";
 
-const INIT_FOLDERS = [];
-const INIT_FILES = [];
-
 const CollectionContext = createContext(null);
 const WORKSPACE_SESSIONS_KEY = "dataanalysis_workspace_sessions";
 const COLLECTION_FOLDERS_KEY = "dataanalysis_collection_folders";
-const COLLECTION_FILES_KEY = "dataanalysis_collection_files";
 const DELETED_ITEMS_KEY = "dataanalysis_deleted_items";
 
 function loadArray(key, fallback = []) {
@@ -25,15 +21,6 @@ function loadWorkspaceSessions() {
   return loadArray(WORKSPACE_SESSIONS_KEY);
 }
 
-function normalizeCollectionFile(file) {
-  if (!file) return file;
-  return {
-    ...file,
-    folder_name: file.folder_name ?? null,
-  };
-}
-
-// 從 localStorage 取得 token
 function getAuthHeader() {
   try {
     const user = JSON.parse(localStorage.getItem("dataanalysis_auth"));
@@ -46,8 +33,7 @@ function getAuthHeader() {
 
 export function CollectionProvider({ children }) {
   const { recordActivity } = useActivity();
-  const [folders, setFolders] = useState(() => loadArray(COLLECTION_FOLDERS_KEY, INIT_FOLDERS));
-  const [files, setFiles] = useState(() => loadArray(COLLECTION_FILES_KEY, INIT_FILES).map(normalizeCollectionFile));
+  const [folders, setFolders] = useState(() => loadArray(COLLECTION_FOLDERS_KEY, []));
   const [deletedItems, setDeletedItems] = useState(() => loadArray(DELETED_ITEMS_KEY));
   const [workspaceSessions, setWorkspaceSessions] = useState(loadWorkspaceSessions);
 
@@ -65,33 +51,38 @@ export function CollectionProvider({ children }) {
   }, [folders]);
 
   useEffect(() => {
-    localStorage.setItem(COLLECTION_FILES_KEY, JSON.stringify(files));
-  }, [files]);
-
-  useEffect(() => {
     localStorage.setItem(DELETED_ITEMS_KEY, JSON.stringify(deletedItems));
   }, [deletedItems]);
 
-  useEffect(() => {
-    setFiles((prev) => {
-      const existingSessionIds = new Set(prev.filter((f) => f.type === "chat").map((f) => String(f.sessionId)));
-      const existingTitles = new Set(prev.filter((f) => f.type === "chat").map((f) => f.name));
-      const missingChatFiles = workspaceSessions
-        .filter((session) => !existingSessionIds.has(String(session.id)) && !existingTitles.has(session.title))
-        .map((session) => ({
-          id: `chat-${session.id}`,
-          name: session.title,
-          type: "chat",
-          size: "-",
-          folder_name: session.folder_name ?? null,
-          createdAt: session.date || nowString(),
-          sessionId: session.id,
-        }));
-      return missingChatFiles.length ? [...missingChatFiles, ...prev] : prev;
+  // ── 資料夾刪除（軟刪除到垃圾桶，純前端）────────────────
+  const deleteFolder = (id, name) => {
+    const folder = folders.find((f) => f.id === id);
+    if (!folder) return;
+    setDeletedItems((prev) => [
+      {
+        id: `del-${Date.now()}`,
+        name,
+        type: "folder",
+        deletedAt: nowString(),
+        originalData: folder,
+      },
+      ...prev,
+    ]);
+    setFolders((prev) => prev.filter((f) => f.id !== id));
+    setWorkspaceSessions((prev) =>
+      prev.map((session) =>
+        session.folder_name === name ? { ...session, folder_name: null } : session
+      )
+    );
+    recordActivity({
+      text: `刪除資料夾「${name}」`,
+      icon: "ri-folder-reduce-line",
+      iconBg: "bg-stat-coral",
+      iconColor: "text-stat-coral",
     });
-}, [workspaceSessions]);
+  };
 
-  // ── 軟刪除：is_deleted = 1，不從資料庫移除 ──────────────
+  // ── Chat 軟刪除：PATCH is_deleted = 1 ────────────────────
   const deleteChatSession = async (sessionId) => {
     const session = workspaceSessions.find((s) => s.id === sessionId);
     if (!session) return;
@@ -111,38 +102,28 @@ export function CollectionProvider({ children }) {
       }
     }
 
-    const chatFile = files.find((f) => f.type === "chat" && f.sessionId === sessionId);
     setDeletedItems((prev) => [
       {
         id: `del-${Date.now()}`,
-        name: chatFile?.name || session.title,
-        type: "file",
+        name: session.title,
+        type: "chat",
         deletedAt: nowString(),
-        originalData: chatFile || {
-          id: `chat-${sessionId}`,
-          name: session.title,
-          type: "chat",
-          size: "-",
-          folder_name: null,
-          createdAt: session.date || nowString(),
-          sessionId,
-        },
+        originalData: session,
         workspaceSession: session,
         project_id: session.project_id || null,
       },
       ...prev,
     ]);
-    setFiles((prev) => prev.filter((f) => f.sessionId !== sessionId));
     setWorkspaceSessions((prev) => prev.filter((s) => s.id !== sessionId));
     recordActivity({
-      text: `刪除工作區 Chat「${chatFile?.name || session.title}」`,
+      text: `刪除工作區 Chat「${session.title}」`,
       icon: "ri-chat-delete-line",
       iconBg: "bg-stat-coral",
       iconColor: "text-stat-coral",
     });
   };
 
-  // ── 還原：從垃圾桶還原，同時打後端 API ──────────────────
+  // ── 還原 ─────────────────────────────────────────────────
   const restoreItem = async (item) => {
     if (item.project_id) {
       try {
@@ -162,30 +143,22 @@ export function CollectionProvider({ children }) {
     }
 
     if (item.type === "folder") {
-      const folder = item.originalData;
-      setFolders((prev) => [...prev, folder]);
-      if (item.relatedFiles && item.relatedFiles.length > 0) {
-        setFiles((prev) => {
-          const existingIds = new Set(prev.map((f) => f.id));
-          const toRestore = item.relatedFiles.filter((f) => !existingIds.has(f.id));
-          return [...prev, ...toRestore];
-        });
-      }
+      setFolders((prev) => [...prev, item.originalData]);
+      setWorkspaceSessions((prev) =>
+        prev.map((session) =>
+          session.folder_name === null && item.originalData.name
+            ? session
+            : session
+        )
+      );
     } else {
-      const file = item.originalData;
-      setFiles((prev) => {
-        if (prev.find((f) => f.id === file.id)) return prev;
-        return [...prev, file];
+      // chat
+      setWorkspaceSessions((prev) => {
+        if (prev.find((s) => s.id === item.workspaceSession.id)) return prev;
+        return [item.workspaceSession, ...prev];
       });
-      if (file.type === "chat" && item.workspaceSession) {
-        setWorkspaceSessions((prev) => {
-          if (prev.find((s) => s.id === item.workspaceSession.id)) return prev;
-          return [item.workspaceSession, ...prev];
-        });
-      }
     }
 
-    // 改用 item.id（統一識別碼），避免 project_id 為 undefined 時過濾失效
     setDeletedItems((prev) => prev.filter((d) => d.id !== item.id));
     recordActivity({
       text: `還原「${item.name}」`,
@@ -195,7 +168,7 @@ export function CollectionProvider({ children }) {
     });
   };
 
-  // ── 永久刪除：從資料庫完全移除 ──────────────────────────
+  // ── 永久刪除：DELETE 從資料庫完全移除 ───────────────────
   const permanentDelete = async (id) => {
     const target = deletedItems.find((item) => item.project_id === id);
 
@@ -222,52 +195,14 @@ export function CollectionProvider({ children }) {
     }
   };
 
-  const getFileType = (filename) => {
-    const ext = filename.split(".").pop()?.toLowerCase() ?? "";
-    if (ext === "csv") return "csv";
-    if (ext === "xlsx" || ext === "xls") return "xlsx";
-    if (ext === "json") return "json";
-    if (ext === "txt") return "txt";
-    return "txt";
-  };
-
-  const formatFileSize = (bytes) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  const addFileToCollection = (file) => {
-    const type = getFileType(file.name);
-    const newFile = {
-      id: `file-${Date.now()}`,
-      name: file.name,
-      type,
-      size: formatFileSize(file.size),
-      folder_name: null,
-      createdAt: nowString(),
-    };
-    setFiles((prev) => [newFile, ...prev]);
-    recordActivity({
-      text: `新增檔案「${newFile.name}」到作品集`,
-      icon: "ri-file-add-line",
-      iconBg: "bg-stat-sky",
-      iconColor: "text-stat-sky",
-    });
-  };
-
   const addChatToCollection = (title, sessionId) => {
-    const createdAt = nowString();
-    const newFile = {
-      id: `chat-${Date.now()}`,
-      name: title,
-      type: "chat",
-      size: "—",
+    const newSession = {
+      id: sessionId,
+      title,
       folder_name: null,
-      createdAt,
-      sessionId,
+      date: nowString(),
     };
-    setFiles((prev) => [newFile, ...prev]);
+    setWorkspaceSessions((prev) => [newSession, ...prev]);
     recordActivity({
       text: `新增工作區 Chat「${title}」`,
       icon: "ri-chat-new-line",
@@ -277,28 +212,28 @@ export function CollectionProvider({ children }) {
   };
 
   const syncChatTitle = (sessionId, newTitle) => {
-    setFiles((prev) =>
-      prev.map((f) => (f.sessionId === sessionId ? { ...f, name: newTitle } : f))
+    setWorkspaceSessions((prev) =>
+      prev.map((s) => (s.id === sessionId ? { ...s, title: newTitle } : s))
     );
   };
 
   const updateSessionId = (oldId, newId) => {
-  setFiles((prev) =>
-    prev.map((f) =>
-      f.sessionId === oldId ? { ...f, sessionId: newId, id: `chat-${newId}` } : f
-    )
-  );
-};
+    setWorkspaceSessions((prev) =>
+      prev.map((s) => (s.id === oldId ? { ...s, id: newId } : s))
+    );
+  };
 
   return (
-    <CollectionContext.Provider value={{
-      folders, files, deletedItems, workspaceSessions,
-      setFolders, setFiles, setWorkspaceSessions,
-      deleteFolder, deleteFile,
-      restoreItem, permanentDelete,
-      addChatToCollection, addFileToCollection, syncChatTitle, deleteChatSession,
-      updateSessionId,
-    }}>
+    <CollectionContext.Provider
+      value={{
+        folders, deletedItems, workspaceSessions,
+        setFolders, setWorkspaceSessions,
+        deleteFolder, deleteChatSession,
+        restoreItem, permanentDelete,
+        addChatToCollection, syncChatTitle,
+        updateSessionId,
+      }}
+    >
       {children}
     </CollectionContext.Provider>
   );
