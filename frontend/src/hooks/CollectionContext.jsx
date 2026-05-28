@@ -91,60 +91,7 @@ export function CollectionProvider({ children }) {
     });
 }, [workspaceSessions]);
 
-  const deleteFolder = (id, name) => {
-    const folder = folders.find((f) => f.id === id);
-    if (!folder) return;
-    const relatedFiles = files.filter((f) => f.folder_name === name);
-    setDeletedItems((prev) => [
-      {
-        id: `del-${Date.now()}`,
-        name,
-        type: "folder",
-        deletedAt: nowString(),
-        originalData: folder,
-        relatedFiles,
-      },
-      ...prev,
-    ]);
-    setFolders((prev) => prev.filter((f) => f.id !== id));
-    setFiles((prev) => prev.map((f) => (f.folder_name === name ? { ...f, folder_name: null } : f)));
-    setWorkspaceSessions((prev) =>
-      prev.map((session) =>
-        session.folder_name === name ? { ...session, folder_name: null } : session
-      )
-    );
-    
-    recordActivity({
-      text: `刪除資料夾「${name}」`,
-      icon: "ri-folder-reduce-line",
-      iconBg: "bg-stat-coral",
-      iconColor: "text-stat-coral",
-    });
-  };
-
-  const deleteFile = (id, name) => {
-    const file = files.find((f) => f.id === id);
-    if (!file) return;
-    setDeletedItems((prev) => [
-      {
-        id: `del-${Date.now()}`,
-        name,
-        type: "file",
-        deletedAt: nowString(),
-        originalData: file,
-      },
-      ...prev,
-    ]);
-    setFiles((prev) => prev.filter((f) => f.id !== id));
-    recordActivity({
-      text: `刪除檔案「${name}」`,
-      icon: "ri-delete-bin-line",
-      iconBg: "bg-stat-coral",
-      iconColor: "text-stat-coral",
-    });
-  };
-
-  // ── 軟刪除：移至垃圾桶，同時打後端 API ──────────────────
+  // ── 軟刪除：is_deleted = 1，不從資料庫移除 ──────────────
   const deleteChatSession = async (sessionId) => {
     const session = workspaceSessions.find((s) => s.id === sessionId);
     if (!session) return;
@@ -152,8 +99,12 @@ export function CollectionProvider({ children }) {
     if (session.project_id) {
       try {
         await fetch(apiUrl(`/api/workspace/${session.project_id}`), {
-          method: "DELETE",
-          headers: getAuthHeader(),
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            ...getAuthHeader(),
+          },
+          body: JSON.stringify({ is_deleted: 1 }),
         });
       } catch (err) {
         console.error("軟刪除失敗", err);
@@ -195,7 +146,8 @@ export function CollectionProvider({ children }) {
   const restoreItem = async (item) => {
     if (item.project_id) {
       try {
-        const folderName = item.workspaceSession?.folder_name ?? item.originalData?.folder_name ?? null;
+        const folderName =
+          item.workspaceSession?.folder_name ?? item.originalData?.folder_name ?? null;
         await fetch(apiUrl(`/api/workspace/${item.project_id}/restore`), {
           method: "POST",
           headers: {
@@ -233,7 +185,8 @@ export function CollectionProvider({ children }) {
       }
     }
 
-    setDeletedItems((prev) => prev.filter((d) => d.project_id !== item.project_id));
+    // 改用 item.id（統一識別碼），避免 project_id 為 undefined 時過濾失效
+    setDeletedItems((prev) => prev.filter((d) => d.id !== item.id));
     recordActivity({
       text: `還原「${item.name}」`,
       icon: "ri-arrow-go-back-line",
@@ -242,9 +195,10 @@ export function CollectionProvider({ children }) {
     });
   };
 
-  // ── 永久刪除：從資料庫完全刪除，同時打後端 API ──────────
+  // ── 永久刪除：從資料庫完全移除 ──────────────────────────
   const permanentDelete = async (id) => {
     const target = deletedItems.find((item) => item.project_id === id);
+
     if (target?.project_id) {
       try {
         await fetch(apiUrl(`/api/workspace/${target.project_id}/permanent`), {
@@ -256,7 +210,8 @@ export function CollectionProvider({ children }) {
       }
     }
 
-    setDeletedItems((prev) => prev.filter((d) => d.id !== id));
+    setDeletedItems((prev) => prev.filter((d) => d.project_id !== id));
+
     if (target) {
       recordActivity({
         text: `永久刪除「${target.name}」`,
