@@ -627,6 +627,7 @@ export default function WorkspacePage() {
     };
     setSessions((prev) => [newSession, ...prev]);
     setActiveSessionId(tempId);
+    addChatToCollection(title, tempId);
     setShowSurveyPicker(false);
     setSurveyPickerSearch("");
 
