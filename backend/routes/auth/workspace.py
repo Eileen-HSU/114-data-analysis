@@ -246,31 +246,43 @@ def permanent_delete_workspace(project_id):
     if auth_error:
         return auth_error
         
-    workspace = Workspace.query.filter_by(
+    target = Workspace.query.filter_by(
         project_id = project_id,
         user_id    = current_user_id
     ).first()
 
-    if not workspace:
-        return jsonify({"error": "找不到該專案"}), 404
-    
-    if not workspace.is_deleted:  
-        return jsonify({"error": "請先移至垃圾桶才能永久刪除"}), 400
+    if not target:
+        return jsonify({"error": "找不到該項目"}), 404
 
     try:
-        # 把所有關聯的問卷範本 project_id 設為空
-        for template in workspace.templates:
-            template.project_id = None
-        
-        # 執行永久刪除（單純抹除 Workspace 這一筆資料）
-        db.session.delete(workspace)
-        db.session.commit()
-        
-        return jsonify({"message": "專案已永久刪除，聊天紀錄與問卷範本已安全保留"}), 200
+        is_folder_request = request.args.get("is_folder", "false").lower() == "true"
+
+        if is_folder_request and target.folder_name:
+            # 只刪除資料夾外殼，不刪專案
+            affected_workspaces = Workspace.query.filter_by(
+                user_id     = current_user_id,
+                folder_name = target.folder_name,
+                is_deleted  = True
+            ).all()
+            
+            for w in affected_workspaces:
+                w.folder_name = None
+                
+            db.session.commit()
+            return jsonify({"message": "資料夾外殼已永久刪除，專案已釋放"}), 200
+
+        else:
+            for template in target.templates:
+                template.project_id = None
+            
+            db.session.delete(target)
+            db.session.commit()
+            return jsonify({"message": "專案已永久刪除"}), 200
+
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
-
+    
 def hard_delete_expired_workspaces(app):
     with app.app_context():
         try:

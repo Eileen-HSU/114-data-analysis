@@ -250,6 +250,9 @@ export function CollectionProvider({ children }) {
 
   // 永久刪除
   const permanentDelete = async (projectId) => {
+
+    const url = `${import.meta.env.VITE_API_BASE_URL || ""}/api/workspace/${item.project_id}/permanent?is_folder=${isFolder}`;
+
     try {
       const authUser = JSON.parse(localStorage.getItem("dataanalysis_auth"));
       const token = authUser?.token;
@@ -269,13 +272,24 @@ export function CollectionProvider({ children }) {
       // 後端成功後，同步更新前端 UI State
       setDeletedItems((prev) => {
         if (!Array.isArray(prev)) return [];
-        return prev.filter((item) => item.project_id !== projectId);
+        
+        if (isFolder) {
+          const filtered = prev.filter((d) => d.name !== item.name || d.type !== "folder");
+          
+          return filtered.map((d) => 
+            d.folder_name === item.folder_name 
+              ? { ...d, folder_name: null } 
+              : d
+          );
+        } else {
+          return prev.filter((d) => d.project_id !== item.project_id);
+        }
       });
 
-      console.log(`專案 ${projectId} 已永久刪除`);
+      console.log("資料夾永久刪除成功");
     } catch (err) {
-      console.error("永久刪除失敗:", err.message);
-      alert(`刪除失敗: ${err.message}`);
+      console.error(err.message);
+      alert(err.message);
     }
   };
 
