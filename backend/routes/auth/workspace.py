@@ -258,15 +258,11 @@ def permanent_delete_workspace(project_id):
         return jsonify({"error": "請先移至垃圾桶才能永久刪除"}), 400
 
     try:
-        # 1. 安全斷開：把所有關聯的問卷範本 project_id 設為空
+        # 把所有關聯的問卷範本 project_id 設為空
         for template in workspace.templates:
             template.project_id = None
-            
-        # 2. 安全斷開：把所有關聯的聊天紀錄 project_id 設為空
-        for chat in workspace.chats:
-            chat.project_id = None
         
-        # 3. 執行永久刪除（單純抹除 Workspace 這一筆資料）
+        # 執行永久刪除（單純抹除 Workspace 這一筆資料）
         db.session.delete(workspace)
         db.session.commit()
         
