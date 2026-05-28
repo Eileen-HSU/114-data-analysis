@@ -751,12 +751,15 @@ export default function WorkspacePage() {
     setDeleteTarget(session);
   };
 
-  const confirmDeleteSession = () => {
+  const confirmDeleteSession = async () => {
     if (!deleteTarget) return;
     const sessionId = deleteTarget.id;
+    const projectId = deleteTarget.project_id;
     deleteChatSession(sessionId);
+    setSessions((prev) => prev.filter((s) => s.id !== sessionId));
     setRenamingId(null);
     setSearchQuery("");
+
     if (activeSessionId === sessionId) {
       const nextSession = sessions.find((s) => s.id !== sessionId);
       setActiveSessionId(nextSession?.id || null);
@@ -766,8 +769,20 @@ export default function WorkspacePage() {
         localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
       }
     }
+
     setDeleteTarget(null);
     showToast("已刪除工作區，並移至最近刪除");
+
+    if (projectId) {
+      try {
+        await fetch(apiUrl(`/api/workspace/${projectId}`), {
+          method: "DELETE",
+          headers: getAuthHeader(),
+        });
+      } catch (err) {
+        console.error("刪除工作區失敗", err);
+      }
+    }
   };
 
   // ── 建立新工作區 ─────────────
