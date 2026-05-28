@@ -115,7 +115,7 @@ def create_external_short_url(long_url):
         *(
             [(
                 "cuttly",
-                f"https://cutt.ly/api/api.php?{urlencode({'key': cuttly_api_key, 'short': long_url, 'userDomain': '1'})}",
+                f"https://cutt.ly/api/api.php?{urlencode({'key': cuttly_api_key, 'short': long_url})}",
                 ("https://cutt.ly/", "http://cutt.ly/"),
             )] if cuttly_api_key else []
         ),
