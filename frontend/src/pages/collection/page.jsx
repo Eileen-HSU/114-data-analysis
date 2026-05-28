@@ -30,7 +30,7 @@ export default function CollectionPage() {
     setFiles,
     setWorkspaceSessions,
     deleteFolder,
-    deleteFile,
+    deleteChatSession,
     restoreItem,
     permanentDelete,
     workspaceSessions,
@@ -74,7 +74,6 @@ export default function CollectionPage() {
   const filesByFolder = useMemo(() => {
     const grouping = {};
     const assignedFileIds = new Set();
-
     folders.forEach((folder) => {
       const memberIds = new Set(folder.fileIds || []);
       files.forEach((file) => {
@@ -86,7 +85,6 @@ export default function CollectionPage() {
         return belongsToFolder;
       });
     });
-
     grouping.loose = files.filter((file) => !assignedFileIds.has(file.id));
     return grouping;
   }, [files, folders]);
@@ -105,12 +103,14 @@ export default function CollectionPage() {
     });
   };
 
+  // 刪除
   const confirmDelete = async () => {
     if (!deleteTarget) return;
 
     if (deleteTarget.type === "folder") {
       const folderFiles = files.filter((file) => getFileFolderName(file) === deleteTarget.name);
 
+      // 資料夾內的 chat session 同步後端 folder_name = null
       await Promise.all(
         folderFiles.map(async (file) => {
           if (file.type === "chat" && file.sessionId) {
@@ -138,6 +138,7 @@ export default function CollectionPage() {
           }
         })
       );
+
       const folderSessionIds = new Set(folderFiles.map((file) => String(file.sessionId)));
       setWorkspaceSessions((prev) =>
         prev.map((session) =>
@@ -150,11 +151,17 @@ export default function CollectionPage() {
       deleteFolder(deleteTarget.id, deleteTarget.name);
     }
 
-    if (deleteTarget.type === "file") deleteFile(deleteTarget.id, deleteTarget.name);
-
+    if (deleteTarget.type === "file") {
+      const file = files.find((f) => f.id === deleteTarget.id);
+      if (file?.type === "chat" && file?.sessionId) {
+        // chat 類型：透過 deleteChatSession 同步 workspace
+        await deleteChatSession(String(file.sessionId));
+      }
+    }
     setDeleteTarget(null);
   };
 
+  // 新增資料夾
   const createFolder = () => {
     if (!newFolderName.trim()) return;
     setFolders((prev) => [...prev, { id: `folder-${Date.now()}`, name: newFolderName.trim(), fileIds: [] }]);
@@ -168,6 +175,7 @@ export default function CollectionPage() {
     setShowNewFolderModal(false);
   };
 
+  // 開啟檔案
   const openFile = (file) => {
     if (file.type === "chat" && file.sessionId) {
       navigate("/workspace", { state: { openSession: { sessionId: file.sessionId } } });
@@ -176,6 +184,7 @@ export default function CollectionPage() {
     navigate("/workspace");
   };
 
+  // 重新命名
   const saveFolderRename = (folderId) => {
     if (renameFolderValue.trim()) {
       setFolders((prev) => prev.map((folder) => (folder.id === folderId ? { ...folder, name: renameFolderValue.trim() } : folder)));
@@ -202,6 +211,7 @@ export default function CollectionPage() {
     setRenamingFileId(null);
   };
 
+  // 拖曳
   const resetDragState = () => {
     setDraggingId(null);
     setDragOverTarget(null);
@@ -229,12 +239,10 @@ export default function CollectionPage() {
     const file = files.find((f) => f.id === droppedFileId);
     if (!file) return;
 
-    // 目標資料夾的 name（拖到未分類時 targetFolderId 為 null）
     const targetFolderName = targetFolderId
       ? folders.find((f) => f.id === targetFolderId)?.name ?? null
       : null;
 
-    // 前端狀態更新
     setFiles((prev) =>
       prev.map((f) => (f.id === droppedFileId ? { ...f, folder_name: targetFolderName } : f))
     );
@@ -242,13 +250,8 @@ export default function CollectionPage() {
       prev.map((folder) => {
         const currentFileIds = Array.isArray(folder.fileIds) ? folder.fileIds : [];
         const fileIdsWithoutDropped = currentFileIds.filter((id) => id !== droppedFileId);
-        if (folder.id !== targetFolderId) {
-          return { ...folder, fileIds: fileIdsWithoutDropped };
-        }
-        return {
-          ...folder,
-          fileIds: [...fileIdsWithoutDropped, droppedFileId],
-        };
+        if (folder.id !== targetFolderId) return { ...folder, fileIds: fileIdsWithoutDropped };
+        return { ...folder, fileIds: [...fileIdsWithoutDropped, droppedFileId] };
       })
     );
     setWorkspaceSessions((prev) =>
@@ -259,7 +262,6 @@ export default function CollectionPage() {
       )
     );
 
-    // 同步資料庫
     if (file.type === "chat" && file.sessionId) {
       const session = workspaceSessions.find(
         (s) =>
@@ -331,165 +333,163 @@ export default function CollectionPage() {
 
         <div className="container py-5">
           {activeView === "folders" && (
-          <>
-          <section className="mb-5">
-            <h2 className="section-heading">
-              <span className="section-icon folder-icon"><i className="ri-folder-2-line"></i></span>
-              資料夾
-              <button className="btn btn-add-folder ms-auto" onClick={() => setShowNewFolderModal(true)}>
-                <i className="ri-folder-add-line me-1"></i>新增資料夾
-              </button>
-            </h2>
-            <div className="row g-3">
-              {folders.map((folder) => {
-                const folderFiles = filesByFolder[folder.name] || [];
-                const isOpen = openFolders.has(folder.id);
-                const isDragOver = dragOverTarget === folder.id;
-                return (
-                  <div className="col-md-6 col-lg-4" key={folder.id}>
-                    <div
-                      className={`folder-card ${isDragOver ? "drag-over" : ""}`}
-                      onDragEnter={(event) => handleFolderDragOver(folder.id, event)}
-                      onDragOver={(event) => handleFolderDragOver(folder.id, event)}
-                      onDragLeave={handleFolderDragLeave}
-                      onDrop={(event) => handleDrop(folder.id, event)}
-                    >
-                      {isDragOver && <div className="folder-drop-hint"><i className="ri-folder-received-line me-2"></i>移到「{folder.name}」</div>}
-                      <div
-                        className="folder-header"
-                        onClick={() => {
-                          if (!draggingId) toggleFolder(folder.id);
-                        }}
-                        onDragEnter={(event) => handleFolderDragOver(folder.id, event)}
-                        onDragOver={(event) => handleFolderDragOver(folder.id, event)}
-                        onDrop={(event) => handleDrop(folder.id, event)}
-                      >
-                        <div className="folder-icon-box"><i className={isOpen ? "ri-folder-open-line" : "ri-folder-line"}></i></div>
-                        <div className="folder-info flex-grow-1">
-                          <div className="d-flex align-items-center gap-2">
-                            {renamingFolderId === folder.id ? (
-                              <input
-                                className="form-control form-control-sm"
-                                value={renameFolderValue}
-                                autoFocus
-                                onClick={(event) => event.stopPropagation()}
-                                onChange={(event) => setRenameFolderValue(event.target.value)}
-                                onBlur={() => saveFolderRename(folder.id)}
-                                onKeyDown={(event) => {
-                                  if (event.key === "Enter") saveFolderRename(folder.id);
-                                  if (event.key === "Escape") setRenamingFolderId(null);
-                                }}
-                              />
-                            ) : (
-                              <span className="folder-name" onDoubleClick={(event) => { event.stopPropagation(); setRenamingFolderId(folder.id); setRenameFolderValue(folder.name); }}>
-                                {folder.name}
-                              </span>
-                            )}
-                            <span className="folder-count">{folderFiles.length} 個</span>
-                          </div>
-                          <div className="folder-tags">
-                            {["csv", "xlsx", "json", "txt", "chat"].map((type) => {
-                              const count = folderFiles.filter((file) => file.type === type).length;
-                              return count > 0 ? <span key={type} className={`folder-tag tag-${type}`}>{type === "chat" ? "Chat" : type.toUpperCase()} {count}</span> : null;
-                            })}
-                          </div>
-                        </div>
-                        <div className="folder-actions">
-                          <button className="action-btn" onClick={(event) => { event.stopPropagation(); setDeleteTarget({ type: "folder", id: folder.id, name: folder.name }); }} title="刪除">
-                            <i className="ri-delete-bin-line"></i>
-                          </button>
-                          <i className="ri-arrow-down-s-line folder-arrow" style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0deg)" }}></i>
-                        </div>
-                      </div>
-                      {isOpen && (
+            <>
+              <section className="mb-5">
+                <h2 className="section-heading">
+                  <span className="section-icon folder-icon"><i className="ri-folder-2-line"></i></span>
+                  資料夾
+                  <button className="btn btn-add-folder ms-auto" onClick={() => setShowNewFolderModal(true)}>
+                    <i className="ri-folder-add-line me-1"></i>新增資料夾
+                  </button>
+                </h2>
+                <div className="row g-3">
+                  {folders.map((folder) => {
+                    const folderFiles = filesByFolder[folder.name] || [];
+                    const isOpen = openFolders.has(folder.id);
+                    const isDragOver = dragOverTarget === folder.id;
+                    return (
+                      <div className="col-md-6 col-lg-4" key={folder.id}>
                         <div
-                          className="folder-content"
+                          className={`folder-card ${isDragOver ? "drag-over" : ""}`}
                           onDragEnter={(event) => handleFolderDragOver(folder.id, event)}
                           onDragOver={(event) => handleFolderDragOver(folder.id, event)}
+                          onDragLeave={handleFolderDragLeave}
                           onDrop={(event) => handleDrop(folder.id, event)}
                         >
-                          {folderFiles.length === 0 ? (
-                            <div className="empty-folder"><i className="ri-drag-move-line"></i><p>拖曳檔案到這裡</p></div>
-                          ) : (
+                          {isDragOver && <div className="folder-drop-hint"><i className="ri-folder-received-line me-2"></i>移到「{folder.name}」</div>}
+                          <div
+                            className="folder-header"
+                            onClick={() => { if (!draggingId) toggleFolder(folder.id); }}
+                            onDragEnter={(event) => handleFolderDragOver(folder.id, event)}
+                            onDragOver={(event) => handleFolderDragOver(folder.id, event)}
+                            onDrop={(event) => handleDrop(folder.id, event)}
+                          >
+                            <div className="folder-icon-box"><i className={isOpen ? "ri-folder-open-line" : "ri-folder-line"}></i></div>
+                            <div className="folder-info flex-grow-1">
+                              <div className="d-flex align-items-center gap-2">
+                                {renamingFolderId === folder.id ? (
+                                  <input
+                                    className="form-control form-control-sm"
+                                    value={renameFolderValue}
+                                    autoFocus
+                                    onClick={(event) => event.stopPropagation()}
+                                    onChange={(event) => setRenameFolderValue(event.target.value)}
+                                    onBlur={() => saveFolderRename(folder.id)}
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Enter") saveFolderRename(folder.id);
+                                      if (event.key === "Escape") setRenamingFolderId(null);
+                                    }}
+                                  />
+                                ) : (
+                                  <span className="folder-name" onDoubleClick={(event) => { event.stopPropagation(); setRenamingFolderId(folder.id); setRenameFolderValue(folder.name); }}>
+                                    {folder.name}
+                                  </span>
+                                )}
+                                <span className="folder-count">{folderFiles.length} 個</span>
+                              </div>
+                              <div className="folder-tags">
+                                {["csv", "xlsx", "json", "txt", "chat"].map((type) => {
+                                  const count = folderFiles.filter((file) => file.type === type).length;
+                                  return count > 0 ? <span key={type} className={`folder-tag tag-${type}`}>{type === "chat" ? "Chat" : type.toUpperCase()} {count}</span> : null;
+                                })}
+                              </div>
+                            </div>
+                            <div className="folder-actions">
+                              <button className="action-btn" onClick={(event) => { event.stopPropagation(); setDeleteTarget({ type: "folder", id: folder.id, name: folder.name }); }} title="刪除">
+                                <i className="ri-delete-bin-line"></i>
+                              </button>
+                              <i className="ri-arrow-down-s-line folder-arrow" style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0deg)" }}></i>
+                            </div>
+                          </div>
+                          {isOpen && (
                             <div
-                              className="folder-files"
+                              className="folder-content"
                               onDragEnter={(event) => handleFolderDragOver(folder.id, event)}
                               onDragOver={(event) => handleFolderDragOver(folder.id, event)}
                               onDrop={(event) => handleDrop(folder.id, event)}
                             >
-                              {folderFiles.map((file) => (
-                                <FileRow
-                                  key={file.id}
-                                  file={file}
-                                  compact
-                                  renamingId={renamingFileId}
-                                  renameValue={renameFileValue}
-                                  onRenameStart={() => { setRenamingFileId(file.id); setRenameFileValue(file.name); }}
-                                  onRenameChange={setRenameFileValue}
-                                  onRenameSave={() => saveFileRename(file.id)}
-                                  onRenameCancel={() => setRenamingFileId(null)}
-                                  onDragStart={() => { setDraggingId(file.id); setDragOverTarget(null); }}
-                                  onDragEnd={resetDragState}
-                                  menuOpen={fileMenuId === file.id}
-                                  onMenuToggle={() => setFileMenuId((prev) => (prev === file.id ? null : file.id))}
-                                  onMenuClose={() => setFileMenuId(null)}
-                                  onDelete={() => setDeleteTarget({ type: "file", id: file.id, name: file.name })}
-                                  onOpen={() => openFile(file)}
-                                />
-                              ))}
+                              {folderFiles.length === 0 ? (
+                                <div className="empty-folder"><i className="ri-drag-move-line"></i><p>拖曳檔案到這裡</p></div>
+                              ) : (
+                                <div
+                                  className="folder-files"
+                                  onDragEnter={(event) => handleFolderDragOver(folder.id, event)}
+                                  onDragOver={(event) => handleFolderDragOver(folder.id, event)}
+                                  onDrop={(event) => handleDrop(folder.id, event)}
+                                >
+                                  {folderFiles.map((file) => (
+                                    <FileRow
+                                      key={file.id}
+                                      file={file}
+                                      compact
+                                      renamingId={renamingFileId}
+                                      renameValue={renameFileValue}
+                                      onRenameStart={() => { setRenamingFileId(file.id); setRenameFileValue(file.name); }}
+                                      onRenameChange={setRenameFileValue}
+                                      onRenameSave={() => saveFileRename(file.id)}
+                                      onRenameCancel={() => setRenamingFileId(null)}
+                                      onDragStart={() => { setDraggingId(file.id); setDragOverTarget(null); }}
+                                      onDragEnd={resetDragState}
+                                      menuOpen={fileMenuId === file.id}
+                                      onMenuToggle={() => setFileMenuId((prev) => (prev === file.id ? null : file.id))}
+                                      onMenuClose={() => setFileMenuId(null)}
+                                      onDelete={() => setDeleteTarget({ type: "file", id: file.id, name: file.name })}
+                                      onOpen={() => openFile(file)}
+                                    />
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-
-          <section>
-            <h2 className="section-heading">
-              <span className="section-icon loose-icon"><i className="ri-file-list-3-line"></i></span>
-              未分類檔案
-              {looseFiles.length > 0 && <span className="loose-count">{looseFiles.length} 個</span>}
-            </h2>
-            <div
-              className={`loose-area ${dragOverTarget === "loose" ? "drag-over" : ""}`}
-              onDragOver={(event) => { event.preventDefault(); if (dragOverTarget !== "loose") setDragOverTarget("loose"); }}
-              onDragLeave={() => setDragOverTarget(null)}
-              onDrop={(event) => handleDrop(null, event)}
-            >
-              {dragOverTarget === "loose" && <div className="loose-drop-hint"><i className="ri-file-transfer-line me-2"></i>移到未分類</div>}
-              {looseFiles.length === 0 ? (
-                <div className="empty-loose"><i className="ri-file-list-3-line"></i><p>目前沒有未分類檔案。</p></div>
-              ) : (
-                <div className="row g-3">
-                  {looseFiles.map((file) => (
-                    <div className="col-md-6 col-lg-4 col-xl-3" key={file.id}>
-                      <FileRow
-                        file={file}
-                        renamingId={renamingFileId}
-                        renameValue={renameFileValue}
-                        onRenameStart={() => { setRenamingFileId(file.id); setRenameFileValue(file.name); }}
-                        onRenameChange={setRenameFileValue}
-                        onRenameSave={() => saveFileRename(file.id)}
-                        onRenameCancel={() => setRenamingFileId(null)}
-                        onDragStart={() => { setDraggingId(file.id); setDragOverTarget(null); }}
-                        onDragEnd={resetDragState}
-                        menuOpen={fileMenuId === file.id}
-                        onMenuToggle={() => setFileMenuId((prev) => (prev === file.id ? null : file.id))}
-                        onMenuClose={() => setFileMenuId(null)}
-                        onDelete={() => setDeleteTarget({ type: "file", id: file.id, name: file.name })}
-                        onOpen={() => openFile(file)}
-                      />
-                    </div>
-                  ))}
+                      </div>
+                    );
+                  })}
                 </div>
-              )}
-            </div>
-          </section>
-          </>
+              </section>
+
+              <section>
+                <h2 className="section-heading">
+                  <span className="section-icon loose-icon"><i className="ri-file-list-3-line"></i></span>
+                  未分類檔案
+                  {looseFiles.length > 0 && <span className="loose-count">{looseFiles.length} 個</span>}
+                </h2>
+                <div
+                  className={`loose-area ${dragOverTarget === "loose" ? "drag-over" : ""}`}
+                  onDragOver={(event) => { event.preventDefault(); if (dragOverTarget !== "loose") setDragOverTarget("loose"); }}
+                  onDragLeave={() => setDragOverTarget(null)}
+                  onDrop={(event) => handleDrop(null, event)}
+                >
+                  {dragOverTarget === "loose" && <div className="loose-drop-hint"><i className="ri-file-transfer-line me-2"></i>移到未分類</div>}
+                  {looseFiles.length === 0 ? (
+                    <div className="empty-loose"><i className="ri-file-list-3-line"></i><p>目前沒有未分類檔案。</p></div>
+                  ) : (
+                    <div className="row g-3">
+                      {looseFiles.map((file) => (
+                        <div className="col-md-6 col-lg-4 col-xl-3" key={file.id}>
+                          <FileRow
+                            file={file}
+                            renamingId={renamingFileId}
+                            renameValue={renameFileValue}
+                            onRenameStart={() => { setRenamingFileId(file.id); setRenameFileValue(file.name); }}
+                            onRenameChange={setRenameFileValue}
+                            onRenameSave={() => saveFileRename(file.id)}
+                            onRenameCancel={() => setRenamingFileId(null)}
+                            onDragStart={() => { setDraggingId(file.id); setDragOverTarget(null); }}
+                            onDragEnd={resetDragState}
+                            menuOpen={fileMenuId === file.id}
+                            onMenuToggle={() => setFileMenuId((prev) => (prev === file.id ? null : file.id))}
+                            onMenuClose={() => setFileMenuId(null)}
+                            onDelete={() => setDeleteTarget({ type: "file", id: file.id, name: file.name })}
+                            onOpen={() => openFile(file)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </section>
+            </>
           )}
 
           {activeView === "exports" && (
@@ -521,14 +521,14 @@ export default function CollectionPage() {
               ) : (
                 <div className="deleted-list">
                   {deletedItems.map((item) => (
-                    <div className="deleted-item" key={item.project_id}>
+                    <div className="deleted-item" key={item.id}>
                       <div className="deleted-icon-box">
-                        <i className={item.type === "folder" ? "ri-folder-line" : "ri-file-list-3-line"}></i>
+                        <i className={item.type === "folder" ? "ri-folder-line" : "ri-chat-3-line"}></i>
                       </div>
                       <div className="deleted-info">
                         <div className="deleted-name">{item.name}</div>
                         <div className="deleted-meta">
-                          {item.type === "folder" ? "資料夾" : "檔案"} · 刪除時間 {item.deletedAt || "-"}
+                          {item.type === "folder" ? "資料夾" : "Chat"} · 刪除時間 {item.deletedAt || "-"}
                         </div>
                       </div>
                       <div className="deleted-actions">
@@ -571,7 +571,7 @@ export default function CollectionPage() {
         <div className="modal-backdrop-custom" onClick={() => setDeleteTarget(null)}>
           <div className="modal-box text-center" onClick={(event) => event.stopPropagation()}>
             <div className="delete-icon"><i className="ri-delete-bin-line"></i></div>
-            <h5 className="fw-bold mb-2">刪除{deleteTarget.type === "folder" ? "資料夾" : "檔案"}</h5>
+            <h5 className="fw-bold mb-2">刪除{deleteTarget.type === "folder" ? "資料夾" : "Chat"}</h5>
             <p className="text-muted mb-4">「{deleteTarget.name}」會移到垃圾桶，可稍後還原。</p>
             <div className="d-flex gap-2">
               <button className="btn btn-danger flex-fill" onClick={confirmDelete}>確認刪除</button>
@@ -607,11 +607,7 @@ function FileRow({ file, compact = false, renamingId, renameValue, menuOpen, onM
       }}
       onDragEnd={onDragEnd}
     >
-      <i
-        className="ri-draggable drag-handle"
-        aria-hidden="true"
-        onClick={(event) => event.stopPropagation()}
-      ></i>
+      <i className="ri-draggable drag-handle" aria-hidden="true" onClick={(event) => event.stopPropagation()}></i>
       <div className={`file-icon file-icon-${file.type}`}>
         <i className={FILE_ICONS[file.type] || "ri-file-line"}></i>
       </div>
@@ -630,13 +626,7 @@ function FileRow({ file, compact = false, renamingId, renameValue, menuOpen, onM
             }}
           />
         ) : (
-          <span
-            className="file-name"
-            onDoubleClick={(event) => {
-              event.stopPropagation();
-              onRenameStart();
-            }}
-          >
+          <span className="file-name" onDoubleClick={(event) => { event.stopPropagation(); onRenameStart(); }}>
             {file.name}
           </span>
         )}
@@ -647,37 +637,16 @@ function FileRow({ file, compact = false, renamingId, renameValue, menuOpen, onM
         </div>
       </div>
       <div className="file-actions">
-        <button
-          className="action-btn-sm"
-          onClick={(event) => {
-            event.stopPropagation();
-            onMenuToggle();
-          }}
-          title="更多"
-        >
+        <button className="action-btn-sm" onClick={(event) => { event.stopPropagation(); onMenuToggle(); }} title="更多">
           <i className="ri-more-2-fill"></i>
         </button>
         {menuOpen && (
           <div className="file-menu" onClick={(event) => event.stopPropagation()}>
-            <button
-              className="file-menu-item"
-              onClick={() => {
-                onMenuClose();
-                onRenameStart();
-              }}
-            >
-              <i className="ri-edit-line"></i>
-              重新命名
+            <button className="file-menu-item" onClick={() => { onMenuClose(); onRenameStart(); }}>
+              <i className="ri-edit-line"></i>重新命名
             </button>
-            <button
-              className="file-menu-item danger"
-              onClick={() => {
-                onMenuClose();
-                onDelete();
-              }}
-            >
-              <i className="ri-delete-bin-line"></i>
-              刪除
+            <button className="file-menu-item danger" onClick={() => { onMenuClose(); onDelete(); }}>
+              <i className="ri-delete-bin-line"></i>刪除
             </button>
           </div>
         )}
