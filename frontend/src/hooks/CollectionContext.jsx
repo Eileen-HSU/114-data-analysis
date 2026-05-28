@@ -113,11 +113,36 @@ export function CollectionProvider({ children }) {
 
 
   // 軟刪除
-  const deleteFolder = (id, name) => {
+  const deleteFolder = async (id, name) => {
     const folder = folders.find((f) => f.id === id);
     if (!folder) return;
+
+    // 找出資料夾內的所有 session
+    const folderSessions = workspaceSessions.filter((s) => s.folder_name === name);
+
+    // 同步後端把資料夾內的 session folder_name 清空
+    await Promise.all(
+      folderSessions.map(async (session) => {
+        if (!session.project_id) return;
+        try {
+          await fetch(apiUrl(`/api/workspace/${session.project_id}`), {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", ...getAuthHeader() },
+            body: JSON.stringify({ folder_name: null }),
+          });
+        } catch (err) {
+          console.error(`清空 folder_name 失敗`, err);
+        }
+      })
+    );
+
     setDeletedItems((prev) => [
-      { id: `del-${Date.now()}`, name, type: "folder", deletedAt: nowString(), originalData: folder },
+      {
+        id: `del-${Date.now()}`, name, type: "folder", deletedAt: nowString(),
+        originalData: folder,
+        // 記錄當時資料夾內的 session，還原時用
+        folderSessions: folderSessions,
+      },
       ...prev,
     ]);
     setFolders((prev) => prev.filter((f) => f.id !== id));
@@ -166,23 +191,45 @@ export function CollectionProvider({ children }) {
 
   // 還原
   const restoreItem = async (item) => {
-    if (item.project_id) {
-      try {
-        const folderName = item.workspaceSession?.folder_name ?? item.originalData?.folder_name ?? null;
-        await fetch(apiUrl(`/api/workspace/${item.project_id}/restore`), {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...getAuthHeader() },
-          body: JSON.stringify({ folder_name: folderName }),
-        });
-      } catch (err) {
-        console.error("還原失敗", err);
-      }
-    }
-
     if (item.type === "folder") {
+      // 還原資料夾內的 session folder_name
+      const folderSessions = item.folderSessions || [];
+      await Promise.all(
+        folderSessions.map(async (session) => {
+          if (!session.project_id) return;
+          try {
+            await fetch(apiUrl(`/api/workspace/${session.project_id}`), {
+              method: "PUT",
+              headers: { "Content-Type": "application/json", ...getAuthHeader() },
+              body: JSON.stringify({ folder_name: item.name }),
+            });
+          } catch (err) {
+            console.error(`還原 folder_name 失敗`, err);
+          }
+        })
+      );
+
       setFolders((prev) => [...prev, item.originalData]);
+      setWorkspaceSessions((prev) =>
+        prev.map((s) =>
+          folderSessions.find((fs) => fs.id === s.id)
+            ? { ...s, folder_name: item.name }
+            : s
+        )
+      );
     } else if (item.workspaceSession) {
-      // chat
+      if (item.project_id) {
+        try {
+          const folderName = item.workspaceSession?.folder_name ?? item.originalData?.folder_name ?? null;
+          await fetch(apiUrl(`/api/workspace/${item.project_id}/restore`), {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...getAuthHeader() },
+            body: JSON.stringify({ folder_name: folderName }),
+          });
+        } catch (err) {
+          console.error("還原失敗", err);
+        }
+      }
       setWorkspaceSessions((prev) => {
         if (prev.find((s) => s.id === item.workspaceSession.id)) return prev;
         return [item.workspaceSession, ...prev];
