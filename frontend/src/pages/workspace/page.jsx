@@ -621,6 +621,17 @@ export default function WorkspacePage() {
     .then((res) => res.ok ? res.json() : null)
     .then((data) => {
       if (!data?.project_id) return;
+      
+      // 把問卷綁定到 workspace
+      const surveyCode = state.surveyImport?.survey?.code || state.surveyImport?.survey?.access_code;
+      if (surveyCode) {
+        fetch(apiUrl(`/api/surveys/${encodeURIComponent(surveyCode)}/bind`), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", ...getAuthHeader() },
+          body: JSON.stringify({ project_id: data.project_id }),
+        }).catch((err) => console.error("問卷綁定失敗", err));
+      }
+
       setSessions((prev) =>
         prev.map((s) =>
           s.id === newId

@@ -272,9 +272,6 @@ def permanent_delete_workspace(project_id):
             return jsonify({"message": "資料夾外殼已永久刪除，專案已釋放"}), 200
 
         else:
-            for template in target.templates:
-                template.project_id = None
-            
             db.session.delete(target)
             db.session.commit()
             return jsonify({"message": "專案已永久刪除"}), 200
