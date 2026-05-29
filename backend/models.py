@@ -70,8 +70,7 @@ class Workspace(db.Model):
     
     # ── 子資料表關聯 ─────────────────────────────────────────
     # chats     = db.relationship('Chat_History', backref='workspace')    
-    templates = db.relationship('Survey_Template', backref='workspace')    
-
+    templates = db.relationship('Survey_Template', backref='workspace', passive_deletes=True)
 # T05: Chat_History -  對話紀錄
 class Chat_History(db.Model):
     __tablename__ = 'Chat_History'

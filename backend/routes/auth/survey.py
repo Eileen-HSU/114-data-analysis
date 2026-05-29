@@ -472,3 +472,29 @@ def get_survey_responses(access_code):
     except Exception as e:
         logging.error(f"Get survey responses failed: {e}", exc_info=True)
         return jsonify({"error": "取得回覆失敗", "detail": str(e)}), 500
+
+@survey_bp.route('/api/surveys/<access_code>/bind', methods=['PATCH'])
+def bind_survey_to_workspace(access_code):
+    """綁定問卷到工作區"""
+    auth_user_id, auth_error = verify_token(request)
+    if auth_error:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(silent=True) or {}
+    project_id = data.get('project_id')
+    if not project_id:
+        return jsonify({"error": "缺少 project_id"}), 400
+
+    survey = find_survey_by_access_or_short_code(access_code)
+    if not survey:
+        return jsonify({"error": "找不到問卷"}), 404
+    if survey.user_id != auth_user_id:
+        return jsonify({"error": "無權限"}), 403
+
+    try:
+        survey.project_id = project_id
+        db.session.commit()
+        return jsonify({"message": "綁定成功"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
