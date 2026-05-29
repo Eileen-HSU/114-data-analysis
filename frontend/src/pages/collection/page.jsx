@@ -43,6 +43,7 @@ export default function CollectionPage() {
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [renamingFileId, setRenamingFileId] = useState(null);
   const [renameFileValue, setRenameFileValue] = useState("");
   const [renamingFolderId, setRenamingFolderId] = useState(null);
@@ -117,8 +118,10 @@ export default function CollectionPage() {
 
   // 刪除
   const confirmDelete = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || isDeleting) return;
+    setIsDeleting(true);
 
+    try {
     if (deleteTarget.type === "folder") {
       const folderFiles = files.filter((file) => getFileFolderName(file) === deleteTarget.name);
 
@@ -176,6 +179,9 @@ export default function CollectionPage() {
     }
 
     setDeleteTarget(null);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   // 新增資料夾
@@ -660,14 +666,29 @@ export default function CollectionPage() {
       )}
 
       {deleteTarget && (
-        <div className="modal-backdrop-custom" onClick={() => setDeleteTarget(null)}>
+        <div className="modal-backdrop-custom" onClick={() => !isDeleting && setDeleteTarget(null)}>
           <div className="modal-box text-center" onClick={(event) => event.stopPropagation()}>
-            <div className="delete-icon"><i className="ri-delete-bin-line"></i></div>
-            <h5 className="fw-bold mb-2">刪除{deleteTarget.type === "folder" ? "資料夾" : "Chat"}</h5>
-            <p className="text-muted mb-4">「{deleteTarget.name}」會移到垃圾桶，可稍後還原。</p>
+            <div className={`delete-icon ${isDeleting ? "is-loading" : ""}`}>
+              <i className={isDeleting ? "ri-loader-4-line ri-spin" : "ri-delete-bin-line"}></i>
+            </div>
+            <h5 className="fw-bold mb-2">
+              {isDeleting ? "正在刪除..." : `刪除${deleteTarget.type === "folder" ? "資料夾" : "Chat"}`}
+            </h5>
+            <p className="text-muted mb-4">
+              {isDeleting ? "正在移到垃圾桶，請稍候。" : `「${deleteTarget.name}」會移到垃圾桶，可稍後還原。`}
+            </p>
             <div className="d-flex gap-2">
-              <button className="btn btn-danger flex-fill" onClick={confirmDelete}>確認刪除</button>
-              <button className="btn btn-outline-secondary flex-fill" onClick={() => setDeleteTarget(null)}>取消</button>
+              <button className="btn btn-danger flex-fill" onClick={confirmDelete} disabled={isDeleting}>
+                {isDeleting ? (
+                  <>
+                    <i className="ri-loader-4-line ri-spin me-2"></i>
+                    刪除中
+                  </>
+                ) : (
+                  "確認刪除"
+                )}
+              </button>
+              <button className="btn btn-outline-secondary flex-fill" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>取消</button>
             </div>
           </div>
         </div>
