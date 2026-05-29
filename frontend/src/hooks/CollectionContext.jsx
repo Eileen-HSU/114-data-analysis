@@ -193,8 +193,8 @@ export function CollectionProvider({ children }) {
 
   // 還原
   const restoreItem = async (item) => {
+    console.log("item keys:", Object.keys(item), item);
     if (item.type === "folder") {
-      // 還原資料夾內的 session folder_name
       const folderSessions = item.folderSessions || [];
       await Promise.all(
         folderSessions.map(async (session) => {
@@ -210,7 +210,6 @@ export function CollectionProvider({ children }) {
           }
         })
       );
-
       setFolders((prev) => [...prev, item.originalData]);
       setWorkspaceSessions((prev) =>
         prev.map((s) =>
@@ -222,7 +221,10 @@ export function CollectionProvider({ children }) {
     } else if (item.workspaceSession) {
       if (item.project_id) {
         try {
-          const folderName = item.workspaceSession?.folder_name ?? item.originalData?.folder_name ?? null;
+          const folderName =
+            item.workspaceSession?.folder_name ??
+            item.originalData?.folder_name ??
+            null;
           await fetch(apiUrl(`/api/workspace/${item.project_id}/restore`), {
             method: "POST",
             headers: { "Content-Type": "application/json", ...getAuthHeader() },
@@ -238,7 +240,8 @@ export function CollectionProvider({ children }) {
       });
     }
 
-    setDeletedItems((prev) => prev.filter((d) => d.id !== item.id));
+    setDeletedItems((prev) => prev.filter((d) => d.project_id !== item.project_id));
+
     recordActivity({
       text: `還原「${item.name}」`,
       icon: "ri-arrow-go-back-line",
@@ -247,37 +250,53 @@ export function CollectionProvider({ children }) {
     });
   };
 
-
   // 永久刪除
   const permanentDelete = async (item, isFolder) => {
     if (!item) return;
+
+    const authUser = JSON.parse(localStorage.getItem("dataanalysis_auth"));
+    const token = authUser?.token;
+    const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+
     if (isFolder) {
+      try {
+        await fetch(
+          `${import.meta.env.VITE_API_BASE_URL || ""}/api/workspace/${item.project_id}/permanent?is_folder=true`,
+          {
+            method: "DELETE",
+            headers: authHeaders,
+          }
+        );
+      } catch (err) {
+        console.error("資料夾永久刪除失敗", err);
+        alert("資料夾永久刪除失敗，請稍後再試");
+        return;
+      }
+
       setDeletedItems((prev) => {
         if (!Array.isArray(prev)) return [];
-        return prev.filter((d) => d.id !== item.id);
+        return prev.filter((d) => d.project_id !== item.project_id);
       });
       return;
     }
 
+    // 檔案
     try {
-      const authUser = JSON.parse(localStorage.getItem("dataanalysis_auth"));
-      const token = authUser?.token;
       const response = await fetch(
         `${import.meta.env.VITE_API_BASE_URL || ""}/api/workspace/${item.project_id}/permanent`,
         {
           method: "DELETE",
-          headers: {
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
+          headers: authHeaders,
         }
       );
       if (!response.ok) {
         const errData = await response.json();
         throw new Error(errData.error || "刪除失敗");
       }
+
       setDeletedItems((prev) => {
         if (!Array.isArray(prev)) return [];
-        return prev.filter((d) => d.id !== item.id);  // 用 id
+        return prev.filter((d) => d.project_id !== item.project_id);
       });
     } catch (err) {
       console.error(err.message);
