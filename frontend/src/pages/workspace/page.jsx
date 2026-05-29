@@ -612,6 +612,27 @@ export default function WorkspacePage() {
     };
     setSessions((prev) => [newSession, ...prev]);
     setActiveSessionId(newId);
+
+    fetch(apiUrl("/api/workspace"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getAuthHeader() },
+    body: JSON.stringify({ project_name: sessionTitle }),
+  })
+    .then((res) => res.ok ? res.json() : null)
+    .then((data) => {
+      if (!data?.project_id) return;
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === newId
+            ? { ...s, id: String(data.project_id), project_id: data.project_id }
+            : s
+        )
+      );
+      updateSessionId(newId, String(data.project_id));
+      setActiveSessionId(String(data.project_id));
+    })
+    .catch((err) => console.error("問卷匯入建立 workspace 失敗", err));
+
     setIsTyping(true);
     setTimeout(() => {
       const aiReply = {
@@ -786,17 +807,6 @@ export default function WorkspacePage() {
 
     setDeleteTarget(null);
     showToast("已刪除工作區，並移至最近刪除");
-
-    if (projectId) {
-      try {
-        await fetch(apiUrl(`/api/workspace/${projectId}`), {
-          method: "DELETE",
-          headers: getAuthHeader(),
-        });
-      } catch (err) {
-        console.error("刪除工作區失敗", err);
-      }
-    }
   };
 
   // ── 建立新工作區 ─────────────
