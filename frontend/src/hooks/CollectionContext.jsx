@@ -259,41 +259,28 @@ export function CollectionProvider({ children }) {
     const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
 
     if (isFolder) {
-      try {
-        await fetch(
-          `${import.meta.env.VITE_API_BASE_URL || ""}/api/workspace/${item.project_id}/permanent?is_folder=true`,
-          {
-            method: "DELETE",
-            headers: authHeaders,
-          }
-        );
-      } catch (err) {
-        console.error("資料夾永久刪除失敗", err);
-        alert("資料夾永久刪除失敗，請稍後再試");
-        return;
-      }
-
+      // 資料夾純前端，用 id 過濾
       setDeletedItems((prev) => {
         if (!Array.isArray(prev)) return [];
-        return prev.filter((d) => d.project_id !== item.project_id);
+        return prev.filter((d) => d.id !== item.id);
       });
       return;
     }
 
-    // 檔案
+    // 檔案，打 API
     try {
+      if (!item.project_id) {
+        console.error("缺少 project_id");
+        return;
+      }
       const response = await fetch(
         `${import.meta.env.VITE_API_BASE_URL || ""}/api/workspace/${item.project_id}/permanent`,
-        {
-          method: "DELETE",
-          headers: authHeaders,
-        }
+        { method: "DELETE", headers: authHeaders }
       );
       if (!response.ok) {
         const errData = await response.json();
         throw new Error(errData.error || "刪除失敗");
       }
-
       setDeletedItems((prev) => {
         if (!Array.isArray(prev)) return [];
         return prev.filter((d) => d.project_id !== item.project_id);

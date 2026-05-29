@@ -628,7 +628,7 @@ export default function CollectionPage() {
                           <i className="ri-arrow-go-back-line"></i>
                           還原
                         </button>
-                        <button className="btn-deleted-remove" onClick={() => permanentDelete(item.project_id)}>
+                        <button className="btn-deleted-remove" onClick={() => permanentDelete(item, item.type === "folder")}>
                           <i className="ri-delete-bin-2-line"></i>
                           永久刪除
                         </button>
