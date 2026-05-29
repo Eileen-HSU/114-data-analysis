@@ -250,6 +250,7 @@ export function CollectionProvider({ children }) {
 
   // 永久刪除
   const permanentDelete = async (item, isFolder) => {
+    if (!item) return;
     if (isFolder) {
       setDeletedItems((prev) => {
         if (!Array.isArray(prev)) return [];
