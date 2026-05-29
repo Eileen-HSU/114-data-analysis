@@ -610,6 +610,16 @@
   margin: 0 auto 16px;
 }
 
+.delete-icon.is-loading {
+  background: #eef7ff;
+  color: #6d8faa;
+}
+
+.modal-box .btn:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
 /* Trash button */
 .btn-trash {
   display: inline-flex;
