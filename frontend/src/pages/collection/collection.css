@@ -533,6 +533,12 @@
   border-color: #f0d5cf;
 }
 
+.btn-deleted-restore:disabled,
+.btn-deleted-remove:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
 /* Empty States */
 .empty-folders {
   display: flex;

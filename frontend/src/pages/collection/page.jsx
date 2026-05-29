@@ -44,6 +44,7 @@ export default function CollectionPage() {
   const [newFolderName, setNewFolderName] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [permanentDeletingId, setPermanentDeletingId] = useState(null);
   const [renamingFileId, setRenamingFileId] = useState(null);
   const [renameFileValue, setRenameFileValue] = useState("");
   const [renamingFolderId, setRenamingFolderId] = useState(null);
@@ -185,6 +186,16 @@ export default function CollectionPage() {
   };
 
   // 新增資料夾
+  const handlePermanentDelete = async (item) => {
+    if (!item || permanentDeletingId) return;
+    setPermanentDeletingId(item.id);
+    try {
+      await permanentDelete(item, item.type === "folder");
+    } finally {
+      setPermanentDeletingId(null);
+    }
+  };
+
   const createFolder = () => {
     if (!newFolderName.trim()) return;
     setFolders((prev) => [...prev, { id: `folder-${Date.now()}`, name: newFolderName.trim(), fileIds: [] }]);
@@ -620,6 +631,10 @@ export default function CollectionPage() {
                 <div className="deleted-list">
                   {deletedItems.map((item) => (
                     <div className="deleted-item" key={item.id}>
+                      {(() => {
+                        const isPermanentlyDeleting = permanentDeletingId === item.id;
+                        return (
+                          <>
                       <div className="deleted-icon-box">
                         <i className={item.type === "folder" ? "ri-folder-line" : "ri-chat-3-line"}></i>
                       </div>
@@ -630,15 +645,18 @@ export default function CollectionPage() {
                         </div>
                       </div>
                       <div className="deleted-actions">
-                        <button className="btn-deleted-restore" onClick={() => restoreItem(item)}>
+                        <button className="btn-deleted-restore" onClick={() => restoreItem(item)} disabled={isPermanentlyDeleting}>
                           <i className="ri-arrow-go-back-line"></i>
                           還原
                         </button>
-                        <button className="btn-deleted-remove" onClick={() => permanentDelete(item, item.type === "folder")}>
-                          <i className="ri-delete-bin-2-line"></i>
-                          永久刪除
+                        <button className="btn-deleted-remove" onClick={() => handlePermanentDelete(item)} disabled={isPermanentlyDeleting}>
+                          <i className={isPermanentlyDeleting ? "ri-loader-4-line ri-spin" : "ri-delete-bin-2-line"}></i>
+                          {isPermanentlyDeleting ? "刪除中" : "永久刪除"}
                         </button>
                       </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   ))}
                 </div>
