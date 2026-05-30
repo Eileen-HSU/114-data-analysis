@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Navbar from "../../components/feature/Navbar";
 import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
@@ -448,7 +448,14 @@ export default function WorkspacePage() {
     toastTimerRef.current = setTimeout(() => setToastMsg(null), 3000);
   };
 
-  const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
+  const visibleSessions = useMemo(
+    () =>
+      sessions.filter(
+        (s) => s.project_id || (s.isPending && String(s.id).startsWith("temp-")) || (s.isPending && String(s.id).startsWith("survey-"))
+      ),
+    [sessions]
+  );
+  const activeSession = visibleSessions.find((s) => s.id === activeSessionId) ?? null;
   const messages = activeSession?.messages ?? [];
 
   useEffect(() => {
@@ -562,11 +569,16 @@ export default function WorkspacePage() {
   }, [isLoggedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (activeSessionId || sessions.length === 0) return;
+    if (activeSessionId || visibleSessions.length === 0) return;
     const savedId = localStorage.getItem(ACTIVE_WORKSPACE_KEY);
-    const restored = sessions.find((s) => s.id === savedId);
-    setActiveSessionId(restored?.id || sessions[0].id);
-  }, [activeSessionId, sessions]);
+    const restored = visibleSessions.find((s) => s.id === savedId);
+    setActiveSessionId(restored?.id || visibleSessions[0].id);
+  }, [activeSessionId, visibleSessions]);
+
+  useEffect(() => {
+    if (!activeSessionId || visibleSessions.some((s) => s.id === activeSessionId)) return;
+    setActiveSessionId(visibleSessions[0]?.id || null);
+  }, [activeSessionId, visibleSessions]);
 
   useEffect(() => {
     if (!activeSessionId) return;
@@ -613,6 +625,7 @@ export default function WorkspacePage() {
       title: sessionTitle,
       date: new Date().toLocaleDateString(),
       messages: [WELCOME_MSG, userMsg],
+      isPending: true,
     };
     setSessions((prev) => [newSession, ...prev]);
     setActiveSessionId(newId);
@@ -639,14 +652,17 @@ export default function WorkspacePage() {
       setSessions((prev) =>
         prev.map((s) =>
           s.id === newId
-            ? { ...s, id: String(data.project_id), project_id: data.project_id }
+            ? { ...s, id: String(data.project_id), project_id: data.project_id, isPending: false }
             : s
         )
       );
-      updateSessionId(newId, String(data.project_id));
+      updateSessionId(newId, String(data.project_id), data.project_id);
       setActiveSessionId(String(data.project_id));
     })
-    .catch((err) => console.error("問卷匯入建立 workspace 失敗", err));
+    .catch((err) => {
+      console.error("問卷匯入建立 workspace 失敗", err);
+      setSessions((prev) => prev.filter((s) => s.id !== newId));
+    });
 
     setIsTyping(true);
     setTimeout(() => {
@@ -760,7 +776,7 @@ export default function WorkspacePage() {
     }
   };
 
-  const filteredSessions = sessions.filter((s) =>
+  const filteredSessions = visibleSessions.filter((s) =>
     s.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -835,6 +851,7 @@ export default function WorkspacePage() {
       title,
       date: new Date().toLocaleDateString(),
       messages: [WELCOME_MSG],
+      isPending: true,
     };
     setSessions((prev) => [tempSession, ...prev]);
     setActiveSessionId(tempId);
@@ -850,13 +867,16 @@ export default function WorkspacePage() {
         body: JSON.stringify({ project_name: title }),
       });
 
+      if (!res.ok) {
+        throw new Error("Create workspace failed");
+      }
       if (res.ok) {
         const data = await res.json();
         const newId = String(data.project_id);
         setSessions((prev) =>
           prev.map((s) =>
             s.id === tempId
-              ? { ...s, id: String(data.project_id), project_id: data.project_id }
+              ? { ...s, id: String(data.project_id), project_id: data.project_id, isPending: false }
               : s
           )
         );
@@ -865,6 +885,11 @@ export default function WorkspacePage() {
       }
     } catch (err) {
       console.error("新增工作區失敗", err);
+      setSessions((prev) => {
+        const next = prev.filter((s) => s.id !== tempId);
+        setActiveSessionId(next.find((s) => s.project_id)?.id || null);
+        return next;
+      });
     }
   };
 
@@ -940,7 +965,7 @@ export default function WorkspacePage() {
               </div>
             </div>
             <div className="sidebar-list">
-              {sessions.length === 0 ? (
+              {visibleSessions.length === 0 ? (
                 <div className="sidebar-empty">
                   <i className="ri-chat-ai-line"></i>
                   <p>尚無工作區紀錄</p>
