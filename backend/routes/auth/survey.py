@@ -133,23 +133,55 @@ def is_allowed_short_url_target(url):
 
 def create_external_short_url(long_url):
     cuttly_api_key = os.getenv("CUTTLY_API_KEY", "").strip()
-    if not cuttly_api_key:
-        raise ValueError("CUTTLY_API_KEY is not configured")
+    providers = [
+        *(
+            [(
+                "cuttly",
+                f"https://cutt.ly/api/api.php?{urlencode({'key': cuttly_api_key, 'short': long_url})}",
+                ("https://cutt.ly/", "http://cutt.ly/"),
+            )] if cuttly_api_key else []
+        ),
+        (
+            "is.gd",
+            f"https://is.gd/create.php?{urlencode({'format': 'simple', 'url': long_url})}",
+            ("https://is.gd/",),
+        ),
+        (
+            "v.gd",
+            f"https://v.gd/create.php?{urlencode({'format': 'simple', 'url': long_url})}",
+            ("https://v.gd/",),
+        ),
+        (
+            "tinyurl",
+            f"https://tinyurl.com/api-create.php?{urlencode({'url': long_url})}",
+            ("https://tinyurl.com/",),
+        ),
+    ]
+    errors = []
 
-    api_url = f"https://cutt.ly/api/api.php?{urlencode({'key': cuttly_api_key, 'short': long_url})}"
-    with urlopen(api_url, timeout=5) as response:
-        body = response.read().decode("utf-8").strip()
+    for provider_name, api_url, allowed_prefixes in providers:
+        try:
+            with urlopen(api_url, timeout=5) as response:
+                body = response.read().decode("utf-8").strip()
 
-    payload = json.loads(body)
-    url_info = payload.get("url") or {}
-    short_url = (url_info.get("shortLink") or "").strip()
-    status = url_info.get("status")
+            if provider_name == "cuttly":
+                payload = json.loads(body)
+                url_info = payload.get("url") or {}
+                short_url = (url_info.get("shortLink") or "").strip()
+                status = url_info.get("status")
+                if status != 7:
+                    errors.append(f"cuttly: status {status}")
+                    continue
+            else:
+                short_url = body
 
-    if status != 7:
-        raise ValueError(f"Cuttly failed with status {status}")
-    if not short_url.startswith(("https://cutt.ly/", "http://cutt.ly/")):
-        raise ValueError(f"Cuttly returned invalid short URL: {short_url or 'empty response'}")
-    return short_url
+            if short_url.startswith(allowed_prefixes):
+                return short_url
+            errors.append(f"{provider_name}: {short_url or 'empty response'}")
+        except Exception as e:
+            errors.append(f"{provider_name}: {e}")
+
+    raise ValueError("; ".join(errors) or "All shorteners failed")
 
 
 @survey_bp.route('/api/short-links', methods=['POST'])
