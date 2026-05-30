@@ -110,7 +110,7 @@ const handleSubmit = async (e) => {
       }
 
       login(userData);
-      navigate("/workspace");
+      navigate("/workspace", { replace: true });
     } catch (error) {
       setIsSubmitting(false);
       sessionStorage.removeItem("dataanalysis_login_loading");
