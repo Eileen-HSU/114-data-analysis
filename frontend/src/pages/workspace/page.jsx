@@ -527,7 +527,11 @@ export default function WorkspacePage() {
 
           // 把後端資料轉成 session 格式，保留本地已有的 messages
           const fromBackend = data.map((w) => {
-            const existing = prev.find((s) => String(s.project_id) === String(w.project_id));
+            const existing = prev.find(
+              (s) =>
+                String(s.project_id) === String(w.project_id) ||
+                String(s.id) === String(w.project_id)
+            );
             return {
               id: existing?.id || String(w.project_id),
               project_id: w.project_id,
@@ -538,7 +542,7 @@ export default function WorkspacePage() {
             };
           });
 
-          return [...localOnly, ...fromBackend];
+          return fromBackend;
         });
       } catch (err) {
         console.error("載入 workspace 失敗", err);
@@ -773,9 +777,10 @@ export default function WorkspacePage() {
       syncChatTitle(id, trimmed);
 
       const session = sessions.find((s) => s.id === id);
-      if (session?.project_id) {
+      const projectId = session?.project_id || (/^\d+$/.test(String(id)) ? id : null);
+      if (projectId) {
         try {
-          await fetch(apiUrl(`/api/workspace/${session.project_id}`), {
+          await fetch(apiUrl(`/api/workspace/${projectId}`), {
             method: "PUT",
             headers: {
               "Content-Type": "application/json",
@@ -855,7 +860,7 @@ export default function WorkspacePage() {
               : s
           )
         );
-        updateSessionId(tempId, newId);
+        updateSessionId(tempId, newId, data.project_id);
         setActiveSessionId(String(data.project_id));
       }
     } catch (err) {
