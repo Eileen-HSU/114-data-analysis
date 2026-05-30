@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from flask import Blueprint, request, jsonify
 from sqlalchemy.orm.attributes import flag_modified
 from extensions import db
-from models import Survey_Template, Survey_Response
+from models import Survey_Template, Survey_Response, Workspace
 
 survey_bp = Blueprint('survey', __name__)
 TAIPEI_TZ = ZoneInfo("Asia/Taipei")
@@ -88,6 +88,28 @@ def find_survey_by_access_or_short_code(raw_code):
 
 def survey_short_code(survey):
     return encode_survey_short_code(survey.template_id)
+
+
+def get_default_workspace_project_id(user_id):
+    workspace = Workspace.query.filter_by(
+        user_id=user_id,
+        is_deleted=False,
+    ).order_by(Workspace.created_at.desc(), Workspace.project_id.desc()).first()
+    return workspace.project_id if workspace else None
+
+
+def resolve_workspace_project_id(user_id, requested_project_id=None):
+    if requested_project_id:
+        workspace = Workspace.query.filter_by(
+            project_id=requested_project_id,
+            user_id=user_id,
+            is_deleted=False,
+        ).first()
+        if workspace:
+            return workspace.project_id
+        return None
+
+    return get_default_workspace_project_id(user_id)
 
 
 def is_allowed_short_url_target(url):
@@ -241,13 +263,14 @@ def create_survey():
 
     try:
         access_code = generate_unique_access_code()
+        project_id = resolve_workspace_project_id(auth_user_id, data.get('project_id'))
         survey_content = {
             "description": data.get('description'),
             "identity_mode": identity_mode,
             "items":       questions,
         }
         new_template = Survey_Template(
-            project_id    = data.get('project_id'),
+            project_id    = project_id,
             title         = title,
             access_code   = access_code.upper(),
             question_json = survey_content,
@@ -261,6 +284,7 @@ def create_survey():
             "message":     "問卷建立成功",
             "access_code": access_code.upper(),
             "short_code":  survey_short_code(new_template),
+            "project_id":   new_template.project_id,
             "template_id": new_template.template_id,
         }), 201
 
@@ -293,6 +317,7 @@ def get_user_surveys():
                 "title":          survey.title,
                 "access_code":    survey.access_code,
                 "short_code":     survey_short_code(survey),
+                "project_id":     survey.project_id,
                 "created_at":     survey.created_at.isoformat() if survey.created_at else "",
                 "deadline_at":    get_survey_deadline_at(survey, question_json),
                 "response_count": response_count,
@@ -341,6 +366,7 @@ def get_survey(access_code):
             "questions": question_json.get("items") or [],
             "access_code": survey.access_code,
             "short_code": survey_short_code(survey),
+            "project_id": survey.project_id,
             "created_at": survey.created_at.isoformat() if survey.created_at else None,
         }
 
@@ -383,6 +409,7 @@ def update_survey_deadline(access_code):
             "message": "截止時間已更新",
             "access_code": survey.access_code,
             "short_code": survey_short_code(survey),
+            "project_id": survey.project_id,
             "deadline_at": get_survey_deadline_at(survey, question_json),
         }), 200
 
@@ -465,6 +492,7 @@ def get_survey_responses(access_code):
             "title":          survey.title,
             "access_code":    survey.access_code,
             "short_code":     survey_short_code(survey),
+            "project_id":     survey.project_id,
             "response_count": len(result),
             "responses":      result,
         }), 200
@@ -481,9 +509,9 @@ def bind_survey_to_workspace(access_code):
         return jsonify({"error": "Unauthorized"}), 401
 
     data = request.get_json(silent=True) or {}
-    project_id = data.get('project_id')
+    project_id = resolve_workspace_project_id(auth_user_id, data.get('project_id'))
     if not project_id:
-        return jsonify({"error": "缺少 project_id"}), 400
+        return jsonify({"error": "找不到可綁定的工作區"}), 400
 
     survey = find_survey_by_access_or_short_code(access_code)
     if not survey:
@@ -494,7 +522,7 @@ def bind_survey_to_workspace(access_code):
     try:
         survey.project_id = project_id
         db.session.commit()
-        return jsonify({"message": "綁定成功"}), 200
+        return jsonify({"message": "綁定成功", "project_id": survey.project_id}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
