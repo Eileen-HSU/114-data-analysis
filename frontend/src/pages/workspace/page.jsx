@@ -526,7 +526,7 @@ export default function WorkspacePage() {
           const localOnly = prev.filter(
             (s) => !s.project_id || !backendIds.has(String(s.project_id))
           );
-          localSessionsToPersist = localOnly.filter((s) => !s.project_id);
+          localSessionsToPersist = localOnly.filter((s) => !s.isPending);
 
           // 把後端資料轉成 session 格式，保留本地已有的 messages
           const fromBackend = data.map((w) => {
@@ -560,13 +560,9 @@ export default function WorkspacePage() {
                 },
                 body: JSON.stringify({ project_name: session.title || "新工作區" }),
               });
-              if (!createRes.ok) {
-                throw new Error("Create workspace failed");
-              }
+              if (!createRes.ok) return;
               const created = await createRes.json();
-              if (!created?.project_id) {
-                throw new Error("Create workspace response missing project_id");
-              }
+              if (!created?.project_id) return;
               const newId = String(created.project_id);
               setSessions((prev) =>
                 prev.map((s) =>
