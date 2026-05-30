@@ -105,8 +105,12 @@ export default function CollectionPage() {
   const looseFiles = filesByFolder.loose || [];
   const looseSessions = sessionsByFolder.loose || [];
   const stats = useMemo(
-    () => ({ folders: folders.length, exports: 0, deleted: deletedItems.length }),
-    [folders.length, deletedItems.length]
+    () => ({
+      workspaces: workspaceSessions.length,
+      exports: 0,
+      deleted: deletedItems.length,
+    }),
+    [workspaceSessions.length, deletedItems.length]
   );
 
   const toggleFolder = (id) => {
@@ -361,7 +365,7 @@ export default function CollectionPage() {
               <div>
                 <p className="collection-banner-label">My Portfolio</p>
                 <h1 className="collection-banner-title">專案管理</h1>
-                <p className="collection-banner-stats">{files.length} 個檔案 · {folders.length} 個資料夾</p>
+                <p className="collection-banner-stats">{workspaceSessions.length} 個 Workspace · {folders.length} 個資料夾</p>
               </div>
               <div className="d-flex gap-2 align-items-center">
                 <button className="btn btn-banner" onClick={() => navigate("/workspace")}>
@@ -371,7 +375,7 @@ export default function CollectionPage() {
             </div>
             <div className="row g-3 mt-4">
               {[
-                { key: "folders", icon: "ri-folder-line", cls: "stat-folder", val: stats.folders, label: "資料夾", unit: "個資料夾" },
+                { key: "folders", icon: "ri-chat-3-line", cls: "stat-folder", val: stats.workspaces, label: "Workspace", unit: "個 Chat" },
                 { key: "exports", icon: "ri-download-cloud-2-line", cls: "stat-export", val: stats.exports, label: "匯出檔案", unit: "個檔案" },
                 { key: "deleted", icon: "ri-delete-bin-line", cls: "stat-deleted", val: stats.deleted, label: "最近刪除", unit: "個項目" },
               ].map((item) => (
