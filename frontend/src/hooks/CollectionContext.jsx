@@ -296,8 +296,14 @@ export function CollectionProvider({ children }) {
     setWorkspaceSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, title: newTitle } : s)));
   };
 
-  const updateSessionId = (oldId, newId) => {
-    setWorkspaceSessions((prev) => prev.map((s) => (s.id === oldId ? { ...s, id: newId } : s)));
+  const updateSessionId = (oldId, newId, projectId = null) => {
+    setWorkspaceSessions((prev) =>
+      prev.map((s) =>
+        s.id === oldId
+          ? { ...s, id: newId, project_id: projectId ?? s.project_id }
+          : s
+      )
+    );
   };
 
   return (

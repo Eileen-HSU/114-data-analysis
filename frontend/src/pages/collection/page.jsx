@@ -94,11 +94,12 @@ export default function CollectionPage() {
   const sessionsByFolder = useMemo(() => {
     const grouping = {};
     const assignedSessionIds = new Set();
+    const persistedSessions = workspaceSessions.filter((session) => session.project_id);
     folders.forEach((folder) => {
-      grouping[folder.name] = workspaceSessions.filter((session) => session.folder_name === folder.name);
+      grouping[folder.name] = persistedSessions.filter((session) => session.folder_name === folder.name);
       grouping[folder.name].forEach((session) => assignedSessionIds.add(session.id));
     });
-    grouping.loose = workspaceSessions.filter((session) => !assignedSessionIds.has(session.id));
+    grouping.loose = persistedSessions.filter((session) => !assignedSessionIds.has(session.id));
     return grouping;
   }, [workspaceSessions, folders]);
 
@@ -106,7 +107,7 @@ export default function CollectionPage() {
   const looseSessions = sessionsByFolder.loose || [];
   const stats = useMemo(
     () => ({
-      workspaces: workspaceSessions.length,
+      workspaces: workspaceSessions.filter((session) => session.project_id).length,
       exports: 0,
       deleted: deletedItems.length,
     }),
@@ -365,7 +366,7 @@ export default function CollectionPage() {
               <div>
                 <p className="collection-banner-label">My Portfolio</p>
                 <h1 className="collection-banner-title">專案管理</h1>
-                <p className="collection-banner-stats">{workspaceSessions.length} 個 Workspace · {folders.length} 個資料夾</p>
+                <p className="collection-banner-stats">{stats.workspaces} 個 Workspace · {folders.length} 個資料夾</p>
               </div>
               <div className="d-flex gap-2 align-items-center">
                 <button className="btn btn-banner" onClick={() => navigate("/workspace")}>
