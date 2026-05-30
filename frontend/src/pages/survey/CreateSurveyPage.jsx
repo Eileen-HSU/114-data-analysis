@@ -170,7 +170,7 @@ export default function CreateSurveyPage() {
 
         const accessCode = response.data.access_code;
         const shortCode = response.data.short_code || accessCode;
-        const externalLink = await buildExternalSurveyShortUrl(shortCode);
+        const externalLink = await buildExternalSurveyShortUrl(accessCode);
         const createdAtMs = Date.now();
         const savedSurvey = {
           id: response.data.template_id || `survey-${Date.now()}`,
