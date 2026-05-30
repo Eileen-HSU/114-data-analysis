@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { useAuth } from "../../hooks/AuthContext";
 import { apiUrl } from "../../lib/api";
 import conqightLogo from "../../assets/conqight-logo.png";
 import "./auth.css";
 
 export default function SignUpPage() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [name, setName] = useState("");
@@ -18,6 +20,7 @@ export default function SignUpPage() {
   const [gender, setGender] = useState("");
   const [isGenderOpen, setIsGenderOpen] = useState(false);
   const [alertModal, setAlertModal] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const genderOptions = [
     { value: "男", label: "男", emoji: "👨" },
@@ -27,6 +30,15 @@ export default function SignUpPage() {
   ];
   const selectedGenderLabel =
     genderOptions.find((option) => option.value === gender)?.label || "請選擇性別";
+
+  const isTwoFactorRequired = (data) =>
+    Boolean(
+      data.two_factor_enabled ||
+      data.twoFactorEnabled ||
+      data.requires_2fa ||
+      data.require_2fa ||
+      data.requiresTwoFactor
+    );
 
   useEffect(() => {
     const clearFields = () => {
@@ -46,6 +58,8 @@ export default function SignUpPage() {
 const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (isSubmitting) return;
+
     if (!gender) {
       setAlertModal({
         type: "error",
@@ -56,6 +70,7 @@ const handleSubmit = async (e) => {
     }
     
     try {
+      setIsSubmitting(true);
       // 將所有數據包裹在一個物件中作為 axios.post 的第二個參數
       const response = await axios.post(apiUrl("/api/register"), {
         user_name: name,      // 對標後端 User 模型的名稱欄位
@@ -67,13 +82,35 @@ const handleSubmit = async (e) => {
       });
 
       console.log("註冊成功:", response.data);
-      setAlertModal({
-        type: "success",
-        title: "註冊成功",
-        message: "帳號已建立完成，請前往登入頁登入。",
-        onConfirm: () => navigate("/login"),
+      sessionStorage.setItem("dataanalysis_login_loading", "1");
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+
+      const loginResponse = await axios.post(apiUrl("/api/login"), {
+        email,
+        password,
       });
+      const loginData = loginResponse.data;
+      const userData = {
+        name: loginData.user_name,
+        user_name: loginData.user_name,
+        email: loginData.email,
+        user_id: loginData.user_id,
+        token: loginData.token,
+        pre_auth_token: loginData.pre_auth_token,
+      };
+
+      if (isTwoFactorRequired(loginData)) {
+        sessionStorage.setItem("dataanalysis_pending_2fa", JSON.stringify(userData));
+        sessionStorage.removeItem("dataanalysis_login_loading");
+        navigate("/login/two-factor");
+        return;
+      }
+
+      login(userData);
+      navigate("/workspace");
     } catch (error) {
+      setIsSubmitting(false);
+      sessionStorage.removeItem("dataanalysis_login_loading");
       console.error("註冊失敗:", error);
       setAlertModal({
         type: "error",
@@ -271,8 +308,8 @@ const handleSubmit = async (e) => {
                 </div>
               </div>
 
-              <button type="submit" className="btn btn-auth-submit w-100">
-                建立帳號
+              <button type="submit" className="btn btn-auth-submit w-100" disabled={isSubmitting}>
+                {isSubmitting ? "建立並登入中..." : "建立帳號"}
               </button>
             </form>
 
@@ -298,6 +335,17 @@ const handleSubmit = async (e) => {
             <button className="auth-alert-primary" type="button" onClick={closeAlertModal}>
               確定
             </button>
+          </div>
+        </div>
+      )}
+      {isSubmitting && (
+        <div className="auth-loading-backdrop" role="status" aria-live="polite">
+          <div className="auth-loading-card">
+            <div className="auth-loading-icon">
+              <i className="ri-loader-4-line"></i>
+            </div>
+            <h2>正在建立帳號...</h2>
+            <p>註冊完成後會直接登入並進入系統，請稍候。</p>
           </div>
         </div>
       )}
