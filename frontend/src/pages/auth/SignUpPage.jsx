@@ -85,15 +85,18 @@ const handleSubmit = async (e) => {
       sessionStorage.setItem("dataanalysis_login_loading", "1");
       await new Promise((resolve) => requestAnimationFrame(resolve));
 
-      const loginResponse = await axios.post(apiUrl("/api/login"), {
-        email,
-        password,
-      });
-      const loginData = loginResponse.data;
+      let loginData = response.data;
+      if (!loginData?.token) {
+        const loginResponse = await axios.post(apiUrl("/api/login"), {
+          email,
+          password,
+        });
+        loginData = loginResponse.data;
+      }
       const userData = {
         name: loginData.user_name,
         user_name: loginData.user_name,
-        email: loginData.email,
+        email: loginData.email || email,
         user_id: loginData.user_id,
         token: loginData.token,
         pre_auth_token: loginData.pre_auth_token,
