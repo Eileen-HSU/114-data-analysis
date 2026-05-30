@@ -95,9 +95,29 @@ def ensure_runtime_schema():
             ensure_column("User_Verification", "attempts", "`attempts` INT NOT NULL DEFAULT 0")
             ensure_column("Workspace", "is_deleted", "`is_deleted` TINYINT(1) DEFAULT 0")
             ensure_column("Workspace", "deleted_at", "`deleted_at` DATETIME NULL")
+            ensure_column("Survey_Template", "project_id", "`project_id` INT NULL")
             ensure_column("Survey_Template", "user_id", "`user_id` INT NULL")
             ensure_column("Survey_Template", "due_date", "`due_date` TIMESTAMP NULL")
             ensure_column("Survey_Template", "is_anonymous", "`is_anonymous` TINYINT(1) DEFAULT 0")
+            db.session.execute(text("""
+                UPDATE `Survey_Template` st
+                SET st.`project_id` = (
+                    SELECT w.`project_id`
+                    FROM `Workspace` w
+                    WHERE w.`user_id` = st.`user_id`
+                      AND COALESCE(w.`is_deleted`, 0) = 0
+                    ORDER BY w.`created_at` DESC, w.`project_id` DESC
+                    LIMIT 1
+                )
+                WHERE st.`project_id` IS NULL
+                  AND st.`user_id` IS NOT NULL
+                  AND EXISTS (
+                    SELECT 1
+                    FROM `Workspace` w
+                    WHERE w.`user_id` = st.`user_id`
+                      AND COALESCE(w.`is_deleted`, 0) = 0
+                  )
+            """))
             db.session.commit()
         except Exception as exc:
             db.session.rollback()
