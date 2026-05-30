@@ -448,7 +448,13 @@ export default function WorkspacePage() {
     toastTimerRef.current = setTimeout(() => setToastMsg(null), 3000);
   };
 
-  const visibleSessions = useMemo(() => sessions, [sessions]);
+  const visibleSessions = useMemo(
+    () =>
+      sessions.filter(
+        (s) => s.project_id || (s.isPending && String(s.id).startsWith("temp-")) || (s.isPending && String(s.id).startsWith("survey-"))
+      ),
+    [sessions]
+  );
   const activeSession = visibleSessions.find((s) => s.id === activeSessionId) ?? null;
   const messages = activeSession?.messages ?? [];
 
@@ -518,7 +524,6 @@ export default function WorkspacePage() {
         if (!res.ok) return;
         const data = await res.json();
 
-        let localSessionsToPersist = [];
         setSessions((prev) => {
           const backendIds = new Set(data.map((w) => String(w.project_id)));
 
@@ -526,7 +531,6 @@ export default function WorkspacePage() {
           const localOnly = prev.filter(
             (s) => !s.project_id || !backendIds.has(String(s.project_id))
           );
-          localSessionsToPersist = localOnly.filter((s) => !s.isPending);
 
           // 把後端資料轉成 session 格式，保留本地已有的 messages
           const fromBackend = data.map((w) => {
@@ -545,41 +549,8 @@ export default function WorkspacePage() {
             };
           });
 
-          const pendingLocal = localOnly.map((s) => ({ ...s, isPending: true }));
-          return [...pendingLocal, ...fromBackend];
+          return fromBackend;
         });
-
-        await Promise.all(
-          localSessionsToPersist.map(async (session) => {
-            try {
-              const createRes = await fetch(apiUrl("/api/workspace"), {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  ...getAuthHeader(),
-                },
-                body: JSON.stringify({ project_name: session.title || "新工作區" }),
-              });
-              if (!createRes.ok) return;
-              const created = await createRes.json();
-              if (!created?.project_id) return;
-              const newId = String(created.project_id);
-              setSessions((prev) =>
-                prev.map((s) =>
-                  s.id === session.id
-                    ? { ...s, id: newId, project_id: created.project_id, isPending: false }
-                    : s
-                )
-              );
-              updateSessionId(session.id, newId, created.project_id);
-            } catch (err) {
-              console.error("同步本機 workspace 失敗", err);
-              setSessions((prev) =>
-                prev.map((s) => (s.id === session.id ? { ...s, isPending: false } : s))
-              );
-            }
-          })
-        );
       } catch (err) {
         console.error("載入 workspace 失敗", err);
       } finally {
