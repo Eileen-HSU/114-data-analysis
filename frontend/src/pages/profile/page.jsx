@@ -614,15 +614,11 @@ export default function ProfilePage() {
     }, 0);
   };
 
-  const surveyCount = Number.isFinite(surveyRecords.length) ? surveyRecords.length : 0;
-  const usageDays = getUsageDays(profile.createdAt);
-  const safeUsageDays = Number.isFinite(usageDays) ? usageDays : 0;
-
   const dashboardCards = [
     { icon: "ri-profile-line", iconColor: "text-stat-mauve", iconBg: "bg-stat-mauve", barBg: "bar-mauve", label: "基本資料", action: scrollToInfo, activeKey: "info", ariaLabel: "查看基本資料" },
     { icon: "ri-shield-keyhole-line", iconColor: "text-stat-sky", iconBg: "bg-stat-sky", barBg: "bar-sky", label: "安全設定", action: scrollToSecurity, activeKey: "security", ariaLabel: "查看安全設定" },
-    { icon: "ri-bar-chart-line", iconColor: "text-stat-coral", iconBg: "bg-stat-coral", barBg: "bar-coral", num: surveyCount, label: "問卷數", action: scrollToSurveys, activeKey: "surveys" },
-    { icon: "ri-calendar-line", iconColor: "text-stat-teal", iconBg: "bg-stat-teal", barBg: "bar-teal", num: safeUsageDays, label: "使用天數" },
+    { icon: "ri-bar-chart-line", iconColor: "text-stat-coral", iconBg: "bg-stat-coral", barBg: "bar-coral", num: surveyRecords.length, label: "問卷數", action: scrollToSurveys, activeKey: "surveys" },
+    { icon: "ri-calendar-line", iconColor: "text-stat-teal", iconBg: "bg-stat-teal", barBg: "bar-teal", num: getUsageDays(profile.createdAt), label: "使用天數" },
   ];
 
   const infoFields = [
@@ -672,7 +668,7 @@ export default function ProfilePage() {
                       >
                         <div className={`stat-top-bar ${card.barBg}`}></div>
                         <div className={`stat-icon-box ${card.iconBg}`}><i className={`${card.icon} ${card.iconColor}`}></i></div>
-                        {"num" in card && <div className="stat-number">{Number.isFinite(card.num) ? card.num : 0}</div>}
+                        {typeof card.num === "number" && <div className="stat-number">{card.num}</div>}
                         <div className="stat-label">{card.label}</div>
                       </CardTag>
                     </div>
