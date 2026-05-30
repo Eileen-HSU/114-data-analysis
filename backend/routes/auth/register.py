@@ -1,6 +1,8 @@
 import re
+import os
 from datetime import datetime, timedelta
 
+import jwt
 from flask import Blueprint, request, jsonify
 from werkzeug.security import generate_password_hash
 
@@ -16,6 +18,22 @@ EMAIL_REGEX = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
 
 def taiwan_now():
     return datetime.utcnow() + timedelta(hours=8)
+
+
+def get_jwt_secret():
+    secret = os.getenv("JWT_SECRET_KEY")
+    if not secret:
+        raise RuntimeError("JWT_SECRET_KEY 未設定")
+    return secret
+
+
+def build_token(user_id):
+    exp_time = (taiwan_now() + timedelta(hours=24)).replace(tzinfo=None)
+    return jwt.encode(
+        {"user_id": user_id, "exp": exp_time},
+        get_jwt_secret(),
+        algorithm="HS256",
+    )
 
 
 def is_valid_password(password: str) -> bool:
@@ -76,10 +94,14 @@ def register():
         
         db.session.add(new_profile)
         db.session.commit()
+        token = build_token(new_user.user_id)
 
         return jsonify({
             "message": f"使用者 {new_user.user_name} 註冊成功！",
             "user_id": new_user.user_id,
+            "user_name": new_user.user_name,
+            "email": new_user.email,
+            "token": token,
         }), 201
 
     except Exception as e:
