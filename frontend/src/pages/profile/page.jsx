@@ -392,7 +392,29 @@ export default function ProfilePage() {
         survey={selectedSurvey}
         onBack={() => setSelectedSurvey(null)}
         onUpdateDeadline={updateSurveyDeadline}
-        onImportToChat={({ survey, questions, responses, sessionTitle, message }) => {
+        onImportToChat={async ({ survey, questions, responses, sessionTitle, message }) => {
+          const auth = user || JSON.parse(localStorage.getItem("dataanalysis_auth") || "{}");
+          const headers = {
+            "Content-Type": "application/json",
+            ...(auth?.token ? { Authorization: `Bearer ${auth.token}` } : {}),
+          };
+
+          // 1. 建立新 Workspace
+          const wsRes = await fetch(apiUrl("/api/workspace"), {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ project_name: survey.title || "未命名問卷" }),
+          });
+          const wsData = await wsRes.json();
+
+          // 2. 綁定問卷
+          await fetch(apiUrl(`/api/surveys/${encodeURIComponent(survey.code || survey.access_code)}/bind`), {
+            method: "PATCH",
+            headers,
+            body: JSON.stringify({ project_id: wsData.project_id }),
+          });
+
+          // 3. 跳轉（保留原本的 state）
           navigate("/workspace", {
             state: {
               surveyImport: {

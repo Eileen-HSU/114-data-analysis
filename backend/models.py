@@ -71,19 +71,18 @@ class Workspace(db.Model):
     # ── 子資料表關聯 ─────────────────────────────────────────
     # chats     = db.relationship('Chat_History', backref='workspace')    
     templates = db.relationship('Survey_Template', backref='workspace', passive_deletes=True)
+
 # T05: Chat_History -  對話紀錄
 class Chat_History(db.Model):
     __tablename__ = 'Chat_History'
     chat_id     = db.Column(db.Integer, primary_key=True, autoincrement=True)
     project_id  = db.Column(db.Integer, db.ForeignKey('Workspace.project_id'), nullable=False)
+    template_id     = db.Column(db.Integer, db.ForeignKey('Survey_Template.template_id'), nullable=True) 
     message_content = db.Column(db.Text, nullable=False)
     sender_type = db.Column(db.String(10), nullable=False) # user / ai
     status      = db.Column(db.String(20), default='active') # processing / compelted / falled
     ai_category  = db.Column(db.String(50)) 
-    ai_summary   = db.Column(db.Text) 
-    ai_suggestion = db.Column(db.Text) 
     corrected_change = db.Column(db.Text) 
-    export_status = db.Column(db.String(20), default='pending') # pending / completed / failed
     created_at  = db.Column(db.DateTime(timezone=True), default=taiwan_now)
 
 # T06: Survey_Template - 問卷模板
@@ -91,7 +90,6 @@ class Survey_Template(db.Model):
     __tablename__ = 'Survey_Template'
     template_id   = db.Column(db.Integer, primary_key=True, autoincrement=True)
     title         = db.Column(db.String(100), nullable=False)
-    project_id  = db.Column(db.Integer, db.ForeignKey('Workspace.project_id', ondelete='SET NULL'), nullable=True)
     share_uuid    = db.Column(db.String(50), default=lambda: str(uuid.uuid4()), unique=True, nullable=False)
     access_code   = db.Column(db.String(5), nullable=False)
     question_json = db.Column(db.JSON, nullable=False)
