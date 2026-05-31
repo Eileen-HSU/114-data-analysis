@@ -253,7 +253,7 @@
 }
 
 .workspace-share-btn {
-  width: 112px;
+  width: 140px;
   height: 42px;
   display: inline-flex;
   align-items: center;
@@ -275,50 +275,11 @@
   font-size: 18px;
 }
 
-.workspace-share-btn:hover,
-.workspace-share-btn.active {
+.workspace-share-btn:hover {
   background: white;
   border-color: var(--rose-200);
   box-shadow: 0 16px 34px rgba(244, 114, 182, 0.22);
   transform: translateY(-1px);
-}
-
-.workspace-share-menu {
-  width: 150px;
-  padding: 8px;
-  border: 1px solid var(--rose-100);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  pointer-events: auto;
-}
-
-.workspace-share-option {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 10px 11px;
-  border: none;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--slate-700);
-  font-size: 14px;
-  font-weight: 800;
-  text-align: left;
-  cursor: pointer;
-}
-
-.workspace-share-option i {
-  color: var(--rose-400);
-  font-size: 17px;
-}
-
-.workspace-share-option:hover {
-  background: var(--rose-50);
-  color: var(--rose-500);
 }
 
 .messages-area {
