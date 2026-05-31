@@ -503,15 +503,14 @@ def get_survey_responses(access_code):
 
 @survey_bp.route('/api/surveys/<access_code>/bind', methods=['PATCH'])
 def bind_survey_to_workspace(access_code):
-    """綁定問卷到工作區"""
     auth_user_id, auth_error = verify_token(request)
     if auth_error:
         return jsonify({"error": "Unauthorized"}), 401
 
     data = request.get_json(silent=True) or {}
-    project_id = resolve_workspace_project_id(auth_user_id, data.get('project_id'))
+    project_id = data.get('project_id')
     if not project_id:
-        return jsonify({"error": "找不到可綁定的工作區"}), 400
+        return jsonify({"error": "請提供 project_id"}), 400
 
     survey = find_survey_by_access_or_short_code(access_code)
     if not survey:
@@ -520,9 +519,16 @@ def bind_survey_to_workspace(access_code):
         return jsonify({"error": "無權限"}), 403
 
     try:
-        survey.project_id = project_id
+        chat = Chat_History(
+            project_id=project_id,
+            template_id=survey.template_id,
+            message_content=f"匯入問卷：{survey.title}",
+            sender_type="user",
+            status="completed",
+        )
+        db.session.add(chat)
         db.session.commit()
-        return jsonify({"message": "綁定成功", "project_id": survey.project_id}), 200
+        return jsonify({"message": "綁定成功", "project_id": project_id, "chat_id": chat.chat_id}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
