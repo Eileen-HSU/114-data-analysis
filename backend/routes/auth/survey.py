@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from flask import Blueprint, request, jsonify
 from sqlalchemy.orm.attributes import flag_modified
 from extensions import db
-from models import Survey_Template, Survey_Response, Workspace, Chat_History
+from models import Survey_Template, Survey_Response, Chat_History
 
 survey_bp = Blueprint('survey', __name__)
 TAIPEI_TZ = ZoneInfo("Asia/Taipei")

@@ -92,7 +92,6 @@ class Survey_Template(db.Model):
     share_uuid    = db.Column(db.String(50), default=lambda: str(uuid.uuid4()), unique=True, nullable=False)
     access_code   = db.Column(db.String(5), nullable=False)
     question_json = db.Column(db.JSON, nullable=False)
-    is_active     = db.Column(db.Boolean, default=True)
     created_at    = db.Column(db.DateTime(timezone=True), default=taiwan_now)
     user_id       = db.Column(db.Integer, nullable=True)
     due_date      = db.Column(db.DateTime(timezone=True), nullable=True)
