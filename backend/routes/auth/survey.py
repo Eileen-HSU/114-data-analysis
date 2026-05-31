@@ -264,7 +264,6 @@ def get_user_surveys():
     try:
         surveys = Survey_Template.query.filter_by(
             user_id=auth_user_id,
-            is_active=True
         ).order_by(Survey_Template.created_at.desc()).all()
 
         result = []
@@ -300,7 +299,7 @@ def get_survey(access_code):
             auth_user_id, _ = verify_token(request)
 
         survey = find_survey_by_access_or_short_code(access_code)
-        if not survey or not survey.is_active:
+        if not survey :
             return jsonify({"error": "找不到這份問卷"}), 404
 
         question_json = survey.question_json or {}
@@ -428,7 +427,7 @@ def get_survey_responses(access_code):
 
     try:
         survey = find_survey_by_access_or_short_code(access_code)
-        if not survey or not survey.is_active:
+        if not survey :
             return jsonify({"error": "找不到這份問卷"}), 404
         if survey.user_id != auth_user_id:
             return jsonify({"error": "無權限查看此問卷回覆"}), 403
