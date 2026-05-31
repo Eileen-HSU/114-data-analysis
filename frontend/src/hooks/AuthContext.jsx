@@ -37,14 +37,24 @@ export function AuthProvider({ children }) {
   const [profileCache, setProfileCache] = useState(null);
   const isLoggedIn = Boolean(user);
 
-  // 登入後或重新整理時自動預載 profile
+  // 登入後或重新整理時自動預載 profile 並更新 avatar
   useEffect(() => {
     if (!user?.token || !user?.user_id) return;
     fetch(apiUrl(`/api/profile/${user.user_id}`), {
       headers: { Authorization: `Bearer ${user.token}` },
     })
       .then((res) => res.ok ? res.json() : null)
-      .then((data) => { if (data) setProfileCache(data); })
+      .then((data) => {
+        if (!data) return;
+        setProfileCache(data);
+        // 登入後馬上把 avatar 存進 user，Navbar 不用等 ProfilePage
+        setUser((currentUser) => {
+          if (!currentUser) return currentUser;
+          const nextUser = { ...currentUser, avatar: data.avatar_url || "" };
+          localStorage.setItem(AUTH_KEY, JSON.stringify(nextUser));
+          return nextUser;
+        });
+      })
       .catch(() => {});
   }, [user?.token, user?.user_id]);
 
