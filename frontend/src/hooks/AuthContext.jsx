@@ -1,11 +1,12 @@
-import { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { apiUrl } from "../lib/api";
 
 const AUTH_KEY = "dataanalysis_auth";
 const AVATAR_STORAGE_KEY_PREFIX = "dataanalysis_avatar";
-
 const AuthContext = createContext({
   isLoggedIn: false,
   user: null,
+  profileCache: null,
   login: () => {},
   logout: () => {},
   updateUser: () => {},
@@ -14,7 +15,6 @@ const AuthContext = createContext({
 function loadStoredUser() {
   const raw = localStorage.getItem(AUTH_KEY);
   if (!raw) return null;
-
   try {
     return JSON.parse(raw);
   } catch {
@@ -34,7 +34,19 @@ function withStoredAvatar(userData) {
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(loadStoredUser);
+  const [profileCache, setProfileCache] = useState(null);
   const isLoggedIn = Boolean(user);
+
+  // 登入後或重新整理時自動預載 profile
+  useEffect(() => {
+    if (!user?.token || !user?.user_id) return;
+    fetch(apiUrl(`/api/profile/${user.user_id}`), {
+      headers: { Authorization: `Bearer ${user.token}` },
+    })
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => { if (data) setProfileCache(data); })
+      .catch(() => {});
+  }, [user?.token, user?.user_id]);
 
   const login = useCallback((userData) => {
     const nextUser = withStoredAvatar(userData);
@@ -49,6 +61,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem("dataanalysis_collection_files");
     localStorage.removeItem("dataanalysis_deleted_items");
     setUser(null);
+    setProfileCache(null);
   }, []);
 
   const updateUser = useCallback((updates) => {
@@ -61,7 +74,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ isLoggedIn, user, login, logout, updateUser }}>
+    <AuthContext.Provider value={{ isLoggedIn, user, profileCache, login, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

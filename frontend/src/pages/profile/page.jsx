@@ -69,7 +69,7 @@ function getUsageDays(createdAt) {
 export default function ProfilePage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, profileCache } = useAuth();
   const { activities, recordActivity, clearActivities } = useActivity();
   const avatarInputRef = useRef(null);
   const editSectionRef = useRef(null);
@@ -164,8 +164,28 @@ export default function ProfilePage() {
   useEffect(() => {
     if (!user?.token || !user?.user_id) return;
 
+    // 有 cache 先用
+    if (profileCache) {
+      const loaded = {
+        name:      profileCache.user_name    || "",
+        phone:     profileCache.phone_number || "",
+        company:   profileCache.company_name || "",
+        gender:    profileCache.gender       || "",
+        location:  profileCache.location     || "",
+        bio:       profileCache.bio          || "",
+        createdAt: profileCache.created_at   || "",
+      };
+      setProfile(loaded);
+      if (!profileLoadedRef.current) {
+        setEditProfile(loaded);
+        profileLoadedRef.current = true;
+      }
+      setAvatarSrc(profileCache.avatar_url || DEFAULT_AVATAR);
+    }
+
+    // 背景打 API 確保最新
     fetch(apiUrl(`/api/profile/${user.user_id}`), {
-      headers: { 'Authorization': `Bearer ${user.token}` }
+      headers: { Authorization: `Bearer ${user.token}` },
     })
       .then((res) => res.json())
       .then((data) => {
@@ -179,19 +199,17 @@ export default function ProfilePage() {
           createdAt: data.created_at   || "",
         };
         setProfile(loaded);
-
         if (!profileLoadedRef.current) {
           setEditProfile(loaded);
           profileLoadedRef.current = true;
         }
-
         const oldKey = `dataanalysis_avatar_${getUserStorageId(user)}`;
         localStorage.removeItem(oldKey);
         setAvatarSrc(data.avatar_url || DEFAULT_AVATAR);
         updateUser({ avatar: data.avatar_url || DEFAULT_AVATAR });
       })
       .catch((err) => console.error("載入個人資料失敗", err));
-  }, [user?.token, user?.user_id, updateUser]); 
+  }, [user?.token, user?.user_id, updateUser]);
 
   useEffect(() => {
     if (!user?.token) {
