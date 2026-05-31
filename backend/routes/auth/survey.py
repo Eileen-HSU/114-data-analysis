@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from flask import Blueprint, request, jsonify
 from sqlalchemy.orm.attributes import flag_modified
 from extensions import db
-from models import Survey_Template, Survey_Response, Workspace
+from models import Survey_Template, Survey_Response, Workspace, Chat_History
 
 survey_bp = Blueprint('survey', __name__)
 TAIPEI_TZ = ZoneInfo("Asia/Taipei")
@@ -41,7 +41,6 @@ def verify_token(request):
 
 
 def generate_unique_access_code():
-    """產生不重複的 5 碼邀請碼"""
     while True:
         code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5)).upper()
         if not Survey_Template.query.filter_by(access_code=code.upper()).first():
@@ -52,7 +51,6 @@ def encode_survey_short_code(template_id):
     template_id = int(template_id or 0)
     if template_id <= 0:
         return ""
-
     chars = []
     while template_id:
         template_id, remainder = divmod(template_id, 36)
@@ -64,7 +62,6 @@ def decode_survey_short_code(short_code):
     token = (short_code or "").strip().upper()
     if not token or any(char not in BASE36_ALPHABET for char in token):
         return None
-
     value = 0
     for char in token:
         value = value * 36 + BASE36_ALPHABET.index(char)
@@ -75,11 +72,9 @@ def find_survey_by_access_or_short_code(raw_code):
     token = (raw_code or "").strip().upper()
     if not token:
         return None
-
     survey = Survey_Template.query.filter_by(access_code=token).first()
     if survey:
         return survey
-
     template_id = decode_survey_short_code(token)
     if not template_id:
         return None
@@ -90,37 +85,13 @@ def survey_short_code(survey):
     return encode_survey_short_code(survey.template_id)
 
 
-def get_default_workspace_project_id(user_id):
-    workspace = Workspace.query.filter_by(
-        user_id=user_id,
-        is_deleted=False,
-    ).order_by(Workspace.created_at.desc(), Workspace.project_id.desc()).first()
-    return workspace.project_id if workspace else None
-
-
-def resolve_workspace_project_id(user_id, requested_project_id=None):
-    if requested_project_id:
-        workspace = Workspace.query.filter_by(
-            project_id=requested_project_id,
-            user_id=user_id,
-            is_deleted=False,
-        ).first()
-        if workspace:
-            return workspace.project_id
-        return None
-
-    return get_default_workspace_project_id(user_id)
-
-
 def is_allowed_short_url_target(url):
     try:
         parsed = urlsplit(url)
     except ValueError:
         return False
-
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         return False
-
     allowed_origins = {
         os.getenv("FRONTEND_PUBLIC_URL", DEFAULT_FRONTEND_ORIGIN).rstrip("/"),
         DEFAULT_FRONTEND_ORIGIN,
@@ -158,12 +129,10 @@ def create_external_short_url(long_url):
         ),
     ]
     errors = []
-
     for provider_name, api_url, allowed_prefixes in providers:
         try:
             with urlopen(api_url, timeout=5) as response:
                 body = response.read().decode("utf-8").strip()
-
             if provider_name == "cuttly":
                 payload = json.loads(body)
                 url_info = payload.get("url") or {}
@@ -174,13 +143,11 @@ def create_external_short_url(long_url):
                     continue
             else:
                 short_url = body
-
             if short_url.startswith(allowed_prefixes):
                 return short_url
             errors.append(f"{provider_name}: {short_url or 'empty response'}")
         except Exception as e:
             errors.append(f"{provider_name}: {e}")
-
     raise ValueError("; ".join(errors) or "All shorteners failed")
 
 
@@ -188,10 +155,8 @@ def create_external_short_url(long_url):
 def create_short_link():
     data = request.get_json(silent=True) or {}
     long_url = (data.get("url") or "").strip()
-
     if not is_allowed_short_url_target(long_url):
         return jsonify({"error": "Unsupported URL"}), 400
-
     try:
         return jsonify({"short_url": create_external_short_url(long_url)}), 200
     except Exception as e:
@@ -202,26 +167,23 @@ def create_short_link():
 def normalize_deadline(deadline):
     if not deadline:
         return None
-
     if isinstance(deadline, str):
         return parse_deadline(deadline)
-
     if deadline.tzinfo is None:
         return deadline.replace(tzinfo=TAIPEI_TZ)
-
     return deadline.astimezone(TAIPEI_TZ)
 
 
 def parse_deadline(deadline_at):
     if not deadline_at:
         return None
-
     try:
         normalized = str(deadline_at).replace("Z", "+00:00")
         parsed = datetime.fromisoformat(normalized)
         return normalize_deadline(parsed)
     except ValueError:
         return None
+
 
 def deadline_to_iso(deadline):
     normalized = normalize_deadline(deadline)
@@ -239,6 +201,7 @@ def is_survey_expired(question_json, due_date=None):
     deadline = normalize_deadline(due_date) or parse_deadline((question_json or {}).get("deadline_at"))
     return bool(deadline and datetime.now(TAIPEI_TZ) > deadline)
 
+
 @survey_bp.route('/api/surveys', methods=['POST'])
 def create_survey():
     """建立新問卷"""
@@ -247,7 +210,7 @@ def create_survey():
         return jsonify({"error": "Unauthorized"}), 401
 
     data = request.get_json(silent=True) or {}
-    title     = data.get('title')
+    title = data.get('title')
     questions = data.get('questions')
     deadline_at = data.get('deadline_at')
     identity_mode = data.get('identity_mode') if data.get('identity_mode') in ["anonymous", "identified"] else "anonymous"
@@ -263,36 +226,34 @@ def create_survey():
 
     try:
         access_code = generate_unique_access_code()
-        project_id = resolve_workspace_project_id(auth_user_id, data.get('project_id'))
         survey_content = {
             "description": data.get('description'),
             "identity_mode": identity_mode,
-            "items":       questions,
+            "items": questions,
         }
         new_template = Survey_Template(
-            project_id    = project_id,
-            title         = title,
-            access_code   = access_code.upper(),
-            question_json = survey_content,
-            user_id       = auth_user_id,
-            due_date      = deadline,
-            is_anonymous  = identity_mode == "anonymous",
+            title=title,
+            access_code=access_code.upper(),
+            question_json=survey_content,
+            user_id=auth_user_id,
+            due_date=deadline,
+            is_anonymous=identity_mode == "anonymous",
         )
         db.session.add(new_template)
         db.session.commit()
         return jsonify({
-            "message":     "問卷建立成功",
+            "message": "問卷建立成功",
             "access_code": access_code.upper(),
-            "short_code":  survey_short_code(new_template),
-            "project_id":   new_template.project_id,
+            "short_code": survey_short_code(new_template),
             "template_id": new_template.template_id,
         }), 201
 
     except Exception as e:
         logging.error(f"Survey creation failed: {e}", exc_info=True)
         db.session.rollback()
-        return jsonify({"error": "問卷建立失敗", "detail": str(e)}), 500  
-    
+        return jsonify({"error": "問卷建立失敗", "detail": str(e)}), 500
+
+
 @survey_bp.route('/api/surveys/mine', methods=['GET'])
 def get_user_surveys():
     """取得目前登入用戶的所有問卷"""
@@ -313,13 +274,12 @@ def get_user_surveys():
                 template_id=survey.template_id
             ).count()
             result.append({
-                "template_id":    survey.template_id,
-                "title":          survey.title,
-                "access_code":    survey.access_code,
-                "short_code":     survey_short_code(survey),
-                "project_id":     survey.project_id,
-                "created_at":     survey.created_at.isoformat() if survey.created_at else "",
-                "deadline_at":    get_survey_deadline_at(survey, question_json),
+                "template_id": survey.template_id,
+                "title": survey.title,
+                "access_code": survey.access_code,
+                "short_code": survey_short_code(survey),
+                "created_at": survey.created_at.isoformat() if survey.created_at else "",
+                "deadline_at": get_survey_deadline_at(survey, question_json),
                 "response_count": response_count,
             })
 
@@ -328,6 +288,7 @@ def get_user_surveys():
     except Exception as e:
         logging.error(f"Get user surveys failed: {e}", exc_info=True)
         return jsonify({"error": "取得問卷失敗"}), 500
+
 
 @survey_bp.route('/api/surveys/<access_code>', methods=['GET'])
 def get_survey(access_code):
@@ -366,7 +327,6 @@ def get_survey(access_code):
             "questions": question_json.get("items") or [],
             "access_code": survey.access_code,
             "short_code": survey_short_code(survey),
-            "project_id": survey.project_id,
             "created_at": survey.created_at.isoformat() if survey.created_at else None,
         }
 
@@ -377,6 +337,7 @@ def get_survey(access_code):
     except Exception as e:
         logging.error(f"Survey lookup failed: {e}", exc_info=True)
         return jsonify({"error": "讀取問卷失敗", "detail": str(e)}), 500
+
 
 @survey_bp.route('/api/surveys/<access_code>/deadline', methods=['PATCH'])
 def update_survey_deadline(access_code):
@@ -390,7 +351,6 @@ def update_survey_deadline(access_code):
     deadline = parse_deadline(deadline_at)
     if not deadline:
         return jsonify({"error": "截止時間格式不正確"}), 400
-
     if deadline <= datetime.now(TAIPEI_TZ):
         return jsonify({"error": "截止時間必須晚於現在。"}), 400
 
@@ -409,7 +369,6 @@ def update_survey_deadline(access_code):
             "message": "截止時間已更新",
             "access_code": survey.access_code,
             "short_code": survey_short_code(survey),
-            "project_id": survey.project_id,
             "deadline_at": get_survey_deadline_at(survey, question_json),
         }), 200
 
@@ -417,6 +376,7 @@ def update_survey_deadline(access_code):
         logging.error(f"Survey deadline update failed: {e}", exc_info=True)
         db.session.rollback()
         return jsonify({"error": "截止時間更新失敗", "detail": str(e)}), 500
+
 
 @survey_bp.route('/api/surveys/<access_code>/responses', methods=['POST'])
 def submit_survey_response(access_code):
@@ -440,8 +400,8 @@ def submit_survey_response(access_code):
             }), 410
 
         response = Survey_Response(
-            template_id = survey.template_id,
-            answer_json = {
+            template_id=survey.template_id,
+            answer_json={
                 "answers": data.get('answers'),
                 "respondent_identity": data.get('respondent_identity'),
             },
@@ -449,7 +409,7 @@ def submit_survey_response(access_code):
         db.session.add(response)
         db.session.commit()
         return jsonify({
-            "message":     "問卷送出成功",
+            "message": "問卷送出成功",
             "response_id": response.response_id,
         }), 201
 
@@ -457,7 +417,8 @@ def submit_survey_response(access_code):
         logging.error(f"Survey response submission failed: {e}", exc_info=True)
         db.session.rollback()
         return jsonify({"error": "問卷送出失敗", "detail": str(e)}), 500
-    
+
+
 @survey_bp.route('/api/surveys/<access_code>/responses', methods=['GET'])
 def get_survey_responses(access_code):
     """取得問卷所有回覆（限問卷建立者）"""
@@ -467,10 +428,8 @@ def get_survey_responses(access_code):
 
     try:
         survey = find_survey_by_access_or_short_code(access_code)
-
         if not survey or not survey.is_active:
             return jsonify({"error": "找不到這份問卷"}), 404
-
         if survey.user_id != auth_user_id:
             return jsonify({"error": "無權限查看此問卷回覆"}), 403
 
@@ -481,28 +440,29 @@ def get_survey_responses(access_code):
         result = []
         for r in responses:
             result.append({
-                "response_id":   r.response_id,
-                "submitted_at":  r.submitted_at.isoformat() if r.submitted_at else None,
-                "answers":       (r.answer_json or {}).get("answers", {}),
+                "response_id": r.response_id,
+                "submitted_at": r.submitted_at.isoformat() if r.submitted_at else None,
+                "answers": (r.answer_json or {}).get("answers", {}),
                 "respondent_identity": (r.answer_json or {}).get("respondent_identity"),
             })
 
         return jsonify({
-            "template_id":    survey.template_id,
-            "title":          survey.title,
-            "access_code":    survey.access_code,
-            "short_code":     survey_short_code(survey),
-            "project_id":     survey.project_id,
+            "template_id": survey.template_id,
+            "title": survey.title,
+            "access_code": survey.access_code,
+            "short_code": survey_short_code(survey),
             "response_count": len(result),
-            "responses":      result,
+            "responses": result,
         }), 200
 
     except Exception as e:
         logging.error(f"Get survey responses failed: {e}", exc_info=True)
-        return jsonify({"error": "取得回覆失敗", "detail": str(e)}), 500
+        return jsonify({"error": "取得回覆失敗"}), 500
+
 
 @survey_bp.route('/api/surveys/<access_code>/bind', methods=['PATCH'])
 def bind_survey_to_workspace(access_code):
+    """綁定問卷到工作區，建立一筆對話紀錄"""
     auth_user_id, auth_error = verify_token(request)
     if auth_error:
         return jsonify({"error": "Unauthorized"}), 401
@@ -528,7 +488,11 @@ def bind_survey_to_workspace(access_code):
         )
         db.session.add(chat)
         db.session.commit()
-        return jsonify({"message": "綁定成功", "project_id": project_id, "chat_id": chat.chat_id}), 200
+        return jsonify({
+            "message": "綁定成功",
+            "project_id": project_id,
+            "chat_id": chat.chat_id,
+        }), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
