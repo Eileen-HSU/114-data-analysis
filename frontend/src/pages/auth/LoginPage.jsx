@@ -69,6 +69,13 @@ export default function LoginPage() {
       if (!res.ok) {
         setIsSubmitting(false);
         sessionStorage.removeItem("dataanalysis_login_loading");
+        
+        // 失敗次數>5，強制跳轉修改密碼
+        if (data.require_password_reset) {
+          navigate(`/forgot-password?email=${encodeURIComponent(data.email)}`);
+          return;
+        }
+        
         setLoginError(data.error || "登入失敗，請確認帳號或密碼是否正確。");
         return;
       }

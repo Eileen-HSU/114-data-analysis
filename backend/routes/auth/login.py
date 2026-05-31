@@ -52,8 +52,11 @@ def login():
     # 暴力破解防護
     attempts = _login_attempts.get(email, 0)
     if attempts >= MAX_LOGIN_ATTEMPTS:
-        return jsonify({"error": "登入失敗次數過多，請稍後再試"}), 429
-
+        return jsonify({
+            "error": "登入失敗次數過多，請重設密碼後再試",
+            "require_password_reset": True,
+            "email": email,
+        }), 429
     try:
         user = User.query.filter_by(email=email).first()
 
