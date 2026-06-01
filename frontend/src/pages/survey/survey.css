@@ -667,38 +667,40 @@
 .success-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.5);
+  background: rgba(45, 52, 72, 0.42);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 9999;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(7px);
 }
 
 .success-modal {
   background: white;
-  border-radius: 28px;
-  padding: 48px 40px;
+  border: 1px solid #d8ecfb;
+  border-radius: 20px;
+  padding: 36px 34px 32px;
   max-width: 480px;
   width: 90%;
   text-align: center;
+  box-shadow: 0 28px 76px rgba(42, 64, 98, 0.18);
 }
 
 .success-icon {
-  width: 80px;
-  height: 80px;
+  width: 58px;
+  height: 58px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f5eded;
-  border-radius: 50%;
-  margin: 0 auto 24px;
-  font-size: 36px;
-  color: #c9a0a0;
+  background: #eef7ff;
+  border-radius: 16px;
+  margin: 0 auto 18px;
+  font-size: 30px;
+  color: #6d8faa;
 }
 
 .success-title {
-  font-size: 26px;
+  font-size: 22px;
   font-weight: 900;
   color: var(--slate-800);
   margin-bottom: 10px;
