@@ -74,6 +74,7 @@ def save_chat_history():
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
     
+
 @chat_bp.route("/api/chat/history/<int:project_id>", methods=["GET"])
 def get_chat_history(project_id):
     try:
@@ -106,17 +107,15 @@ def get_chat_history(project_id):
 
         for history in histories:
             chat_history.append({
-                "chat_id": history.chat_id,
-                "project_id": history.project_id,
-                "template_id": getattr(history, "template_id", None),
-                "sender_type": history.sender_type,
+                "chat_id":         history.chat_id,
+                "project_id":      history.project_id,
+                "template_id":     history.template_id,
+                "sender_type":     history.sender_type, 
+                "role":            "user" if history.sender_type == "user" else "assistant", # ✨ 新增 role 給前端直讀
                 "message_content": history.message_content,
-                "status": getattr(history, "status", None),
-                "created_at": (
-                    history.created_at.isoformat()
-                    if getattr(history, "created_at", None)
-                    else None
-                ),
+                "content":         history.message_content, # ✨ 新增 content 對齊前端用到的欄位
+                "status":          history.status,
+                "created_at":      history.created_at.isoformat() if history.created_at else None,
             })
 
         return jsonify({
