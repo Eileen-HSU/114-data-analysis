@@ -64,12 +64,12 @@ class Workspace(db.Model):
     user_id      = db.Column(db.Integer, db.ForeignKey('User.user_id'), nullable=False)
     project_name = db.Column(db.String(100), nullable=False) 
     folder_name  = db.Column(db.String(100), nullable=True) 
-    is_deleted = db.Column(db.Boolean, default=False, nullable=False, server_default='0')
+    is_deleted   = db.Column(db.Boolean, default=False, nullable=False, server_default='0')
     deleted_at   = db.Column(db.DateTime(timezone=True))
     created_at   = db.Column(db.DateTime(timezone=True), default=taiwan_now)
     
     # ── 子資料表關聯 ─────────────────────────────────────────
-    # chats     = db.relationship('Chat_History', backref='workspace')    
+    chats        = db.relationship('Chat_History', backref='workspace')    
 
 # T05: Chat_History -  對話紀錄
 class Chat_History(db.Model):

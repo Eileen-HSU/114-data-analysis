@@ -258,16 +258,12 @@ def permanent_delete_workspace(project_id):
         is_folder_request = request.args.get("is_folder", "false").lower() == "true"
 
         if is_folder_request and target.folder_name:
-            # 只刪除資料夾外殼，不刪專案
-            affected_workspaces = Workspace.query.filter_by(
+            Workspace.query.filter_by(
                 user_id     = current_user_id,
                 folder_name = target.folder_name,
                 is_deleted  = True
-            ).all()
+            ).update({"folder_name": None}, synchronize_session=False)  # 直接 UPDATE WHERE
             
-            for w in affected_workspaces:
-                w.folder_name = None
-                
             db.session.commit()
             return jsonify({"message": "資料夾外殼已永久刪除，專案已釋放"}), 200
 
@@ -307,5 +303,6 @@ def start_scheduler(app):
         args    = [app],
         id      = "hard_delete_workspaces",
     )
-    scheduler.start()
-    print("[Scheduler] 自動永久刪除排程已啟動")
+    if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
+        scheduler.start()
+        print("[Scheduler] 自動永久刪除排程已啟動")
