@@ -104,14 +104,20 @@ export default function CollectionPage() {
 
   const looseFiles = filesByFolder.loose || [];
   const looseSessions = sessionsByFolder.loose || [];
-  const stats = useMemo(
-    () => ({
-      workspaces: workspaceSessions.length,
+  const stats = useMemo(() => {
+    const chatIds = new Set(
+      workspaceSessions
+        .map((session) => String(session.project_id ?? session.id ?? ""))
+        .filter(Boolean)
+    );
+
+    return {
+      folders: folders.length,
+      chats: chatIds.size,
       exports: 0,
       deleted: deletedItems.length,
-    }),
-    [workspaceSessions.length, deletedItems.length]
-  );
+    };
+  }, [workspaceSessions, folders.length, deletedItems.length]);
 
   const toggleFolder = (id) => {
     setOpenFolders((prev) => {
@@ -365,7 +371,7 @@ export default function CollectionPage() {
               <div>
                 <p className="collection-banner-label">Project Management</p>
                 <h1 className="collection-banner-title">專案管理</h1>
-                <p className="collection-banner-stats">{workspaceSessions.length} 個 Workspace · {folders.length} 個資料夾</p>
+                <p className="collection-banner-stats">{stats.folders} 個資料夾 · {stats.chats} 個 Chat</p>
               </div>
               <div className="d-flex gap-2 align-items-center">
                 <button className="btn btn-banner" onClick={() => navigate("/workspace")}>
@@ -375,7 +381,7 @@ export default function CollectionPage() {
             </div>
             <div className="row g-3 mt-4">
               {[
-                { key: "folders", icon: "ri-chat-3-line", cls: "stat-folder", val: stats.workspaces, label: "歷史專案", unit: "個 Chat" },
+                { key: "folders", icon: "ri-chat-3-line", cls: "stat-folder", val: stats.chats, label: "歷史專案", unit: "個 Chat" },
                 { key: "exports", icon: "ri-download-cloud-2-line", cls: "stat-export", val: stats.exports, label: "匯出檔案", unit: "個檔案" },
                 { key: "deleted", icon: "ri-delete-bin-line", cls: "stat-deleted", val: stats.deleted, label: "最近刪除", unit: "個項目" },
               ].map((item) => (
