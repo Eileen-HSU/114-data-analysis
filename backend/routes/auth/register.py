@@ -1,5 +1,6 @@
 import re
 import os
+import logging
 from datetime import datetime, timedelta
 
 import jwt
@@ -11,24 +12,29 @@ from extensions import db
 
 register_bp = Blueprint('register', __name__)
 
-# 密碼最低要求：至少 8 字元，包含英文和數字
 PASSWORD_MIN_LENGTH = 8
 EMAIL_REGEX = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+
+_JWT_SECRET: str | None = None
 
 
 def taiwan_now():
     return datetime.utcnow() + timedelta(hours=8)
 
 
-def get_jwt_secret():
-    secret = os.getenv("JWT_SECRET_KEY")
-    if not secret:
-        raise RuntimeError("JWT_SECRET_KEY 未設定")
-    return secret
+def get_jwt_secret() -> str:
+    global _JWT_SECRET
+    if _JWT_SECRET is None:
+        _JWT_SECRET = os.getenv("JWT_SECRET_KEY")
+        if not _JWT_SECRET:
+            raise RuntimeError("JWT_SECRET_KEY 未設定")
+    return _JWT_SECRET
 
 
-def build_token(user_id):
-    exp_time = (taiwan_now() + timedelta(hours=24)).replace(tzinfo=None)
+def build_token(user_id: int, now=None) -> str:
+    if now is None:
+        now = taiwan_now()
+    exp_time = (now + timedelta(hours=24)).replace(tzinfo=None)
     return jwt.encode(
         {"user_id": user_id, "exp": exp_time},
         get_jwt_secret(),
@@ -37,7 +43,6 @@ def build_token(user_id):
 
 
 def is_valid_password(password: str) -> bool:
-    """密碼至少 8 字元，包含英文字母和數字"""
     if len(password) < PASSWORD_MIN_LENGTH:
         return False
     if not re.search(r'[A-Za-z]', password):
@@ -67,15 +72,16 @@ def register():
     if not EMAIL_REGEX.match(email):
         return jsonify({"error": "電子郵件格式不正確"}), 400
 
-    # 3. 密碼強度驗證
-    if not is_valid_password(password):
-        return jsonify({"error": "密碼至少需要 8 個字元，並包含英文字母和數字"}), 400
-
-    # 4. 檢查 email 是否已被註冊
+    # 3. email 是否已註冊
     if User.query.filter_by(email=email).first():
         return jsonify({"error": "此電子郵件已被註冊"}), 409
 
+    # 4. 密碼強度驗證
+    if not is_valid_password(password):
+        return jsonify({"error": "密碼至少需要 8 個字元，並包含英文字母和數字"}), 400
+
     try:
+        now = taiwan_now()  
         new_user = User(
             user_name=user_name,
             email=email,
@@ -91,11 +97,10 @@ def register():
             language=data.get('language', 'zh-TW'),
             company_name=data.get('company', data.get('company_name', '')),
         )
-        
         db.session.add(new_profile)
         db.session.commit()
-        token = build_token(new_user.user_id)
 
+        token = build_token(new_user.user_id, now=now)
         return jsonify({
             "message": f"使用者 {new_user.user_name} 註冊成功！",
             "user_id": new_user.user_id,
@@ -106,6 +111,5 @@ def register():
 
     except Exception as e:
         db.session.rollback()
-        import logging
         logging.error(f"Registration error: {e}", exc_info=True)
         return jsonify({"error": "註冊失敗，請稍後再試"}), 500

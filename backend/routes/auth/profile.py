@@ -4,7 +4,7 @@ from extensions import db
 from datetime import datetime, timedelta
 from sqlalchemy.orm import joinedload
 from sqlalchemy import select
-import traceback
+from flask import make_response
 import logging
 import os
 import jwt
@@ -13,6 +13,10 @@ profile_bp = Blueprint('profile', __name__)
 
 logger = logging.getLogger(__name__)
 
+class UserProfile(db.Model):
+    __table_args__ = (
+        db.Index("idx_userprofile_user_id", "user_id"),
+    )
 
 def taiwan_now():
     return datetime.utcnow() + timedelta(hours=8)
@@ -81,7 +85,7 @@ def profile_handler(user_id):
             if not row:
                 return jsonify({"error": "User not found"}), 404
 
-            return jsonify({
+            response = make_response(jsonify({
                 "user_id":      row.user_id,
                 "user_name":    row.user_name,
                 "email":        row.email,
@@ -94,7 +98,9 @@ def profile_handler(user_id):
                 "location":     row.location     or "",
                 "avatar_url":   row.avatar_url   or "",
                 "updated_at":   row.updated_at.isoformat() if row.updated_at else "",
-            }), 200
+            }), 200)
+            response.headers["Cache-Control"] = "private, max-age=10"
+            return response
 
         elif request.method == "PUT":
             # PUT 仍需要 ORM 物件才能做 upsert，用 joinedload 一次撈完

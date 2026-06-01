@@ -284,20 +284,15 @@ def hard_delete_expired_workspaces(app):
     with app.app_context():
         try:
             expiry = taiwan_now() - timedelta(days=SOFT_DELETE_DAYS)
-            expired = Workspace.query.filter(
+            deleted_count = Workspace.query.filter(
                 Workspace.is_deleted == True,
                 Workspace.deleted_at != None,
                 Workspace.deleted_at <= expiry,
-            ).all()
+            ).delete(synchronize_session=False)  # 直接 DELETE WHERE，不撈資料
 
-            if not expired:
-                return
-
-            for w in expired:
-                db.session.delete(w)
-
-            db.session.commit()
-            print(f"[Scheduler] 永久刪除 {len(expired)} 個過期專案")
+            if deleted_count:
+                db.session.commit()
+                print(f"[Scheduler] 永久刪除 {deleted_count} 個過期專案")
         except Exception as e:
             db.session.rollback()
             print(f"[Scheduler] 永久刪除失敗：{e}")
