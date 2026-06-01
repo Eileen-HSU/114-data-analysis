@@ -76,43 +76,57 @@ def save_chat_history():
     
 @chat_bp.route("/api/chat/history/<int:project_id>", methods=["GET"])
 def get_chat_history(project_id):
-    # 1. 權限驗證
-    current_user_id, auth_error = authorize_request()
-    if auth_error:
-        return auth_error
+    try:
+        # 1. 權限驗證
+        current_user_id, auth_error = authorize_request()
+        if auth_error:
+            return auth_error
 
-    # 2. 權限防禦
-    belongs_to_user = db.session.query(
-        exists().where(
-            Workspace.project_id == project_id,
-            Workspace.user_id    == current_user_id,
-            Workspace.is_deleted == False,
+        # 2. 權限防禦
+        belongs_to_user = db.session.query(
+            exists().where(
+                Workspace.project_id == project_id,
+                Workspace.user_id == current_user_id,
+                Workspace.is_deleted == False,
+            )
+        ).scalar()
+
+        if not belongs_to_user:
+            return jsonify({"error": "找不到該專案或您無權限操作"}), 404
+
+        # 3. 撈歷史訊息，依時間正序
+        histories = (
+            Chat_History.query
+            .filter_by(project_id=project_id)
+            .order_by(Chat_History.created_at.asc())
+            .all()
         )
-    ).scalar()
 
-    if not belongs_to_user:
-        return jsonify({"error": "找不到該專案或您無權限操作"}), 404
+        chat_history = []
 
-    # 3. 撈歷史訊息，依時間正序
-    histories = (
-        Chat_History.query
-        .filter_by(project_id=project_id)
-        .order_by(Chat_History.created_at.asc())
-        .all()
-    )
+        for history in histories:
+            chat_history.append({
+                "chat_id": history.chat_id,
+                "project_id": history.project_id,
+                "template_id": getattr(history, "template_id", None),
+                "sender_type": history.sender_type,
+                "message_content": history.message_content,
+                "status": getattr(history, "status", None),
+                "created_at": (
+                    history.created_at.isoformat()
+                    if getattr(history, "created_at", None)
+                    else None
+                ),
+            })
 
-    return jsonify({
-        "project_id": project_id,
-        "chat_history": [
-            {
-                "chat_id":         h.chat_id,
-                "project_id":      h.project_id,
-                "template_id":     h.template_id,
-                "sender_type":     h.sender_type,
-                "message_content": h.message_content,
-                "status":          h.status,
-                "created_at":      h.created_at.isoformat() if h.created_at else None,
-            }
-            for h in histories
-        ],
-    }), 200
+        return jsonify({
+            "project_id": project_id,
+            "chat_history": chat_history,
+        }), 200
+
+    except Exception as error:
+        print("[GET CHAT HISTORY ERROR]", repr(error))
+        return jsonify({
+            "error": str(error),
+            "route": f"/api/chat/history/{project_id}",
+        }), 500
