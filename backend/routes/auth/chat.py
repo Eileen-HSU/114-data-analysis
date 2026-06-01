@@ -106,16 +106,23 @@ def get_chat_history(project_id):
         chat_history = []
 
         for history in histories:
+            formatted_created_at = None
+            if history.created_at:
+                if hasattr(history.created_at, "isoformat"):
+                    formatted_created_at = history.created_at.isoformat()
+                else:
+                    formatted_created_at = str(history.created_at)
+
             chat_history.append({
                 "chat_id":         history.chat_id,
                 "project_id":      history.project_id,
                 "template_id":     history.template_id,
                 "sender_type":     history.sender_type, 
-                "role":            "user" if history.sender_type == "user" else "assistant", # ✨ 新增 role 給前端直讀
+                "role":            "user" if history.sender_type == "user" else "assistant",
                 "message_content": history.message_content,
-                "content":         history.message_content, # ✨ 新增 content 對齊前端用到的欄位
+                "content":         history.message_content,
                 "status":          history.status,
-                "created_at":      history.created_at.isoformat() if history.created_at else None,
+                "created_at":      formatted_created_at, # ✨ 套用修正後的時間
             })
 
         return jsonify({

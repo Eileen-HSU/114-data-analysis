@@ -111,6 +111,10 @@ export default function ProfilePage() {
   const [editProfile, setEditProfile] = useState(profile);
   const twoFactorStorageKey = `${TWO_FACTOR_KEY_PREFIX}_${getUserStorageId(user)}`;
 
+  const getAuthHeader = () => {
+    return user?.token ? { Authorization: `Bearer ${user.token}` } : {};
+  };
+
   const showProfileAlert = ({ type = "error", title, message }) => {
     setTwoFactorModal({ type, title, message });
   };
@@ -164,7 +168,6 @@ export default function ProfilePage() {
   useEffect(() => {
     if (!user?.token || !user?.user_id) return;
 
-    // 有 cache 先用
     if (profileCache) {
       const loaded = {
         name:      profileCache.user_name    || "",
@@ -183,9 +186,8 @@ export default function ProfilePage() {
       setAvatarSrc(profileCache.avatar_url || DEFAULT_AVATAR);
     }
 
-    // 背景打 API 確保最新
     fetch(apiUrl(`/api/profile/${user.user_id}`), {
-      headers: { Authorization: `Bearer ${user.token}` },
+      headers: getAuthHeader(),
     })
       .then((res) => res.json())
       .then((data) => {
@@ -209,7 +211,7 @@ export default function ProfilePage() {
         updateUser({ avatar: data.avatar_url || DEFAULT_AVATAR });
       })
       .catch((err) => console.error("載入個人資料失敗", err));
-  }, [user?.token, user?.user_id, updateUser]);
+  }, [user?.token, user?.user_id]);
 
   useEffect(() => {
     if (!user?.token) {
@@ -220,7 +222,7 @@ export default function ProfilePage() {
     setHasLoadedSurveys(false);
     setIsLoadingSurveys(true);
     fetch(apiUrl("/api/surveys/mine"), {
-      headers: { 'Authorization': `Bearer ${user.token}` }
+      headers: getAuthHeader()
     })
       .then((res) => {
         if (!res.ok) throw new Error("撈取問卷失敗");
@@ -295,7 +297,6 @@ export default function ProfilePage() {
   const handleOpenSurveyDetail = async (survey) => {
     const headers = { "Content-Type": "application/json", ...getAuthHeader() };
     const code = encodeURIComponent(survey.code || survey.access_code);
-    
 
     setIsLoadingSurveyDetail(true);
     try {
@@ -362,11 +363,11 @@ export default function ProfilePage() {
       throw new Error("截止時間必須晚於現在。");
     }
 
-      const response = await fetch(apiUrl(`/api/surveys/${encodeURIComponent(survey.code || survey.access_code)}/deadline`), {
+    const response = await fetch(apiUrl(`/api/surveys/${encodeURIComponent(survey.code || survey.access_code)}/deadline`), {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        ...(auth?.token ? { Authorization: `Bearer ${auth.token}` } : {}),
+        ...(user?.token ? { Authorization: `Bearer ${user.token}` } : {}),
       },
       body: JSON.stringify({ deadline_at: nextDeadlineAt }),
     });
@@ -397,7 +398,6 @@ export default function ProfilePage() {
         onImportToChat={async ({ survey, questions, responses, sessionTitle, message }) => {
           const headers = { "Content-Type": "application/json", ...getAuthHeader() };
 
-          // 1. 建立新 Workspace
           const wsRes = await fetch(apiUrl("/api/workspace"), {
             method: "POST",
             headers,
@@ -405,14 +405,12 @@ export default function ProfilePage() {
           });
           const wsData = await wsRes.json();
 
-          // 2. 綁定問卷
           await fetch(apiUrl(`/api/surveys/${encodeURIComponent(survey.code || survey.access_code)}/bind`), {
             method: "PATCH",
             headers,
             body: JSON.stringify({ project_id: wsData.project_id }),
           });
 
-          // 3. 跳轉（保留原本的 state）
           navigate("/workspace", {
             state: {
               surveyImport: {
@@ -427,7 +425,7 @@ export default function ProfilePage() {
     );  
   }
 
-  if (isLoadingSurveyDetail || requestedSurveyCode) {
+  if (isLoadingSurveyDetail) {
     return (
       <>
         <Navbar />
@@ -444,7 +442,6 @@ export default function ProfilePage() {
     );
   }
 
-  // 頭貼壓縮
   const handleAvatarChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -469,7 +466,6 @@ export default function ProfilePage() {
         const compressedBase64 = canvas.toDataURL('image/jpeg', 0.9);
         setAvatarSrc(compressedBase64);
 
-        // 立刻儲存頭像
         try {
           const res = await fetch(apiUrl(`/api/profile/${user.user_id}`), {
             method: 'PUT',
