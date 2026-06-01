@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import logging
 import os
 import secrets
 
@@ -12,39 +13,45 @@ from models import User, UserVerification
 
 pwd_bp = Blueprint("pwd", __name__)
 
+_brevo_client: sib_api_v3_sdk.TransactionalEmailsApi | None = None
+_brevo_sender: dict | None = None
+
 
 def taiwan_now():
     return datetime.utcnow() + timedelta(hours=8)
 
 
-def send_password_email_via_resend(recipient, subject, body_text):
-    api_key = os.getenv("BREVO_API_KEY", "").strip()
-    if not api_key:
-        raise RuntimeError("BREVO_API_KEY is not configured")
+def _get_brevo_client() -> tuple[sib_api_v3_sdk.TransactionalEmailsApi, dict]:
+    global _brevo_client, _brevo_sender
+    if _brevo_client is None:
+        api_key = os.getenv("BREVO_API_KEY", "").strip()
+        if not api_key:
+            raise RuntimeError("BREVO_API_KEY is not configured")
+        sender_email = os.getenv("BREVO_FROM_EMAIL", "").strip()
+        if not sender_email:
+            raise RuntimeError("BREVO_FROM_EMAIL is not configured")
+        sender_name = os.getenv("BREVO_FROM_NAME", "DataAnalysis").strip()
 
-    sender_email = os.getenv("BREVO_FROM_EMAIL", "").strip()
-    sender_name = os.getenv("BREVO_FROM_NAME", "DataAnalysis").strip()
+        configuration = sib_api_v3_sdk.Configuration()
+        configuration.api_key["api-key"] = api_key
+        _brevo_client = sib_api_v3_sdk.TransactionalEmailsApi(
+            sib_api_v3_sdk.ApiClient(configuration)
+        )
+        _brevo_sender = {"email": sender_email, "name": sender_name}
 
-    if not sender_email:
-        raise RuntimeError("BREVO_FROM_EMAIL is not configured")
+    return _brevo_client, _brevo_sender
 
-    configuration = sib_api_v3_sdk.Configuration()
-    configuration.api_key["api-key"] = api_key
 
-    api_instance = sib_api_v3_sdk.TransactionalEmailsApi(
-        sib_api_v3_sdk.ApiClient(configuration)
-    )
-
+def send_password_email_via_resend(recipient: str, subject: str, body_text: str):
+    api_instance, sender = _get_brevo_client()
     html_body = "<p>" + body_text.replace("\n", "<br>") + "</p>"
-
     send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
         to=[{"email": recipient}],
-        sender={"email": sender_email, "name": sender_name},
+        sender=sender,
         subject=subject,
         text_content=body_text,
         html_content=html_body,
     )
-
     try:
         api_instance.send_transac_email(send_smtp_email)
     except ApiException as e:
@@ -52,12 +59,11 @@ def send_password_email_via_resend(recipient, subject, body_text):
 
 
 def _invalidate_old_codes(email: str, otp_type: str):
-    """將同一 email 所有未使用的舊驗證碼標記為已使用"""
     UserVerification.query.filter_by(
         target_email=email,
         type=otp_type,
         is_used=False,
-    ).update({"is_used": True})
+    ).update({"is_used": True}, synchronize_session=False)  # 跳過 ORM session sync
 
 
 @pwd_bp.route("/api/auth/email-config", methods=["GET"])
@@ -79,7 +85,6 @@ def send_otp():
         return jsonify({"error": "找不到此 Email 對應的帳號"}), 404
 
     otp = str(secrets.randbelow(900000) + 100000)
-
     from_param = "change" if verify_type == "PASSWORD_CHANGE" else "forgot"
     frontend_url = os.getenv(
         "FRONTEND_URL",
@@ -88,19 +93,19 @@ def send_otp():
     reset_link = f"{frontend_url}/reset-password?email={email}&from={from_param}"
 
     try:
+        now = taiwan_now()  # 只取一次時間
         _invalidate_old_codes(email, verify_type)
-
         verification = UserVerification(
             user_id=user.user_id,
             type=verify_type,
             code_hash=generate_password_hash(otp),
-            expires_at=taiwan_now() + timedelta(minutes=10),
+            expires_at=(now + timedelta(minutes=10)).replace(tzinfo=None),
             target_email=email,
             is_used=False,
             attempts=0,
         )
         db.session.add(verification)
-        db.session.commit()
+        db.session.commit()  # invalidate + add 合併一次 commit
 
         action_text = "變更密碼" if verify_type == "PASSWORD_CHANGE" else "重設密碼"
         subject = f"DataAnalysis {action_text}驗證碼"
@@ -111,13 +116,11 @@ def send_otp():
             f"請回到頁面完成操作：\n{reset_link}\n\n"
             f"此驗證碼將在 10 分鐘後失效。"
         )
-
         send_password_email_via_resend(email, subject, message_body)
         return jsonify({"message": f"{action_text}驗證碼已寄出"}), 200
 
     except Exception as e:
         db.session.rollback()
-        import logging
         logging.error(f"OTP send failed: {e}", exc_info=True)
         return jsonify({"error": "寄送驗證信失敗，請稍後再試"}), 500
 
@@ -130,11 +133,9 @@ def reset_password():
     new_password = data.get("new_password")
     verify_type = data.get("type", "PASSWORD_RESET")
 
-    # 1. 基本欄位檢查
     if not all([email, otp, new_password]):
         return jsonify({"error": "缺少必要欄位"}), 400
 
-    # 2. 查詢驗證碼
     record = UserVerification.query.filter_by(
         target_email=email,
         type=verify_type,
@@ -144,11 +145,11 @@ def reset_password():
     if not record:
         return jsonify({"error": "驗證碼不存在或已使用，請重新取得"}), 400
 
-    # 3. 檢查是否過期
-    if record.expires_at < taiwan_now():
+    now = taiwan_now()  # 只取一次，後續不再重複呼叫
+
+    if record.expires_at < now:
         return jsonify({"error": "驗證碼已過期，請重新取得"}), 400
 
-    # 4. 驗證碼比對
     if record.attempts >= 5:
         record.is_used = True
         db.session.commit()
@@ -160,16 +161,13 @@ def reset_password():
         remaining = 5 - record.attempts
         return jsonify({"error": f"驗證碼錯誤，剩餘 {remaining} 次機會"}), 400
 
-    # 5. 查詢使用者
     user = User.query.get(record.user_id)
     if not user:
         return jsonify({"error": "找不到使用者"}), 404
 
-    # 6. 新密碼不可與原本密碼相同
     if check_password_hash(user.password_hash, new_password):
         return jsonify({"error": "新密碼不可與原本密碼相同，請設定不同的密碼"}), 400
 
-    # 7. 更新密碼
     try:
         user.password_hash = generate_password_hash(new_password)
         record.is_used = True
@@ -178,6 +176,5 @@ def reset_password():
 
     except Exception as e:
         db.session.rollback()
-        import logging
         logging.error(f"Password reset failed: {e}", exc_info=True)
         return jsonify({"error": "密碼更新失敗，請稍後再試"}), 500
