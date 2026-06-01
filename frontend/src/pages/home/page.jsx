@@ -73,19 +73,19 @@ export default function HomePage() {
         <div className="container">
           <div className="text-center mb-5">
             <div className="section-badge mb-3"><span>功能特色</span></div>
-            <h2 className="section-title">分析資料所需的一切工具</h2>
+            <h2 className="section-title">培訓回饋整理所需的核心功能</h2>
             <p className="section-subtitle">
-              從簡單的 CSV 檔案到複雜的資料集，DataAnalysis 提供您提取有意義洞察所需的所有工具。
+              從問卷建立、回饋蒐集到 AI 輔助分析，系統協助顧問快速整理文字回饋，產生清楚的分類結果與分析紀錄。
             </p>
           </div>
           <div className="row g-4">
             {[
-              { icon: "ri-upload-cloud-2-line", iconBg: "bg-lavender-50", iconColor: "text-lavender", tag: "核心功能", tagClass: "tag-lavender", title: "輕鬆上傳檔案", desc: "拖放您的 CSV、Excel、JSON 或文字檔案。系統即時處理並準備好您的資料進行分析。" },
-              { icon: "ri-brain-line", iconBg: "bg-mauve-50", iconColor: "text-mauve", tag: "AI 驅動", tagClass: "tag-mauve", title: "AI 智能分析", desc: "用自然語言提問，獲得智能洞察。我們的 AI 理解上下文，提供有意義的分析結果。" },
-              { icon: "ri-folder-chart-line", iconBg: "bg-periwinkle-50", iconColor: "text-periwinkle", tag: "組織管理", tagClass: "tag-periwinkle", title: "專案管理", desc: "將分析檔案整理到資料夾中。建立個人知識庫，隨時回顧您的洞察成果。" },
-              { icon: "ri-history-line", iconBg: "bg-lavender-50", iconColor: "text-lavender", tag: "自動儲存", tagClass: "tag-lavender", title: "工作階段歷史", desc: "每個分析工作階段都會自動儲存。從上次中斷的地方繼續，或開啟全新工作區。" },
-              { icon: "ri-table-line", iconBg: "bg-mauve-50", iconColor: "text-mauve", tag: "資料呈現", tagClass: "tag-mauve", title: "表格化報告", desc: "將分析結果以清晰的表格呈現，結構化數據一目了然，方便比對與匯出。" },
-              { icon: "ri-survey-line", iconBg: "bg-periwinkle-50", iconColor: "text-periwinkle", tag: "問卷調查", tagClass: "tag-periwinkle", title: "問卷建立與分析", desc: "快速建立問卷並收集回覆，AI 自動彙整結果，輕鬆掌握受訪者的意見與趨勢。" },
+              { icon: "ri-upload-cloud-2-line", iconBg: "bg-lavender-50", iconColor: "text-lavender", tag: "資料匯入", tagClass: "tag-lavender", title: "資料上傳與匯入", desc: "支援上傳問卷資料或文字檔案，讓使用者可將外部回饋資料匯入系統進行分析。" },
+              { icon: "ri-brain-line", iconBg: "bg-mauve-50", iconColor: "text-mauve", tag: "AI 輔助", tagClass: "tag-mauve", title: "AI 輔助分析", desc: "結合 TF-IDF 與 Gemini API，協助整理文字回饋內容，產生分類結果與分析紀錄。" },
+              { icon: "ri-folder-chart-line", iconBg: "bg-periwinkle-50", iconColor: "text-periwinkle", tag: "專案保存", tagClass: "tag-periwinkle", title: "專案管理", desc: "將不同培訓專案的問卷資料、分析結果與歷史紀錄集中保存，方便後續查詢與追蹤。" },
+              { icon: "ri-history-line", iconBg: "bg-lavender-50", iconColor: "text-lavender", tag: "歷程追蹤", tagClass: "tag-lavender", title: "歷史紀錄保存", desc: "系統可保存過去的分析專案與操作紀錄，方便使用者回顧、查詢與延續分析流程。" },
+              { icon: "ri-table-line", iconBg: "bg-mauve-50", iconColor: "text-mauve", tag: "結果呈現", tagClass: "tag-mauve", title: "表格式結果呈現", desc: "分析結果以表格式呈現，方便使用者查看分類結果、回饋重點與分析紀錄。" },
+              { icon: "ri-survey-line", iconBg: "bg-periwinkle-50", iconColor: "text-periwinkle", tag: "問卷蒐集", tagClass: "tag-periwinkle", title: "問卷建立與回饋蒐集", desc: "支援建立問卷、蒐集填答內容，並可將回饋資料提供給 AI 分析助理進行整理。" },
             ].map((f, i) => (
               <div className="col-md-6 col-lg-4" key={i}>
                 <div className="feature-card">
