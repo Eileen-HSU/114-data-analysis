@@ -1363,8 +1363,9 @@
 }
 
 .sdp-tabbar .sdp-link-card {
-  flex: 1 1 360px;
-  max-width: 620px;
+  flex: 0 1 420px;
+  width: min(420px, 100%);
+  max-width: 420px;
   margin-left: 0;
 }
 
