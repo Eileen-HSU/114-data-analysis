@@ -363,7 +363,7 @@ export default function CollectionPage() {
           <div className="container position-relative">
             <div className="d-flex align-items-center justify-content-between flex-wrap gap-3">
               <div>
-                <p className="collection-banner-label">My Portfolio</p>
+                <p className="collection-banner-label">Project Management</p>
                 <h1 className="collection-banner-title">專案管理</h1>
                 <p className="collection-banner-stats">{workspaceSessions.length} 個 Workspace · {folders.length} 個資料夾</p>
               </div>
@@ -375,7 +375,7 @@ export default function CollectionPage() {
             </div>
             <div className="row g-3 mt-4">
               {[
-                { key: "folders", icon: "ri-chat-3-line", cls: "stat-folder", val: stats.workspaces, label: "Workspace", unit: "個 Chat" },
+                { key: "folders", icon: "ri-chat-3-line", cls: "stat-folder", val: stats.workspaces, label: "歷史專案", unit: "個 Chat" },
                 { key: "exports", icon: "ri-download-cloud-2-line", cls: "stat-export", val: stats.exports, label: "匯出檔案", unit: "個檔案" },
                 { key: "deleted", icon: "ri-delete-bin-line", cls: "stat-deleted", val: stats.deleted, label: "最近刪除", unit: "個項目" },
               ].map((item) => (
