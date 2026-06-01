@@ -105,19 +105,31 @@ export default function CollectionPage() {
   const looseFiles = filesByFolder.loose || [];
   const looseSessions = sessionsByFolder.loose || [];
   const stats = useMemo(() => {
-    const chatIds = new Set(
-      workspaceSessions
-        .map((session) => String(session.project_id ?? session.id ?? ""))
-        .filter(Boolean)
-    );
+    const chatSessions = new Map();
+    workspaceSessions.forEach((session) => {
+      const sessionId = session.project_id ?? session.id;
+      if (sessionId !== undefined && sessionId !== null && String(sessionId).trim()) {
+        chatSessions.set(String(sessionId), session);
+      }
+    });
+
+    const folderNames = new Set();
+    folders.forEach((folder) => {
+      const folderName = folder?.name?.trim();
+      if (folderName) folderNames.add(folderName);
+    });
+    chatSessions.forEach((session) => {
+      const folderName = session?.folder_name?.trim();
+      if (folderName) folderNames.add(folderName);
+    });
 
     return {
-      folders: folders.length,
-      chats: chatIds.size,
+      folders: folderNames.size,
+      chats: chatSessions.size,
       exports: 0,
       deleted: deletedItems.length,
     };
-  }, [workspaceSessions, folders.length, deletedItems.length]);
+  }, [workspaceSessions, folders, deletedItems.length]);
 
   const toggleFolder = (id) => {
     setOpenFolders((prev) => {
