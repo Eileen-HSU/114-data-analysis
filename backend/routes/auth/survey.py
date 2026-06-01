@@ -308,55 +308,6 @@ def get_user_surveys():
         return jsonify({"error": "取得問卷失敗"}), 500
 
 
-@survey_bp.route('/api/surveys/<access_code>', methods=['GET'])
-def get_survey(access_code):
-    try:
-        auth_user_id = None
-        if request.headers.get("Authorization", "").startswith("Bearer "):
-            auth_user_id, _ = verify_token(request)
-
-        survey = find_survey_by_access_or_short_code(access_code)
-        if not survey:
-            return jsonify({"error": "找不到這份問卷"}), 404
-
-        question_json = survey.question_json or {}
-        deadline_at = get_survey_deadline_at(survey, question_json)
-        identity_mode = question_json.get("identity_mode") or ("anonymous" if survey.is_anonymous else "identified")
-        is_owner = auth_user_id is not None and survey.user_id == auth_user_id
-
-        now = datetime.now(TAIPEI_TZ)  # 只取一次，傳入 is_survey_expired
-        expired = is_survey_expired(question_json, survey.due_date, now=now)
-
-        if expired and not is_owner:
-            return jsonify({
-                "error": "這份問卷已截止",
-                "expired": True,
-                "deadline_at": deadline_at,
-                "title": survey.title,
-                "access_code": survey.access_code,
-                "short_code": survey_short_code(survey),
-            }), 410
-
-        response_data = {
-            "template_id": survey.template_id,
-            "title": survey.title,
-            "description": question_json.get("description") or "",
-            "identity_mode": identity_mode,
-            "deadline_at": deadline_at,
-            "questions": question_json.get("items") or [],
-            "access_code": survey.access_code,
-            "short_code": survey_short_code(survey),
-            "created_at": survey.created_at.isoformat() if survey.created_at else None,
-        }
-        if is_owner and expired:
-            response_data["expired"] = True
-
-        return jsonify(response_data), 200
-    except Exception as e:
-        logging.error(f"Survey lookup failed: {e}", exc_info=True)
-        return jsonify({"error": "讀取問卷失敗", "detail": str(e)}), 500
-
-
 @survey_bp.route('/api/surveys/<access_code>/deadline', methods=['PATCH'])
 def update_survey_deadline(access_code):
     auth_user_id, auth_error = verify_token(request)
@@ -433,46 +384,6 @@ def submit_survey_response(access_code):
         return jsonify({"error": "問卷送出失敗", "detail": str(e)}), 500
 
 
-@survey_bp.route('/api/surveys/<access_code>/responses', methods=['GET'])
-def get_survey_responses(access_code):
-    auth_user_id, auth_error = verify_token(request)
-    if auth_error:
-        return jsonify({"error": "Unauthorized"}), 401
-
-    try:
-        survey = find_survey_by_access_or_short_code(access_code)
-        if not survey:
-            return jsonify({"error": "找不到這份問卷"}), 404
-        if survey.user_id != auth_user_id:
-            return jsonify({"error": "無權限查看此問卷回覆"}), 403
-
-        responses = Survey_Response.query.filter_by(
-            template_id=survey.template_id
-        ).order_by(Survey_Response.submitted_at.asc()).all()
-
-        result = [
-            {
-                "response_id": r.response_id,
-                "submitted_at": r.submitted_at.isoformat() if r.submitted_at else None,
-                "answers": (r.answer_json or {}).get("answers", {}),
-                "respondent_identity": (r.answer_json or {}).get("respondent_identity"),
-            }
-            for r in responses
-        ]
-
-        return jsonify({
-            "template_id": survey.template_id,
-            "title": survey.title,
-            "access_code": survey.access_code,
-            "short_code": survey_short_code(survey),
-            "response_count": len(result),
-            "responses": result,
-        }), 200
-    except Exception as e:
-        logging.error(f"Get survey responses failed: {e}", exc_info=True)
-        return jsonify({"error": "取得回覆失敗"}), 500
-
-
 @survey_bp.route('/api/surveys/<access_code>/bind', methods=['PATCH'])
 def bind_survey_to_workspace(access_code):
     auth_user_id, auth_error = verify_token(request)
@@ -508,3 +419,57 @@ def bind_survey_to_workspace(access_code):
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
+    
+
+@survey_bp.route('/api/surveys/<access_code>/detail', methods=['GET'])
+def get_survey_detail(access_code):
+    """合併 get_survey + get_survey_responses，減少前端一次 round-trip"""
+    auth_user_id, auth_error = verify_token(request)
+    if auth_error:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    try:
+        survey = find_survey_by_access_or_short_code(access_code)
+        if not survey:
+            return jsonify({"error": "找不到這份問卷"}), 404
+        if survey.user_id != auth_user_id:
+            return jsonify({"error": "無權限查看此問卷"}), 403
+
+        question_json = survey.question_json or {}
+        deadline_at = get_survey_deadline_at(survey, question_json)
+        identity_mode = question_json.get("identity_mode") or (
+            "anonymous" if survey.is_anonymous else "identified"
+        )
+
+        now = datetime.now(TAIPEI_TZ)
+        expired = is_survey_expired(question_json, survey.due_date, now=now)
+
+        responses = Survey_Response.query.filter_by(
+            template_id=survey.template_id
+        ).order_by(Survey_Response.submitted_at.asc()).all()
+
+        return jsonify({
+            "template_id":  survey.template_id,
+            "title":        survey.title,
+            "description":  question_json.get("description") or "",
+            "identity_mode": identity_mode,
+            "deadline_at":  deadline_at,
+            "expired":      expired,
+            "access_code":  survey.access_code,
+            "short_code":   survey_short_code(survey),
+            "created_at":   survey.created_at.isoformat() if survey.created_at else None,
+            "questions":    question_json.get("items") or [],
+            "responses": [
+                {
+                    "response_id":          r.response_id,
+                    "submitted_at":         r.submitted_at.isoformat() if r.submitted_at else None,
+                    "answers":              (r.answer_json or {}).get("answers", {}),
+                    "respondent_identity":  (r.answer_json or {}).get("respondent_identity"),
+                }
+                for r in responses
+            ],
+        }), 200
+
+    except Exception as e:
+        logging.error(f"Get survey detail failed: {e}", exc_info=True)
+        return jsonify({"error": "讀取問卷詳情失敗", "detail": str(e)}), 500
