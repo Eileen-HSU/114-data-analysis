@@ -574,12 +574,13 @@
 .modal-backdrop-custom {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.4);
+  background: rgba(45, 52, 72, 0.42);
   z-index: 9999;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 16px;
+  backdrop-filter: blur(7px);
 }
 
 .modal-box {
@@ -588,7 +589,8 @@
   padding: 32px;
   width: 100%;
   max-width: 420px;
-  border: 1px solid var(--slate-100);
+  border: 1px solid #d8ecfb;
+  box-shadow: 0 28px 76px rgba(42, 64, 98, 0.18);
 }
 
 .modal-folder-icon {
@@ -604,16 +606,16 @@
 }
 
 .delete-icon {
-  width: 48px;
-  height: 48px;
+  width: 58px;
+  height: 58px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--rose-50);
-  border-radius: 12px;
-  color: var(--rose-400);
-  font-size: 24px;
-  margin: 0 auto 16px;
+  background: #fff1f7;
+  border-radius: 16px;
+  color: #c45b86;
+  font-size: 30px;
+  margin: 0 auto 18px;
 }
 
 .delete-icon.is-loading {
