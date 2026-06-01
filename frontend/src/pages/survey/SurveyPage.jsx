@@ -58,9 +58,9 @@ export default function SurveyPage() {
               <i className="ri-survey-line"></i>
               <span>問卷調查</span>
             </div>
-            <h1 className="survey-hero-title">建立問卷與收集回覆</h1>
+            <h1 className="survey-hero-title">建立問卷與蒐集回饋</h1>
             <p className="survey-hero-subtitle">
-              建立評分或文字題，分享邀請碼給填答者，回收後可直接進入分析。
+              建立評分題與文字題，分享邀請碼給填答者，回收後可提供 AI 分析助理進行整理。
             </p>
           </div>
 
@@ -75,7 +75,7 @@ export default function SurveyPage() {
               <div className="entry-card-copy">
                 <h2 className="entry-card-title">建立問卷</h2>
                 <p className="entry-card-desc">
-                  新增題目、設定截止時間，產生可分享的邀請碼，適合整理專案訪談、產品回饋或課堂調查。
+                  新增題目、設定截止時間，產生可分享的邀請碼，協助顧問蒐集培訓課後回饋與文字意見。
                 </p>
               </div>
               <div className="entry-card-footer">
@@ -95,7 +95,7 @@ export default function SurveyPage() {
                 <div className="entry-card-copy">
                   <span className="entry-card-kicker">填答入口</span>
                   <h2 className="entry-card-title">填寫問卷</h2>
-                  <p className="entry-card-desc">輸入邀請碼開啟問卷，快速提交回覆內容。</p>
+                  <p className="entry-card-desc">輸入邀請碼開啟問卷，完成填答並提交回饋內容。</p>
                 </div>
                 <span className="entry-card-arrow"><i className="ri-arrow-right-line"></i></span>
               </a>
@@ -105,7 +105,7 @@ export default function SurveyPage() {
                   <div>
                     <span className="entry-card-kicker">最近活動</span>
                     <h2>問卷動態</h2>
-                    <p className="survey-activity-note">僅顯示最新的 3 個問卷</p>
+                    <p className="survey-activity-note">顯示近期建立或回收的問卷紀錄。</p>
                   </div>
                 </div>
 
@@ -139,7 +139,7 @@ export default function SurveyPage() {
                 ) : (
                   <div className="survey-activity-empty">
                     <i className="ri-time-line"></i>
-                    <span>建立問卷後，這裡會顯示最近的回覆與問卷狀態。</span>
+                    <span>建立問卷後，這裡會顯示近期問卷與回饋狀態。</span>
                   </div>
                 )}
               </section>
