@@ -518,7 +518,7 @@ export default function WorkspacePage() {
         // 每個 workspace 順便拉歷史訊息
         const fromBackend = await Promise.all(
           data.map(async (w) => {
-            const existing = prev?.find((s) => String(s.project_id) === String(w.project_id));
+            const existing = sessions?.find((s) => String(s.project_id) === String(w.project_id));
             let messages = existing?.messages || [WELCOME_MSG];
 
             // 若本地沒有訊息才去後端拉
@@ -553,8 +553,9 @@ export default function WorkspacePage() {
         );
 
         setSessions((prev) => {
+          const currentSessions = prev || [];
           const backendIds = new Set(data.map((w) => String(w.project_id)));
-          const localOnly = prev.filter(
+          const localOnly = currentSessions.filter(
             (s) => !s.project_id || !backendIds.has(String(s.project_id))
           );
           return [...localOnly, ...fromBackend];
@@ -630,10 +631,10 @@ export default function WorkspacePage() {
     setActiveSessionId(newId);
 
     fetch(apiUrl("/api/workspace"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...getAuthHeader() },
-    body: JSON.stringify({ project_name: sessionTitle }),
-  })
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify({ project_name: sessionTitle }),
+    })
     .then((res) => res.ok ? res.json() : null)
     .then((data) => {
       if (!data?.project_id) return;
@@ -648,6 +649,9 @@ export default function WorkspacePage() {
         }).catch((err) => console.error("問卷綁定失敗", err));
       }
 
+      const templateId = surveyDetail?.id || null;
+      saveChatMessage(data.project_id, "user", message, templateId);
+
       setSessions((prev) =>
         prev.map((s) =>
           s.id === newId
@@ -657,21 +661,21 @@ export default function WorkspacePage() {
       );
       updateSessionId(newId, String(data.project_id));
       setActiveSessionId(String(data.project_id));
+
+      setIsTyping(true);
+      setTimeout(() => {
+        const aiReply = buildAssistantReply(message, surveyDetail || null, surveyTitle);
+        setSessions((prev) =>
+          prev.map((s) => s.id === String(data.project_id) ? { ...s, messages: [...s.messages, { id: `a-${Date.now()}`, role: "assistant", content: aiReply }] } : s)
+        );
+        setIsTyping(false);
+        
+        // 儲存 AI 回覆
+        saveChatMessage(data.project_id, "assistant", aiReply, templateId);
+      }, 1800);
     })
     .catch((err) => console.error("問卷匯入建立 workspace 失敗", err));
 
-    setIsTyping(true);
-    setTimeout(() => {
-      const aiReply = {
-        id: `a-${Date.now()}`,
-        role: "assistant",
-        content: buildAssistantReply(message, surveyDetail || null, surveyTitle),
-      };
-      setSessions((prev) =>
-        prev.map((s) => s.id === newId ? { ...s, messages: [...s.messages, aiReply] } : s)
-      );
-      setIsTyping(false);
-    }, 1800);
     window.history.replaceState({}, "");
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -682,20 +686,23 @@ export default function WorkspacePage() {
   }, []);
 
   const saveChatMessage = useCallback(async (projectId, role, content, templateId = null) => {
-    if (!projectId) return;
+    if (!projectId || String(projectId).startsWith("temp-") || String(projectId).startsWith("survey-")) {
+      console.log("[SaveChat] 偵測到臨時工作區，暫緩同步至後端：", projectId);
+      return;
+    }
     try {
       await fetch(apiUrl("/api/chat/history"), {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeader() },
         body: JSON.stringify({
-          project_id:      projectId,
+          project_id:      intProjectId, 
           sender_type:     role === "user" ? "user" : "ai",
           message_content: content,
           template_id:     templateId ?? null,
         }),
       });
     } catch (err) {
-      console.error("訊息存檔失敗", err);
+      console.error("訊息同步至資料庫失敗", err);
     }
   }, []);
 
@@ -704,6 +711,9 @@ export default function WorkspacePage() {
     if (!detail || !activeSessionId) return;
     const content = buildSurveyChatContent(detail);
     const userMsg = { id: `u-${Date.now()}`, role: "user", content };
+
+    // 1. 同步儲存使用者的問卷大文字進資料庫
+    saveChatMessage(activeSessionId, "user", content, detail.id);
 
     setSessions((prev) =>
       prev.map((s) =>
@@ -716,17 +726,17 @@ export default function WorkspacePage() {
     setIsTyping(true);
     const sid = activeSessionId;
     setTimeout(() => {
-      const aiReply = {
-        id: `a-${Date.now()}`,
-        role: "assistant",
-        content: buildAssistantReply(content, detail, record.title),
-      };
+      const aiReply = buildAssistantReply(content, detail, record.title);
+      
       setSessions((prev) =>
         prev.map((s) =>
-          s.id === sid ? { ...s, messages: [...s.messages, aiReply] } : s
+          s.id === sid ? { ...s, messages: [...s.messages, { id: `a-${Date.now()}`, role: "assistant", content: aiReply }] } : s
         )
       );
       setIsTyping(false);
+
+      // 2. 同步儲存 AI 的問卷分析表格結果
+      saveChatMessage(sid, "assistant", aiReply, detail.id);
     }, 1800);
   };
 
