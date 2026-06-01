@@ -499,7 +499,7 @@ export default function WorkspacePage() {
     };
   }, [isLoggedIn, user]);
 
-  // ── 登入後從後端載入 workspace 列表 ──────────────────────
+  // ── 1. 登入後純粹載入工作區「列表外殼」 ──────────────────────
   useEffect(() => {
     if (!isLoggedIn) {
       setIsEntryLoading(false);
@@ -515,67 +515,82 @@ export default function WorkspacePage() {
         if (!res.ok) return;
         const data = await res.json();
 
-        // 每個 workspace 順便拉歷史訊息
-        const fromBackend = await Promise.all(
-          data.map(async (w) => {
-            const existing = sessions?.find((s) => String(s.project_id) === String(w.project_id));
-            let messages = existing?.messages || [WELCOME_MSG];
+        setSessions((currentList) => {
+          const safeList = currentList || [];
+          const backendIds = new Set(data.map((w) => String(w.project_id)));
+          
+          const localOnly = safeList.filter(
+            (s) => !s.project_id || !backendIds.has(String(s.project_id))
+          );
 
-            // 若本地沒有訊息才去後端拉
-            if (!existing || existing.messages.length <= 1) {
-              try {
-                const histRes = await fetch(apiUrl(`/api/chat/history/${w.project_id}`), {
-                  headers: getAuthHeader(),
-                });
-                if (histRes.ok) {
-                  const histData = await histRes.json();
-                  const fetched = (histData.chat_history || []).map((h) => ({
-                    id: String(h.chat_id),
-                    role: h.sender_type === "user" ? "user" : "assistant",
-                    content: h.message_content,
-                  }));
-                  if (fetched.length > 0) messages = [WELCOME_MSG, ...fetched];
-                }
-              } catch {
-                // 拉失敗就用預設
-              }
-            }
-
+          const fromBackend = data.map((w) => {
+            const existing = safeList.find((s) => String(s.project_id) === String(w.project_id));
             return {
               id: existing?.id || String(w.project_id),
               project_id: w.project_id,
               title: w.project_name,
               folder_name: w.folder_name ?? null,
               date: w.created_at ? new Date(w.created_at).toLocaleDateString() : "",
-              messages,
+              messages: existing?.messages || [WELCOME_MSG], // 先給預設，後面動態補載
             };
-          })
-        );
+          });
 
-        setSessions((prev) => {
-          const currentSessions = prev || [];
-          const backendIds = new Set(data.map((w) => String(w.project_id)));
-          const localOnly = currentSessions.filter(
-            (s) => !s.project_id || !backendIds.has(String(s.project_id))
-          );
           return [...localOnly, ...fromBackend];
         });
       } catch (err) {
         console.error("載入 workspace 失敗", err);
       } finally {
-        if (sessionStorage.getItem("dataanalysis_login_loading") === "1") {
-          window.setTimeout(() => {
-            sessionStorage.removeItem("dataanalysis_login_loading");
-            setIsEntryLoading(false);
-          }, 450);
-        } else {
-          setIsEntryLoading(false);
-        }
+        setIsEntryLoading(false);
+        sessionStorage.removeItem("dataanalysis_login_loading");
       }
     };
 
     fetchWorkspaces();
-  }, [isLoggedIn]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isLoggedIn]); 
+
+  // ── 2. 當切換 activeSessionId 時，才動態去後端補拉該專案的歷史訊息 ──
+  useEffect(() => {
+    if (!activeSessionId || !isLoggedIn) return;
+
+    // 先找出當前點擊的這個 session
+    const currentSession = sessions.find((s) => s.id === activeSessionId);
+    
+    // 關鍵防禦：只有當這個專案有正式 project_id，且「目前沒訊息」或「只有歡迎訊息」時才出發去後端拉取
+    if (currentSession?.project_id && (!currentSession.messages || currentSession.messages.length <= 1)) {
+      
+      const fetchHistory = async () => {
+        try {
+          const res = await fetch(apiUrl(`/api/chat/history/${currentSession.project_id}`), {
+            headers: getAuthHeader(),
+          });
+          if (!res.ok) return;
+          const histData = await res.json();
+          
+          // 將後端欄位轉換成前端格式
+          const fetchedMessages = (histData.chat_history || []).map((h) => ({
+            id: String(h.chat_id),
+            role: h.sender_type === "user" ? "user" : "assistant",
+            content: h.message_content,
+          }));
+
+          if (fetchedMessages.length > 0) {
+            // 精準局部更新這個專案的對話紀錄
+            setSessions((currentList) =>
+              currentList.map((s) =>
+                s.id === activeSessionId
+                  ? { ...s, messages: [WELCOME_MSG, ...fetchedMessages] }
+                  : s
+              )
+            );
+          }
+        } catch (err) {
+          console.error("動態載入歷史對話失敗：", err);
+        }
+      };
+
+      fetchHistory();
+    }
+  }, [activeSessionId, isLoggedIn]); 
 
   useEffect(() => {
     if (activeSessionId || sessions.length === 0) return;
