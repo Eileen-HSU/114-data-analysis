@@ -110,14 +110,14 @@ export default function HomePage() {
           <div className="text-center mb-5">
             <div className="section-badge mb-3"><span>使用流程</span></div>
             <h2 className="section-title">如何使用</h2>
-            <p className="section-subtitle">只需四個簡單步驟，從原始資料到可行的洞察。</p>
+            <p className="section-subtitle">四個簡單步驟，完成培訓回饋整理與分析。</p>
           </div>
           <div className="row g-4">
             {[
-              { num: "1", numBg: "bg-lavender-100", numColor: "text-lavender", iconBg: "bg-lavender-50", icon: "ri-user-add-line", iconColor: "text-lavender", title: "建立帳號", desc: "幾秒鐘內完成註冊，馬上開始使用。" },
-              { num: "2", numBg: "bg-mauve-100", numColor: "text-mauve", iconBg: "bg-mauve-50", icon: "ri-upload-2-line", iconColor: "text-mauve", title: "上傳您的資料", desc: "將檔案拖放到工作區。支援 CSV、Excel、JSON 和純文字格式。" },
-              { num: "3", numBg: "bg-periwinkle-100", numColor: "text-periwinkle", iconBg: "bg-periwinkle-50", icon: "ri-chat-3-line", iconColor: "text-periwinkle", title: "提出您的問題", desc: "用自然語言輸入分析問題。AI 將處理並回應詳細的洞察結果。" },
-              { num: "4", numBg: "bg-lavender-100", numColor: "text-lavender", iconBg: "bg-lavender-50", icon: "ri-save-line", iconColor: "text-lavender", title: "儲存與整理", desc: "將分析儲存到專案管理。建立資料夾，按專案整理您的工作。" },
+              { num: "1", numBg: "bg-lavender-100", numColor: "text-lavender", iconBg: "bg-lavender-50", icon: "ri-user-add-line", iconColor: "text-lavender", title: "建立帳號", desc: "註冊並登入系統，開始建立問卷或管理分析專案。" },
+              { num: "2", numBg: "bg-mauve-100", numColor: "text-mauve", iconBg: "bg-mauve-50", icon: "ri-upload-2-line", iconColor: "text-mauve", title: "建立問卷或上傳資料", desc: "建立問卷蒐集回饋，或上傳外部問卷與文字資料。" },
+              { num: "3", numBg: "bg-periwinkle-100", numColor: "text-periwinkle", iconBg: "bg-periwinkle-50", icon: "ri-chat-3-line", iconColor: "text-periwinkle", title: "使用 AI 分析助理", desc: "透過 AI 分析助理整理文字回饋，產生分類結果與分析紀錄。" },
+              { num: "4", numBg: "bg-lavender-100", numColor: "text-lavender", iconBg: "bg-lavender-50", icon: "ri-save-line", iconColor: "text-lavender", title: "保存與查看結果", desc: "將分析結果保存至專案中，方便後續查詢、整理與追蹤。" },
             ].map((s, i) => (
               <div className="col-md-6 col-lg-3" key={i}>
                 <div className="step-card">
@@ -145,9 +145,9 @@ export default function HomePage() {
             <div className="cta-icon">
               <i className="ri-bar-chart-box-line"></i>
             </div>
-            <h2 className="cta-title">準備好開始了嗎？</h2>
+            <h2 className="cta-title">準備好開始整理培訓回饋了嗎？</h2>
             <p className="cta-subtitle">
-              立即建立帳號，體驗 AI 驅動的智能資料分析與問卷管理，讓每一筆資料都發揮最大價值。
+              立即建立帳號，使用問卷管理與 AI 分析助理，快速整理文字回饋並查看分析結果。
             </p>
             <div className="cta-buttons">
               <button className="btn btn-cta-primary" onClick={() => navigate("/signup")}>
