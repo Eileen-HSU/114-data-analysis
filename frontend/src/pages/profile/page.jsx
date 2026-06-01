@@ -362,7 +362,6 @@ export default function ProfilePage() {
       throw new Error("截止時間必須晚於現在。");
     }
 
-      const headers = { "Content-Type": "application/json", ...getAuthHeader() };    
       const response = await fetch(apiUrl(`/api/surveys/${encodeURIComponent(survey.code || survey.access_code)}/deadline`), {
       method: "PATCH",
       headers: {
