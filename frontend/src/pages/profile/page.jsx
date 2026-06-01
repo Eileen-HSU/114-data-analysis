@@ -396,10 +396,6 @@ export default function ProfilePage() {
         onUpdateDeadline={updateSurveyDeadline}
         onImportToChat={async ({ survey, questions, responses, sessionTitle, message }) => {
           const headers = { "Content-Type": "application/json", ...getAuthHeader() };
-          const headers = {
-            "Content-Type": "application/json",
-            ...(auth?.token ? { Authorization: `Bearer ${auth.token}` } : {}),
-          };
 
           // 1. 建立新 Workspace
           const wsRes = await fetch(apiUrl("/api/workspace"), {
