@@ -413,11 +413,17 @@ export default function WorkspacePage() {
   const { isLoggedIn, user } = useAuth();
   const { recordActivity } = useActivity();
 
-  const { 
-    addChatToCollection, addFileToCollection, syncChatTitle, deleteChatSession, updateSessionId, 
-    workspaceSessions: sessions, 
+  const {
+    addChatToCollection,
+    addFileToCollection,
+    syncChatTitle,
+    deleteChatSession,
+    updateSessionId,
+    workspaceSessions: storedSessions = [],
     setWorkspaceSessions: setSessions,
   } = useCollection();
+
+  const sessions = Array.isArray(storedSessions) ? storedSessions : [];
 
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [input, setInput] = useState("");
@@ -499,7 +505,7 @@ export default function WorkspacePage() {
     };
   }, [isLoggedIn, user]);
 
-  // ── 1. 登入後純粹載入工作區「列表外殼」 ──────────────────────
+  // ── 1. 登入後載入工作區「列表外殼」 ──────────────────────────
   useEffect(() => {
     if (!isLoggedIn) {
       setIsEntryLoading(false);
@@ -507,31 +513,51 @@ export default function WorkspacePage() {
       return;
     }
 
+    let cancelled = false;
+
     const fetchWorkspaces = async () => {
       try {
         const res = await fetch(apiUrl("/api/workspace/user"), {
           headers: getAuthHeader(),
         });
-        if (!res.ok) return;
-        const data = await res.json();
+
+        if (!res.ok) {
+          console.error("載入 workspace API 失敗：", res.status);
+          return;
+        }
+
+        const responseData = await res.json();
+        const workspaceList = Array.isArray(responseData) ? responseData : [];
+
+        if (cancelled) return;
 
         setSessions((currentList) => {
-          const safeList = currentList || [];
-          const backendIds = new Set(data.map((w) => String(w.project_id)));
-          
-          const localOnly = safeList.filter(
-            (s) => !s.project_id || !backendIds.has(String(s.project_id))
+          const safeList = Array.isArray(currentList) ? currentList : [];
+          const backendIds = new Set(
+            workspaceList.map((workspace) => String(workspace.project_id))
           );
 
-          const fromBackend = data.map((w) => {
-            const existing = safeList.find((s) => String(s.project_id) === String(w.project_id));
+          const localOnly = safeList.filter(
+            (session) =>
+              !session.project_id ||
+              !backendIds.has(String(session.project_id))
+          );
+
+          const fromBackend = workspaceList.map((workspace) => {
+            const existing = safeList.find(
+              (session) =>
+                String(session.project_id) === String(workspace.project_id)
+            );
+
             return {
-              id: existing?.id || String(w.project_id),
-              project_id: w.project_id,
-              title: w.project_name,
-              folder_name: w.folder_name ?? null,
-              date: w.created_at ? new Date(w.created_at).toLocaleDateString() : "",
-              messages: existing?.messages || [WELCOME_MSG], // 先給預設，後面動態補載
+              id: existing?.id || String(workspace.project_id),
+              project_id: workspace.project_id,
+              title: workspace.project_name || "未命名工作區",
+              folder_name: workspace.folder_name ?? null,
+              date: workspace.created_at
+                ? new Date(workspace.created_at).toLocaleDateString()
+                : "",
+              messages: existing?.messages || [WELCOME_MSG],
             };
           });
 
@@ -540,13 +566,19 @@ export default function WorkspacePage() {
       } catch (err) {
         console.error("載入 workspace 失敗", err);
       } finally {
-        setIsEntryLoading(false);
-        sessionStorage.removeItem("dataanalysis_login_loading");
+        if (!cancelled) {
+          setIsEntryLoading(false);
+          sessionStorage.removeItem("dataanalysis_login_loading");
+        }
       }
     };
 
     fetchWorkspaces();
-  }, [isLoggedIn]); 
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, setSessions]);
 
   // ── 2. 當切換 activeSessionId 時，才動態去後端補拉該專案的歷史訊息 ──
   useEffect(() => {
@@ -567,19 +599,22 @@ export default function WorkspacePage() {
           const histData = await res.json();
           
           // 將後端欄位轉換成前端格式
-          const fetchedMessages = (histData.chat_history || []).map((h) => ({
+          const historyList = Array.isArray(histData?.chat_history)
+            ? histData.chat_history
+            : [];
+          const fetchedMessages = historyList.map((h) => ({
             id: String(h.chat_id),
             role: h.sender_type === "user" ? "user" : "assistant",
-            content: h.message_content,
+            content: h.message_content || "",
           }));
 
           if (fetchedMessages.length > 0) {
             // 精準局部更新這個專案的對話紀錄
             setSessions((currentList) =>
-              currentList.map((s) =>
-                s.id === activeSessionId
-                  ? { ...s, messages: [WELCOME_MSG, ...fetchedMessages] }
-                  : s
+              (Array.isArray(currentList) ? currentList : []).map((session) =>
+                session.id === activeSessionId
+                  ? { ...session, messages: [WELCOME_MSG, ...fetchedMessages] }
+                  : session
               )
             );
           }
@@ -590,7 +625,7 @@ export default function WorkspacePage() {
 
       fetchHistory();
     }
-  }, [activeSessionId, isLoggedIn]); 
+  }, [activeSessionId, isLoggedIn, sessions, setSessions]);
 
   useEffect(() => {
     if (activeSessionId || sessions.length === 0) return;
@@ -642,7 +677,10 @@ export default function WorkspacePage() {
       date: new Date().toLocaleDateString(),
       messages: [WELCOME_MSG, userMsg],
     };
-    setSessions((prev) => [newSession, ...prev]);
+    setSessions((currentList) => [
+      newSession,
+      ...(Array.isArray(currentList) ? currentList : []),
+    ]);
     setActiveSessionId(newId);
 
     fetch(apiUrl("/api/workspace"), {
@@ -655,7 +693,11 @@ export default function WorkspacePage() {
       if (!data?.project_id) return;
       
       // 把問卷綁定到 workspace
-      const surveyCode = state.surveyImport?.survey?.code || state.surveyImport?.survey?.access_code;
+      const surveyCode =
+        surveyDetail?.code ||
+        surveyDetail?.access_code ||
+        state.surveyImport?.survey?.code ||
+        state.surveyImport?.survey?.access_code;
       if (surveyCode) {
         fetch(apiUrl(`/api/surveys/${encodeURIComponent(surveyCode)}/bind`), {
           method: "PATCH",
@@ -667,11 +709,11 @@ export default function WorkspacePage() {
       const templateId = surveyDetail?.id || null;
       saveChatMessage(data.project_id, "user", message, templateId);
 
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === newId
-            ? { ...s, id: String(data.project_id), project_id: data.project_id }
-            : s
+      setSessions((currentList) =>
+        (Array.isArray(currentList) ? currentList : []).map((session) =>
+          session.id === newId
+            ? { ...session, id: String(data.project_id), project_id: data.project_id }
+            : session
         )
       );
       updateSessionId(newId, String(data.project_id));
@@ -680,8 +722,18 @@ export default function WorkspacePage() {
       setIsTyping(true);
       setTimeout(() => {
         const aiReply = buildAssistantReply(message, surveyDetail || null, surveyTitle);
-        setSessions((prev) =>
-          prev.map((s) => s.id === String(data.project_id) ? { ...s, messages: [...s.messages, { id: `a-${Date.now()}`, role: "assistant", content: aiReply }] } : s)
+        setSessions((currentList) =>
+          (Array.isArray(currentList) ? currentList : []).map((session) =>
+            session.id === String(data.project_id)
+              ? {
+                  ...session,
+                  messages: [
+                    ...(session.messages || []),
+                    { id: `a-${Date.now()}`, role: "assistant", content: aiReply },
+                  ],
+                }
+              : session
+          )
         );
         setIsTyping(false);
         
@@ -695,27 +747,46 @@ export default function WorkspacePage() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const appendMessage = useCallback((sessionId, msg) => {
-    setSessions((prev) =>
-      prev.map((s) => s.id === sessionId ? { ...s, messages: [...s.messages, msg] } : s)
+    setSessions((currentList) =>
+      (Array.isArray(currentList) ? currentList : []).map((session) =>
+        session.id === sessionId
+          ? { ...session, messages: [...(session.messages || []), msg] }
+          : session
+      )
     );
-  }, []);
+  }, [setSessions]);
 
   const saveChatMessage = useCallback(async (projectId, role, content, templateId = null) => {
-    if (!projectId || String(projectId).startsWith("temp-") || String(projectId).startsWith("survey-")) {
+    if (
+      !projectId ||
+      String(projectId).startsWith("temp-") ||
+      String(projectId).startsWith("survey-")
+    ) {
       console.log("[SaveChat] 偵測到臨時工作區，暫緩同步至後端：", projectId);
       return;
     }
+
+    const intProjectId = Number(projectId);
+    if (!Number.isInteger(intProjectId)) {
+      console.error("[SaveChat] projectId 格式錯誤：", projectId);
+      return;
+    }
+
     try {
-      await fetch(apiUrl("/api/chat/history"), {
+      const res = await fetch(apiUrl("/api/chat/history"), {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeader() },
         body: JSON.stringify({
-          project_id:      intProjectId, 
-          sender_type:     role === "user" ? "user" : "ai",
+          project_id: intProjectId,
+          sender_type: role === "user" ? "user" : "ai",
           message_content: content,
-          template_id:     templateId ?? null,
+          template_id: templateId ?? null,
         }),
       });
+
+      if (!res.ok) {
+        console.error("訊息同步至資料庫失敗：", res.status);
+      }
     } catch (err) {
       console.error("訊息同步至資料庫失敗", err);
     }
@@ -728,11 +799,15 @@ export default function WorkspacePage() {
     const userMsg = { id: `u-${Date.now()}`, role: "user", content };
 
     // 1. 同步儲存使用者的問卷大文字進資料庫
-    saveChatMessage(activeSessionId, "user", content, detail.id);
+    const selectedSession = sessions.find((session) => session.id === activeSessionId);
+    const projectId = selectedSession?.project_id || activeSessionId;
+    saveChatMessage(projectId, "user", content, detail.id);
 
-    setSessions((prev) =>
-      prev.map((s) =>
-        s.id === activeSessionId ? { ...s, messages: [...s.messages, userMsg] } : s
+    setSessions((currentList) =>
+      (Array.isArray(currentList) ? currentList : []).map((session) =>
+        session.id === activeSessionId
+          ? { ...session, messages: [...(session.messages || []), userMsg] }
+          : session
       )
     );
     setShowSurveyPicker(false);
@@ -743,15 +818,23 @@ export default function WorkspacePage() {
     setTimeout(() => {
       const aiReply = buildAssistantReply(content, detail, record.title);
       
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === sid ? { ...s, messages: [...s.messages, { id: `a-${Date.now()}`, role: "assistant", content: aiReply }] } : s
+      setSessions((currentList) =>
+        (Array.isArray(currentList) ? currentList : []).map((session) =>
+          session.id === sid
+            ? {
+                ...session,
+                messages: [
+                  ...(session.messages || []),
+                  { id: `a-${Date.now()}`, role: "assistant", content: aiReply },
+                ],
+              }
+            : session
         )
       );
       setIsTyping(false);
 
       // 2. 同步儲存 AI 的問卷分析表格結果
-      saveChatMessage(sid, "assistant", aiReply, detail.id);
+      saveChatMessage(projectId, "assistant", aiReply, detail.id);
     }, 1800);
   };
 
@@ -770,14 +853,14 @@ export default function WorkspacePage() {
     const autoTitle = buildAutoSessionTitle(input, attachedFile);
     const userMsg = { id: Date.now().toString(), role: "user", content };
 
-    setSessions((prev) =>
-      prev.map((s) => {
-        if (s.id !== activeSessionId) return s;
-        const shouldAutoTitle = s.title === "新工作區";
+    setSessions((currentList) =>
+      (Array.isArray(currentList) ? currentList : []).map((session) => {
+        if (session.id !== activeSessionId) return session;
+        const shouldAutoTitle = session.title === "新工作區";
         return {
-          ...s,
-          title: shouldAutoTitle ? autoTitle : s.title,
-          messages: [...s.messages, userMsg],
+          ...session,
+          title: shouldAutoTitle ? autoTitle : session.title,
+          messages: [...(session.messages || []), userMsg],
         };
       })
     );
@@ -826,8 +909,10 @@ export default function WorkspacePage() {
     }
   };
 
-  const filteredSessions = sessions.filter((s) =>
-    s.title.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredSessions = sessions.filter((session) =>
+    String(session.title || "")
+      .toLowerCase()
+      .includes(searchQuery.toLowerCase())
   );
 
   const startRename = (s) => {
@@ -839,7 +924,11 @@ export default function WorkspacePage() {
   const saveRename = async (id) => {
     const trimmed = renameValue.trim();
     if (trimmed) {
-      setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, title: trimmed } : s)));
+      setSessions((currentList) =>
+        (Array.isArray(currentList) ? currentList : []).map((session) =>
+          session.id === id ? { ...session, title: trimmed } : session
+        )
+      );
       syncChatTitle(id, trimmed);
 
       const session = sessions.find((s) => s.id === id);
@@ -883,7 +972,11 @@ export default function WorkspacePage() {
     }
 
     deleteChatSession(sessionId);
-    setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+    setSessions((currentList) =>
+      (Array.isArray(currentList) ? currentList : []).filter(
+        (session) => session.id !== sessionId
+      )
+    );
     setRenamingId(null);
     setSearchQuery("");
     if (activeSessionId === sessionId) {
@@ -910,7 +1003,10 @@ export default function WorkspacePage() {
       date: new Date().toLocaleDateString(),
       messages: [WELCOME_MSG],
     };
-    setSessions((prev) => [tempSession, ...prev]);
+    setSessions((currentList) => [
+      tempSession,
+      ...(Array.isArray(currentList) ? currentList : []),
+    ]);
     setActiveSessionId(tempId);
     addChatToCollection(title, tempId);
 
@@ -924,19 +1020,27 @@ export default function WorkspacePage() {
         body: JSON.stringify({ project_name: title }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        const newId = String(data.project_id);
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === tempId
-              ? { ...s, id: String(data.project_id), project_id: data.project_id }
-              : s
-          )
-        );
-        updateSessionId(tempId, newId);
-        setActiveSessionId(String(data.project_id));
+      if (!res.ok) {
+        console.error("新增工作區 API 失敗：", res.status);
+        return;
       }
+
+      const data = await res.json();
+      if (!data?.project_id) {
+        console.error("新增工作區失敗：後端未回傳 project_id");
+        return;
+      }
+
+      const newId = String(data.project_id);
+      setSessions((currentList) =>
+        (Array.isArray(currentList) ? currentList : []).map((session) =>
+          session.id === tempId
+            ? { ...session, id: newId, project_id: data.project_id }
+            : session
+        )
+      );
+      updateSessionId(tempId, newId);
+      setActiveSessionId(newId);
     } catch (err) {
       console.error("新增工作區失敗", err);
     }
