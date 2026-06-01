@@ -37,15 +37,14 @@ export default function HomePage() {
         <div className="hero-content">
           <div className="badge-pill mb-4">
             <span className="pulse-dot"></span>
-            <span>AI 驅動的智能資料分析平台</span>
+            <span>AI 輔助的培訓回饋分析平台</span>
           </div>
           <h1 className="hero-title">
-            將原始資料轉化為<br />
-            <span className="highlight">深度洞察</span>
+            將培訓回饋整理為<br />
+            <span className="highlight">標準化分析結果</span>
           </h1>
           <p className="hero-subtitle">
-            上傳 CSV、Excel、JSON 或文字檔案，即可獲得由先進 AI 驅動的即時深度分析。
-            儲存成果、整理專案，隨時回顧洞察。
+            整合問卷蒐集、專案管理與 AI 分析助理，協助顧問快速整理文字回饋、查看分類結果，提升課後回饋分析效率。
           </p>
           <div className="hero-buttons">
             <button className="btn btn-hero-primary" onClick={() => navigate("/signup")}>
@@ -56,10 +55,10 @@ export default function HomePage() {
             </button>
           </div>
           <div className="hero-tags">
-            <span className="hero-tag"><i className="ri-file-excel-2-line me-1"></i>支援 CSV / Excel / JSON</span>
-            <span className="hero-tag"><i className="ri-brain-line me-1"></i>AI 智能分析</span>
+            <span className="hero-tag"><i className="ri-clipboard-line me-1"></i>問卷管理</span>
+            <span className="hero-tag"><i className="ri-brain-line me-1"></i>AI 輔助分析</span>
             <span className="hero-tag"><i className="ri-folder-chart-line me-1"></i>專案管理</span>
-            <span className="hero-tag"><i className="ri-shield-check-line me-1"></i>安全加密</span>
+            <span className="hero-tag"><i className="ri-table-line me-1"></i>表格式結果呈現</span>
           </div>
         </div>
 
