@@ -13,11 +13,6 @@ profile_bp = Blueprint('profile', __name__)
 
 logger = logging.getLogger(__name__)
 
-class User_Profile(db.Model):
-    __table_args__ = (
-        db.Index("idx_userprofile_user_id", "user_id"),
-    )
-
 def taiwan_now():
     return datetime.utcnow() + timedelta(hours=8)
 
