@@ -18,7 +18,7 @@ export default function SurveyPage() {
     if (!user?.token) return;
 
     setIsLoading(true);
-    fetch(apiUrl("/api/surveys/mine"), {
+    fetch(apiUrl("/api/surveys/mine?limit=3"), {
       headers: { Authorization: `Bearer ${user.token}` },
     })
       .then((res) => {

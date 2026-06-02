@@ -323,7 +323,11 @@ def get_user_surveys():
         return jsonify({"error": "Unauthorized"}), 401
 
     try:
-        surveys = (
+        limit = request.args.get("limit", type=int)
+        if limit is not None:
+            limit = max(1, min(limit, 50))
+
+        query = (
             db.session.query(
                 Survey_Template.template_id,
                 Survey_Template.title,
@@ -333,6 +337,13 @@ def get_user_surveys():
             )
             .filter(Survey_Template.user_id == auth_user_id)
             .order_by(Survey_Template.created_at.desc())
+        )
+
+        if limit is not None:
+            query = query.limit(limit)
+
+        surveys = (
+            query
             .all()
         )
 
