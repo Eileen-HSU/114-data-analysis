@@ -78,6 +78,9 @@ def save_chat_history():
 @chat_bp.route("/api/chat/history/<int:project_id>", methods=["GET"])
 def get_chat_history(project_id):
     try:
+
+        db.session.rollback()
+
         # 1. 權限驗證
         current_user_id, auth_error = authorize_request()
         if auth_error:
@@ -131,8 +134,18 @@ def get_chat_history(project_id):
         }), 200
 
     except Exception as error:
+        db.session.rollback() 
         print("[GET CHAT HISTORY ERROR]", repr(error))
         return jsonify({
             "error": str(error),
             "route": f"/api/chat/history/{project_id}",
         }), 500
+    
+@chat_bp.route("/api/chat/debug/<int:project_id>", methods=["GET"])
+def debug_chat(project_id):
+    try:
+        db.session.rollback()
+        count = Chat_History.query.filter_by(project_id=project_id).count()
+        return jsonify({"ok": True, "count": count}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": repr(e)}), 500
