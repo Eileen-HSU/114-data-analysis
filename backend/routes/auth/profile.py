@@ -13,7 +13,7 @@ profile_bp = Blueprint('profile', __name__)
 
 logger = logging.getLogger(__name__)
 
-class UserProfile(db.Model):
+class User_Profile(db.Model):
     __table_args__ = (
         db.Index("idx_userprofile_user_id", "user_id"),
     )
