@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, request
 from extensions import db
 from sqlalchemy import exists
 from models import Chat_History, Workspace
-from utils.auth import authorize_request  
+from routes.auth.workspace import authorize_request
 
 chat_bp = Blueprint("chat", __name__)
 

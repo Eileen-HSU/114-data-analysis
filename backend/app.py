@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 load_dotenv()
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from routes.auth.workspace import authorize_request
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request, make_response
@@ -160,12 +160,6 @@ def handle_exception(e):
     response.headers.add("Access-Control-Allow-Origin", "*")
     return response, 500
 
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
-
-
 @app.before_request
 def handle_options():
     if request.method == "OPTIONS":
@@ -175,3 +169,9 @@ def handle_options():
         res.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
         res.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
         return res
+    
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
+
