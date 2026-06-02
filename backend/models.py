@@ -74,15 +74,15 @@ class Workspace(db.Model):
 # T05: Chat_History -  對話紀錄
 class Chat_History(db.Model):
     __tablename__ = 'Chat_History'
-    chat_id     = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    project_id  = db.Column(db.Integer, db.ForeignKey('Workspace.project_id'), nullable=False)
+    chat_id         = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    project_id      = db.Column(db.Integer, db.ForeignKey('Workspace.project_id'), nullable=False)
     template_id     = db.Column(db.Integer, db.ForeignKey('Survey_Template.template_id'), nullable=True) 
     message_content = db.Column(db.Text, nullable=False)
-    sender_type = db.Column(db.String(10), nullable=False) # user / ai
-    status      = db.Column(db.String(20), default='active') # processing / compelted / falled
-    ai_category  = db.Column(db.String(50)) 
+    sender_type     = db.Column(db.String(10), nullable=False) # user / ai
+    status          = db.Column(db.String(20), default='active') # processing / compelted / falled
+    ai_category     = db.Column(db.String(50)) 
     corrected_change = db.Column(db.Text) 
-    created_at  = db.Column(db.DateTime(timezone=True), default=taiwan_now)
+    created_at      = db.Column(db.DateTime(timezone=True), default=taiwan_now)
 
 # T06: Survey_Template - 問卷模板
 class Survey_Template(db.Model):
