@@ -584,10 +584,8 @@ export default function WorkspacePage() {
   useEffect(() => {
     if (!activeSessionId || !isLoggedIn) return;
 
-    // 先找出當前點擊的這個 session
     const currentSession = sessions.find((s) => s.id === activeSessionId);
     
-    // 關鍵防禦：只有當這個專案有正式 project_id，且「目前沒訊息」或「只有歡迎訊息」時才出發去後端拉取
     if (currentSession?.project_id && (!currentSession.messages || currentSession.messages.length <= 1)) {
       
       const fetchHistory = async () => {
@@ -598,7 +596,6 @@ export default function WorkspacePage() {
           if (!res.ok) return;
           const histData = await res.json();
           
-          // 將後端欄位轉換成前端格式
           const historyList = Array.isArray(histData?.chat_history)
             ? histData.chat_history
             : [];
@@ -609,7 +606,6 @@ export default function WorkspacePage() {
           }));
 
           if (fetchedMessages.length > 0) {
-            // 精準局部更新這個專案的對話紀錄
             setSessions((currentList) =>
               (Array.isArray(currentList) ? currentList : []).map((session) =>
                 session.id === activeSessionId
@@ -692,7 +688,6 @@ export default function WorkspacePage() {
     .then((data) => {
       if (!data?.project_id) return;
       
-      // 把問卷綁定到 workspace
       const surveyCode =
         surveyDetail?.code ||
         surveyDetail?.access_code ||
@@ -736,8 +731,6 @@ export default function WorkspacePage() {
           )
         );
         setIsTyping(false);
-        
-        // 儲存 AI 回覆
         saveChatMessage(data.project_id, "assistant", aiReply, templateId);
       }, 1800);
     })
@@ -798,7 +791,6 @@ export default function WorkspacePage() {
     const content = buildSurveyChatContent(detail);
     const userMsg = { id: `u-${Date.now()}`, role: "user", content };
 
-    // 1. 同步儲存使用者的問卷大文字進資料庫
     const selectedSession = sessions.find((session) => session.id === activeSessionId);
     const projectId = selectedSession?.project_id || activeSessionId;
     saveChatMessage(projectId, "user", content, detail.id);
@@ -832,8 +824,6 @@ export default function WorkspacePage() {
         )
       );
       setIsTyping(false);
-
-      // 2. 同步儲存 AI 的問卷分析表格結果
       saveChatMessage(projectId, "assistant", aiReply, detail.id);
     }, 1800);
   };
@@ -868,7 +858,6 @@ export default function WorkspacePage() {
     const session = sessions.find((s) => s.id === activeSessionId);
     if (session?.title === "新工作區") syncChatTitle(activeSessionId, autoTitle);
 
-    // 存 user 訊息
     const projectId = session?.project_id;
     saveChatMessage(projectId, "user", content);
 
@@ -889,7 +878,6 @@ export default function WorkspacePage() {
       const aiMsg = { id: Date.now().toString(), role: "assistant", content: reply };
       appendMessage(sid, aiMsg);
       setIsTyping(false);
-      // 存 AI 回覆
       saveChatMessage(projectId, "assistant", reply);
     }, 1500);
   };
@@ -920,7 +908,6 @@ export default function WorkspacePage() {
     setRenameValue(s.title);
   };
 
-  // ── 重新命名：同時更新後端 ────────────────────────────────
   const saveRename = async (id) => {
     const trimmed = renameValue.trim();
     if (trimmed) {
@@ -956,21 +943,13 @@ export default function WorkspacePage() {
     setDeleteTarget(session);
   };
 
-  const confirmDeleteSession = async () => {
+  // ── 刪除：先更新 UI，背景再打 API ────────────────────────
+  const confirmDeleteSession = () => {
     if (!deleteTarget) return;
     const { id: sessionId, project_id: projectId } = deleteTarget;
 
-    if (projectId) {
-      try {
-        await fetch(apiUrl(`/api/workspace/${projectId}`), {
-          method: "DELETE",
-          headers: getAuthHeader(),
-        });
-      } catch (err) {
-        console.error("刪除工作區失敗", err);
-      }
-    }
-
+    // 1. 立刻關閉 modal、更新 UI
+    setDeleteTarget(null);
     deleteChatSession(sessionId);
     setSessions((currentList) =>
       (Array.isArray(currentList) ? currentList : []).filter(
@@ -988,8 +967,15 @@ export default function WorkspacePage() {
         localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
       }
     }
-    setDeleteTarget(null);
     showToast("已刪除工作區，並移至最近刪除");
+
+    // 2. 背景打 API，不阻塞 UI
+    if (projectId) {
+      fetch(apiUrl(`/api/workspace/${projectId}`), {
+        method: "DELETE",
+        headers: getAuthHeader(),
+      }).catch((err) => console.error("刪除工作區失敗", err));
+    }
   };
 
   // ── 建立新工作區 ─────────────
@@ -1081,7 +1067,6 @@ export default function WorkspacePage() {
   return (
     <>
       <Navbar />
-      {/* Toast */}
       {toastMsg && (
         <div style={{
           position: "fixed", bottom: 32, left: "50%", transform: "translateX(-50%)",
@@ -1265,7 +1250,6 @@ export default function WorkspacePage() {
                     </div>
                   )}
                   <div className="input-wrapper">
-                    {/* Survey Picker Button */}
                     <div className="survey-picker-wrapper" ref={surveyPickerRef}>
                       <button
                         className={`attach-btn survey-pick-btn${showSurveyPicker ? " active" : ""}`}
@@ -1335,7 +1319,6 @@ export default function WorkspacePage() {
                       )}
                     </div>
 
-                    {/* File Attach Button */}
                     <button
                       className="attach-btn"
                       onClick={() => fileInputRef.current?.click()}
