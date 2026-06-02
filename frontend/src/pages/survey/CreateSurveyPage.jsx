@@ -7,7 +7,7 @@ import { useAuth } from "../../hooks/AuthContext";
 import { useActivity } from "../../hooks/ActivityContext";
 import axios from "axios";
 import { apiUrl } from "../../lib/api";
-import { buildExternalSurveyShortUrl, buildSurveyFillPath, buildSurveyFillUrl } from "../../lib/surveyLinks";
+import { buildExternalSurveyShortUrl, buildSurveyFillPath } from "../../lib/surveyLinks";
 import "./survey.css";
 
 
@@ -169,6 +169,13 @@ export default function CreateSurveyPage() {
 
         const accessCode = response.data.access_code;
         const shortCode = response.data.short_code || accessCode;
+        setExternalShareLink("");
+        setGeneratedCode(accessCode);
+        setGeneratedShortCode(shortCode);
+        setCopiedCode(false);
+        setCopiedLink(false);
+        setError("");
+
         const createdAtMs = Date.now();
         const savedSurvey = {
           id: response.data.template_id || `survey-${Date.now()}`,
@@ -185,23 +192,23 @@ export default function CreateSurveyPage() {
           ownerId: user?.user_id,
           ownerEmail: user?.email,
         };
-        const storedSurveys = JSON.parse(localStorage.getItem("surveys") || "{}");
-        storedSurveys[accessCode] = savedSurvey;
-        localStorage.setItem("surveys", JSON.stringify(storedSurveys));
+        try {
+          const storedSurveys = JSON.parse(localStorage.getItem("surveys") || "{}");
+          storedSurveys[accessCode] = savedSurvey;
+          localStorage.setItem("surveys", JSON.stringify(storedSurveys));
+        } catch (storageError) {
+          console.warn("[FRONTEND] localStorage survey cache failed:", storageError);
+        }
         recordActivity({
           text: `建立問卷「${payload.title}」`,
           icon: "ri-survey-line",
           iconBg: "bg-stat-coral",
           iconColor: "text-stat-coral",
         });
-        setExternalShareLink("");
-        setGeneratedCode(accessCode);
-        setGeneratedShortCode(shortCode);
-        setCopiedCode(false);
-        setCopiedLink(false);
-        setError("");
         buildExternalSurveyShortUrl(accessCode).then((externalLink) => {
           setExternalShareLink(externalLink);
+        }).catch((linkError) => {
+          console.warn("[FRONTEND] short link creation failed:", linkError);
         });
       }
     } catch (error) {
