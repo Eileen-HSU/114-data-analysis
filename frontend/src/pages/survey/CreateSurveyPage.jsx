@@ -59,8 +59,7 @@ export default function CreateSurveyPage() {
   const [externalShareLink, setExternalShareLink] = useState("");
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-  const fallbackShareLink = generatedCode ? buildSurveyFillUrl(generatedCode) : "";
-  const shareLink = externalShareLink || fallbackShareLink;
+  const shareLink = externalShareLink;
 
   // 檢查本地 token 是否對本機後端有效，若無效則清除並導向登入
   useEffect(() => {
@@ -355,7 +354,7 @@ export default function CreateSurveyPage() {
             </button>
             <div className="invite-link-box">
               <div className="invite-code-label">填寫連結</div>
-              <div className="invite-link-value">{shareLink}</div>
+              <div className="invite-link-value">{shareLink || "短連結產生中..."}</div>
             </div>
             <button
               className={`copy-code-btn ${copiedLink ? "copied" : ""}`}
