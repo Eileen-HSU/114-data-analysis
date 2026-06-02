@@ -323,9 +323,18 @@ def get_user_surveys():
         return jsonify({"error": "Unauthorized"}), 401
 
     try:
-        surveys = Survey_Template.query.filter_by(
-            user_id=auth_user_id,
-        ).order_by(Survey_Template.created_at.desc()).all()
+        surveys = (
+            db.session.query(
+                Survey_Template.template_id,
+                Survey_Template.title,
+                Survey_Template.access_code,
+                Survey_Template.created_at,
+                Survey_Template.due_date,
+            )
+            .filter(Survey_Template.user_id == auth_user_id)
+            .order_by(Survey_Template.created_at.desc())
+            .all()
+        )
 
         if not surveys:
             return jsonify([]), 200
@@ -344,14 +353,13 @@ def get_user_surveys():
 
         result = []
         for survey in surveys:
-            question_json = survey.question_json or {}
             result.append({
                 "template_id": survey.template_id,
                 "title": survey.title,
                 "access_code": survey.access_code,
-                "short_code": survey_short_code(survey),
+                "short_code": encode_survey_short_code(survey.template_id),
                 "created_at": survey.created_at.isoformat() if survey.created_at else "",
-                "deadline_at": get_survey_deadline_at(survey, question_json),
+                "deadline_at": deadline_to_iso(survey.due_date),
                 "response_count": counts.get(survey.template_id, 0),
             })
         return jsonify(result), 200
