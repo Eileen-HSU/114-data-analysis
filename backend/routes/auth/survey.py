@@ -212,6 +212,38 @@ def is_survey_expired(question_json, due_date=None, now=None):
     return now > deadline
 
 
+@survey_bp.route('/api/public/surveys/<access_code>', methods=['GET'])
+def get_public_survey(access_code):
+    survey = find_survey_by_access_or_short_code(access_code)
+    if not survey:
+        return jsonify({"error": "Survey not found"}), 404
+
+    question_json = survey.question_json or {}
+    deadline_at = get_survey_deadline_at(survey, question_json)
+    if is_survey_expired(question_json, survey.due_date):
+        return jsonify({
+            "error": "Survey expired",
+            "expired": True,
+            "template_id": survey.template_id,
+            "title": survey.title,
+            "access_code": survey.access_code,
+            "short_code": survey_short_code(survey),
+            "deadline_at": deadline_at,
+        }), 410
+
+    return jsonify({
+        "template_id": survey.template_id,
+        "title": survey.title,
+        "description": question_json.get("description") or "",
+        "identity_mode": question_json.get("identity_mode") or ("anonymous" if survey.is_anonymous else "identified"),
+        "access_code": survey.access_code,
+        "short_code": survey_short_code(survey),
+        "created_at": survey.created_at.isoformat() if survey.created_at else None,
+        "deadline_at": deadline_at,
+        "questions": question_json.get("items") or [],
+    }), 200
+
+
 @survey_bp.route('/api/surveys', methods=['POST'])
 def create_survey():
     auth_user_id, auth_error = verify_token(request)
