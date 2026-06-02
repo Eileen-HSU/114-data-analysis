@@ -140,6 +140,18 @@ def get_status():
 
 @app.errorhandler(Exception)
 def handle_exception(e):
+    from werkzeug.exceptions import HTTPException
+    # HTTP 例外（404、405 等）保留原本的 status code
+    if isinstance(e, HTTPException):
+        response = jsonify({
+            "error": e.description,
+            "type": str(type(e)),
+            "message": e.name,
+        })
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response, e.code   # ← 保留原始 status code
+    
+    # 非預期的 500
     response = jsonify({
         "error": str(e),
         "type": str(type(e)),
