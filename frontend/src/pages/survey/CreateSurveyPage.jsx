@@ -170,7 +170,6 @@ export default function CreateSurveyPage() {
 
         const accessCode = response.data.access_code;
         const shortCode = response.data.short_code || accessCode;
-        const externalLink = await buildExternalSurveyShortUrl(accessCode);
         const createdAtMs = Date.now();
         const savedSurvey = {
           id: response.data.template_id || `survey-${Date.now()}`,
@@ -196,12 +195,15 @@ export default function CreateSurveyPage() {
           iconBg: "bg-stat-coral",
           iconColor: "text-stat-coral",
         });
-        setExternalShareLink(externalLink);
+        setExternalShareLink("");
         setGeneratedCode(accessCode);
         setGeneratedShortCode(shortCode);
         setCopiedCode(false);
         setCopiedLink(false);
         setError("");
+        buildExternalSurveyShortUrl(accessCode).then((externalLink) => {
+          setExternalShareLink(externalLink);
+        });
       }
     } catch (error) {
       console.error("[FRONTEND] ✗ 存入失敗:", error);
