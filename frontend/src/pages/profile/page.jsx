@@ -298,27 +298,63 @@ export default function ProfilePage() {
   }, [apiSurveys]);
 
   const handleOpenSurveyDetail = async (survey) => {
-    const headers = { "Content-Type": "application/json", ...getAuthHeader() };
-    const code = encodeURIComponent(survey.code || survey.access_code);
+    const headers = {
+      "Content-Type": "application/json",
+      ...getAuthHeader(),
+    };
+
+    const rawCode = survey.code || survey.access_code;
+
+    if (!rawCode) {
+      alert("找不到問卷代碼");
+      return;
+    }
+
+    const code = encodeURIComponent(rawCode);
 
     setIsLoadingSurveyDetail(true);
+
     try {
-      const res = await fetch(apiUrl(`/api/surveys/${code}/detail`), { headers });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "載入問卷詳情失敗");
+      const [surveyRes, responsesRes] = await Promise.all([
+        fetch(apiUrl(`/api/surveys/${code}`), { headers }),
+        fetch(apiUrl(`/api/surveys/${code}/responses`), { headers }),
+      ]);
+
+      const surveyData = await surveyRes.json().catch(() => ({}));
+      const responsesData = await responsesRes.json().catch(() => ({}));
+
+      if (!surveyRes.ok) {
+        throw new Error(surveyData.error || "載入問卷資料失敗");
+      }
+
+      if (!responsesRes.ok) {
+        throw new Error(responsesData.error || "載入問卷回覆失敗");
+      }
 
       setSelectedSurvey({
         ...survey,
-        title:         data.title || survey.title,
-        description:   data.description,
-        identity_mode: data.identity_mode,
-        identityMode:  data.identity_mode,
-        deadline_at:   data.deadline_at,
-        deadlineAt:    data.deadline_at,
-        short_code:    data.short_code || survey.short_code,
-        shortCode:     data.short_code || survey.shortCode,
-        questions:     data.questions || [],
-        responses:     data.responses || [],
+
+        title: surveyData.title || survey.title,
+
+        access_code: surveyData.access_code || rawCode,
+        code: surveyData.access_code || rawCode,
+
+        created_at: surveyData.created_at || survey.created_at,
+        createdAt: surveyData.created_at || survey.createdAt,
+
+        deadline_at: survey.deadline_at,
+        deadlineAt: survey.deadlineAt,
+
+        short_code: survey.short_code || survey.shortCode,
+        shortCode: survey.shortCode || survey.short_code,
+
+        questions: Array.isArray(surveyData.questions)
+          ? surveyData.questions
+          : [],
+
+        responses: Array.isArray(responsesData.responses)
+          ? responsesData.responses
+          : [],
       });
     } catch (error) {
       console.error("載入問卷詳情失敗:", error);
