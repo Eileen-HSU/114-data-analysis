@@ -496,21 +496,7 @@ def bind_survey_to_workspace(access_code):
     if survey.user_id != auth_user_id:
         return jsonify({"error": "無權限"}), 403
 
-    try:
-        chat = Chat_History(
-            project_id=project_id,
-            template_id=survey.template_id,
-            message_content=f"匯入問卷：{survey.title}",
-            sender_type="user",
-            status="completed",
-        )
-        db.session.add(chat)
-        db.session.commit()
-        return jsonify({
-            "message": "綁定成功",
-            "project_id": project_id,
-            "chat_id": chat.chat_id,
-        }), 200
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+    return jsonify({
+        "message": "綁定成功",
+        "project_id": project_id,
+    }), 200
