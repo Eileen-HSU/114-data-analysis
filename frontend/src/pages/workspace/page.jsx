@@ -6,6 +6,7 @@ import { useAuth } from "../../hooks/AuthContext";
 import { useCollection } from "../../hooks/CollectionContext";
 import { useActivity } from "../../hooks/ActivityContext";
 import { apiUrl } from "../../lib/api";
+import { buildSurveyChatContent as buildSharedSurveyChatContent } from "../../lib/surveyChatContent";
 import "./workspace.css";
 
 const WELCOME_MSG = {
@@ -788,7 +789,7 @@ export default function WorkspacePage() {
   const handleSelectSurvey = async (record) => {
     const detail = normalizeSurveyDetail(record.detail);
     if (!detail || !activeSessionId) return;
-    const content = buildSurveyChatContent(detail);
+    const content = buildSharedSurveyChatContent(detail);
     const userMsg = { id: `u-${Date.now()}`, role: "user", content };
 
     const selectedSession = sessions.find((session) => session.id === activeSessionId);
