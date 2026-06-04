@@ -140,12 +140,3 @@ def get_chat_history(project_id):
             "error": str(error),
             "route": f"/api/chat/history/{project_id}",
         }), 500
-    
-@chat_bp.route("/api/chat/debug/<int:project_id>", methods=["GET"])
-def debug_chat(project_id):
-    try:
-        db.session.rollback()
-        count = Chat_History.query.filter_by(project_id=project_id).count()
-        return jsonify({"ok": True, "count": count}), 200
-    except Exception as e:
-        return jsonify({"ok": False, "error": repr(e)}), 500
