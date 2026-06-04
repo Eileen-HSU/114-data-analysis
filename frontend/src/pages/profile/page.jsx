@@ -334,6 +334,8 @@ export default function ProfilePage() {
       setSelectedSurvey({
         ...survey,
 
+        template_id: surveyData.template_id || survey.template_id,
+        
         title: surveyData.title || survey.title,
 
         access_code: surveyData.access_code || rawCode,
