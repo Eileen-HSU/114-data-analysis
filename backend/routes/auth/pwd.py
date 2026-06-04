@@ -90,7 +90,6 @@ def send_otp():
         "FRONTEND_URL",
         "https://one14-data-analysis-frontend.onrender.com",
     ).rstrip("/")
-    reset_link = f"{frontend_url}/reset-password?email={email}&from={from_param}"
 
     try:
         now = taiwan_now()  # 只取一次時間
@@ -113,7 +112,6 @@ def send_otp():
             f"您好，\n\n"
             f"您正在進行 {action_text}。\n"
             f"您的驗證碼是：{otp}\n\n"
-            f"請回到頁面完成操作：\n{reset_link}\n\n"
             f"此驗證碼將在 10 分鐘後失效。"
         )
         send_password_email_via_resend(email, subject, message_body)
