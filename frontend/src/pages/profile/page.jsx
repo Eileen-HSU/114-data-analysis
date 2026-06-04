@@ -263,7 +263,7 @@ export default function ProfilePage() {
     setTwoFactorEnabled(true);
     setShowTwoFactorNotice(true);
     recordActivity({
-      text: "啟用雙重驗證",
+      text: "啟用雙因子驗證",
       icon: "ri-shield-check-line",
       iconBg: "bg-stat-teal",
       iconColor: "text-stat-teal",
@@ -608,7 +608,7 @@ export default function ProfilePage() {
         setTwoFactorPassword("");
         setShowTwoFactorPassword(false);
         recordActivity({
-          text: "關閉雙重驗證",
+          text: "關閉雙因子驗證",
           icon: "ri-shield-flash-line",
           iconBg: "bg-stat-coral",
           iconColor: "text-stat-coral",
@@ -814,7 +814,7 @@ export default function ProfilePage() {
                   </div>
                   <div>
                     <div className="security-title-row">
-                      <p className="security-label mb-0">雙因素驗證</p>
+                      <p className="security-label mb-0">雙因子驗證</p>
                       <span className={`two-factor-status ${twoFactorEnabled ? "enabled" : "disabled"}`}>
                         {twoFactorEnabled ? "已開啟" : "未開啟"}
                       </span>
@@ -834,7 +834,7 @@ export default function ProfilePage() {
                     }
                   }}
                   type="button"
-                  aria-label={twoFactorEnabled ? "關閉雙因素驗證" : "開啟雙因素驗證"}
+                  aria-label={twoFactorEnabled ? "關閉雙因子驗證" : "開啟雙因子驗證"}
                 >
                   <span className="two-factor-switch-label">{twoFactorEnabled ? "ON" : "OFF"}</span>
                   <span className="two-factor-switch-knob"></span>
