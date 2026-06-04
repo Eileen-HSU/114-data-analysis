@@ -81,7 +81,7 @@ export default function LoginTwoFactorPage() {
                 className="auth-logo-img"
               />
             </div>
-            <h2 className="auth-visual-title">兩步驟驗證</h2>
+            <h2 className="auth-visual-title">雙因子驗證</h2>
             <p className="auth-visual-desc">
               <span>請輸入信箱中的驗證碼</span>
               <span>完成後即可安全登入</span>
