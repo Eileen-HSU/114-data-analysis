@@ -701,7 +701,7 @@ export default function WorkspacePage() {
         }).catch((err) => console.error("問卷綁定失敗", err));
       }
 
-      const templateId = surveyDetail?.id || null;
+      const templateId = surveyDetail?.template_id || null;
       saveChatMessage(data.project_id, "user", message, templateId);
 
       setSessions((currentList) =>
