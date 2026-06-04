@@ -6,7 +6,7 @@ from flask import Blueprint, jsonify, request
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from extensions import db
-from models import Workspace, taiwan_now
+from models import Workspace, Chat_History, taiwan_now
 
 workspace_bp = Blueprint("workspace", __name__)
 
@@ -268,6 +268,7 @@ def permanent_delete_workspace(project_id):
             return jsonify({"message": "資料夾外殼已永久刪除，專案已釋放"}), 200
 
         else:
+            Chat_History.query.filter_by(project_id=project_id).delete(synchronize_session=False)
             db.session.delete(target)
             db.session.commit()
             return jsonify({"message": "專案已永久刪除"}), 200
