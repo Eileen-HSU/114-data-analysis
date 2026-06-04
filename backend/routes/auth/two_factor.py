@@ -135,8 +135,21 @@ def enable_2fa():
     db.session.commit()
     return jsonify({"message": "雙因子驗證已開啟"}), 200
 
+# 3. 查詢 2FA 狀態
+@two_factor_bp.route('/status', methods=['GET'])
+def get_2fa_status():
+    auth_user_id, error = verify_token(request)
+    if error:
+        return jsonify({"error": "請先登入"}), 401
+    
+    user = User.query.filter_by(user_id=auth_user_id).first()
+    if not user:
+        return jsonify({"error": "找不到使用者"}), 404
+    
+    return jsonify({"enabled": bool(user.email_2fa_enabled)}), 200
 
-# 3. 登入時的 2FA 驗證
+
+# 4. 登入時的 2FA 驗證
 # 使用 pre_auth_token 確保第一步密碼驗證已完成
 @two_factor_bp.route('/login/two-factor', methods=['POST'])
 def login_verify_2fa():
@@ -205,7 +218,7 @@ def login_verify_2fa():
     }), 200
 
 
-# 4. 關閉 2FA（需 JWT 登入狀態 + 密碼確認）
+# 5. 關閉 2FA（需 JWT 登入狀態 + 密碼確認）
 @two_factor_bp.route('/disable', methods=['POST', 'OPTIONS'])
 def disable_2fa():
     if request.method == 'OPTIONS':

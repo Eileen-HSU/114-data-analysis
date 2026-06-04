@@ -244,9 +244,17 @@ export default function ProfilePage() {
   }, [user?.token, surveyVersion]); 
 
   useEffect(() => {
-    setTwoFactorEnabled(localStorage.getItem(twoFactorStorageKey) === "true");
-  }, [twoFactorStorageKey]);
-
+    if (!user?.token) return;
+    fetch(apiUrl("/api/auth/2fa/status"), {
+      headers: { Authorization: `Bearer ${user.token}` },
+    })
+      .then((res) => res.json())
+      .then((data) => setTwoFactorEnabled(data.enabled === true))
+      .catch(() => {
+        setTwoFactorEnabled(localStorage.getItem(twoFactorStorageKey) === "true");
+      });
+  }, [user?.token]);
+  
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     if (params.get("two_factor") !== "enabled") return;
@@ -335,7 +343,7 @@ export default function ProfilePage() {
         ...survey,
 
         template_id: surveyData.template_id || survey.template_id,
-        
+
         title: surveyData.title || survey.title,
 
         access_code: surveyData.access_code || rawCode,
