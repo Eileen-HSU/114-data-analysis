@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import Navbar from "../../../components/feature/Navbar";
 import DeadlineDateTimePicker from "../../../components/feature/DeadlineDateTimePicker";
 import { buildExternalSurveyShortUrl, buildSurveyFillUrl } from "../../../lib/surveyLinks";
+import { buildSurveyChatContent as buildSharedSurveyChatContent } from "../../../lib/surveyChatContent";
 
 const TYPE_LABELS = {
   rating: "評分",
@@ -266,7 +267,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
         questions,
         responses,
         sessionTitle: `問卷分析：${currentSurvey.title || currentSurvey.survey_name || "未命名問卷"}`,
-        message: buildSurveyChatContent(currentSurvey, questions, responses),
+        message: buildSharedSurveyChatContent(currentSurvey, questions, responses),
       });
     }, 450);
   };
