@@ -12,7 +12,7 @@ const WELCOME_MSG = {
   id: "welcome",
   role: "assistant",
   content:
-    "您好！我是 DataAnalysis AI 助手。請上傳您的資料檔案（CSV、Excel、JSON 或 TXT），或直接輸入您的分析問題，我將為您提供深度洞察。",
+    "您好！我是 DataAnalysis AI 助手。請上傳您的資料檔案（CSV、Excel 或 TXT），或直接輸入您的分析問題，我將為您提供深度洞察。",
 };
 const ACTIVE_WORKSPACE_KEY = "dataanalysis_active_workspace";
 const EMPTY_SURVEY_TABLE_MARKER = "[[EMPTY_SURVEY_TABLE]]";
@@ -1330,7 +1330,7 @@ export default function WorkspacePage() {
                       ref={fileInputRef}
                       type="file"
                       className="d-none"
-                      accept=".csv,.xlsx,.json,.txt"
+                      accept=".csv,.xlsx,.txt"
                       onChange={(e) => {
                         const f = e.target.files?.[0];
                         if (!f) return;
@@ -1359,7 +1359,7 @@ export default function WorkspacePage() {
                   </div>
                   <p className="input-hint">
                     <i className="ri-survey-line" style={{ marginRight: 4 }}></i>
-                    點擊問卷圖示可直接選擇問卷分析 · 支援 CSV、Excel、JSON、TXT · Enter 發送
+                    點擊問卷圖示可直接選擇問卷分析 · 支援 CSV、Excel、TXT · Enter 發送
                   </p>
                 </div>
               </>
