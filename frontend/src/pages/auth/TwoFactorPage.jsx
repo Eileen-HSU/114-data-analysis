@@ -123,7 +123,7 @@ export default function TwoFactorPage() {
                 className="auth-logo-img"
               />
             </div>
-            <h2 className="auth-visual-title">啟用兩步驟驗證</h2>
+            <h2 className="auth-visual-title">啟用雙因子驗證</h2>
             <p className="auth-visual-desc">
               <span>為帳號多加一道保護</span>
               <span>登入時使用信箱驗證碼確認身份</span>
@@ -156,7 +156,7 @@ export default function TwoFactorPage() {
           <div className="auth-form-wrapper two-factor-form-wrapper">
             {step === "send" && (
               <>
-                <h1 className="auth-title">啟用兩步驟驗證</h1>
+                <h1 className="auth-title">啟用雙因子驗證</h1>
                 <p className="auth-subtitle" style={{ marginBottom: 28 }}>
                   輸入您的電子郵件，我們會寄送驗證碼確認身分。
                 </p>
