@@ -242,18 +242,6 @@ export default function ProfilePage() {
         setHasLoadedSurveys(true);
       });
   }, [user?.token, surveyVersion]); 
-
-  useEffect(() => {
-    if (!user?.token) return;
-    fetch(apiUrl("/api/auth/2fa/status"), {
-      headers: { Authorization: `Bearer ${user.token}` },
-    })
-      .then((res) => res.json())
-      .then((data) => setTwoFactorEnabled(data.enabled === true))
-      .catch(() => {
-        setTwoFactorEnabled(localStorage.getItem(twoFactorStorageKey) === "true");
-      });
-  }, [user?.token]);
   
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -628,6 +616,10 @@ export default function ProfilePage() {
       setIsDisablingTwoFactor(false);
     }
   };
+
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(
+    user?.email_2fa_enabled === true
+  );
 
   const handleCancel = () => {
     setEditProfile(profile);
