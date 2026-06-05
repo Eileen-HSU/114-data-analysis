@@ -413,6 +413,8 @@ export default function WorkspacePage() {
   const location = useLocation();
   const { isLoggedIn, user } = useAuth();
   const { recordActivity } = useActivity();
+  const loadedProjectIds = useRef(new Set());
+
 
   const {
     addChatToCollection,
@@ -582,13 +584,21 @@ export default function WorkspacePage() {
   }, [isLoggedIn, setSessions]);
 
   // ── 2. 當切換 activeSessionId 時，才動態去後端補拉該專案的歷史訊息 ──
-  useEffect(() => {
-    if (!activeSessionId || !isLoggedIn) return;
+    useEffect(() => {
+      if (!activeSessionId || !isLoggedIn) return;
 
-    const currentSession = sessions.find((s) => s.id === activeSessionId);
-    
-    if (currentSession?.project_id && (!currentSession.messages || currentSession.messages.length <= 1)) {
+      const currentSession = sessions.find((s) => s.id === activeSessionId);
+      if (!currentSession?.project_id) return;
       
+      // 已經載入過就跳過
+      if (loadedProjectIds.current.has(currentSession.project_id)) return;
+      if (currentSession.messages && currentSession.messages.length > 1) {
+        loadedProjectIds.current.add(currentSession.project_id);
+        return;
+      }
+
+      loadedProjectIds.current.add(currentSession.project_id); // 先標記，防止重複打
+
       const fetchHistory = async () => {
         try {
           const res = await fetch(apiUrl(`/api/chat/history/${currentSession.project_id}`), {
@@ -596,10 +606,7 @@ export default function WorkspacePage() {
           });
           if (!res.ok) return;
           const histData = await res.json();
-          
-          const historyList = Array.isArray(histData?.chat_history)
-            ? histData.chat_history
-            : [];
+          const historyList = Array.isArray(histData?.chat_history) ? histData.chat_history : [];
           const fetchedMessages = historyList.map((h) => ({
             id: String(h.chat_id),
             role: h.sender_type === "user" ? "user" : "assistant",
@@ -621,8 +628,7 @@ export default function WorkspacePage() {
       };
 
       fetchHistory();
-    }
-  }, [activeSessionId, isLoggedIn, sessions, setSessions]);
+  }, [activeSessionId, isLoggedIn]); // sessions 移出 dependency array
 
   useEffect(() => {
     if (activeSessionId || sessions.length === 0) return;
@@ -836,7 +842,7 @@ export default function WorkspacePage() {
       String(s.code || "").toLowerCase().includes(surveyPickerSearch.toLowerCase())
   );
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     if (!input.trim() && !attachedFile) return;
     if (!activeSessionId) return;
 
@@ -860,14 +866,30 @@ export default function WorkspacePage() {
     if (session?.title === "新工作區") syncChatTitle(activeSessionId, autoTitle);
 
     const projectId = session?.project_id;
-    saveChatMessage(projectId, "user", content);
 
-    recordActivity({
-      text: `在工作區送出訊息「${autoTitle}」`,
-      icon: "ri-message-3-line",
-      iconBg: "bg-stat-mauve",
-      iconColor: "text-stat-mauve",
+    // 先存訊息拿 chat_id
+    const res = await fetch(apiUrl("/api/chat/history"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify({
+        project_id: Number(projectId),
+        sender_type: "user",
+        message_content: content,
+      }),
     });
+    const data = await res.json();
+    const chatId = data?.chat_history?.chat_id;
+
+    // 有檔案才上傳
+    if (attachedFile && chatId) {
+      const form = new FormData();
+      form.append("file", attachedFile);
+      await fetch(apiUrl(`/api/chat/${chatId}/files`), {
+        method: "POST",
+        headers: getAuthHeader(),
+        body: form,
+      });
+    }
 
     setInput("");
     setAttachedFile(null);
@@ -1336,8 +1358,7 @@ export default function WorkspacePage() {
                         const f = e.target.files?.[0];
                         if (!f) return;
                         setAttachedFile(f);
-                        addFileToCollection(f);
-                        showToast(`「${f.name}」已加入專案管理`);
+                        showToast(`「${f.name}」已附加，發送後將上傳`);
                         e.target.value = "";
                       }}
                     />
