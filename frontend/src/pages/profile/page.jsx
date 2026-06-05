@@ -617,10 +617,6 @@ export default function ProfilePage() {
     }
   };
 
-  const [twoFactorEnabled, setTwoFactorEnabled] = useState(
-    user?.email_2fa_enabled === true
-  );
-
   const handleCancel = () => {
     setEditProfile(profile);
     setIsEditing(false);

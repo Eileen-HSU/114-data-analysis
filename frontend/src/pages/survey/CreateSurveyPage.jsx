@@ -59,6 +59,7 @@ export default function CreateSurveyPage() {
   const [externalShareLink, setExternalShareLink] = useState("");
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const shareLink = externalShareLink;
 
   // 檢查本地 token 是否對本機後端有效，若無效則清除並導向登入
@@ -132,6 +133,7 @@ export default function CreateSurveyPage() {
 
   const handleSaveSurvey = async (e) => {
     if (e) e.preventDefault();
+    if (isSaving) return;
 
     const validationMessage = validate();
     if (validationMessage) {
@@ -139,6 +141,7 @@ export default function CreateSurveyPage() {
       return;
     }
 
+    setIsSaving(true);
     try {
       const auth = user || JSON.parse(localStorage.getItem("dataanalysis_auth") || "{}");
       const token = auth?.token;
@@ -225,6 +228,8 @@ export default function CreateSurveyPage() {
         return;
       }
       alert("資料庫寫入失敗！請確認後端已開啟並連線至 Aiven。");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -332,9 +337,9 @@ export default function CreateSurveyPage() {
           </button>
 
           {error && <p style={{ color: "#ef4444", fontWeight: 800 }}>{error}</p>}
-          <button className="btn-generate" onClick={handleSaveSurvey}>
-            <i className="ri-magic-line"></i>
-            產生邀請碼並存入雲端
+          <button className="btn-generate" onClick={handleSaveSurvey} disabled={isSaving}>
+            <i className={isSaving ? "ri-loader-4-line" : "ri-magic-line"}></i>
+            {isSaving ? "儲存中..." : "產生邀請碼並存入雲端"}
           </button>
         </div>
       </main>

@@ -663,6 +663,25 @@
 
 .btn-generate:hover { background: #b88a8a; transform: translateY(-1px); }
 
+.btn-generate:disabled {
+  cursor: wait;
+  opacity: 0.72;
+  transform: none;
+}
+
+.btn-generate:disabled:hover {
+  background: #c9a0a0;
+  transform: none;
+}
+
+.btn-generate .ri-loader-4-line {
+  animation: survey-spin 0.9s linear infinite;
+}
+
+@keyframes survey-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* Success Modal */
 .success-modal-backdrop {
   position: fixed;
