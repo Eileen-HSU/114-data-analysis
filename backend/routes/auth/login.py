@@ -82,6 +82,7 @@ def login():
             "user_id": user.user_id,
             "user_name": user.user_name,
             "email": user.email,
+            "email_2fa_enabled": user.email_2fa_enabled,
         }
 
         if user.email_2fa_enabled:

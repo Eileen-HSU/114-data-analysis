@@ -79,7 +79,7 @@ export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState("info");
   const [isEditing, setIsEditing] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(user?.email_2fa_enabled === true);
   const [showTwoFactorNotice, setShowTwoFactorNotice] = useState(false);
   const [showPasswordNotice, setShowPasswordNotice] = useState(false);
   const [twoFactorModal, setTwoFactorModal] = useState(null);
