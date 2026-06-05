@@ -1,8 +1,9 @@
 from flask import Blueprint, jsonify, request
 from extensions import db
 from sqlalchemy import exists
-from models import Chat_History, Workspace
+from models import Chat_History, Workspace, UploadedFile
 from routes.auth.workspace import authorize_request
+import os
 
 chat_bp = Blueprint("chat", __name__)
 
@@ -73,12 +74,11 @@ def save_chat_history():
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
-    
+
 
 @chat_bp.route("/api/chat/history/<int:project_id>", methods=["GET"])
 def get_chat_history(project_id):
     try:
-
         db.session.rollback()
 
         # 1. 權限驗證
@@ -98,7 +98,7 @@ def get_chat_history(project_id):
         if not belongs_to_user:
             return jsonify({"error": "找不到該專案或您無權限操作"}), 404
 
-        # 3. 撈歷史訊息，依時間正序
+        # 3. 撈歷史訊息
         histories = (
             Chat_History.query
             .filter_by(project_id=project_id)
@@ -106,37 +106,157 @@ def get_chat_history(project_id):
             .all()
         )
 
-        chat_history = []
+        # 4. 撈該專案所有附件
+        chat_ids = [h.chat_id for h in histories]
+        files = UploadedFile.query.filter(
+            UploadedFile.chat_id.in_(chat_ids)
+        ).all() if chat_ids else []
+
+        # 5. 合併成統一列表
+        items = []
 
         for history in histories:
-            formatted_created_at = None
-            if history.created_at:
-                if hasattr(history.created_at, "isoformat"):
-                    formatted_created_at = history.created_at.isoformat()
-                else:
-                    formatted_created_at = str(history.created_at)
-
-            chat_history.append({
+            items.append({
+                "type":            "message",
                 "chat_id":         history.chat_id,
                 "project_id":      history.project_id,
                 "template_id":     history.template_id,
-                "sender_type":     history.sender_type, 
+                "sender_type":     history.sender_type,
                 "role":            "user" if history.sender_type == "user" else "assistant",
                 "message_content": history.message_content,
                 "content":         history.message_content,
                 "status":          history.status,
-                "created_at":      formatted_created_at, # ✨ 套用修正後的時間
+                "created_at":      history.created_at.isoformat() if history.created_at else None,
             })
 
+        for f in files:
+            items.append({
+                "type":        "file",
+                "file_id":     f.file_id,
+                "chat_id":     f.chat_id,
+                "file_name":   f.file_name,
+                "file_type":   f.file_type,
+                "uploaded_at": f.uploaded_at.isoformat() if f.uploaded_at else None,
+                "created_at":  f.uploaded_at.isoformat() if f.uploaded_at else None,
+            })
+
+        # 6. 按時間排序
+        items.sort(key=lambda x: x["created_at"] or "")
+
         return jsonify({
-            "project_id": project_id,
-            "chat_history": chat_history,
+            "project_id":   project_id,
+            "chat_history": items,
         }), 200
 
     except Exception as error:
-        db.session.rollback() 
+        db.session.rollback()
         print("[GET CHAT HISTORY ERROR]", repr(error))
         return jsonify({
             "error": str(error),
             "route": f"/api/chat/history/{project_id}",
         }), 500
+
+
+@chat_bp.route("/api/chat/<int:chat_id>/files", methods=["POST"])
+def upload_file(chat_id):
+    # 1. 權限驗證
+    current_user_id, auth_error = authorize_request()
+    if auth_error:
+        return auth_error
+
+    # 2. 確認 chat 存在且屬於該使用者
+    chat = Chat_History.query.get(chat_id)
+    if not chat:
+        return jsonify({"error": "找不到該對話"}), 404
+
+    belongs_to_user = db.session.query(
+        exists().where(
+            Workspace.project_id == chat.project_id,
+            Workspace.user_id    == current_user_id,
+            Workspace.is_deleted == False,
+        )
+    ).scalar()
+
+    if not belongs_to_user:
+        return jsonify({"error": "無權限操作"}), 403
+
+    # 3. 取得檔案
+    file = request.files.get("file")
+    if not file:
+        return jsonify({"error": "請提供檔案"}), 400
+
+    file_name = file.filename
+    ext = os.path.splitext(file_name)[-1].lower().lstrip(".")
+    if ext not in ("csv", "xlsx", "txt", "json"):
+        return jsonify({"error": "不支援的檔案格式"}), 400
+
+    # 4. 儲存檔案
+    upload_dir = os.path.join("uploads", str(chat.project_id))
+    os.makedirs(upload_dir, exist_ok=True)
+    file_path = os.path.join(upload_dir, file_name)
+    file.save(file_path)
+
+    # 5. 寫入 DB
+    uploaded = UploadedFile(
+        chat_id   = chat_id,
+        file_name = file_name,
+        file_path = file_path,
+        file_type = ext,
+    )
+    try:
+        db.session.add(uploaded)
+        db.session.commit()
+        return jsonify({
+            "message": "檔案上傳成功",
+            "file": {
+                "file_id":     uploaded.file_id,
+                "chat_id":     uploaded.chat_id,
+                "file_name":   uploaded.file_name,
+                "file_path":   uploaded.file_path,
+                "file_type":   uploaded.file_type,
+                "uploaded_at": uploaded.uploaded_at.isoformat() if uploaded.uploaded_at else None,
+            }
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+@chat_bp.route("/api/chat/<int:chat_id>/files", methods=["GET"])
+def get_chat_files(chat_id):
+    # 1. 權限驗證
+    current_user_id, auth_error = authorize_request()
+    if auth_error:
+        return auth_error
+
+    # 2. 確認權限
+    chat = Chat_History.query.get(chat_id)
+    if not chat:
+        return jsonify({"error": "找不到該對話"}), 404
+
+    belongs_to_user = db.session.query(
+        exists().where(
+            Workspace.project_id == chat.project_id,
+            Workspace.user_id    == current_user_id,
+            Workspace.is_deleted == False,
+        )
+    ).scalar()
+
+    if not belongs_to_user:
+        return jsonify({"error": "無權限操作"}), 403
+
+    # 3. 撈檔案
+    files = UploadedFile.query.filter_by(chat_id=chat_id).all()
+    return jsonify({
+        "chat_id": chat_id,
+        "files": [
+            {
+                "file_id":     f.file_id,
+                "file_name":   f.file_name,
+                "file_path":   f.file_path,
+                "file_type":   f.file_type,
+                "uploaded_at": f.uploaded_at.isoformat() if f.uploaded_at else None,
+            }
+            for f in files
+        ]
+    }), 200

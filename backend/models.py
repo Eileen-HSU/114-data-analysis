@@ -128,6 +128,6 @@ class UploadedFile(db.Model):
     chat_id     = db.Column(db.Integer, db.ForeignKey('Chat_History.chat_id'), nullable=False)
     file_name   = db.Column(db.String(255), nullable=False)
     file_path   = db.Column(db.String(1000), nullable=False)     
-    file_type   = db.Column(db.String(10), nullable=False)  # csv / xlsx / json / txt
-    is_survey   = db.Column(db.Boolean, default=False)      # True: 問卷數據 / False: 一般分析檔案
+    file_type   = db.Column(db.String(10), nullable=False)  # csv / xlsx / txt
+    # is_survey   = db.Column(db.Boolean, default=False)      # True: 問卷數據 / False: 一般分析檔案
     uploaded_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
