@@ -82,55 +82,7 @@ function getStoredSurveyRecords(user, apiSurveys = []) {
   return [...backendRecords, ...uniqueLocalRecords];
 }
 
-function buildSurveyChatContent(survey) {
-  const detail = normalizeSurveyDetail(survey);
-  const ratingQuestions = detail.questions.filter((q) => (q.type || q.question_type) === "rating");
-  const textQuestions = detail.questions.filter((q) => (q.type || q.question_type) !== "rating");
-  const lines = [];
-  lines.push(`📋 問卷名稱：${detail.title}`);
-  lines.push(`🔑 問卷代碼：${detail.code}`);
-  lines.push(`📅 建立日期：${detail.createdAt}`);
-  lines.push(`👥 回覆人數：${detail.responses.length} 人`);
-  lines.push(`❓ 題目數量：${detail.questions.length} 道`);
-  lines.push("");
-  if (ratingQuestions.length > 0) {
-    lines.push("── 評分題統計 ──");
-    ratingQuestions.forEach((q) => {
-      const qId = q.id !== undefined ? q.id : q.question_id;
-      let total = 0;
-      let cnt = 0;
-      detail.responses.forEach((r) => {
-        const v = Number(r.answers?.[qId]);
-        if (!isNaN(v) && r.answers?.[qId] !== "") { total += v; cnt++; }
-      });
-      const avg = cnt > 0 ? (total / cnt).toFixed(1) : "無資料";
-      lines.push(`Q${detail.questions.indexOf(q) + 1}. ${q.title || q.question_title}`);
-      lines.push(`   平均分：${avg} / 5（${cnt} 人作答）`);
-    });
-    lines.push("");
-  }
-  if (textQuestions.length > 0) {
-    lines.push("── 問答題回覆 ──");
-    textQuestions.forEach((q) => {
-      const qId = q.id !== undefined ? q.id : q.question_id;
-      const answers = detail.responses
-        .map((response) => ({
-          answer: response.answers?.[qId],
-          respondentIdentity: response.respondentIdentity || response.respondent_identity,
-        }))
-        .filter(({ answer }) => answer && (Array.isArray(answer) ? answer.length > 0 : answer !== ""));
-      lines.push(`Q${detail.questions.indexOf(q) + 1}. ${q.title || q.question_title}（${answers.length} 人回答）`);
-      answers.forEach(({ answer, respondentIdentity }, i) => {
-        const text = Array.isArray(answer) ? answer.join("、") : String(answer);
-        const identityLabel = respondentIdentity ? `填答人：${respondentIdentity}，` : "";
-        lines.push(`   ${i + 1}. ${identityLabel}${text}`);
-      });
-      lines.push("");
-    });
-  }
-  lines.push("請根據以上問卷資料，幫我進行深度分析，包含：關鍵發現、趨勢洞察、以及改善建議。");
-  return lines.join("\n");
-}
+
 
 function hasAnswerValue(answer) {
   if (Array.isArray(answer)) return answer.length > 0;
