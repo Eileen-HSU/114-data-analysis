@@ -187,7 +187,7 @@ def upload_file(chat_id):
 
     file_name = file.filename
     ext = os.path.splitext(file_name)[-1].lower().lstrip(".")
-    if ext not in ("csv", "xlsx", "txt", "json"):
+    if ext not in ("csv", "xlsx", "txt"):
         return jsonify({"error": "不支援的檔案格式"}), 400
 
     # 4. 儲存檔案
