@@ -92,6 +92,47 @@ export function CollectionProvider({ children }) {
     fetchSessions();
   }, [isLoggedIn]);
 
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    const fetchTrash = async () => {
+      try {
+        const res = await fetch(apiUrl("/api/workspace/user/trash"), {
+          headers: { "Content-Type": "application/json", ...getAuthHeader() },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const backendDeleted = data.map((w) => ({
+          id: `del-${w.project_id}`,           // 固定 id，方便去重
+          project_id: w.project_id,
+          name: w.project_name,
+          type: "chat",
+          deletedAt: w.deleted_at ? w.deleted_at.slice(0, 10) : "",
+          workspaceSession: {
+            id: String(w.project_id),
+            project_id: w.project_id,
+            title: w.project_name,
+            folder_name: w.folder_name ?? null,
+          },
+          originalData: null,
+        }));
+
+        setDeletedItems((prev) => {
+          // 本地 folder 類型保留，後端 chat 類型以後端為準
+          const localFolders = prev.filter((d) => d.type === "folder");
+          const backendIds = new Set(backendDeleted.map((d) => d.project_id));
+          const localOnly = localFolders.filter((d) => !backendIds.has(d.project_id));
+          return [...backendDeleted, ...localOnly];
+        });
+      } catch (err) {
+        console.error("同步垃圾桶失敗", err);
+      }
+    };
+
+    fetchTrash();
+  }, [isLoggedIn]);
+
   // 新增
   const addChatToCollection = (title, sessionId) => {
     setWorkspaceSessions((prev) => {
@@ -225,13 +266,19 @@ export function CollectionProvider({ children }) {
             item.workspaceSession?.folder_name ??
             item.originalData?.folder_name ??
             null;
-          await fetch(apiUrl(`/api/workspace/${item.project_id}/restore`), {
+          const res = await fetch(apiUrl(`/api/workspace/${item.project_id}/restore`), {
             method: "POST",
             headers: { "Content-Type": "application/json", ...getAuthHeader() },
             body: JSON.stringify({ folder_name: folderName }),
           });
+          if (!res.ok) {
+            const err = await res.json();
+            console.error("還原失敗", err);
+            return; // 後端失敗就不更新前端
+          }
         } catch (err) {
           console.error("還原失敗", err);
+          return;
         }
       }
       setWorkspaceSessions((prev) => {
@@ -240,7 +287,7 @@ export function CollectionProvider({ children }) {
       });
     }
 
-    setDeletedItems((prev) => prev.filter((d) => d.project_id !== item.project_id));
+    setDeletedItems((prev) => prev.filter((d) => d.id !== item.id));
 
     recordActivity({
       text: `還原「${item.name}」`,
