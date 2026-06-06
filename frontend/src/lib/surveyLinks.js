@@ -2,7 +2,7 @@ import { apiUrl } from "./api";
 
 export function buildSurveyFillPath(code) {
   const rawCode = typeof code === "object" && code !== null
-    ? code.short_code || code.shortCode || code.access_code || code.code
+    ? code.access_code || code.code || code.short_code || code.shortCode
     : code;
   const normalizedCode = String(rawCode || "").trim().toUpperCase();
   return normalizedCode ? `/${encodeURIComponent(normalizedCode)}` : "/survey/fill";
