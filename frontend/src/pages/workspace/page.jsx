@@ -918,38 +918,55 @@ export default function WorkspacePage() {
     setDeleteTarget(session);
   };
 
-  // ── 刪除：先更新 UI，背景再打 API ────────────────────────
-  const confirmDeleteSession = () => {
+  // 刪除功能
+  const confirmDeleteSession = async () => {
     if (!deleteTarget) return;
+
     const { id: sessionId, project_id: projectId } = deleteTarget;
 
-    // 1. 立刻關閉 modal、更新 UI
-    setDeleteTarget(null);
-    deleteChatSession(sessionId);
-    setSessions((currentList) =>
-      (Array.isArray(currentList) ? currentList : []).filter(
-        (session) => session.id !== sessionId
-      )
-    );
-    setRenamingId(null);
-    setSearchQuery("");
-    if (activeSessionId === sessionId) {
-      const nextSession = sessions.find((s) => s.id !== sessionId);
-      setActiveSessionId(nextSession?.id || null);
-      if (nextSession?.id) {
-        localStorage.setItem(ACTIVE_WORKSPACE_KEY, nextSession.id);
-      } else {
-        localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
-      }
-    }
-    showToast("已刪除工作區，並移至最近刪除");
+    try {
+      if (projectId) {
+        const res = await fetch(apiUrl(`/api/workspace/${projectId}`), {
+          method: "DELETE",
+          headers: getAuthHeader(),
+        });
 
-    // 2. 背景打 API，不阻塞 UI
-    if (projectId) {
-      fetch(apiUrl(`/api/workspace/${projectId}`), {
-        method: "DELETE",
-        headers: getAuthHeader(),
-      }).catch((err) => console.error("刪除工作區失敗", err));
+        if (!res.ok) {
+          throw new Error(`刪除工作區失敗：${res.status}`);
+        }
+      }
+
+      // 後端成功後，前端才移除
+      setDeleteTarget(null);
+      deleteChatSession(sessionId);
+
+      setSessions((currentList) =>
+        (Array.isArray(currentList) ? currentList : []).filter(
+          (session) => session.id !== sessionId
+        )
+      );
+
+      setRenamingId(null);
+      setSearchQuery("");
+
+      if (activeSessionId === sessionId) {
+        const nextSession = sessions.find(
+          (session) => session.id !== sessionId
+        );
+
+        setActiveSessionId(nextSession?.id || null);
+
+        if (nextSession?.id) {
+          localStorage.setItem(ACTIVE_WORKSPACE_KEY, nextSession.id);
+        } else {
+          localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
+        }
+      }
+
+      showToast("已刪除工作區，並移至最近刪除");
+    } catch (err) {
+      console.error("刪除工作區失敗", err);
+      showToast("刪除失敗，請稍後再試");
     }
   };
 
