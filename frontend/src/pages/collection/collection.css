@@ -451,37 +451,6 @@
 .empty-loose i { font-size: 32px; margin-bottom: 8px; }
 .empty-loose p { font-size: 15px; margin: 0; }
 
-.collection-inline-loader {
-  font-size: 14px;
-  color: #8fb8d8;
-}
-
-.collection-list-loading {
-  min-height: 104px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  background: white;
-  border: 1px dashed #cfe5f6;
-  border-radius: 12px;
-  color: #8da2bf;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.collection-list-loading i {
-  width: 36px;
-  height: 36px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  background: #eef7fd;
-  color: #6a98bd;
-  font-size: 18px;
-}
-
 .deleted-list {
   display: flex;
   flex-direction: column;
