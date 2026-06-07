@@ -13,11 +13,15 @@ workspace_bp = Blueprint("workspace", __name__)
 SOFT_DELETE_DAYS = 30
 
 
-def get_jwt_secret():
-    secret = os.getenv("JWT_SECRET_KEY")
-    if not secret:
-        raise RuntimeError("JWT_SECRET_KEY 環境變數未設定")
-    return secret
+_JWT_SECRET: str | None = None
+
+def get_jwt_secret() -> str:
+    global _JWT_SECRET
+    if _JWT_SECRET is None:
+        _JWT_SECRET = os.getenv("JWT_SECRET_KEY")
+        if not _JWT_SECRET:
+            raise RuntimeError("JWT_SECRET_KEY 環境變數未設定")
+    return _JWT_SECRET
 
 
 def verify_token(request):
@@ -129,16 +133,13 @@ def create_workspace():
 
 @workspace_bp.route("/api/workspace/<int:project_id>", methods=["GET"])
 def get_workspace(project_id):
+    '''取得單一專案的詳細資訊，包含是否在垃圾桶中、剩餘天數等'''
     current_user_id, auth_error = authorize_request()
     if auth_error:
         return auth_error
-    workspace = Workspace.query.filter_by(
-        project_id = project_id,
-        user_id    = current_user_id,
-        is_deleted = False,
-    ).first()
 
-    if not workspace:
+    workspace = db.session.get(Workspace, project_id)
+    if not workspace or workspace.user_id != current_user_id or workspace.is_deleted:
         return jsonify({"error": "找不到專案"}), 404
 
     return jsonify(workspace_to_dict(workspace)), 200

@@ -2,6 +2,7 @@ import re
 import os
 import logging
 from datetime import datetime, timedelta
+from sqlalchemy import exists
 
 import jwt
 from flask import Blueprint, request, jsonify
@@ -73,7 +74,7 @@ def register():
         return jsonify({"error": "電子郵件格式不正確"}), 400
 
     # 3. email 是否已註冊
-    if User.query.filter_by(email=email).first():
+    if db.session.query(exists().where(User.email == email)).scalar():
         return jsonify({"error": "此電子郵件已被註冊"}), 409
 
     # 4. 密碼強度驗證

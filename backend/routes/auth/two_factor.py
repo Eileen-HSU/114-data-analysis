@@ -21,11 +21,15 @@ _last_otp_sent = {}
 _disable_attempts = {}
 
 
-def get_jwt_secret():
-    secret = os.getenv("JWT_SECRET_KEY")
-    if not secret:
-        raise RuntimeError("JWT_SECRET_KEY 環境變數未設定")
-    return secret
+_JWT_SECRET: str | None = None
+
+def get_jwt_secret() -> str:
+    global _JWT_SECRET
+    if _JWT_SECRET is None:
+        _JWT_SECRET = os.getenv("JWT_SECRET_KEY")
+        if not _JWT_SECRET:
+            raise RuntimeError("JWT_SECRET_KEY 環境變數未設定")
+    return _JWT_SECRET
 
 
 def verify_token(req):
@@ -129,7 +133,8 @@ def enable_2fa():
         remaining = MAX_OTP_ATTEMPTS - record.attempts
         return jsonify({"error": f"驗證碼錯誤，剩餘 {remaining} 次機會"}), 400
 
-    user = User.query.filter_by(email=email).first()
+    user = db.session.get(User, record.user_id)
+
     user.email_2fa_enabled = True
     record.is_used = True
     db.session.commit()
@@ -142,7 +147,7 @@ def get_2fa_status():
     if error:
         return jsonify({"error": "請先登入"}), 401
     
-    user = User.query.filter_by(user_id=auth_user_id).first()
+    user = db.session.get(User, auth_user_id)
     if not user:
         return jsonify({"error": "找不到使用者"}), 404
     
@@ -197,8 +202,8 @@ def login_verify_2fa():
         remaining = MAX_OTP_ATTEMPTS - record.attempts
         return jsonify({"error": f"驗證碼錯誤，剩餘 {remaining} 次機會"}), 400
 
-    user = User.query.filter_by(email=email).first()
-
+    user = db.session.get(User, record.user_id)
+    
     token = jwt.encode({
         'user_id': user.user_id,
         'exp': taiwan_now() + timedelta(hours=24)
