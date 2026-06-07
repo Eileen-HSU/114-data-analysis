@@ -44,7 +44,7 @@ export default function CollectionPage() {
   const [newFolderName, setNewFolderName] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isDeletedViewLoading, setIsDeletedViewLoading] = useState(false);
+  const [restoringId, setRestoringId] = useState(null);
   const [permanentDeletingId, setPermanentDeletingId] = useState(null);
   const [renamingFileId, setRenamingFileId] = useState(null);
   const [renameFileValue, setRenameFileValue] = useState("");
@@ -58,14 +58,6 @@ export default function CollectionPage() {
       window.history.replaceState({}, "");
     }
   }, [location.state]);
-
-  useEffect(() => {
-    if (activeView !== "deleted") return undefined;
-
-    setIsDeletedViewLoading(true);
-    const timer = setTimeout(() => setIsDeletedViewLoading(false), 450);
-    return () => clearTimeout(timer);
-  }, [activeView, deletedItems.length]);
 
   if (!isLoggedIn) {
     return (
@@ -218,12 +210,22 @@ export default function CollectionPage() {
 
   // 新增資料夾
   const handlePermanentDelete = async (item) => {
-    if (!item || permanentDeletingId) return;
+    if (!item || permanentDeletingId || restoringId) return;
     setPermanentDeletingId(item.id);
     try {
       await permanentDelete(item, item.type === "folder");
     } finally {
       setPermanentDeletingId(null);
+    }
+  };
+
+  const handleRestoreItem = async (item) => {
+    if (!item || restoringId || permanentDeletingId) return;
+    setRestoringId(item.id);
+    try {
+      await restoreItem(item);
+    } finally {
+      setRestoringId(null);
     }
   };
 
@@ -651,16 +653,9 @@ export default function CollectionPage() {
               <h2 className="section-heading">
                 <span className="section-icon deleted-icon"><i className="ri-delete-bin-line"></i></span>
                 最近刪除
-                <span className="loose-count">
-                  {isDeletedViewLoading ? <i className="ri-loader-4-line ri-spin collection-inline-loader"></i> : `${deletedItems.length} 個`}
-                </span>
+                <span className="loose-count">{deletedItems.length} 個</span>
               </h2>
-              {isDeletedViewLoading ? (
-                <div className="collection-list-loading" role="status" aria-live="polite">
-                  <i className="ri-loader-4-line ri-spin"></i>
-                  <span>最近刪除載入中...</span>
-                </div>
-              ) : deletedItems.length === 0 ? (
+              {deletedItems.length === 0 ? (
                 <div className="empty-loose">
                   <i className="ri-delete-bin-line"></i>
                   <p>目前沒有最近刪除的項目。</p>
@@ -671,6 +666,7 @@ export default function CollectionPage() {
                     <div className="deleted-item" key={item.id}>
                       {(() => {
                         const isPermanentlyDeleting = permanentDeletingId === item.id;
+                        const isRestoring = restoringId === item.id;
                         return (
                           <>
                       <div className="deleted-icon-box">
@@ -683,11 +679,11 @@ export default function CollectionPage() {
                         </div>
                       </div>
                       <div className="deleted-actions">
-                        <button className="btn-deleted-restore" onClick={() => restoreItem(item)} disabled={isPermanentlyDeleting}>
-                          <i className="ri-arrow-go-back-line"></i>
-                          還原
+                        <button className="btn-deleted-restore" onClick={() => handleRestoreItem(item)} disabled={isPermanentlyDeleting || isRestoring}>
+                          <i className={isRestoring ? "ri-loader-4-line ri-spin" : "ri-arrow-go-back-line"}></i>
+                          {isRestoring ? "還原中" : "還原"}
                         </button>
-                        <button className="btn-deleted-remove" onClick={() => handlePermanentDelete(item)} disabled={isPermanentlyDeleting}>
+                        <button className="btn-deleted-remove" onClick={() => handlePermanentDelete(item)} disabled={isPermanentlyDeleting || isRestoring}>
                           <i className={isPermanentlyDeleting ? "ri-loader-4-line ri-spin" : "ri-delete-bin-2-line"}></i>
                           {isPermanentlyDeleting ? "刪除中" : "永久刪除"}
                         </button>
