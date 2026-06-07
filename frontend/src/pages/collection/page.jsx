@@ -44,6 +44,7 @@ export default function CollectionPage() {
   const [newFolderName, setNewFolderName] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isDeletedViewLoading, setIsDeletedViewLoading] = useState(false);
   const [permanentDeletingId, setPermanentDeletingId] = useState(null);
   const [renamingFileId, setRenamingFileId] = useState(null);
   const [renameFileValue, setRenameFileValue] = useState("");
@@ -57,6 +58,14 @@ export default function CollectionPage() {
       window.history.replaceState({}, "");
     }
   }, [location.state]);
+
+  useEffect(() => {
+    if (activeView !== "deleted") return undefined;
+
+    setIsDeletedViewLoading(true);
+    const timer = setTimeout(() => setIsDeletedViewLoading(false), 450);
+    return () => clearTimeout(timer);
+  }, [activeView, deletedItems.length]);
 
   if (!isLoggedIn) {
     return (
@@ -642,9 +651,16 @@ export default function CollectionPage() {
               <h2 className="section-heading">
                 <span className="section-icon deleted-icon"><i className="ri-delete-bin-line"></i></span>
                 最近刪除
-                <span className="loose-count">{deletedItems.length} 個</span>
+                <span className="loose-count">
+                  {isDeletedViewLoading ? <i className="ri-loader-4-line ri-spin collection-inline-loader"></i> : `${deletedItems.length} 個`}
+                </span>
               </h2>
-              {deletedItems.length === 0 ? (
+              {isDeletedViewLoading ? (
+                <div className="collection-list-loading" role="status" aria-live="polite">
+                  <i className="ri-loader-4-line ri-spin"></i>
+                  <span>最近刪除載入中...</span>
+                </div>
+              ) : deletedItems.length === 0 ? (
                 <div className="empty-loose">
                   <i className="ri-delete-bin-line"></i>
                   <p>目前沒有最近刪除的項目。</p>

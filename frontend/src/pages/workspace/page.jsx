@@ -389,6 +389,7 @@ export default function WorkspacePage() {
   const [renameValue, setRenameValue] = useState("");
   const [showSurveyPicker, setShowSurveyPicker] = useState(false);
   const [surveyPickerSearch, setSurveyPickerSearch] = useState("");
+  const [isSurveyPickerLoading, setIsSurveyPickerLoading] = useState(false);
   const [apiSurveys, setApiSurveys] = useState([]);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [toastMsg, setToastMsg] = useState(null);
@@ -617,6 +618,14 @@ export default function WorkspacePage() {
     };
     if (showSurveyPicker) document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showSurveyPicker]);
+
+  useEffect(() => {
+    if (!showSurveyPicker) return undefined;
+
+    setIsSurveyPickerLoading(true);
+    const timer = setTimeout(() => setIsSurveyPickerLoading(false), 450);
+    return () => clearTimeout(timer);
   }, [showSurveyPicker]);
 
   // Handle open session from collection
@@ -1301,7 +1310,12 @@ export default function WorkspacePage() {
                             )}
                           </div>
                           <div className="survey-picker-list">
-                            {filteredSurveyPicker.length === 0 ? (
+                            {isSurveyPickerLoading ? (
+                              <div className="survey-picker-loading" role="status" aria-live="polite">
+                                <i className="ri-loader-4-line ri-spin"></i>
+                                <span>問卷載入中...</span>
+                              </div>
+                            ) : filteredSurveyPicker.length === 0 ? (
                               <div className="survey-picker-empty">
                                 <i className="ri-search-line"></i>
                                 <p>找不到相關問卷</p>
