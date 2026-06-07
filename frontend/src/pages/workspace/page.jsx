@@ -798,13 +798,24 @@ export default function WorkspacePage() {
     if (!input.trim() && !attachedFile) return;
     if (!activeSessionId) return;
 
-    const content = attachedFile ? `[檔案：${attachedFile.name}] ${input}` : input;
-    const autoTitle = buildAutoSessionTitle(input, attachedFile);
+    const draftInput = input;
+    const draftFile = attachedFile;
+    const sid = activeSessionId;
+
+    setInput("");
+    setAttachedFile(null);
+    setIsTyping(true);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+
+    const content = draftFile ? `[檔案：${draftFile.name}] ${draftInput}` : draftInput;
+    const autoTitle = buildAutoSessionTitle(draftInput, draftFile);
     const userMsg = { id: Date.now().toString(), role: "user", content };
 
     setSessions((currentList) =>
       (Array.isArray(currentList) ? currentList : []).map((session) => {
-        if (session.id !== activeSessionId) return session;
+        if (session.id !== sid) return session;
         const shouldAutoTitle = session.title === "新工作區";
         return {
           ...session,
@@ -814,8 +825,8 @@ export default function WorkspacePage() {
       })
     );
 
-    const session = sessions.find((s) => s.id === activeSessionId);
-    if (session?.title === "新工作區") syncChatTitle(activeSessionId, autoTitle);
+    const session = sessions.find((s) => s.id === sid);
+    if (session?.title === "新工作區") syncChatTitle(sid, autoTitle);
 
     const projectId = session?.project_id;
 
@@ -843,11 +854,6 @@ export default function WorkspacePage() {
       });
     }
 
-    setInput("");
-    setAttachedFile(null);
-    setIsTyping(true);
-
-    const sid = activeSessionId;
     setTimeout(() => {
       const reply = buildAssistantReply(content);
       const aiMsg = { id: Date.now().toString(), role: "assistant", content: reply };
@@ -1227,6 +1233,7 @@ export default function WorkspacePage() {
                         <i className="ri-robot-line"></i>
                       </div>
                       <div className="message-bubble assistant-bubble typing-bubble">
+                        <span className="typing-label">AI 思考中</span>
                         <div className="typing-dots">
                           <span></span><span></span><span></span>
                         </div>
