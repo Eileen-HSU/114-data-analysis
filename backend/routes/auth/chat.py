@@ -37,17 +37,15 @@ def save_chat_history():
         return jsonify({"error": "sender_type 必須為 'user' 或 'ai'"}), 400
 
     # 6. 權限防禦
-    belongs_to_user = db.session.query(
-        exists().where(
-            Workspace.project_id == project_id,
-            Workspace.user_id    == current_user_id,
-            Workspace.is_deleted == False,
-        )
-    ).scalar()
+    workspace = Workspace.query.filter_by(
+        project_id = project_id,
+        user_id    = current_user_id,
+        is_deleted = False,
+    ).options(db.load_only(Workspace.project_id)).first()
 
-    if not belongs_to_user:
+    if not workspace:
         return jsonify({"error": "找不到該專案或您無權限操作"}), 404
-
+    
     # 7. 寫入 DB
     chat = Chat_History(
         project_id      = project_id,
@@ -79,26 +77,20 @@ def save_chat_history():
 @chat_bp.route("/api/chat/history/<int:project_id>", methods=["GET"])
 def get_chat_history(project_id):
     try:
-        db.session.rollback()
-
-        # 1. 權限驗證
         current_user_id, auth_error = authorize_request()
         if auth_error:
             return auth_error
 
-        # 2. 權限防禦
-        belongs_to_user = db.session.query(
-            exists().where(
-                Workspace.project_id == project_id,
-                Workspace.user_id == current_user_id,
-                Workspace.is_deleted == False,
-            )
-        ).scalar()
+        # 權限 + 存在性一次確認
+        workspace = Workspace.query.filter_by(
+            project_id = project_id,
+            user_id    = current_user_id,
+            is_deleted = False,
+        ).options(db.load_only(Workspace.project_id)).first()
 
-        if not belongs_to_user:
+        if not workspace:
             return jsonify({"error": "找不到該專案或您無權限操作"}), 404
 
-        # 3. 撈歷史訊息
         histories = (
             Chat_History.query
             .filter_by(project_id=project_id)
@@ -106,31 +98,29 @@ def get_chat_history(project_id):
             .all()
         )
 
-        # 4. 撈該專案所有附件
         chat_ids = [h.chat_id for h in histories]
-        files = UploadedFile.query.filter(
-            UploadedFile.chat_id.in_(chat_ids)
-        ).all() if chat_ids else []
+        files = (
+            UploadedFile.query
+            .filter(UploadedFile.chat_id.in_(chat_ids))
+            .all()
+        ) if chat_ids else []
 
-        # 5. 合併成統一列表
-        items = []
-
-        for history in histories:
-            items.append({
+        items = [
+            {
                 "type":            "message",
-                "chat_id":         history.chat_id,
-                "project_id":      history.project_id,
-                "template_id":     history.template_id,
-                "sender_type":     history.sender_type,
-                "role":            "user" if history.sender_type == "user" else "assistant",
-                "message_content": history.message_content,
-                "content":         history.message_content,
-                "status":          history.status,
-                "created_at":      history.created_at.isoformat() if history.created_at else None,
-            })
-
-        for f in files:
-            items.append({
+                "chat_id":         h.chat_id,
+                "project_id":      h.project_id,
+                "template_id":     h.template_id,
+                "sender_type":     h.sender_type,
+                "role":            "user" if h.sender_type == "user" else "assistant",
+                "message_content": h.message_content,
+                "content":         h.message_content,
+                "status":          h.status,
+                "created_at":      h.created_at.isoformat() if h.created_at else None,
+            }
+            for h in histories
+        ] + [
+            {
                 "type":        "file",
                 "file_id":     f.file_id,
                 "chat_id":     f.chat_id,
@@ -138,47 +128,42 @@ def get_chat_history(project_id):
                 "file_type":   f.file_type,
                 "uploaded_at": f.uploaded_at.isoformat() if f.uploaded_at else None,
                 "created_at":  f.uploaded_at.isoformat() if f.uploaded_at else None,
-            })
+            }
+            for f in files
+        ]
 
-        # 6. 按時間排序
         items.sort(key=lambda x: x["created_at"] or "")
 
-        return jsonify({
-            "project_id":   project_id,
-            "chat_history": items,
-        }), 200
+        return jsonify({"project_id": project_id, "chat_history": items}), 200
 
     except Exception as error:
         db.session.rollback()
         print("[GET CHAT HISTORY ERROR]", repr(error))
-        return jsonify({
-            "error": str(error),
-            "route": f"/api/chat/history/{project_id}",
-        }), 500
+        return jsonify({"error": str(error), "route": f"/api/chat/history/{project_id}"}), 500
 
+def _get_chat_with_auth(chat_id, user_id):
+    """回傳 chat 物件，同時驗證該 user 有權限，沒有就回 None"""
+    return (
+        db.session.query(Chat_History)
+        .join(Workspace, Workspace.project_id == Chat_History.project_id)
+        .filter(
+            Chat_History.chat_id  == chat_id,
+            Workspace.user_id     == user_id,
+            Workspace.is_deleted  == False,
+        )
+        .first()
+    )
 
 @chat_bp.route("/api/chat/<int:chat_id>/files", methods=["POST"])
 def upload_file(chat_id):
-    # 1. 權限驗證
+    '''上傳檔案並關聯到 chat_id'''
     current_user_id, auth_error = authorize_request()
     if auth_error:
         return auth_error
 
-    # 2. 確認 chat 存在且屬於該使用者
-    chat = Chat_History.query.get(chat_id)
+    chat = _get_chat_with_auth(chat_id, current_user_id)
     if not chat:
-        return jsonify({"error": "找不到該對話"}), 404
-
-    belongs_to_user = db.session.query(
-        exists().where(
-            Workspace.project_id == chat.project_id,
-            Workspace.user_id    == current_user_id,
-            Workspace.is_deleted == False,
-        )
-    ).scalar()
-
-    if not belongs_to_user:
-        return jsonify({"error": "無權限操作"}), 403
+        return jsonify({"error": "找不到該對話或無權限操作"}), 404
 
     # 3. 取得檔案
     file = request.files.get("file")
@@ -224,28 +209,16 @@ def upload_file(chat_id):
 
 @chat_bp.route("/api/chat/<int:chat_id>/files", methods=["GET"])
 def get_chat_files(chat_id):
-    # 1. 權限驗證
+    '''回傳該 chat 底下的所有檔案資訊'''
     current_user_id, auth_error = authorize_request()
     if auth_error:
         return auth_error
 
-    # 2. 確認權限
-    chat = Chat_History.query.get(chat_id)
+    chat = _get_chat_with_auth(chat_id, current_user_id)
     if not chat:
-        return jsonify({"error": "找不到該對話"}), 404
-
-    belongs_to_user = db.session.query(
-        exists().where(
-            Workspace.project_id == chat.project_id,
-            Workspace.user_id    == current_user_id,
-            Workspace.is_deleted == False,
-        )
-    ).scalar()
-
-    if not belongs_to_user:
-        return jsonify({"error": "無權限操作"}), 403
-
-    # 3. 撈檔案
+        return jsonify({"error": "找不到該對話或無權限操作"}), 404
+    
+    # 撈檔案
     files = UploadedFile.query.filter_by(chat_id=chat_id).all()
     return jsonify({
         "chat_id": chat_id,

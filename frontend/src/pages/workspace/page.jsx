@@ -918,9 +918,13 @@ export default function WorkspacePage() {
     setDeleteTarget(session);
   };
 
-  // 刪除功能
+  // ── 刪除功能 ────────────────────────────────
+  const isDeletingRef = useRef(false);
+
   const confirmDeleteSession = async () => {
     if (!deleteTarget) return;
+    if (isDeletingRef.current) return; // 防止重複點擊刪除導致的多次呼叫
+    isDeletingRef.current = true;
 
     const { id: sessionId, project_id: projectId } = deleteTarget;
 
@@ -967,6 +971,8 @@ export default function WorkspacePage() {
     } catch (err) {
       console.error("刪除工作區失敗", err);
       showToast("刪除失敗，請稍後再試");
+    } finally {
+      isDeletingRef.current = false; 
     }
   };
 
