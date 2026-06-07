@@ -567,11 +567,22 @@ export default function WorkspacePage() {
 
           if (fetchedMessages.length > 0) {
             setSessions((currentList) =>
-              (Array.isArray(currentList) ? currentList : []).map((session) =>
-                session.id === activeSessionId
-                  ? { ...session, messages: [WELCOME_MSG, ...fetchedMessages] }
-                  : session
-              )
+              (Array.isArray(currentList) ? currentList : []).map((session) => {
+                if (session.id !== activeSessionId) return session;
+
+                const localMessages = Array.isArray(session.messages) ? session.messages : [];
+                const messageKey = (msg) => `${msg.role || ""}::${msg.content || ""}`;
+                const fetchedKeys = new Set(fetchedMessages.map(messageKey));
+                const pendingLocalMessages = localMessages.filter((msg) => {
+                  if (msg.id === WELCOME_MSG.id) return false;
+                  return !fetchedKeys.has(messageKey(msg));
+                });
+
+                return {
+                  ...session,
+                  messages: [WELCOME_MSG, ...fetchedMessages, ...pendingLocalMessages],
+                };
+              })
             );
           }
         } catch (err) {
@@ -844,9 +855,9 @@ export default function WorkspacePage() {
     const chatId = data?.chat_history?.chat_id;
 
     // 有檔案才上傳
-    if (attachedFile && chatId) {
+    if (draftFile && chatId) {
       const form = new FormData();
-      form.append("file", attachedFile);
+      form.append("file", draftFile);
       await fetch(apiUrl(`/api/chat/${chatId}/files`), {
         method: "POST",
         headers: getAuthHeader(),
