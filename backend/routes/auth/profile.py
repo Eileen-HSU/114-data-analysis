@@ -17,11 +17,15 @@ def taiwan_now():
     return datetime.utcnow() + timedelta(hours=8)
 
 
-def get_jwt_secret():
-    secret = os.getenv("JWT_SECRET_KEY")
-    if not secret:
-        raise RuntimeError("JWT_SECRET_KEY 環境變數未設定")
-    return secret
+_JWT_SECRET: str | None = None
+
+def get_jwt_secret() -> str:
+    global _JWT_SECRET
+    if _JWT_SECRET is None:
+        _JWT_SECRET = os.getenv("JWT_SECRET_KEY")
+        if not _JWT_SECRET:
+            raise RuntimeError("JWT_SECRET_KEY 環境變數未設定")
+    return _JWT_SECRET
 
 
 def verify_token(request):

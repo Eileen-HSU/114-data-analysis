@@ -159,7 +159,7 @@ def reset_password():
         remaining = 5 - record.attempts
         return jsonify({"error": f"驗證碼錯誤，剩餘 {remaining} 次機會"}), 400
 
-    user = User.query.get(record.user_id)
+    user = db.session.get(User, record.user_id)
     if not user:
         return jsonify({"error": "找不到使用者"}), 404
 
