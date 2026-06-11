@@ -344,7 +344,7 @@ export default function CreateSurveyPage() {
           {error && <p style={{ color: "#ef4444", fontWeight: 800 }}>{error}</p>}
           <button className="btn-generate" onClick={handleSaveSurvey} disabled={isSaving}>
             <i className={isSaving ? "ri-loader-4-line" : "ri-magic-line"}></i>
-            {isSaving ? "儲存中..." : "產生邀請碼並存入雲端"}
+            {isSaving ? "儲存中..." : "完成問卷建立"}
           </button>
         </div>
       </main>
