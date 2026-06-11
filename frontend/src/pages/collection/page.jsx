@@ -51,6 +51,8 @@ export default function CollectionPage() {
   const [renamingFolderId, setRenamingFolderId] = useState(null);
   const [renameFolderValue, setRenameFolderValue] = useState("");
   const [fileMenuId, setFileMenuId] = useState(null);
+  const [renameTarget, setRenameTarget] = useState(null);
+  const [isSavingRename, setIsSavingRename] = useState(false);
 
   useEffect(() => {
     if (location.state?.activeView) {
@@ -317,6 +319,82 @@ export default function CollectionPage() {
     setRenamingFileId(null);
   };
 
+  const openRenameModal = (target) => {
+    setRenameTarget(target);
+    setRenameFileValue(target.name || "");
+    setRenamingFileId(null);
+    setFileMenuId(null);
+  };
+
+  const closeRenameModal = () => {
+    if (isSavingRename) return;
+    setRenameTarget(null);
+    setRenameFileValue("");
+  };
+
+  const updateWorkspaceProjectName = async (projectId, projectName) => {
+    if (!projectId) return;
+    const authUser = JSON.parse(localStorage.getItem("dataanalysis_auth"));
+    const token = authUser?.token;
+    await fetch(`${import.meta.env.VITE_API_BASE_URL || ""}/api/workspace/${projectId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ project_name: projectName }),
+    });
+  };
+
+  const submitRename = async () => {
+    const newName = renameFileValue.trim();
+    if (!renameTarget || !newName || isSavingRename) return;
+    setIsSavingRename(true);
+
+    try {
+      if (renameTarget.type === "file") {
+        setFiles((prev) =>
+          prev.map((file) => (file.id === renameTarget.id ? { ...file, name: newName } : file))
+        );
+        if (renameTarget.fileType === "chat" && renameTarget.sessionId) {
+          setWorkspaceSessions((prev) =>
+            prev.map((session) =>
+              String(session.id) === String(renameTarget.sessionId)
+                ? { ...session, title: newName, name: newName }
+                : session
+            )
+          );
+          await updateWorkspaceProjectName(renameTarget.sessionId, newName);
+        }
+      }
+
+      if (renameTarget.type === "session") {
+        setWorkspaceSessions((prev) =>
+          prev.map((session) =>
+            String(session.id) === String(renameTarget.id)
+              ? { ...session, title: newName, name: newName }
+              : session
+          )
+        );
+        await updateWorkspaceProjectName(renameTarget.projectId || renameTarget.id, newName);
+      }
+
+      recordActivity({
+        text: `重新命名檔案為「${newName}」`,
+        icon: "ri-edit-line",
+        iconBg: "bg-violet-50",
+        iconColor: "text-violet",
+      });
+      setRenameTarget(null);
+      setRenameFileValue("");
+    } catch (err) {
+      console.error("重新命名失敗", err);
+      alert("重新命名失敗，請稍後再試。");
+    } finally {
+      setIsSavingRename(false);
+    }
+  };
+
   // 拖曳
   const resetDragState = () => {
     setDraggingId(null);
@@ -560,7 +638,7 @@ export default function CollectionPage() {
                                       compact
                                       renamingId={renamingFileId}
                                       renameValue={renameFileValue}
-                                      onRenameStart={() => { setRenamingFileId(file.id); setRenameFileValue(file.name); }}
+                                      onRenameStart={() => openRenameModal({ type: "file", id: file.id, name: file.name, fileType: file.type, sessionId: file.sessionId })}
                                       onRenameChange={setRenameFileValue}
                                       onRenameSave={() => saveFileRename(file.id)}
                                       onRenameCancel={() => setRenamingFileId(null)}
@@ -580,7 +658,7 @@ export default function CollectionPage() {
                                       compact
                                       renamingId={renamingFileId}
                                       renameValue={renameFileValue}
-                                      onRenameStart={() => { setRenamingFileId(session.id); setRenameFileValue(session.title); }}
+                                      onRenameStart={() => openRenameModal({ type: "session", id: session.id, name: session.title, projectId: session.project_id || session.id })}
                                       onRenameChange={setRenameFileValue}
                                       onRenameSave={() => saveSessionRename(session.id)}
                                       onRenameCancel={() => setRenamingFileId(null)}
@@ -632,7 +710,7 @@ export default function CollectionPage() {
                             file={file}
                             renamingId={renamingFileId}
                             renameValue={renameFileValue}
-                            onRenameStart={() => { setRenamingFileId(file.id); setRenameFileValue(file.name); }}
+                            onRenameStart={() => openRenameModal({ type: "file", id: file.id, name: file.name, fileType: file.type, sessionId: file.sessionId })}
                             onRenameChange={setRenameFileValue}
                             onRenameSave={() => saveFileRename(file.id)}
                             onRenameCancel={() => setRenamingFileId(null)}
@@ -652,7 +730,7 @@ export default function CollectionPage() {
                             file={{ ...session, name: session.title, type: "chat", size: session.date, sessionId: session.id }}
                             renamingId={renamingFileId}
                             renameValue={renameFileValue}
-                            onRenameStart={() => { setRenamingFileId(session.id); setRenameFileValue(session.title); }}
+                            onRenameStart={() => openRenameModal({ type: "session", id: session.id, name: session.title, projectId: session.project_id || session.id })}
                             onRenameChange={setRenameFileValue}
                             onRenameSave={() => saveSessionRename(session.id)}
                             onRenameCancel={() => setRenamingFileId(null)}
@@ -751,6 +829,41 @@ export default function CollectionPage() {
             <div className="d-flex gap-2 mt-4">
               <button className="btn btn-add-folder flex-fill" onClick={createFolder}>建立</button>
               <button className="btn btn-outline-secondary flex-fill" onClick={() => setShowNewFolderModal(false)}>取消</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {renameTarget && (
+        <div className="modal-backdrop-custom" onClick={closeRenameModal}>
+          <div className="modal-box" onClick={(event) => event.stopPropagation()}>
+            <div className="d-flex align-items-center gap-3 mb-4">
+              <div className="modal-folder-icon"><i className="ri-edit-line"></i></div>
+              <h5 className="fw-bold m-0">重新命名</h5>
+            </div>
+            <label className="auth-label">名稱</label>
+            <input
+              className="form-control"
+              value={renameFileValue}
+              onChange={(event) => setRenameFileValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") submitRename();
+                if (event.key === "Escape") closeRenameModal();
+              }}
+              autoFocus
+            />
+            <div className="d-flex gap-2 mt-4">
+              <button className="btn btn-add-folder flex-fill" onClick={submitRename} disabled={isSavingRename || !renameFileValue.trim()}>
+                {isSavingRename ? (
+                  <>
+                    <i className="ri-loader-4-line ri-spin me-2"></i>
+                    儲存中
+                  </>
+                ) : (
+                  "儲存"
+                )}
+              </button>
+              <button className="btn btn-outline-secondary flex-fill" onClick={closeRenameModal} disabled={isSavingRename}>取消</button>
             </div>
           </div>
         </div>
