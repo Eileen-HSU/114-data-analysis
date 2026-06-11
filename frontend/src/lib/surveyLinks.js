@@ -14,17 +14,22 @@ export function buildSurveyFillUrl(code, origin = window.location.origin) {
 
 export async function buildExternalSurveyShortUrl(code, origin = window.location.origin) {
   const longUrl = buildSurveyFillUrl(code, origin);
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 5000);
 
   try {
     const response = await fetch(apiUrl("/api/short-links"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: longUrl }),
+      signal: controller.signal,
     });
     const data = await response.json().catch(() => ({}));
     if (response.ok && data.short_url) return data.short_url;
   } catch (error) {
     console.warn("Short URL creation failed:", error);
+  } finally {
+    window.clearTimeout(timeoutId);
   }
 
   return longUrl;

@@ -65,6 +65,16 @@ app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY')
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    "pool_pre_ping": True,
+    "pool_recycle": 280,
+    "pool_timeout": 10,
+    "connect_args": {
+        "connect_timeout": 10,
+        "read_timeout": 15,
+        "write_timeout": 15,
+    },
+}
 
 # 最後再初始化資料庫
 db.init_app(app)

@@ -139,7 +139,7 @@ def create_external_short_url(long_url):
     errors = []
     for provider_name, api_url, allowed_prefixes in providers:
         try:
-            with urlopen(api_url, timeout=5) as response:
+            with urlopen(api_url, timeout=2) as response:
                 body = response.read().decode("utf-8").strip()
             if provider_name == "cuttly":
                 payload = json.loads(body)
