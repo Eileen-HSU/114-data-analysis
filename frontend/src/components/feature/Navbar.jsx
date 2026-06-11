@@ -101,11 +101,11 @@ export default function Navbar({ transparent = false }) {
               </button>
               {showUserMenu && (
                 <div className="nav-user-dropdown">
-                  <a className="dropdown-item" onClick={() => { setShowUserMenu(false); navigate("/profile"); }} style={{ cursor: "pointer" }}>
+                  <a className="dropdown-item" href="/profile" onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); setShowUserMenu(false); navigate("/profile"); window.setTimeout(() => { if (window.location.pathname !== "/profile") window.location.assign("/profile"); }, 0); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowUserMenu(false); navigate("/profile"); }} style={{ cursor: "pointer" }}>
                     <i className="ri-user-settings-line me-2"></i>個人資料
                   </a>
                   <div className="dropdown-divider"></div>
-                  <a className="dropdown-item text-danger" onClick={() => { logout(); setShowUserMenu(false); navigate("/"); }} style={{ cursor: "pointer" }}>
+                  <a className="dropdown-item text-danger" href="/" onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); logout(); setShowUserMenu(false); navigate("/"); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); logout(); setShowUserMenu(false); navigate("/"); }} style={{ cursor: "pointer" }}>
                     <i className="ri-logout-box-r-line me-2"></i>登出
                   </a>
                 </div>
