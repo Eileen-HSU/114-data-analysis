@@ -164,7 +164,8 @@ export default function CreateSurveyPage() {
       const response = await axios.post(apiUrl("/api/surveys"), payload, {
         headers: {
           Authorization: `Bearer ${token}`
-        }
+        },
+        timeout: 15000,
       });
 
       if (response.status === 201 || response.status === 200) {
@@ -221,6 +222,10 @@ export default function CreateSurveyPage() {
         alert("授權已過期或無效，請重新登入。\n即將導向登入頁面。");
         localStorage.removeItem("dataanalysis_auth");
         navigate('/login');
+        return;
+      }
+      if (error?.code === "ECONNABORTED") {
+        setError("建立問卷逾時，請稍後再試。若已成功建立，請到個人頁面的問卷列表確認。");
         return;
       }
       if (error?.response?.data?.error) {
