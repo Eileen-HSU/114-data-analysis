@@ -379,8 +379,45 @@ export default function CollectionPage() {
         await updateWorkspaceProjectName(renameTarget.projectId || renameTarget.id, newName);
       }
 
+      if (renameTarget.type === "folder") {
+        const oldName = renameTarget.name;
+        setFolders((prev) =>
+          prev.map((folder) =>
+            folder.id === renameTarget.id ? { ...folder, name: newName } : folder
+          )
+        );
+        setFiles((prev) =>
+          prev.map((file) =>
+            getFileFolderName(file) === oldName ? { ...file, folder_name: newName } : file
+          )
+        );
+        setWorkspaceSessions((prev) =>
+          prev.map((session) =>
+            session.folder_name === oldName ? { ...session, folder_name: newName } : session
+          )
+        );
+
+        const folderSessions = workspaceSessions.filter((session) => session.folder_name === oldName);
+        await Promise.all(
+          folderSessions.map((session) => {
+            const projectId = session.project_id || session.id;
+            if (!projectId) return Promise.resolve();
+            const authUser = JSON.parse(localStorage.getItem("dataanalysis_auth"));
+            const token = authUser?.token;
+            return fetch(`${import.meta.env.VITE_API_BASE_URL || ""}/api/workspace/${projectId}`, {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
+              body: JSON.stringify({ folder_name: newName }),
+            });
+          })
+        );
+      }
+
       recordActivity({
-        text: `重新命名檔案為「${newName}」`,
+        text: `重新命名${renameTarget.type === "folder" ? "資料夾" : "檔案"}為「${newName}」`,
         icon: "ri-edit-line",
         iconBg: "bg-violet-50",
         iconColor: "text-violet",
@@ -609,6 +646,16 @@ export default function CollectionPage() {
                               </div>
                             </div>
                             <div className="folder-actions">
+                              <button
+                                className="action-btn"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  openRenameModal({ type: "folder", id: folder.id, name: folder.name });
+                                }}
+                                title="重新命名"
+                              >
+                                <i className="ri-edit-line"></i>
+                              </button>
                               <button className="action-btn" onClick={(event) => { event.stopPropagation(); setDeleteTarget({ type: "folder", id: folder.id, name: folder.name }); }} title="刪除">
                                 <i className="ri-delete-bin-line"></i>
                               </button>
