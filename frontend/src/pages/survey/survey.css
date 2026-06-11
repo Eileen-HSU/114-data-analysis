@@ -1156,6 +1156,64 @@
 
 .btn-submit-survey:hover { background: #7a90a8; transform: translateY(-1px); }
 
+.btn-submit-survey:disabled {
+  cursor: not-allowed;
+  opacity: 0.75;
+  transform: none;
+}
+
+.btn-submit-survey:disabled:hover {
+  background: #8fa3b8;
+  transform: none;
+}
+
+/* Submit Loading */
+.submit-loading-card {
+  background: white;
+  border-radius: 24px;
+  padding: 64px 40px;
+  max-width: 520px;
+  margin: 0 auto;
+  text-align: center;
+  border: 1px solid var(--slate-100);
+}
+
+.submit-loading-icon {
+  width: 96px;
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #edf2f7;
+  border-radius: 50%;
+  margin: 0 auto 28px;
+  font-size: 44px;
+  color: #8fa3b8;
+}
+
+.submit-loading-icon i {
+  animation: submit-loading-spin 0.9s linear infinite;
+}
+
+.submit-loading-title {
+  font-size: 30px;
+  font-weight: 900;
+  color: var(--slate-800);
+  margin-bottom: 12px;
+}
+
+.submit-loading-desc {
+  font-size: 16px;
+  color: var(--slate-500);
+  line-height: 1.7;
+  margin: 0;
+}
+
+@keyframes submit-loading-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* Thank You */
 .thankyou-card {
   background: white;

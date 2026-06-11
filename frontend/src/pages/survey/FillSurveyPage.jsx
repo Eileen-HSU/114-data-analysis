@@ -51,6 +51,7 @@ export default function FillSurveyPage() {
   const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [loadingSurvey, setLoadingSurvey] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [expiredSurvey, setExpiredSurvey] = useState(null);
 
   const questionCount = survey?.questions.length ?? 0;
@@ -83,6 +84,7 @@ export default function FillSurveyPage() {
 
     setLoadingSurvey(true);
     setError("");
+
     try {
       const response = await fetch(apiUrl(`/api/public/surveys/${encodeURIComponent(normalized)}`), {
         cache: "no-store",
@@ -185,6 +187,7 @@ export default function FillSurveyPage() {
   // 修正點 2：合併後的唯一 handleSubmit
   const handleSubmit = async (e) => {
     if (e) e.preventDefault(); 
+    if (isSubmitting) return;
 
     if (isSurveyExpired(survey.deadlineAt)) {
       setSurvey(null);
@@ -208,6 +211,9 @@ export default function FillSurveyPage() {
       setError("請完成所有必填題目。");
       return;
     }
+
+    setIsSubmitting(true);
+    setError("");
 
     try {
       const response = await fetch(apiUrl(`/api/surveys/${survey.code}/responses`), {
@@ -259,6 +265,8 @@ export default function FillSurveyPage() {
     } catch (error) {
       console.error("提交失敗:", error);
       setError("伺服器連線失敗，請確認後端 Python 是否已啟動。");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -360,7 +368,15 @@ export default function FillSurveyPage() {
             </section>
           )}
 
-          {survey && !submitted && (
+          {survey && isSubmitting && !submitted && (
+            <section className="submit-loading-card" role="status" aria-live="polite">
+              <div className="submit-loading-icon"><i className="ri-loader-4-line"></i></div>
+              <h2 className="submit-loading-title">送出中</h2>
+              <p className="submit-loading-desc">正在送出你的問卷回覆，請稍候。</p>
+            </section>
+          )}
+
+          {survey && !submitted && !isSubmitting && (
             <section className="survey-form-card">
               <div className="survey-form-header">
                 <h2 className="survey-form-title">{survey.title}</h2>
@@ -409,8 +425,8 @@ export default function FillSurveyPage() {
               ))}
 
               {error && <p className="code-error-msg" style={{ display: "flex" }}>{error}</p>}
-              <button className="btn-submit-survey" onClick={handleSubmit}>
-                <i className="ri-send-plane-line"></i>送出問卷
+              <button className="btn-submit-survey" onClick={handleSubmit} disabled={isSubmitting}>
+                <i className={isSubmitting ? "ri-loader-4-line ri-spin" : "ri-send-plane-line"}></i>{isSubmitting ? "送出中" : "送出問卷"}
               </button>
             </section>
           )}
@@ -421,7 +437,7 @@ export default function FillSurveyPage() {
               <h2 className="thankyou-title">謝謝你的回覆</h2>
               <p className="thankyou-desc">你的問卷回覆已送出。</p>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <button className="btn-submit-survey" onClick={() => { setSurvey(null); setCode(""); setAnswers({}); setRespondentIdentity(""); setError(""); setSubmitted(false); }}>填寫另一份</button>
+                <button className="btn-submit-survey" onClick={() => { setSurvey(null); setCode(""); setAnswers({}); setRespondentIdentity(""); setError(""); setSubmitted(false); setIsSubmitting(false); }}>填寫另一份</button>
                 <a href="/survey" style={{ textAlign: "center", color: "var(--slate-500)", fontWeight: 700, textDecoration: "none" }}>返回問卷中心</a>
               </div>
             </section>
