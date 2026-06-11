@@ -214,6 +214,7 @@ export default function FillSurveyPage() {
 
     setIsSubmitting(true);
     setError("");
+    const submitStartedAt = Date.now();
 
     try {
       const response = await fetch(apiUrl(`/api/surveys/${survey.code}/responses`), {
@@ -226,6 +227,10 @@ export default function FillSurveyPage() {
           respondent_identity: survey.identityMode === "identified" ? respondentIdentity.trim() : "",
         }),
       });
+      const elapsed = Date.now() - submitStartedAt;
+      if (elapsed < 900) {
+        await new Promise((resolve) => setTimeout(resolve, 900 - elapsed));
+      }
 
       if (response.ok) {
         const storedSurveys = getStoredSurveys();
