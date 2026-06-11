@@ -278,6 +278,45 @@ export default function CollectionPage() {
     setRenamingFileId(null);
   };
 
+  const saveSessionRename = async (sessionId) => {
+    const newName = renameFileValue.trim();
+    if (newName) {
+      const session = workspaceSessions.find((item) => String(item.id) === String(sessionId));
+      setWorkspaceSessions((prev) =>
+        prev.map((item) =>
+          String(item.id) === String(sessionId)
+            ? { ...item, title: newName, name: newName }
+            : item
+        )
+      );
+      recordActivity({
+        text: `重新命名檔案為「${newName}」`,
+        icon: "ri-edit-line",
+        iconBg: "bg-violet-50",
+        iconColor: "text-violet",
+      });
+
+      const projectId = session?.project_id ?? session?.id;
+      if (projectId) {
+        try {
+          const authUser = JSON.parse(localStorage.getItem("dataanalysis_auth"));
+          const token = authUser?.token;
+          await fetch(`${import.meta.env.VITE_API_BASE_URL || ""}/api/workspace/${projectId}`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ project_name: newName }),
+          });
+        } catch (err) {
+          console.error("重新命名 Chat 失敗", err);
+        }
+      }
+    }
+    setRenamingFileId(null);
+  };
+
   // 拖曳
   const resetDragState = () => {
     setDraggingId(null);
@@ -541,10 +580,10 @@ export default function CollectionPage() {
                                       compact
                                       renamingId={renamingFileId}
                                       renameValue={renameFileValue}
-                                      onRenameStart={() => {}}
-                                      onRenameChange={() => {}}
-                                      onRenameSave={() => {}}
-                                      onRenameCancel={() => {}}
+                                      onRenameStart={() => { setRenamingFileId(session.id); setRenameFileValue(session.title); }}
+                                      onRenameChange={setRenameFileValue}
+                                      onRenameSave={() => saveSessionRename(session.id)}
+                                      onRenameCancel={() => setRenamingFileId(null)}
                                       onDragStart={() => { setDraggingId(session.id); setDragOverTarget(null); }}
                                       onDragEnd={resetDragState}
                                       menuOpen={fileMenuId === session.id}
@@ -613,10 +652,10 @@ export default function CollectionPage() {
                             file={{ ...session, name: session.title, type: "chat", size: session.date, sessionId: session.id }}
                             renamingId={renamingFileId}
                             renameValue={renameFileValue}
-                            onRenameStart={() => {}}
-                            onRenameChange={() => {}}
-                            onRenameSave={() => {}}
-                            onRenameCancel={() => {}}
+                            onRenameStart={() => { setRenamingFileId(session.id); setRenameFileValue(session.title); }}
+                            onRenameChange={setRenameFileValue}
+                            onRenameSave={() => saveSessionRename(session.id)}
+                            onRenameCancel={() => setRenamingFileId(null)}
                             onDragStart={() => { setDraggingId(session.id); setDragOverTarget(null); }}
                             onDragEnd={resetDragState}
                             menuOpen={fileMenuId === session.id}
