@@ -242,11 +242,7 @@ export default function FillSurveyPage() {
           iconBg: "bg-stat-teal",
           iconColor: "text-stat-teal",
         });
-        setSurvey(null);
-        setCode("");
-        setAnswers({});
-        setRespondentIdentity("");
-        setSubmitted(false);
+        setSubmitted(true);
         setError("");
       } else if (response.status === 410) {
         const expiredData = await response.json().catch(() => ({}));
@@ -416,6 +412,18 @@ export default function FillSurveyPage() {
               <button className="btn-submit-survey" onClick={handleSubmit}>
                 <i className="ri-send-plane-line"></i>送出問卷
               </button>
+            </section>
+          )}
+
+          {submitted && (
+            <section className="thankyou-card">
+              <div className="thankyou-icon"><i className="ri-checkbox-circle-line"></i></div>
+              <h2 className="thankyou-title">謝謝你的回覆</h2>
+              <p className="thankyou-desc">你的問卷回覆已送出。</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <button className="btn-submit-survey" onClick={() => { setSurvey(null); setCode(""); setAnswers({}); setRespondentIdentity(""); setError(""); setSubmitted(false); }}>填寫另一份</button>
+                <a href="/survey" style={{ textAlign: "center", color: "var(--slate-500)", fontWeight: 700, textDecoration: "none" }}>返回問卷中心</a>
+              </div>
             </section>
           )}
         </div>
