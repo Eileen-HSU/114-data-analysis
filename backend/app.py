@@ -70,7 +70,6 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
 mail.init_app(app)
 
-
 def ensure_column(table_name, column_name, column_definition):
     exists = db.session.execute(
         text("""
@@ -136,6 +135,11 @@ def get_status():
         "database": "Connected",
         "environment": "Production",
     })
+
+# 防止render冷啟動,使用uptime robot每5分鐘呼叫一次
+@app.route("/health", methods=["GET", "HEAD"])
+def health():
+    return jsonify({"status": "ok"}), 200
 
 
 @app.errorhandler(Exception)
