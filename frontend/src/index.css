@@ -91,7 +91,7 @@ a[class*="btn"] i {
 #mainNavbar {
   min-height: 82px;
   transition: all 0.3s ease;
-  z-index: 1030;
+  z-index: 12000;
 }
 
 .navbar-white {
@@ -252,19 +252,23 @@ a[class*="btn"] i {
   border-radius: 12px;
   box-shadow: 0 10px 40px rgba(0,0,0,0.1);
   padding: 6px 0;
-  z-index: 1031;
+  z-index: 12001;
 }
 .nav-user-dropdown .dropdown-item {
   display: flex;
   align-items: center;
+  width: 100%;
   padding: 10px 16px;
   font-size: 14px;
   font-weight: 500;
   color: var(--slate-700);
   text-decoration: none;
+  border: 0;
+  background: transparent;
   transition: all 0.15s;
   cursor: pointer;
   white-space: nowrap;
+  text-align: left;
 }
 .nav-user-dropdown .dropdown-item:hover { background: var(--slate-50); }
 .nav-user-dropdown .dropdown-divider {
