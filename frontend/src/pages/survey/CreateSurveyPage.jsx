@@ -125,8 +125,7 @@ export default function CreateSurveyPage() {
 
   const validate = () => {
     if (!title.trim()) return "請輸入問卷標題。";
-    if (!deadlineAt) return "請設定問卷截止日與時間。";
-    if (new Date(deadlineAt).getTime() <= Date.now()) return "問卷截止時間必須晚於現在。";
+    if (deadlineAt && new Date(deadlineAt).getTime() <= Date.now()) return "問卷截止時間必須晚於現在。";
     if (questions.some((q) => !q.title.trim())) return "每個題目都需要填寫題目文字。";
     return "";
   };
@@ -296,7 +295,7 @@ export default function CreateSurveyPage() {
               </div>
             </div>
             <div className="survey-deadline-setting">
-              <label className="auth-label">問卷截止日 <span style={{ color: "#ef4444" }}>*</span></label>
+              <label className="auth-label">問卷截止日</label>
               <DeadlineDateTimePicker value={deadlineAt} min={minDeadlineAt} onChange={setDeadlineAt} />
               <p className="survey-field-hint">填答者只能在截止時間前送出問卷。</p>
             </div>

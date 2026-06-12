@@ -256,16 +256,18 @@ def create_survey():
     deadline_at = data.get('deadline_at')
     identity_mode = data.get('identity_mode') if data.get('identity_mode') in ["anonymous", "identified"] else "anonymous"
 
-    if not title or not isinstance(questions, list) or not deadline_at:
-        return jsonify({"error": "缺少問卷標題、題目資料或截止時間"}), 400
+    if not title or not isinstance(questions, list):
+        return jsonify({"error": "缺少問卷標題或題目資料"}), 400
 
-    deadline = parse_deadline(deadline_at)
-    if not deadline:
-        return jsonify({"error": "截止時間格式不正確"}), 400
+    deadline = None
+    if deadline_at:
+        deadline = parse_deadline(deadline_at)
+        if not deadline:
+            return jsonify({"error": "截止時間格式不正確"}), 400
 
-    now = datetime.now(TAIPEI_TZ)  # 只取一次
-    if deadline <= now:
-        return jsonify({"error": "截止時間必須晚於現在"}), 400
+        now = datetime.now(TAIPEI_TZ)  # 只取一次
+        if deadline <= now:
+            return jsonify({"error": "截止時間必須晚於現在"}), 400
 
     try:
         access_code = generate_unique_access_code()
