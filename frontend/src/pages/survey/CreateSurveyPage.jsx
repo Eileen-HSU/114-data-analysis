@@ -269,7 +269,7 @@ export default function CreateSurveyPage() {
               <textarea className="survey-input survey-textarea" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="補充填答說明、用途或注意事項" maxLength={500} />
             </div>
             <div className="survey-identity-setting">
-              <label className="auth-label">填答身分</label>
+              <label className="auth-label">填答身分 <span style={{ color: "#ef4444" }}>*</span></label>
               <div className="survey-identity-options" role="radiogroup" aria-label="填答身分設定">
                 <label className={`survey-identity-option ${identityMode === "anonymous" ? "active" : ""}`}>
                   <input
