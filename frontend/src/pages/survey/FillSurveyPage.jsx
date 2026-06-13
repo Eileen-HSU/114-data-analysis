@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Navbar from "../../components/feature/Navbar";
 import "./survey.css";
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { apiUrl } from "../../lib/api";
 import { useActivity } from "../../hooks/ActivityContext";
 
@@ -40,7 +40,6 @@ function formatDeadline(deadlineAt) {
 }
 
 export default function FillSurveyPage() {
-  const navigate = useNavigate(); // 修正點 1：將 navigate 移入組件內部
   const { code: codeFromPath } = useParams();
   const [searchParams] = useSearchParams();
   const { recordActivity } = useActivity();
@@ -141,15 +140,7 @@ export default function FillSurveyPage() {
   };
 
   const resetForAnotherSurvey = () => {
-    setSurvey(null);
-    setExpiredSurvey(null);
-    setCode("");
-    setAnswers({});
-    setRespondentIdentity("");
-    setError("");
-    setSubmitted(false);
-    setIsSubmitting(false);
-    navigate("/survey/fill", { replace: true });
+    window.location.replace("/survey/fill");
   };
 
   useEffect(() => {
