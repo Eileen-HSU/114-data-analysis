@@ -913,6 +913,13 @@
   transform: translateY(-1px);
 }
 
+.workspace-alert-primary:disabled,
+.workspace-alert-secondary:disabled {
+  cursor: wait;
+  opacity: 0.72;
+  transform: none;
+}
+
 @media (max-width: 767px) {
   .workspace-sidebar { display: none; }
   .messages-area { padding: 20px; }

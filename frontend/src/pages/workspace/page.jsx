@@ -391,6 +391,7 @@ export default function WorkspacePage() {
   const [surveyPickerSearch, setSurveyPickerSearch] = useState("");
   const [apiSurveys, setApiSurveys] = useState([]);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [isDeletingSession, setIsDeletingSession] = useState(false);
   const [toastMsg, setToastMsg] = useState(null);
   const [isEntryLoading, setIsEntryLoading] = useState(() => sessionStorage.getItem("dataanalysis_login_loading") === "1");
   const [isSurveyPickerLoading, setIsSurveyPickerLoading] = useState(true);
@@ -946,30 +947,13 @@ export default function WorkspacePage() {
     if (!deleteTarget) return;
     if (isDeletingRef.current) return; // 防止重複點擊刪除導致的多次呼叫
     isDeletingRef.current = true;
+    setIsDeletingSession(true);
 
-    const { id: sessionId, project_id: projectId } = deleteTarget;
+    const { id: sessionId } = deleteTarget;
 
     try {
-      if (projectId) {
-        const res = await fetch(apiUrl(`/api/workspace/${projectId}`), {
-          method: "DELETE",
-          headers: getAuthHeader(),
-        });
-
-        if (!res.ok) {
-          throw new Error(`刪除工作區失敗：${res.status}`);
-        }
-      }
-
-      // 後端成功後，前端才移除
+      await deleteChatSession(sessionId);
       setDeleteTarget(null);
-      deleteChatSession(sessionId);
-
-      setSessions((currentList) =>
-        (Array.isArray(currentList) ? currentList : []).filter(
-          (session) => session.id !== sessionId
-        )
-      );
 
       setRenamingId(null);
       setSearchQuery("");
@@ -993,7 +977,8 @@ export default function WorkspacePage() {
       console.error("刪除工作區失敗", err);
       showToast("刪除失敗，請稍後再試");
     } finally {
-      isDeletingRef.current = false; 
+      isDeletingRef.current = false;
+      setIsDeletingSession(false);
     }
   };
 
@@ -1392,7 +1377,7 @@ export default function WorkspacePage() {
         </div>
       </div>
       {deleteTarget && (
-        <div className="workspace-modal-backdrop" onClick={() => setDeleteTarget(null)}>
+        <div className="workspace-modal-backdrop" onClick={() => !isDeletingSession && setDeleteTarget(null)}>
           <div className="workspace-alert-modal" onClick={(event) => event.stopPropagation()}>
             <div className="workspace-alert-icon">
               <i className="ri-error-warning-line"></i>
@@ -1400,10 +1385,10 @@ export default function WorkspacePage() {
             <h3>刪除工作區</h3>
             <p>確定要刪除「{deleteTarget.title}」嗎？刪除後可在專案管理的最近刪除中還原。</p>
             <div className="workspace-alert-actions">
-              <button className="workspace-alert-primary" onClick={confirmDeleteSession} type="button">
-                確定
+              <button className="workspace-alert-primary" onClick={confirmDeleteSession} type="button" disabled={isDeletingSession}>
+                {isDeletingSession ? "刪除中..." : "確定"}
               </button>
-              <button className="workspace-alert-secondary" onClick={() => setDeleteTarget(null)} type="button">
+              <button className="workspace-alert-secondary" onClick={() => setDeleteTarget(null)} type="button" disabled={isDeletingSession}>
                 取消
               </button>
             </div>
