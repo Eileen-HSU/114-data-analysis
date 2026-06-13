@@ -164,7 +164,7 @@ export default function CreateSurveyPage() {
         headers: {
           Authorization: `Bearer ${token}`
         },
-        timeout: 15000,
+        timeout: 60000,
       });
 
       if (response.status === 201 || response.status === 200) {
@@ -224,7 +224,7 @@ export default function CreateSurveyPage() {
         return;
       }
       if (error?.code === "ECONNABORTED") {
-        setError("建立問卷逾時，請稍後再試。若已成功建立，請到個人頁面的問卷列表確認。");
+        setError("伺服器回應時間較長，建立問卷尚未確認完成。請先到個人頁面的問卷列表確認，再決定是否重試。");
         return;
       }
       if (error?.response?.data?.error) {
