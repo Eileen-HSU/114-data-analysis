@@ -5,7 +5,10 @@ import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
 import { useAuth } from "../../hooks/AuthContext";
 import { useCollection } from "../../hooks/CollectionContext";
 import { useActivity } from "../../hooks/ActivityContext";
+import { apiUrl } from "../../lib/api";
 import "./collection.css";
+
+const ACTIVE_WORKSPACE_KEY = "dataanalysis_active_workspace";
 
 const FILE_ICONS = {
   csv: "ri-file-chart-line",
@@ -53,6 +56,7 @@ export default function CollectionPage() {
   const [fileMenuId, setFileMenuId] = useState(null);
   const [renameTarget, setRenameTarget] = useState(null);
   const [isSavingRename, setIsSavingRename] = useState(false);
+  const [isCreatingAnalysis, setIsCreatingAnalysis] = useState(false);
 
   useEffect(() => {
     if (location.state?.activeView) {
@@ -537,6 +541,55 @@ export default function CollectionPage() {
     setDraggingId(null);
   };
 
+  const createAnalysis = async () => {
+    if (isCreatingAnalysis) return;
+    setIsCreatingAnalysis(true);
+
+    try {
+      const authUser = JSON.parse(localStorage.getItem("dataanalysis_auth"));
+      const token = authUser?.token;
+      const title = "新增分析";
+      const res = await fetch(apiUrl("/api/workspace"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ project_name: title }),
+      });
+
+      if (!res.ok) throw new Error(`新增分析失敗：${res.status}`);
+
+      const data = await res.json();
+      if (!data?.project_id) throw new Error("新增分析失敗：未取得 Chat ID");
+
+      const sessionId = String(data.project_id);
+      const newSession = {
+        id: sessionId,
+        project_id: data.project_id,
+        title: data.project_name || title,
+        name: data.project_name || title,
+        folder_name: data.folder_name ?? null,
+        date: data.created_at ? data.created_at.slice(0, 10) : "",
+        pendingSync: true,
+      };
+
+      setWorkspaceSessions((currentSessions) => [
+        newSession,
+        ...(Array.isArray(currentSessions)
+          ? currentSessions.filter((session) => String(session.id) !== sessionId)
+          : []),
+      ]);
+      localStorage.setItem(ACTIVE_WORKSPACE_KEY, sessionId);
+      navigate("/workspace", { state: { openSession: { sessionId } } });
+    } catch (err) {
+      console.error("新增分析失敗", err);
+      alert(err.message || "新增分析失敗，請稍後再試");
+    } finally {
+      setIsCreatingAnalysis(false);
+    }
+  };
+
   return (
     <>
       <Navbar />
@@ -553,9 +606,11 @@ export default function CollectionPage() {
               <div className="d-flex gap-2 align-items-center">
                 <button
                   className="btn btn-banner"
-                  onClick={() => navigate("/workspace", { state: { createNewSession: true } })}
+                  onClick={createAnalysis}
+                  disabled={isCreatingAnalysis}
                 >
-                  <i className="ri-add-line me-1"></i>新增分析
+                  <i className={`${isCreatingAnalysis ? "ri-loader-4-line" : "ri-add-line"} me-1`}></i>
+                  {isCreatingAnalysis ? "建立中..." : "新增分析"}
                 </button>
               </div>
             </div>

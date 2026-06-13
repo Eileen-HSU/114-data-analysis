@@ -74,13 +74,20 @@ export function CollectionProvider({ children }) {
 
         setWorkspaceSessions((currentSessions) => {
           const currentList = Array.isArray(currentSessions) ? currentSessions : [];
-          return sessions.map((session) => {
+          const backendIds = new Set(sessions.map((session) => String(session.id)));
+          const pendingSessions = currentList.filter(
+            (session) => session.pendingSync && !backendIds.has(String(session.id))
+          );
+          const syncedSessions = sessions.map((session) => {
             const existing = currentList.find(
               (item) =>
                 String(item.project_id ?? item.id) === String(session.project_id)
             );
-            return existing ? { ...existing, ...session } : session;
+            return existing
+              ? { ...existing, ...session, pendingSync: false }
+              : session;
           });
+          return [...pendingSessions, ...syncedSessions];
         });
 
         // 同時同步 folders：從 folder_name 反推出所有資料夾
