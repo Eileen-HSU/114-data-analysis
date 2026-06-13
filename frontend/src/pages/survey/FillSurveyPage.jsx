@@ -140,6 +140,18 @@ export default function FillSurveyPage() {
     loadSurveyByCode(code);
   };
 
+  const resetForAnotherSurvey = () => {
+    setSurvey(null);
+    setExpiredSurvey(null);
+    setCode("");
+    setAnswers({});
+    setRespondentIdentity("");
+    setError("");
+    setSubmitted(false);
+    setIsSubmitting(false);
+    navigate("/survey/fill", { replace: true });
+  };
+
   useEffect(() => {
     const codeFromLink = codeFromPath || searchParams.get("code");
     if (!codeFromLink || survey) return;
@@ -442,7 +454,7 @@ export default function FillSurveyPage() {
               <h2 className="thankyou-title">謝謝你的回覆</h2>
               <p className="thankyou-desc">你的問卷回覆已送出。</p>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <button className="btn-submit-survey" onClick={() => { setSurvey(null); setCode(""); setAnswers({}); setRespondentIdentity(""); setError(""); setSubmitted(false); setIsSubmitting(false); }}>填寫另一份</button>
+                <button className="btn-submit-survey" onClick={resetForAnotherSurvey}>填寫另一份</button>
                 <a href="/survey" style={{ textAlign: "center", color: "var(--slate-500)", fontWeight: 700, textDecoration: "none" }}>返回問卷中心</a>
               </div>
             </section>
