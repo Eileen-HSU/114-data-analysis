@@ -72,7 +72,16 @@ export function CollectionProvider({ children }) {
           date: w.created_at ? w.created_at.slice(0, 10) : "",
         }));
 
-        setWorkspaceSessions(sessions);
+        setWorkspaceSessions((currentSessions) => {
+          const currentList = Array.isArray(currentSessions) ? currentSessions : [];
+          return sessions.map((session) => {
+            const existing = currentList.find(
+              (item) =>
+                String(item.project_id ?? item.id) === String(session.project_id)
+            );
+            return existing ? { ...existing, ...session } : session;
+          });
+        });
 
         // 同時同步 folders：從 folder_name 反推出所有資料夾
         const folderNames = [...new Set(sessions.map((s) => s.folder_name).filter(Boolean))];

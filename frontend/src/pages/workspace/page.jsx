@@ -545,7 +545,9 @@ export default function WorkspacePage() {
     useEffect(() => {
       if (!activeSessionId || !isLoggedIn) return;
 
-      const currentSession = sessions.find((s) => s.id === activeSessionId);
+      const currentSession = sessions.find(
+        (s) => String(s.id) === String(activeSessionId)
+      );
       if (!currentSession?.project_id) return;
       
       // 已經載入過就跳過
@@ -570,17 +572,19 @@ export default function WorkspacePage() {
           });
           if (!res.ok) return;
           const histData = await res.json();
-          const historyList = Array.isArray(histData?.chat_history) ? histData.chat_history : [];
+          const historyList = Array.isArray(histData?.chat_history)
+            ? histData.chat_history.filter((item) => item.type !== "file")
+            : [];
           const fetchedMessages = historyList.map((h) => ({
             id: String(h.chat_id),
-            role: h.sender_type === "user" ? "user" : "assistant",
-            content: h.message_content || "",
+            role: h.role || (h.sender_type === "user" ? "user" : "assistant"),
+            content: h.content || h.message_content || "",
           }));
 
           if (fetchedMessages.length > 0) {
             setSessions((currentList) =>
               (Array.isArray(currentList) ? currentList : []).map((session) => {
-                if (session.id !== activeSessionId) return session;
+                if (String(session.id) !== String(activeSessionId)) return session;
 
                 const localMessages = Array.isArray(session.messages) ? session.messages : [];
                 const messageKey = (msg) => `${msg.role || ""}::${msg.content || ""}`;
