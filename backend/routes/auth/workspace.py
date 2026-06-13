@@ -1,19 +1,18 @@
-from datetime import timedelta
 import os
-import jwt
+from datetime import timedelta
 
+import jwt
 from flask import Blueprint, jsonify, request
-from apscheduler.schedulers.background import BackgroundScheduler
 
 from extensions import db
-from models import Workspace, Chat_History, taiwan_now
+from models import Workspace, taiwan_now
 
 workspace_bp = Blueprint("workspace", __name__)
 
 SOFT_DELETE_DAYS = 30
 
-
 _JWT_SECRET: str | None = None
+
 
 def get_jwt_secret() -> str:
     global _JWT_SECRET
@@ -78,19 +77,6 @@ def get_workspaces():
     return jsonify([workspace_to_dict(w) for w in workspaces]), 200
 
 
-@workspace_bp.route("/api/workspace/user/trash", methods=["GET"])
-def get_trash():
-    current_user_id, auth_error = authorize_request()
-    if auth_error:
-        return auth_error
-    workspaces = Workspace.query.filter_by(
-        user_id    = current_user_id,
-        is_deleted = True,
-    ).order_by(Workspace.deleted_at.desc()).all()
-
-    return jsonify([workspace_to_dict(w) for w in workspaces]), 200
-
-
 @workspace_bp.route("/api/workspace/user/folder/<string:folder_name>", methods=["GET"])
 def get_workspaces_by_folder(folder_name):
     current_user_id, auth_error = authorize_request()
@@ -133,7 +119,7 @@ def create_workspace():
 
 @workspace_bp.route("/api/workspace/<int:project_id>", methods=["GET"])
 def get_workspace(project_id):
-    '''取得單一專案的詳細資訊，包含是否在垃圾桶中、剩餘天數等'''
+    """取得單一專案的詳細資訊，包含是否在垃圾桶中、剩餘天數等"""
     current_user_id, auth_error = authorize_request()
     if auth_error:
         return auth_error
@@ -179,132 +165,29 @@ def delete_workspace(project_id):
     current_user_id, auth_error = authorize_request()
     if auth_error:
         return auth_error
-    
-    # 撈出該使用者還沒被軟刪除的專案
+
     workspace = Workspace.query.filter(
         Workspace.project_id == project_id,
         Workspace.user_id    == current_user_id,
-        Workspace.is_deleted != True
+        Workspace.is_deleted != True,
     ).first()
 
     if not workspace:
-        # 如果已經被刪除過了，直接回傳成功，讓前端順利走下去
         return jsonify({"message": "專案已在垃圾桶中"}), 200
 
-    # 檢查前端是不是送 PATCH 且帶有 body
     if request.method == "PATCH":
         data = request.get_json(silent=True) or {}
-        # 即使前端傳 1 或 True，我們都當作要刪除
-        is_deleted_signal = data.get("is_deleted")
-        if is_deleted_signal not in [1, True]:
+        if data.get("is_deleted") not in [1, True]:
             return jsonify({"error": "不合法的 PATCH 參數"}), 400
 
     try:
-        # 執行軟刪除
         workspace.is_deleted = True
         workspace.deleted_at = taiwan_now()
         db.session.commit()
-        
         return jsonify({
-            "message": "專案已移至垃圾桶，30 天後將永久刪除",
-            "workspace": workspace_to_dict(workspace)
+            "message":   "專案已移至垃圾桶，30 天後將永久刪除",
+            "workspace": workspace_to_dict(workspace),
         }), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
-
-@workspace_bp.route("/api/workspace/<int:project_id>/restore", methods=["POST"])
-def restore_workspace(project_id):
-    current_user_id, auth_error = authorize_request()
-    if auth_error:
-        return auth_error
-    
-    workspace = Workspace.query.filter_by(
-        project_id = project_id,
-        user_id    = current_user_id,
-        is_deleted = True,
-    ).first()
-
-    if not workspace:
-        return jsonify({"error": "找不到已刪除的專案"}), 404
-    
-    data = request.get_json(silent=True) or {}
-
-    try:
-        workspace.is_deleted = False
-        workspace.deleted_at = None
-        workspace.folder_name = data.get("folder_name") 
-        db.session.commit()
-        return jsonify({"message": "專案已還原"}), 200
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 500
-
-
-@workspace_bp.route("/api/workspace/<int:project_id>/permanent", methods=["DELETE"])
-def permanent_delete_workspace(project_id):
-    current_user_id, auth_error = authorize_request()
-    if auth_error:
-        return auth_error
-        
-    target = Workspace.query.filter_by(
-        project_id = project_id,
-        user_id    = current_user_id
-    ).first()
-
-    if not target:
-        return jsonify({"error": "找不到該項目"}), 404
-
-    try:
-        is_folder_request = request.args.get("is_folder", "false").lower() == "true"
-
-        if is_folder_request and target.folder_name:
-            Workspace.query.filter_by(
-                user_id     = current_user_id,
-                folder_name = target.folder_name,
-                is_deleted  = True
-            ).update({"folder_name": None}, synchronize_session=False)  # 直接 UPDATE WHERE
-            
-            db.session.commit()
-            return jsonify({"message": "資料夾外殼已永久刪除，專案已釋放"}), 200
-
-        else:
-            Chat_History.query.filter_by(project_id=project_id).delete(synchronize_session=False)
-            db.session.delete(target)
-            db.session.commit()
-            return jsonify({"message": "專案已永久刪除"}), 200
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 500
-    
-def hard_delete_expired_workspaces(app):
-    with app.app_context():
-        try:
-            expiry = taiwan_now() - timedelta(days=SOFT_DELETE_DAYS)
-            deleted_count = Workspace.query.filter(
-                Workspace.is_deleted == True,
-                Workspace.deleted_at != None,
-                Workspace.deleted_at <= expiry,
-            ).delete(synchronize_session=False)  # 直接 DELETE WHERE，不撈資料
-
-            if deleted_count:
-                db.session.commit()
-                print(f"[Scheduler] 永久刪除 {deleted_count} 個過期專案")
-        except Exception as e:
-            db.session.rollback()
-            print(f"[Scheduler] 永久刪除失敗：{e}")
-
-
-def start_scheduler(app):
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(
-        hard_delete_expired_workspaces,
-        trigger = "interval",
-        hours   = 24,
-        args    = [app],
-        id      = "hard_delete_workspaces",
-    )
-    if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
-        scheduler.start()
-        print("[Scheduler] 自動永久刪除排程已啟動")

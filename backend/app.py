@@ -14,9 +14,10 @@ from routes.auth.login import login_bp
 from routes.auth.profile import profile_bp
 from routes.auth.pwd import pwd_bp
 from routes.auth.register import register_bp
-from routes.auth.workspace import workspace_bp, start_scheduler
+from routes.auth.workspace import workspace_bp
 from routes.auth.survey import survey_bp
 from routes.auth.chat import chat_bp
+from trash import trash_bp, start_scheduler
 
 load_dotenv()
 
@@ -125,6 +126,7 @@ app.register_blueprint(two_factor_bp, url_prefix='/api/auth/2fa')
 app.register_blueprint(survey_bp)
 app.register_blueprint(workspace_bp)
 app.register_blueprint(chat_bp)
+app.register_blueprint(trash_bp)
 
 start_scheduler(app)
 
