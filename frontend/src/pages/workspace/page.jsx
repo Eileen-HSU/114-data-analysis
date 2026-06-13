@@ -394,6 +394,7 @@ export default function WorkspacePage() {
   const [isDeletingSession, setIsDeletingSession] = useState(false);
   const [toastMsg, setToastMsg] = useState(null);
   const [isEntryLoading, setIsEntryLoading] = useState(() => sessionStorage.getItem("dataanalysis_login_loading") === "1");
+  const [historyLoadingSessionId, setHistoryLoadingSessionId] = useState(() => location.state?.openSession?.sessionId || null);
   const [isSurveyPickerLoading, setIsSurveyPickerLoading] = useState(true);
   const toastTimerRef = useRef(null);
 
@@ -548,13 +549,19 @@ export default function WorkspacePage() {
       if (!currentSession?.project_id) return;
       
       // 已經載入過就跳過
-      if (loadedProjectIds.current.has(currentSession.project_id)) return;
+      if (loadedProjectIds.current.has(currentSession.project_id)) {
+        setHistoryLoadingSessionId((current) => current === activeSessionId ? null : current);
+        return;
+      }
       if (currentSession.messages && currentSession.messages.length > 1) {
         loadedProjectIds.current.add(currentSession.project_id);
+        setHistoryLoadingSessionId((current) => current === activeSessionId ? null : current);
         return;
       }
 
       loadedProjectIds.current.add(currentSession.project_id); // 先標記，防止重複打
+
+      setHistoryLoadingSessionId((current) => current || activeSessionId);
 
       const fetchHistory = async () => {
         try {
@@ -592,11 +599,13 @@ export default function WorkspacePage() {
           }
         } catch (err) {
           console.error("動態載入歷史對話失敗：", err);
+        } finally {
+          setHistoryLoadingSessionId((current) => current === activeSessionId ? null : current);
         }
       };
 
       fetchHistory();
-  }, [activeSessionId, isLoggedIn]); // sessions 移出 dependency array
+  }, [activeSessionId, isLoggedIn, sessions, setSessions]);
 
   useEffect(() => {
     if (activeSessionId || sessions.length === 0) return;
@@ -629,6 +638,7 @@ export default function WorkspacePage() {
     const state = location.state;
     if (!state?.openSession) return;
     const { sessionId } = state.openSession;
+    setHistoryLoadingSessionId(sessionId);
     setActiveSessionId(sessionId);
     window.history.replaceState({}, "");
   }, [location.state]);
@@ -1051,7 +1061,7 @@ export default function WorkspacePage() {
     );
   }
 
-  if (isEntryLoading) {
+  if (isEntryLoading || historyLoadingSessionId) {
     return (
       <>
         <Navbar />
@@ -1060,8 +1070,8 @@ export default function WorkspacePage() {
             <div className="workspace-entry-loading-icon">
               <i className="ri-loader-4-line"></i>
             </div>
-            <h1>正在載入工作區...</h1>
-            <p>正在整理您的專案管理、歷史對話紀錄與分析資料，請稍候。</p>
+            <h1>{isEntryLoading ? "正在載入工作區..." : "正在載入歷史對話..."}</h1>
+            <p>{isEntryLoading ? "正在整理您的專案管理、歷史對話紀錄與分析資料，請稍候。" : "正在取得這個 Chat 的歷史資料，完成後會自動顯示。"}</p>
           </div>
         </main>
       </>
