@@ -402,6 +402,7 @@ export default function WorkspacePage() {
   const fileInputRef = useRef(null);
   const textareaRef = useRef(null);
   const surveyImportHandled = useRef(false);
+  const newSessionRequestHandled = useRef(false);
   const surveyPickerRef = useRef(null);
 
   const showToast = (msg) => {
@@ -1049,6 +1050,20 @@ export default function WorkspacePage() {
       console.error("新增工作區失敗", err);
     }
   };
+
+  useEffect(() => {
+    if (
+      !isLoggedIn ||
+      !location.state?.createNewSession ||
+      newSessionRequestHandled.current
+    ) {
+      return;
+    }
+
+    newSessionRequestHandled.current = true;
+    navigate("/workspace", { replace: true, state: null });
+    createNewSession();
+  }, [isLoggedIn, location.state, navigate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!isLoggedIn) {
     return (
