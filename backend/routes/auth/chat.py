@@ -6,6 +6,7 @@ import os
 
 chat_bp = Blueprint("chat", __name__)
 
+# 負責處理與聊天紀錄相關的 API，包括儲存對話紀錄、取得對話紀錄，以及上傳和取得對話相關的檔案。
 @chat_bp.route("/api/chat/history", methods=["POST"])
 def save_chat_history():
     # 1. 權限驗證
@@ -73,6 +74,7 @@ def save_chat_history():
         return jsonify({"error": str(e)}), 500
 
 
+# 取得對話紀錄，包含訊息和檔案，並且按照時間排序
 @chat_bp.route("/api/chat/history/<int:project_id>", methods=["GET"])
 def get_chat_history(project_id):
     try:
@@ -89,14 +91,15 @@ def get_chat_history(project_id):
 
         if not workspace:
             return jsonify({"error": "找不到該專案或您無權限操作"}), 404
-
+        
+        # 撈對話紀錄
         histories = (
             Chat_History.query
             .filter_by(project_id=project_id)
             .order_by(Chat_History.created_at.asc())
             .all()
         )
-
+        # 撈檔案
         chat_ids = [h.chat_id for h in histories]
         files = (
             UploadedFile.query
@@ -153,6 +156,7 @@ def _get_chat_with_auth(chat_id, user_id):
         .first()
     )
 
+# 上傳檔案並關聯到 chat_id，支援 csv、xlsx、txt 格式，並且儲存在 uploads/{project_id} 目錄底下
 @chat_bp.route("/api/chat/<int:chat_id>/files", methods=["POST"])
 def upload_file(chat_id):
     '''上傳檔案並關聯到 chat_id'''
@@ -206,6 +210,7 @@ def upload_file(chat_id):
         return jsonify({"error": str(e)}), 500
 
 
+# 取得對話紀錄底下的所有檔案資訊
 @chat_bp.route("/api/chat/<int:chat_id>/files", methods=["GET"])
 def get_chat_files(chat_id):
     '''回傳該 chat 底下的所有檔案資訊'''
