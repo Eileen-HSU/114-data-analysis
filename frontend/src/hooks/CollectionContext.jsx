@@ -202,16 +202,16 @@ export function CollectionProvider({ children }) {
 
   const deleteChatSession = async (sessionId) => {
     const session = workspaceSessions.find((s) => s.id === sessionId);
-    if (!session) return;
+    if (!session) throw new Error("找不到要刪除的工作區");
     if (session.project_id) {
-      try {
-        await fetch(apiUrl(`/api/workspace/${session.project_id}`), {
+      const res = await fetch(apiUrl(`/api/workspace/${session.project_id}`), {
           method: "PATCH",
           headers: { "Content-Type": "application/json", ...getAuthHeader() },
           body: JSON.stringify({ is_deleted: 1 }),
         });
-      } catch (err) {
-        console.error("軟刪除失敗", err);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `刪除工作區失敗：${res.status}`);
       }
     }
     setDeletedItems((prev) => [
@@ -229,6 +229,7 @@ export function CollectionProvider({ children }) {
       iconBg: "bg-stat-coral",
       iconColor: "text-stat-coral",
     });
+    return session;
   };
 
 
