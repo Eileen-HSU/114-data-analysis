@@ -6,7 +6,7 @@ from flask import Blueprint, jsonify, request
 
 from extensions import db
 from models import Chat_History, Workspace, taiwan_now
-from workspace import SOFT_DELETE_DAYS, authorize_request, workspace_to_dict
+from routes.auth.workspace import SOFT_DELETE_DAYS, authorize_request, workspace_to_dict
 
 trash_bp = Blueprint("trash", __name__)
 

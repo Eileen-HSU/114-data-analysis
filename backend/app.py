@@ -17,7 +17,7 @@ from routes.auth.register import register_bp
 from routes.auth.workspace import workspace_bp
 from routes.auth.survey import survey_bp
 from routes.auth.chat import chat_bp
-from trash import trash_bp, start_scheduler
+from routes.auth.trash import trash_bp, start_scheduler
 
 load_dotenv()
 
