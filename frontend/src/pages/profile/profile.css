@@ -176,7 +176,7 @@
 }
 
 .profile-email { color: var(--slate-400); font-size: 15px; margin: 4px 0 0; }
-.profile-bio { color: var(--slate-500); font-size: 15px; line-height: 1.7; margin: 0; }
+.profile-bio { color: var(--slate-500); font-size: 15px; line-height: 1.7; margin: 6px 0 0; }
 
 /* Stats */
 .profile-stat {
