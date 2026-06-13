@@ -551,7 +551,10 @@ export default function CollectionPage() {
                 <p className="collection-banner-stats">{stats.folders} 個資料夾 · {stats.chats} 個 Chat</p>
               </div>
               <div className="d-flex gap-2 align-items-center">
-                <button className="btn btn-banner" onClick={() => navigate("/workspace")}>
+                <button
+                  className="btn btn-banner"
+                  onClick={() => navigate("/workspace", { state: { createNewSession: true } })}
+                >
                   <i className="ri-add-line me-1"></i>新增分析
                 </button>
               </div>
