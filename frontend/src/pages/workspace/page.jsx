@@ -389,7 +389,6 @@ export default function WorkspacePage() {
   const [renameValue, setRenameValue] = useState("");
   const [showSurveyPicker, setShowSurveyPicker] = useState(false);
   const [surveyPickerSearch, setSurveyPickerSearch] = useState("");
-  const [isSurveyPickerLoading, setIsSurveyPickerLoading] = useState(false);
   const [apiSurveys, setApiSurveys] = useState([]);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [toastMsg, setToastMsg] = useState(null);
