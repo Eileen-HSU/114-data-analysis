@@ -50,10 +50,7 @@ def verify_token(request):
 
 
 def generate_unique_access_code():
-    while True:
-        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
-        if not Survey_Template.query.filter_by(access_code=code).first():
-            return code
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
 
 
 def encode_survey_short_code(template_id):
@@ -139,7 +136,8 @@ def create_external_short_url(long_url):
     errors = []
     for provider_name, api_url, allowed_prefixes in providers:
         try:
-            with urlopen(api_url, timeout=2) as response:
+            request_timeout = 5 if provider_name == "cuttly" else 2
+            with urlopen(api_url, timeout=request_timeout) as response:
                 body = response.read().decode("utf-8").strip()
             if provider_name == "cuttly":
                 payload = json.loads(body)
@@ -285,12 +283,15 @@ def create_survey():
             is_anonymous=identity_mode == "anonymous",
         )
         db.session.add(new_template)
+        db.session.flush()
+        template_id = new_template.template_id
+        short_code = encode_survey_short_code(template_id)
         db.session.commit()
         return jsonify({
             "message": "問卷建立成功",
             "access_code": access_code,
-            "short_code": survey_short_code(new_template),
-            "template_id": new_template.template_id,
+            "short_code": short_code,
+            "template_id": template_id,
         }), 201
     except Exception as e:
         logging.error(f"Survey creation failed: {e}", exc_info=True)
