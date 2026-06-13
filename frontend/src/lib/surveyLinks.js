@@ -15,7 +15,7 @@ export function buildSurveyFillUrl(code, origin = window.location.origin) {
 export async function buildExternalSurveyShortUrl(code, origin = window.location.origin) {
   const longUrl = buildSurveyFillUrl(code, origin);
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), 5000);
+  const timeoutId = window.setTimeout(() => controller.abort(), 15000);
 
   try {
     const response = await fetch(apiUrl("/api/short-links"), {
