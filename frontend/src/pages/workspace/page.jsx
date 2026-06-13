@@ -394,6 +394,7 @@ export default function WorkspacePage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [toastMsg, setToastMsg] = useState(null);
   const [isEntryLoading, setIsEntryLoading] = useState(() => sessionStorage.getItem("dataanalysis_login_loading") === "1");
+  const [isSurveyPickerLoading, setIsSurveyPickerLoading] = useState(true);
   const toastTimerRef = useRef(null);
 
   const messagesEndRef = useRef(null);
@@ -421,6 +422,7 @@ export default function WorkspacePage() {
     let cancelled = false;
 
     const fetchSurveyDetails = async () => {
+      setIsSurveyPickerLoading(true); // 開始載入，顯示 loading 狀態
       try {
         const res = await fetch(apiUrl("/api/surveys/mine"), { headers });
         if (!res.ok) return;
@@ -452,6 +454,8 @@ export default function WorkspacePage() {
         if (!cancelled) setApiSurveys(detailed);
       } catch (err) {
         console.error("載入問卷清單失敗", err);
+      } finally {
+        if (!cancelled) setIsSurveyPickerLoading(false);   // 載入完成，隱藏 loading 狀態
       }
     };
 
@@ -618,14 +622,6 @@ export default function WorkspacePage() {
     };
     if (showSurveyPicker) document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [showSurveyPicker]);
-
-  useEffect(() => {
-    if (!showSurveyPicker) return undefined;
-
-    setIsSurveyPickerLoading(true);
-    const timer = setTimeout(() => setIsSurveyPickerLoading(false), 450);
-    return () => clearTimeout(timer);
   }, [showSurveyPicker]);
 
   // Handle open session from collection
