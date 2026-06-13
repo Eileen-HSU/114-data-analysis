@@ -30,6 +30,7 @@ function getAuthHeader() {
 
 function normalizeSurveyDetail(survey) {
   const code = survey?.code || survey?.access_code;
+  const responses = Array.isArray(survey?.responses) ? survey.responses : [];
   return {
     ...survey,
     id: survey?.id || survey?.template_id || code,
@@ -37,35 +38,13 @@ function normalizeSurveyDetail(survey) {
     code,
     createdAt: survey?.createdAt || survey?.created_at || "",
     questions: Array.isArray(survey?.questions) ? survey.questions : [],
-    responses: Array.isArray(survey?.responses) ? survey.responses : [],
+    responses,
+    responseCount: survey?.responseCount ?? survey?.response_count ?? responses.length,
   };
 }
 
-function getStoredSurveyRecords(user, apiSurveys = []) {
-  let surveys = [];
-  try {
-    const stored = JSON.parse(localStorage.getItem("surveys") || "{}");
-    surveys = Object.values(stored || {});
-  } catch {
-    surveys = [];
-  }
-
-  const localRecords = surveys
-    .filter((survey) => {
-      if (!user) return false;
-      if (!survey.ownerId && !survey.ownerEmail) return false;
-      return survey.ownerId === user?.user_id || survey.ownerEmail === user?.email;
-    })
-    .map((survey) => ({
-      id: survey.id || survey.code,
-      title: survey.title,
-      code: survey.code,
-      createdAt: survey.createdAt,
-      responseCount: survey.responses?.length || 0,
-      detail: survey,
-    }));
-
-  const backendRecords = apiSurveys
+function getSurveyPickerRecords(apiSurveys = []) {
+  return apiSurveys
     .map(normalizeSurveyDetail)
     .filter((survey) => survey.code)
     .map((survey) => ({
@@ -73,13 +52,10 @@ function getStoredSurveyRecords(user, apiSurveys = []) {
       title: survey.title,
       code: survey.code,
       createdAt: survey.createdAt,
-      responseCount: survey.responses.length,
+      responseCount: survey.responseCount,
+      status: survey.status || "active",
       detail: survey,
     }));
-  const backendCodes = new Set(backendRecords.map((survey) => survey.code).filter(Boolean));
-  const uniqueLocalRecords = localRecords.filter((survey) => !backendCodes.has(survey.code));
-
-  return [...backendRecords, ...uniqueLocalRecords];
 }
 
 
@@ -817,7 +793,7 @@ export default function WorkspacePage() {
     }, 1800);
   };
 
-  const surveyPickerRecords = getStoredSurveyRecords(user, apiSurveys);
+  const surveyPickerRecords = getSurveyPickerRecords(apiSurveys);
   const filteredSurveyPicker = surveyPickerRecords.filter(
     (s) =>
       String(s.title || "").toLowerCase().includes(surveyPickerSearch.toLowerCase()) ||
