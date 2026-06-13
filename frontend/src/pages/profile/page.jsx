@@ -693,6 +693,7 @@ export default function ProfilePage() {
                 <div className="flex-grow-1 pt-5">
                   <h1 className="profile-name">{profile.name}</h1>
                   <p className="profile-email">{user?.email || ""}</p>
+                  <p className="profile-bio">{profile.bio}</p>
                 </div>
               </div>
 
@@ -722,7 +723,6 @@ export default function ProfilePage() {
                   );
                 })}
               </div>
-              <p className="profile-bio">{profile.bio}</p>
             </div>
           </section>
 
