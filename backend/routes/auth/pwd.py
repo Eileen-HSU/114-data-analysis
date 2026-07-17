@@ -108,12 +108,30 @@ def send_otp():
 
         action_text = "變更密碼" if verify_type == "PASSWORD_CHANGE" else "重設密碼"
         subject = f"DataAnalysis {action_text}驗證碼"
-        message_body = (
-            f"您好，\n\n"
-            f"您正在進行 {action_text}。\n"
-            f"您的驗證碼是：{otp}\n\n"
-            f"此驗證碼將在 10 分鐘後失效。"
-        )
+
+        if verify_type == "PASSWORD_CHANGE":
+            # 修改密碼
+            message_body = (
+                f"您好，\n\n"
+                f"您正在進行 {action_text}。\n"
+                f"您的驗證碼是：{otp}\n\n"
+                f"此驗證碼將在 10 分鐘後失效。\n"
+                f"如果您沒有發起這個請求，請忽略此信件。"
+            )
+        else:
+            # 忘記密碼
+            reset_link = (
+                f"{frontend_url}/reset-password"
+                f"?email={email}&from={from_param}"
+            )
+            message_body = (
+                f"您好，\n\n"
+                f"您正在進行 {action_text}。\n"
+                f"您的驗證碼是：{otp}\n\n"
+                f"請點擊以下連結前往輸入驗證碼：\n{reset_link}\n\n"
+                f"此驗證碼將在 10 分鐘後失效。\n"
+                f"如果您沒有發起這個請求，請忽略此信件。"
+            )
         send_password_email_via_resend(email, subject, message_body)
         return jsonify({"message": f"{action_text}驗證碼已寄出"}), 200
 
