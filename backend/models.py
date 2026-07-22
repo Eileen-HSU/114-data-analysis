@@ -80,7 +80,6 @@ class Chat_History(db.Model):
     message_content = db.Column(db.Text, nullable=False)
     sender_type     = db.Column(db.String(10), nullable=False) # user / ai
     status          = db.Column(db.String(20), default='active') # processing / compelted / falled
-    ai_category     = db.Column(db.String(50)) 
     corrected_change = db.Column(db.Text) 
     created_at      = db.Column(db.DateTime(timezone=True), default=taiwan_now)
 
@@ -131,3 +130,36 @@ class UploadedFile(db.Model):
     file_type   = db.Column(db.String(10), nullable=False)  # csv / xlsx / txt
     # is_survey   = db.Column(db.Boolean, default=False)      # True: 問卷數據 / False: 一般分析檔案
     uploaded_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
+
+#T10: Response_Classification - 儲存問卷回覆的分類結果
+class Response_Classification(db.Model):
+    __tablename__ = 'Response_Classification'
+
+    classification_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    response_id = db.Column(db.Integer, db.ForeignKey('Survey_Response.response_id'), nullable=True)
+    source_type = db.Column(db.String(20), nullable=False)   # 'survey' 或 'user_upload'
+    question_id = db.Column(db.String(255))
+    answer_text = db.Column(db.Text, nullable=False)
+    main_category = db.Column(db.String(100))
+    sub_category  = db.Column(db.String(100))
+    reasoning     = db.Column(db.Text)
+    summary       = db.Column(db.Text)
+    methodology   = db.Column(db.String(100))
+    status     = db.Column(db.String(20), default='pending')
+    created_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
+
+    def to_dict(self):
+        return {
+            "classification_id": self.classification_id,
+            "response_id": self.response_id,
+            "source_type": self.source_type,
+            "question_id": self.question_id,
+            "answer_text": self.answer_text,
+            "main_category": self.main_category,
+            "sub_category": self.sub_category,
+            "reasoning": self.reasoning,
+            "summary": self.summary,
+            "methodology": self.methodology,
+            "status": self.status,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
