@@ -18,6 +18,7 @@ from routes.auth.workspace import workspace_bp
 from routes.auth.survey import survey_bp
 from routes.auth.chat import chat_bp
 from routes.auth.trash import trash_bp, start_scheduler
+from routes.auth.classification import classification_bp
 
 load_dotenv()
 
@@ -127,6 +128,7 @@ app.register_blueprint(survey_bp)
 app.register_blueprint(workspace_bp)
 app.register_blueprint(chat_bp)
 app.register_blueprint(trash_bp)
+app.register_blueprint(classification_bp)
 
 start_scheduler(app)
 
@@ -188,6 +190,6 @@ def handle_options():
     
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 5001))
     app.run(host="0.0.0.0", port=port)
 
