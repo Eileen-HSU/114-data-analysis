@@ -11,14 +11,14 @@ from sqlalchemy import text
 from extensions import db, mail
 from routes.auth.two_factor import two_factor_bp
 from routes.auth.login import login_bp
-from routes.auth.profile import profile_bp
+from routes.users.profile import profile_bp
 from routes.auth.pwd import pwd_bp
 from routes.auth.register import register_bp
-from routes.auth.workspace import workspace_bp
-from routes.auth.survey import survey_bp
-from routes.auth.chat import chat_bp
-from routes.auth.trash import trash_bp, start_scheduler
-from routes.auth.classification import classification_bp
+from routes.workspaces.workspace import workspace_bp
+from routes.surveys.survey import survey_bp
+from routes.chats.chat import chat_bp
+from routes.workspaces.trash import trash_bp, start_scheduler
+from routes.classifications.classification import classification_bp
 
 load_dotenv()
 
