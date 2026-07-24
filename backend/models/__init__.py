@@ -1,0 +1,237 @@
+import uuid
+
+from sqlalchemy.dialects.mysql import MEDIUMTEXT
+
+from extensions import db, taiwan_now
+from .response_classification import Response_Classification  # noqa: F401  (re-export)
+
+
+# ═══════════════════════════════════════════════════════════════
+# 帳號 / 使用者
+# ═══════════════════════════════════════════════════════════════
+
+# T01: User - 使用者帳號基礎資料
+class User(db.Model):
+    __tablename__ = "User"
+
+    user_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_name = db.Column(db.String(50), nullable=False)
+    email = db.Column(db.String(100), nullable=False, unique=True)
+    password_hash = db.Column(db.String(255), nullable=False)
+    role = db.Column(db.String(10), default="user")  # user / admin
+    email_2fa_enabled = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
+
+    # 關聯設定
+    profile = db.relationship(
+        "UserProfile", backref="user", uselist=False, cascade="all, delete-orphan"
+    )
+    verifications = db.relationship(
+        "UserVerification", backref="user", cascade="all, delete-orphan"
+    )
+    workspaces = db.relationship(
+        "Workspace", backref="user", cascade="all, delete-orphan"
+    )
+
+
+# T02: User_Profile - 使用者詳細檔案
+class UserProfile(db.Model):
+    __tablename__ = "User_Profile"
+
+    profile_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("User.user_id"), nullable=False)
+    phone_number = db.Column(db.String(20), nullable=False)
+    company_name = db.Column(db.String(100), nullable=False)
+    gender = db.Column(db.String(20), nullable=False)
+    language = db.Column(db.String(36))
+    bio = db.Column(db.String(500))
+    location = db.Column(db.String(100))
+    avatar_url = db.Column(MEDIUMTEXT)
+    updated_at = db.Column(
+        db.DateTime(timezone=True), default=taiwan_now, onupdate=taiwan_now
+    )
+
+
+# T03: User_Verification - 驗證碼機制
+class UserVerification(db.Model):
+    __tablename__ = "User_Verification"
+
+    verification_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    # 刪除使用者時保留驗證紀錄，僅將 user_id 設為 NULL（對齊資料庫 ON DELETE SET NULL）
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("User.user_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    type = db.Column(db.String(50), nullable=False)  # REGISTER / PASSWORD_RESET / 2FA / SHARE_CHAT
+    code_hash = db.Column(db.String(255), nullable=False)
+    is_used = db.Column(db.Boolean, default=False)
+    attempts = db.Column(db.Integer, default=0, nullable=False)
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
+    target_email = db.Column(db.String(255))
+
+    # 分享對話功能使用：綁定驗證碼對應的 Workspace，其餘驗證類型為 None
+    project_id = db.Column(
+        db.Integer, db.ForeignKey("Workspace.project_id", ondelete="CASCADE"), nullable=True
+    )
+
+
+# ═══════════════════════════════════════════════════════════════
+# 專案 / 對話
+# ═══════════════════════════════════════════════════════════════
+
+# T04: Workspace - 專案紀錄
+class Workspace(db.Model):
+    __tablename__ = "Workspace"
+
+    project_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("User.user_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    project_name = db.Column(db.String(100), nullable=False)
+    folder_name = db.Column(db.String(100), nullable=True)
+    is_deleted = db.Column(db.Boolean, default=False, nullable=False, server_default="0")
+    deleted_at = db.Column(db.DateTime(timezone=True))
+    created_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
+
+    # 子資料表關聯
+    chats = db.relationship("Chat_History", backref="workspace")
+
+
+# T05: Chat_History - 對話紀錄
+class Chat_History(db.Model):
+    __tablename__ = "Chat_History"
+
+    chat_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    project_id = db.Column(db.Integer, db.ForeignKey("Workspace.project_id"), nullable=False)
+    template_id = db.Column(
+        db.Integer, db.ForeignKey("Survey_Template.template_id"), nullable=True
+    )
+    message_content = db.Column(db.Text, nullable=False)
+    sender_type = db.Column(db.String(10), nullable=False)  # user / ai
+    status = db.Column(db.String(20), default="active")  # processing / completed / failed
+    corrected_change = db.Column(db.Text)
+    created_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
+
+    # 子資料表關聯
+    exports = db.relationship(
+        "Export_File", backref="chat", cascade="all, delete-orphan"
+    )
+    uploaded_files = db.relationship(
+        "UploadedFile", backref="chat", cascade="all, delete-orphan"
+    )
+
+
+# T06: Uploaded_File - 儲存聊天室內上傳的檔案資訊
+class UploadedFile(db.Model):
+    __tablename__ = "Uploaded_File"
+
+    file_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    chat_id = db.Column(
+        db.Integer,
+        db.ForeignKey("Chat_History.chat_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    file_name = db.Column(db.String(255), nullable=False)
+    file_path = db.Column(db.String(1000), nullable=False)
+    file_type = db.Column(db.String(10), nullable=False)  # csv / xlsx / txt
+    uploaded_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
+
+
+# ═══════════════════════════════════════════════════════════════
+# 問卷 / 回覆
+# ═══════════════════════════════════════════════════════════════
+
+# T07: Survey_Template - 問卷模板
+class Survey_Template(db.Model):
+    __tablename__ = "Survey_Template"
+
+    template_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.Integer, nullable=True)
+    title = db.Column(db.String(100), nullable=False)
+    share_uuid = db.Column(
+        db.String(50), default=lambda: str(uuid.uuid4()), unique=True, nullable=False
+    )
+    access_code = db.Column(db.String(5), nullable=False)
+    question_json = db.Column(db.JSON, nullable=False)
+    due_date = db.Column(db.DateTime(timezone=True), nullable=True)
+    is_anonymous = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
+
+    # 關聯設定
+    responses = db.relationship(
+        "Survey_Response", backref="template", cascade="all, delete-orphan"
+    )
+
+
+# T08: Survey_Response - 儲存問卷回覆資料
+class Survey_Response(db.Model):
+    __tablename__ = "Survey_Response"
+
+    response_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    template_id = db.Column(
+        db.Integer,
+        db.ForeignKey("Survey_Template.template_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    answer_json = db.Column(db.JSON, nullable=False)
+    # 資料庫既有欄位，後端/前端仍在使用中，不可刪除
+    res_iden = db.Column(db.String(100), nullable=True)
+    response_token = db.Column(
+        db.String(255), nullable=False, default=lambda: str(uuid.uuid4())
+    )
+    submitted_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
+    updated_at = db.Column(
+        db.DateTime(timezone=True), default=taiwan_now, onupdate=taiwan_now
+    )
+
+
+# ═══════════════════════════════════════════════════════════════
+# 分類結果匯出
+# ═══════════════════════════════════════════════════════════════
+
+# T09: Export_File - 儲存聊天室匯出檔案
+class Export_File(db.Model):
+    __tablename__ = "Export_File"
+
+    export_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    chat_id = db.Column(
+        db.Integer,
+        db.ForeignKey("Chat_History.chat_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    export_name = db.Column(db.String(255), nullable=False)
+    export_type = db.Column(db.String(50), nullable=False)  # e.g. pdf / xlsx / docx
+    export_path = db.Column(db.Text, nullable=False)
+    export_status = db.Column(db.String(20), default="processing")  # processing / completed / failed
+    created_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
+
+    def to_dict(self) -> dict:
+        return {
+            "export_id": self.export_id,
+            "chat_id": self.chat_id,
+            "export_name": self.export_name,
+            "export_type": self.export_type,
+            "export_path": self.export_path,
+            "export_status": self.export_status,
+            "created_at": (
+                self.created_at.isoformat() if self.created_at else None
+            ),
+        }
+
+
+# ═══════════════════════════════════════════════════════════════
+# T10: Admin
+# ═══════════════════════════════════════════════════════════════
+"""
+class Admin(db.Model):
+    __tablename__ = 'Admin'
+    config_id        = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    admin_entry_key  = db.Column(db.String(50), nullable=False)  # 管理員金鑰
+    prompt_template  = db.Column(db.Text)                        # AI分析提示語模板
+    system_error_log = db.Column(db.Text)                        # 系統錯誤日誌
+    updated_at       = db.Column(db.DateTime(timezone=True), default=taiwan_now, onupdate=taiwan_now)
+"""
