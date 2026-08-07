@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy.dialects.mysql import MEDIUMTEXT
 
 from extensions import db, taiwan_now
-from .response_classification import Response_Classification  # noqa: F401  (re-export)
+from response_classification import Response_Classification 
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -224,7 +224,41 @@ class Export_File(db.Model):
 
 
 # ═══════════════════════════════════════════════════════════════
-# T10: Admin
+# AI 分類 Prompt 管理（沙盒環境）
+# ═══════════════════════════════════════════════════════════════
+
+# T10: Prompt_Template - 管理可後台編輯測試的 AI 分類 prompt（草稿版 + 正式版）
+class Prompt_Template(db.Model):
+    __tablename__ = "Prompt_Template"
+
+    # 例如 "leadership_and_dept"、"career_and_feedback"
+    prompt_key = db.Column(db.String(50), primary_key=True)
+    draft_content = db.Column(db.Text, nullable=False)
+    live_content = db.Column(db.Text, nullable=False)
+
+    # 草稿是否已通過「發布前驗證」（黃金測試組全部格式合法）。
+    # 每次編輯草稿後重設為 False，只有測試通過才會設回 True，
+    # 發布時檢查這個欄位，沒過驗證不准發布。
+    draft_validated = db.Column(db.Boolean, default=False, nullable=False)
+
+    updated_at = db.Column(
+        db.DateTime(timezone=True), default=taiwan_now, onupdate=taiwan_now
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "prompt_key": self.prompt_key,
+            "draft_content": self.draft_content,
+            "live_content": self.live_content,
+            "draft_validated": self.draft_validated,
+            "updated_at": (
+                self.updated_at.isoformat() if self.updated_at else None
+            ),
+        }
+
+
+# ═══════════════════════════════════════════════════════════════
+# T11: Admin
 # ═══════════════════════════════════════════════════════════════
 """
 class Admin(db.Model):
