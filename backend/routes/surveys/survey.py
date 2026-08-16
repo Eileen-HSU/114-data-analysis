@@ -15,6 +15,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from extensions import db
 from models import Survey_Template, Survey_Response, Chat_History
+from services.question_routing_service import route_question_type
 
 survey_bp = Blueprint('survey', __name__)
 
@@ -269,6 +270,18 @@ def create_survey():
 
     try:
         access_code = generate_unique_access_code()
+
+        # 對每道開放式文字題（type == "short"）自動判斷一次
+        # question_type（leadership_and_dept / career_and_feedback），
+        # 只在「建立問卷」這個時間點呼叫一次 Gemini，不是每則回答各判斷
+        # 一次。route_question_type() 本身已經是 fail-safe 設計，任何
+        # 判斷不出來或呼叫失敗的情況都回傳 None，這裡不需要額外
+        # try/except——問卷一律照常建立成功，只是該題 question_type
+        # 留 None，之後這題的回答會跳過自動分類（原始回答仍會完整保存）。
+        for question in questions:
+            if isinstance(question, dict) and question.get("type") == "short":
+                question["question_type"] = route_question_type(question.get("title") or "")
+
         survey_content = {
             "description": data.get('description'),
             "identity_mode": identity_mode,

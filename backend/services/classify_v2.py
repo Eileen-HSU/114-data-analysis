@@ -1,10 +1,3 @@
-"""
-
-新版分類邏輯，取代原本 classify.py 裡通用範例版的 PROMPT_1，改用團隊
-實際定案的分類規則（0731_prompt訓練.md）與封閉子類別集合。
-
-"""
-
 import json
 import os
 import re
@@ -16,8 +9,33 @@ from services.subcategory_methodology import (
     QUESTION_CAREER,
     get_methodology,
 )
+from services.privacy_service import mask_pii, mask_pii_with_mapping, PiiMaskingError
+from services.segmentation_service import segment_answer
 
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+
+
+# Gemini #2（批次分類）專用：附加在 prompt_content 之後的輸出格式
+# 覆蓋說明。不動 prompt_content 本身，只在它後面多接這一段，
+# 明確覆蓋 prompt_content 尾端「只回傳單一 JSON」的既有指示，
+# 分類定義／判斷規則完全沿用 prompt_content，不重新定義一次。
+BATCH_OUTPUT_FORMAT_OVERRIDE = """
+
+【本次輸出格式覆蓋，優先於上方「輸出格式」段落的單筆 JSON 說明】
+接下來你會收到 {n} 個編號片段（不是單一段回覆），請忽略上方「只
+回傳單一 main_category/sub_category JSON」的指示，改為對「每一個」
+片段各自套用上方的分類定義、次要類別規則與判斷標準，並用以下陣列
+格式一次回傳所有片段的結果，不要加任何其他文字：
+
+{{"classifications": [
+  {{"index": 0, "main_category": "...", "sub_category": "...", "secondary_sub_category": null, "reasoning": "...", "summary": "...", "confidence": "..."}},
+  ...
+]}}
+
+index 必須恰好包含 0 到 {n_minus_1}，每個各出現一次，不能遺漏也不能
+重複。除了「輸出格式從單筆物件改成 classifications 陣列」之外，
+分類邏輯、可選類別、次要類別規則、判斷標準完全比照上方規則，
+不需要另外調整；片段之間請各自獨立判斷，不要互相影響。"""
 
 
 # ── 系統層級總分類規則（0731_prompt訓練.md 最後一段，兩題共用）──────────
@@ -182,11 +200,14 @@ def is_text_response(value) -> bool:
     return True
 
 
-def _run_classification(answer_text: str, prompt_content: str, question_type: str) -> dict:
+def _call_gemini_and_parse(masked_text: str, prompt_content: str, question_type: str) -> dict:
     """
-    底層分類函式，接受任意 prompt 內容（可能是正式版，也可能是沙盒草稿）。
-    正式分類流程與沙盒測試流程都呼叫這個函式，只是傳入的 prompt_content 來源不同，
-    避免兩邊邏輯各寫一份、之後改一邊忘記改另一邊。
+    共用邏輯：把已經遮罩過的文字送進 Gemini、解析結果、查方法論表。
+    輸入必須已經是遮罩後文字，這個函式不做任何 PII masking。
+
+    被 _run_classification()（單一整則回答，內部自己遮罩一次）與
+    _classify_segment()（意義單元拆分後的單一 segment，遮罩已在
+    外層做過一次）共用，避免兩邊邏輯各寫一份。
     """
     result = {
         "main_category": None,
@@ -209,7 +230,7 @@ def _run_classification(answer_text: str, prompt_content: str, question_type: st
             system_instruction=prompt_content,
         )
         response = model.generate_content(
-            f"問卷回覆內容:\n{answer_text}",
+            f"問卷回覆內容:\n{masked_text}",
             generation_config={"temperature": 0},
         )
         parsed = _parse_json(response.text)
@@ -239,11 +260,231 @@ def _run_classification(answer_text: str, prompt_content: str, question_type: st
                 result["secondary_citation"] = secondary_info["citation"]
 
     except Exception as e:
-        print("[CLASSIFY ERROR]", repr(e))
+        print("[CLASSIFY ERROR][GEMINI_API_FAILED]", repr(e))
         result["status"] = "failed"
-        result["error_detail"] = str(e)[:200]  # 只存前200字，避免CSV欄位太長
+        result["error_detail"] = f"GEMINI_API_FAILED: {str(e)[:180]}"
 
     return result
+
+
+def _run_classification(answer_text: str, prompt_content: str, question_type: str) -> dict:
+    """
+    底層分類函式（既有邏輯不變）：接受任意 prompt 內容（可能是正式版，
+    也可能是沙盒草稿），內部自行遮罩整則 answer_text 後送 Gemini。
+
+    被 classify_response_v2()（批次分類，run_classification.py 用）
+    與 prompt_admin_service.py 的沙盒測試直接呼叫，這兩個呼叫端
+    這次都不修改，所以這個函式的行為必須維持跟修改前一致，
+    只是內部改呼叫共用的 _call_gemini_and_parse()，避免跟新的
+    多意義單元流程重複維護兩份幾乎一樣的邏輯。
+    """
+    try:
+        masked_text = mask_pii(answer_text)
+    except PiiMaskingError as e:
+        print("[CLASSIFY ERROR][PII_MASKING_FAILED]", repr(e))
+        return {
+            "main_category": None,
+            "sub_category": None,
+            "secondary_sub_category": None,
+            "reasoning": None,
+            "summary": None,
+            "confidence": None,
+            "methodology": None,
+            "citation": None,
+            "secondary_methodology": None,
+            "secondary_citation": None,
+            "status": "failed",
+            "error_detail": f"PII_MASKING_FAILED: {str(e)[:180]}",
+        }
+
+    return _call_gemini_and_parse(masked_text, prompt_content, question_type)
+
+
+def _build_classification_result(parsed: dict, question_type: str) -> dict:
+    """
+    把 Gemini 回傳的一筆分類物件（單一 segment 或批次陣列裡的一個
+    元素，格式相同）補上方法論查表結果，組成完整的分類結果 dict。
+    """
+    result = {
+        "main_category": parsed["main_category"],
+        "sub_category": parsed["sub_category"],
+        "secondary_sub_category": parsed.get("secondary_sub_category"),
+        "reasoning": parsed["reasoning"],
+        "summary": parsed["summary"],
+        "confidence": parsed.get("confidence", "high"),
+        "methodology": None,
+        "citation": None,
+        "secondary_methodology": None,
+        "secondary_citation": None,
+        "status": "pending",
+        "error_detail": None,
+    }
+
+    methodology_info = get_methodology(question_type, result["sub_category"])
+    if methodology_info:
+        result["methodology"] = methodology_info["methodology"]
+        result["citation"] = methodology_info["citation"]
+        result["status"] = "completed"
+    else:
+        result["status"] = "methodology_not_found"
+        result["error_detail"] = f"sub_category 不在固定清單裡：{result['sub_category']}"
+
+    if result["secondary_sub_category"]:
+        secondary_info = get_methodology(question_type, result["secondary_sub_category"])
+        if secondary_info:
+            result["secondary_methodology"] = secondary_info["methodology"]
+            result["secondary_citation"] = secondary_info["citation"]
+
+    return result
+
+
+def _failed_classification_result(error_detail: str) -> dict:
+    return {
+        "main_category": None,
+        "sub_category": None,
+        "secondary_sub_category": None,
+        "reasoning": None,
+        "summary": None,
+        "confidence": None,
+        "methodology": None,
+        "citation": None,
+        "secondary_methodology": None,
+        "secondary_citation": None,
+        "status": "failed",
+        "error_detail": error_detail,
+    }
+
+
+def _call_gemini_batch_classification(masked_segments: list, prompt_content: str, question_type: str) -> list:
+    """
+    Gemini #2：一次把所有已驗證合法的 masked segments 送進去，
+    一次回傳每個 segment 的分類結果（固定 2 次呼叫策略的第二次，
+    不對每個 segment 各自呼叫一次）。
+
+    用明確的 index 對應每個片段，不依賴陣列順序——Gemini 回傳的
+    index 集合只要跟 0~N-1 對不上（缺漏、重複、超出範圍），
+    整批視為失敗（fail-closed），不做部分採信。
+
+    回傳長度固定等於 len(masked_segments)，且順序跟輸入一致，
+    呼叫端可以直接用 zip() 對應回各自的 orig_start/orig_end。
+
+    prompt_content 的 output-format 衝突處理：
+    prompt_content 尾端本來就寫死「只回傳單一 main_category/
+    sub_category JSON」，這跟這裡要的 classifications 陣列格式互相
+    矛盾。不修改、不複製 prompt_content 本身（分類定義與判斷規則
+    完全沿用同一份），只在 system_instruction 裡、prompt_content
+    之後，另外附加一段「覆蓋輸出格式」的說明——因為它在同一個
+    system_instruction 字串裡、且明確位於原本格式說明之後、並
+    明講要覆蓋前面的指示，所以不會產生「system_instruction 跟
+    user message 兩邊互相矛盾、system 優先於 user」這種衝突。
+    user message 只負責列出片段內容，不再重複格式規則。
+    """
+    n = len(masked_segments)
+
+    try:
+        segments_block = "\n".join(f"[{i}] {text}" for i, text in enumerate(masked_segments))
+        user_message = f"片段內容：\n{segments_block}"
+
+        batch_system_instruction = prompt_content + BATCH_OUTPUT_FORMAT_OVERRIDE.format(n=n, n_minus_1=n - 1)
+
+        model = genai.GenerativeModel(
+            model_name="gemini-3.1-flash-lite",
+            system_instruction=batch_system_instruction,
+        )
+        response = model.generate_content(
+            user_message,
+            generation_config={"temperature": 0},
+        )
+        parsed = _parse_json(response.text)
+        items = parsed["classifications"]
+
+        seen_indices = set()
+        result_by_index = {}
+        for item in items:
+            idx = item["index"]
+            if not isinstance(idx, int) or not (0 <= idx < n) or idx in seen_indices:
+                raise ValueError(f"Gemini 回傳的 index 不合法或重複：{idx!r}")
+            seen_indices.add(idx)
+            result_by_index[idx] = item
+
+        if seen_indices != set(range(n)):
+            raise ValueError(
+                f"Gemini 回傳的 index 集合不完整，預期 0~{n - 1}，"
+                f"實際收到 {sorted(seen_indices)}"
+            )
+
+        return [_build_classification_result(result_by_index[i], question_type) for i in range(n)]
+
+    except Exception as e:
+        print("[CLASSIFY ERROR][BATCH_CLASSIFICATION_FAILED]", repr(e))
+        error_detail = f"BATCH_CLASSIFICATION_FAILED: {str(e)[:180]}"
+        return [_failed_classification_result(error_detail) for _ in range(n)]
+
+
+
+def classify_response_multi_segment(answer_text: str, prompt_content: str, question_type: str) -> dict:
+    """
+    多意義單元分類協調函式：遮罩 → 拆分驗證（Gemini #1）→ 批次分類
+    （Gemini #2，一次呼叫涵蓋所有 segment）。固定 2 次 Gemini 呼叫，
+    不隨 segment 數量增加而增加呼叫次數。
+
+    只負責「組出資料結構」，不寫入 DB（DB 寫入是呼叫端
+    routes/classifications/classification.py 的職責）。segmentation_status
+    與每個 segment 各自的 status 是分開的兩件事，呼叫端寫入時要
+    分別處理，不要混在一起判斷。
+
+    回傳：
+    {
+        "segmentation_status": "completed" / "partial_failed" / "failed",
+        "segmentation_error_detail": str or None,
+        "segments": [
+            {
+                "orig_start": int, "orig_end": int,
+                # 以下欄位跟舊版 _run_classification() 回傳的欄位一致
+                "main_category": ..., "sub_category": ..., ..., "status": ...,
+            },
+            ...
+        ],
+    }
+
+    如果整則回答遮罩失敗（fail-closed），或拆分完全沒有任何一個
+    segment 驗證通過，"segments" 會是空清單，呼叫端應該視這則回答
+    為需要人工複核，不建立任何 Response_Classification 列。
+    """
+    try:
+        masked_text, position_map = mask_pii_with_mapping(answer_text)
+    except PiiMaskingError as e:
+        print("[CLASSIFY ERROR][PII_MASKING_FAILED]", repr(e))
+        return {
+            "segmentation_status": "failed",
+            "segmentation_error_detail": f"PII_MASKING_FAILED: {str(e)[:180]}",
+            "segments": [],
+        }
+
+    seg_result = segment_answer(masked_text, position_map)
+    valid_segments = seg_result["segments"]
+
+    if not valid_segments:
+        return {
+            "segmentation_status": seg_result["segmentation_status"],
+            "segmentation_error_detail": seg_result["error_detail"],
+            "segments": [],
+        }
+
+    masked_texts = [seg["masked_text"] for seg in valid_segments]
+    classifications = _call_gemini_batch_classification(masked_texts, prompt_content, question_type)
+
+    classified_segments = [
+        {"orig_start": seg["orig_start"], "orig_end": seg["orig_end"], **classification}
+        for seg, classification in zip(valid_segments, classifications)
+    ]
+
+    return {
+        "segmentation_status": seg_result["segmentation_status"],
+        "segmentation_error_detail": seg_result["error_detail"],
+        "segments": classified_segments,
+    }
+
 
 
 def classify_response_v2(answer_text: str, question_type: str) -> dict:

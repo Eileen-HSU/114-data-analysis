@@ -4,6 +4,8 @@ from sqlalchemy.dialects.mysql import MEDIUMTEXT
 
 from extensions import db, taiwan_now
 from response_classification import Response_Classification 
+from response_segmentation_status import Response_Segmentation_Status
+from uploaded_answer import Uploaded_Answer
 
 
 # ═══════════════════════════════════════════════════════════════
