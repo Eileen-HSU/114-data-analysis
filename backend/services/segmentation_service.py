@@ -55,7 +55,7 @@ def _locate_and_validate(masked_text: str, segment_texts: list, position_map):
     不切在遮罩標籤中間，換算成原文座標。
 
     回傳 (valid_segments, failed_segments)：
-        valid_segments: [{"orig_start": int, "orig_end": int}, ...]
+        valid_segments: [{"orig_start": int, "orig_end": int, "masked_text": str}, ...]
         failed_segments: [{"segment_text": str, "reason": str}, ...]
     """
     valid_segments = []
@@ -72,7 +72,11 @@ def _locate_and_validate(masked_text: str, segment_texts: list, position_map):
 
             orig_start, orig_end = position_map.to_original_range(m_start, m_end)
 
-            valid_segments.append({"orig_start": orig_start, "orig_end": orig_end})
+            valid_segments.append({
+                "orig_start": orig_start,
+                "orig_end": orig_end,
+                "masked_text": seg_text,  # 送去 Gemini #2 分類用，本來就是遮罩後內容
+            })
             search_from = m_end  # 天然保證不重疊：下一段只往後找
 
         except ValueError:
@@ -92,7 +96,7 @@ def segment_answer(masked_text: str, position_map) -> dict:
 
     回傳：
     {
-        "segments": [{"orig_start": int, "orig_end": int}, ...],  # 驗證通過的
+        "segments": [{"orig_start": int, "orig_end": int, "masked_text": str}, ...],
         "segmentation_status": "completed" / "partial_failed" / "failed",
         "error_detail": str or None,
     }
