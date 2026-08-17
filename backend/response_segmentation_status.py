@@ -41,20 +41,6 @@ class Response_Segmentation_Status(db.Model):
     # 與 Response_Classification 完全一致的來源規則：
     # survey 一定要有 response_id、沒有 upload_batch_id；
     # user_upload 一定不能有 response_id、一定要有 upload_batch_id。
-    #
-    # 注意：這裡刻意不對 (source_type, response_id, upload_batch_id,
-    # question_id) 加 UniqueConstraint。原因：MySQL 的 UNIQUE 約束對
-    # NULL 值的標準語意是「NULL 不等於任何值，包括另一個 NULL」，
-    # 而 survey 列的 upload_batch_id 恆為 NULL、user_upload 列的
-    # response_id 恆為 NULL，只要組合鍵裡有任一欄是 NULL，MySQL 就會
-    # 允許重複，等於約束形同虛設（這點對 survey 尤其明顯：多筆
-    # 相同 response_id+question_id 的 survey 列，因為 upload_batch_id
-    # 都是 NULL，一樣會被允許重複寫入）。這是 MySQL/標準 SQL 對
-    # NULL 的既有語意限制，不是這次設計疏漏；如果需要資料庫層級
-    # 真正生效的唯一性保證，需要額外的技術方案（例如用一個
-    # generated column 把 response_id 與 upload_batch_id 合併成
-    # 一個恆為非 NULL 的值再建索引），這超出目前確認的範圍，
-    # 這裡先不做，唯一性目前只能靠應用層「寫入前先查一次」維護。
     __table_args__ = (
         CheckConstraint(
             f"""
@@ -73,6 +59,19 @@ class Response_Segmentation_Status(db.Model):
             )
             """,
             name="chk_response_segmentation_status_source",
+        ),
+        # 最終唯一性原則：
+        #   survey：      (response_id, question_id) 唯一
+        #   user_upload： uploaded_answer_id 唯一（見下方欄位定義的 unique=True）
+        # 這裡加的是 survey 那一半。對 user_upload 列而言，response_id
+        # 恆為 NULL，依 MySQL 對 UNIQUE 約束裡 NULL 的標準語意（多欄位
+        # 唯一約束只要有一欄是 NULL，該列就不會跟任何其他列產生衝突），
+        # 這個約束對 user_upload 列完全不會生效、也不會誤擋——
+        # user_upload 的唯一性保護，繼續完全依賴下面 uploaded_answer_id
+        # 欄位本身的 unique=True，兩者互不干擾。
+        db.UniqueConstraint(
+            "response_id", "question_id",
+            name="uq_response_segmentation_status_response_question",
         ),
     )
 

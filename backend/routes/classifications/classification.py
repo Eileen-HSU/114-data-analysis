@@ -1,8 +1,26 @@
 """
 分類相關 API：
-  POST /api/survey-response          -> 送出系統問卷，自動拆解文字題並分類
-  POST /api/classification/upload    -> 上傳 Excel，逐列分類
-  GET  /api/classification/<response_id> -> 查詢某份問卷的所有分類結果
+  POST /api/survey-response              -> （legacy，見下方說明）
+  POST /api/surveys/<access_code>/analyze -> 觸發整份問卷的批次分析
+  POST /api/classification/upload         -> 上傳 Excel，批次分類
+  GET  /api/classification/<response_id>  -> 查詢某份問卷的所有分類結果
+
+關於 /api/survey-response：
+    這支路由目前沒有被前端呼叫（真正的問卷填答路徑是
+    routes/surveys/survey.py 的 POST /api/surveys/<access_code>/responses，
+    那支只保存 answer_json，不做任何分類）。這支路由先保留、不刪除，
+    但新的批次分析（/analyze）完全不會呼叫它，兩者互不依賴。等新的
+    批次流程完整驗證過，再另外決定要不要清理這支孤兒端點。
+
+survey 批次分析的設計：
+    填答階段（POST .../responses）只保存原始回答，不觸發任何 Gemini
+    呼叫。使用者之後主動觸發 POST .../analyze，才依 template_id 撈出
+    所有 Survey_Response，依 question_id 分組（不同題目的回答絕對不會
+    混在一起做去重），每組各自呼叫 batch_classification_service 做
+    去重 + 批次分類。已經有 Response_Segmentation_Status 紀錄的回答
+    （不論狀態是 completed / partial_failed / failed）一律視為「已
+    處理」，不會被重新送 Gemini，但仍然可以作為新回答的 duplicate
+    reference。
 
 routing／segmentation／classification 的完整資料流：
 
@@ -44,6 +62,8 @@ from models import (
 from services.classify_v2 import classify_response_multi_segment, is_text_response
 from services.privacy_service import mask_pii, PiiMaskingError
 from services.question_routing_service import route_question_type
+from services.batch_classification_service import run_batch_analysis
+from routes.surveys.survey import verify_token, find_survey_by_access_or_short_code
 import pandas as pd
 
 classification_bp = Blueprint("classification", __name__)
@@ -238,6 +258,15 @@ def upload_excel_for_classification():
     classified_count = 0
     all_classification_rows = []
 
+    # 先把整批要送分類的資料收集起來（Uploaded_Answer 不論
+    # question_type 有沒有結果都先各自保存），question_type 有結果時
+    # 才收進 pending_items，交給批次協調服務一次處理整批（同一次
+    # upload_batch_id + source_column 內部互相去重，不需要每列各自
+    # 呼叫 Gemini）。upload_batch_id 每次上傳都是全新 UUID，所以這裡
+    # 的 existing_references 永遠是空清單——不可能有「這批資料裡有些
+    # 是舊的、已經分析過」的情況。
+    pending_items = []  # 每個元素額外帶一個 _question_id，DB 寫入時才用得到
+
     for idx, row in df.iterrows():
         answer = row[text_column]
         if not is_text_response(answer):
@@ -245,7 +274,6 @@ def upload_excel_for_classification():
 
         answer_text = str(answer)
 
-        # 不論 routing 有沒有結果，原始內容一律先保存
         uploaded_answer = Uploaded_Answer(
             upload_batch_id=upload_batch_id,
             source_column=text_column,
@@ -258,20 +286,36 @@ def upload_excel_for_classification():
         saved_answer_count += 1
 
         if question_type and prompt_row:
-            result = classify_response_multi_segment(answer_text, prompt_row.live_content, question_type)
-            _, rows = _persist_segmentation_result(
-                result,
-                source_type="user_upload",
-                answer_text=answer_text,
-                question_id=f"{text_column}_row{idx}",
-                upload_batch_id=upload_batch_id,
-                uploaded_answer_id=uploaded_answer.id,
-            )
-            all_classification_rows.extend(rows)
-            classified_count += 1
+            pending_items.append({
+                "identifier": uploaded_answer.id,
+                "answer_text": answer_text,
+                "_question_id": f"{text_column}_row{idx}",
+            })
         # question_type 沒有結果：這筆 Uploaded_Answer 已經保存，
         # 停在「待處理」狀態，不建立 Response_Segmentation_Status /
         # Response_Classification
+
+    if pending_items:
+        results = run_batch_analysis(
+            existing_references=[],
+            pending_items=[
+                {"identifier": item["identifier"], "answer_text": item["answer_text"]}
+                for item in pending_items
+            ],
+            prompt_content=prompt_row.live_content,
+            question_type=question_type,
+        )
+        for item, result in zip(pending_items, results):
+            _, rows = _persist_segmentation_result(
+                result,
+                source_type="user_upload",
+                answer_text=item["answer_text"],
+                question_id=item["_question_id"],
+                upload_batch_id=upload_batch_id,
+                uploaded_answer_id=item["identifier"],
+            )
+            all_classification_rows.extend(rows)
+            classified_count += 1
 
     db.session.commit()
 
@@ -284,7 +328,132 @@ def upload_excel_for_classification():
     }), 201
 
 
-# ---------- 3. 查詢分類結果 ----------
+# ---------- 3. 觸發整份問卷的批次分析 ----------
+@classification_bp.route("/api/surveys/<access_code>/analyze", methods=["POST"])
+def analyze_survey(access_code):
+    """
+    使用者主動觸發，對整份問卷（同一 template_id）依 question_id 分組，
+    每組各自去重 + 批次分類。已經有 Response_Segmentation_Status 紀錄
+    的回答（不論狀態）一律視為已處理，不重新送 Gemini，但仍可作為
+    duplicate reference；只有真正沒有紀錄的回答才會被送進批次協調服務。
+    """
+    auth_user_id, auth_error = verify_token(request)
+    if auth_error:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    survey = find_survey_by_access_or_short_code(access_code)
+    if not survey:
+        return jsonify({"error": "找不到這份問卷"}), 404
+    if survey.user_id != auth_user_id:
+        return jsonify({"error": "無權限"}), 403
+
+    template_id = survey.template_id
+    question_json = survey.question_json or {}
+    items = question_json.get("items", [])
+
+    # 只處理已經有 routing 結果的開放式文字題；type != "short" 或
+    # question_type 是 None 的題目，這裡完全不會碰
+    question_type_map = {
+        item.get("id"): item.get("question_type")
+        for item in items
+        if item.get("type") == "short" and item.get("question_type")
+    }
+
+    if not question_type_map:
+        return jsonify({
+            "template_id": template_id,
+            "analyzed_question_ids": [],
+            "newly_classified_count": 0,
+        }), 200
+
+    responses = Survey_Response.query.filter_by(template_id=template_id).all()
+
+    analyzed_question_ids = []
+    newly_classified_count = 0
+
+    for question_id, question_type in question_type_map.items():
+        prompt_row = Prompt_Template.query.get(question_type)
+        if prompt_row is None:
+            continue  # 理論上不該發生，保守跳過
+
+        existing_references = []
+        pending_items = []
+
+        for response in responses:
+            answers = (response.answer_json or {}).get("answers", {})
+            if question_id not in answers:
+                continue
+            answer_value = answers[question_id]
+            if not is_text_response(answer_value):
+                continue
+            answer_text = str(answer_value)
+
+            existing_status = Response_Segmentation_Status.query.filter_by(
+                response_id=response.response_id, question_id=question_id
+            ).first()
+
+            if existing_status is not None:
+                # 已處理過（不論 completed / partial_failed / failed），
+                # 不重新分類，但可以當 duplicate reference
+                existing_rows = Response_Classification.query.filter_by(
+                    response_id=response.response_id, question_id=question_id
+                ).all()
+                existing_references.append({
+                    "identifier": response.response_id,
+                    "answer_text": answer_text,
+                    "segments": [
+                        {
+                            "orig_start": r.segment_start,
+                            "orig_end": r.segment_end,
+                            "main_category": r.main_category,
+                            "sub_category": r.sub_category,
+                            "secondary_sub_category": r.secondary_sub_category,
+                            "reasoning": r.reasoning,
+                            "summary": r.summary,
+                            "methodology": r.methodology,
+                            "citation": r.citation,
+                            "secondary_methodology": r.secondary_methodology,
+                            "secondary_citation": r.secondary_citation,
+                            "status": r.status,
+                        }
+                        for r in existing_rows
+                    ],
+                })
+            else:
+                pending_items.append({
+                    "identifier": response.response_id,
+                    "answer_text": answer_text,
+                })
+
+        if not pending_items:
+            continue  # 這題沒有新回答需要處理
+
+        results = run_batch_analysis(
+            existing_references, pending_items, prompt_row.live_content, question_type
+        )
+
+        for item, result in zip(pending_items, results):
+            _persist_segmentation_result(
+                result,
+                source_type="survey",
+                answer_text=item["answer_text"],
+                question_id=question_id,
+                response_id=item["identifier"],
+            )
+            newly_classified_count += 1
+
+        analyzed_question_ids.append(question_id)
+
+    db.session.commit()
+
+    return jsonify({
+        "template_id": template_id,
+        "analyzed_question_ids": analyzed_question_ids,
+        "newly_classified_count": newly_classified_count,
+    }), 200
+
+
+# ---------- 4. 查詢分類結果 ----------
 @classification_bp.route("/api/classification/<int:response_id>", methods=["GET"])
 def get_classifications(response_id):
     records = Response_Classification.query.filter_by(response_id=response_id).all()
