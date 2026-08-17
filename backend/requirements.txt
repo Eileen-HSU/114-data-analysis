@@ -17,3 +17,4 @@ sib-api-v3-sdk
 presidio-analyzer
 presidio-anonymizer
 spacy
+scikit-learn
