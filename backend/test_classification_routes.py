@@ -18,7 +18,9 @@ import os
 import types
 import json
 import io
+import jwt
 
+os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-testing-only")
 sys.path.insert(0, os.path.dirname(__file__))
 
 FAILED = []
@@ -75,6 +77,7 @@ db.init_app(app)
 
 with app.app_context():
     tables = [
+        m.User.__table__,
         m.Survey_Template.__table__,
         m.Survey_Response.__table__,
         m.Prompt_Template.__table__,
@@ -90,9 +93,15 @@ with app.app_context():
     db.session.add(m.Prompt_Template(
         prompt_key="career_and_feedback", draft_content="d", live_content="LIVE_CAREER_PROMPT"
     ))
+    db.session.add(m.User(user_id=1, user_name="tester", email="tester@example.com", password_hash="x"))
     db.session.commit()
 
 client = app.test_client()
+
+
+def auth_header(user_id):
+    token = jwt.encode({"user_id": user_id}, os.environ["JWT_SECRET_KEY"], algorithm="HS256")
+    return {"Authorization": f"Bearer {token}"}
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -184,7 +193,7 @@ q({"classifications": [{"index": 0, "main_category": "m", "sub_category": "A2 �
 resp = client.post("/api/classification/upload", data={
     "file": (buf, "test.xlsx"),
     "text_column": "意見",
-})
+}, headers=auth_header(1))
 data = resp.get_json()
 
 check("HTTP 201", resp.status_code == 201)
@@ -199,6 +208,7 @@ with app.app_context():
     rss_rows = m.Response_Segmentation_Status.query.filter_by(upload_batch_id=batch_id).all()
 
     check("Uploaded_Answer 寫入 3 筆", len(ua_rows) == 3)
+    check("Uploaded_Answer.user_id 正確帶入 authenticated user", all(u.user_id == 1 for u in ua_rows))
     check("Uploaded_Answer 保留完整原文（含明文 PII，例如陳怡君）", any("陳怡君" in u.answer_text for u in ua_rows))
     check("Uploaded_Answer.question_type 全部正確填入", all(u.question_type == "leadership_and_dept" for u in ua_rows))
     check("Response_Classification 寫入 3 筆（各自對應一個 segment）", len(rc_rows) == 3)
@@ -226,7 +236,7 @@ q("not valid json")  # routing 呼叫失敗
 resp2 = client.post("/api/classification/upload", data={
     "file": (buf2, "t2.xlsx"),
     "text_column": "雜項",
-})
+}, headers=auth_header(1))
 data2 = resp2.get_json()
 
 check("HTTP 201（routing 失敗不影響上傳本身成功）", resp2.status_code == 201)
@@ -244,6 +254,18 @@ with app.app_context():
     check("routing 失敗時 Uploaded_Answer.question_type 皆為 None", all(u.question_type is None for u in ua_rows2))
     check("routing 失敗時完全不建立 Response_Classification", len(rc_rows2) == 0)
     check("routing 失敗時完全不建立 Response_Segmentation_Status", len(rss_rows2) == 0)
+
+
+print("\n========== Excel 上傳：未帶 token ==========")
+df3 = pd.DataFrame({"意見": ["隨便寫點什麼"]})
+buf3 = io.BytesIO()
+df3.to_excel(buf3, index=False)
+buf3.seek(0)
+resp3 = client.post("/api/classification/upload", data={
+    "file": (buf3, "t3.xlsx"),
+    "text_column": "意見",
+})
+check("未帶 Authorization 時 HTTP 401", resp3.status_code == 401)
 
 
 print("\n" + "=" * 50)

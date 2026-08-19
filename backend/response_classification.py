@@ -13,16 +13,30 @@ STATUS_PENDING = "pending"
 
 # 人工審核狀態（review_status）：跟 status 分開，status 代表 AI 有沒有處理
 # 成功，review_status 代表人有沒有看過、同不同意這個 segment 的分類結果。
-# 「移除」是軟刪除標記，不會真的砍掉這筆列，保留給之後檢討 AI 拆分/
-# 分類準確率使用。
+#   pending_review：AI 已產生結果，User 尚未確認。
+#   confirmed     ：User 沒有進 Review Conversation，直接接受 AI 原始結果。
+#   modified      ：曾進過 Review Conversation 並按下確認（即使最後結論
+#                    跟 AI original 完全一樣，仍是 modified，因為「User
+#                    曾提出異議」本身就是重要 feedback data）。
+#   excluded      ：User 決定這個 segment 不納入後續分析。是軟刪除標記，
+#                    不會真的砍掉這筆列，保留給之後檢討 AI 拆分/分類
+#                    準確率使用。
 REVIEW_STATUS_PENDING = "pending_review"
 REVIEW_STATUS_CONFIRMED = "confirmed"
-REVIEW_STATUS_REMOVED = "removed"
+REVIEW_STATUS_MODIFIED = "modified"
+REVIEW_STATUS_EXCLUDED = "excluded"
 ALLOWED_REVIEW_STATUSES = {
     REVIEW_STATUS_PENDING,
     REVIEW_STATUS_CONFIRMED,
-    REVIEW_STATUS_REMOVED,
+    REVIEW_STATUS_MODIFIED,
+    REVIEW_STATUS_EXCLUDED,
 }
+
+# 舊值相容：資料庫裡如果還留著 migration 前寫入的 "removed"，
+# 一律視同 "excluded"。目前 repo 內沒有任何寫入路徑會產生 "removed"
+# （review_status 尚未被任何 route 實際使用過），但保留這個常數
+# 方便 app.py 的 runtime migration 明確引用，不用寫死字串。
+_LEGACY_REVIEW_STATUS_REMOVED = "removed"
 
 
 class Response_Classification(db.Model):
@@ -94,9 +108,14 @@ class Response_Classification(db.Model):
     segment_start = db.Column(db.Integer, nullable=False)
     segment_end = db.Column(db.Integer, nullable=False)
 
-    # ── AI 分類結果 ───────────────────────────────────────
+    # ── AI 分類結果（AI ORIGINAL RESULT，Human Review 絕對不能覆寫）──
     main_category = db.Column(db.String(100))
     sub_category = db.Column(db.String(100))
+    # 次要分類可以跨大類別，因此 secondary_main_category 是獨立欄位，
+    # 但這個值永遠是後端用 secondary_sub_category 查
+    # services.subcategory_methodology.get_methodology() 表得到的結果，
+    # 不是 Gemini 自己輸出的欄位（Gemini 的輸出格式沒有這個欄位）。
+    secondary_main_category = db.Column(db.String(100))
     secondary_sub_category = db.Column(db.String(100))
     reasoning = db.Column(db.Text)
     summary = db.Column(db.Text)
@@ -104,6 +123,21 @@ class Response_Classification(db.Model):
     citation = db.Column(db.Text)
     secondary_methodology = db.Column(db.String(100))
     secondary_citation = db.Column(db.Text)
+
+    # ── Human Review 最終確認結果（final_*）─────────────────
+    # 只有 User 在 Review Conversation 中明確按下確認後才會寫入，
+    # 這之前 Review Conversation 過程中的所有 AI revision 都只是
+    # candidate（存在 Classification_Review_Message，不會出現在這裡）。
+    # review_status = confirmed：沒有進過 Review Conversation，
+    #     effective 分類直接讀 AI original 欄位，這裡維持 None。
+    # review_status = modified：曾進過 Review Conversation並確認，
+    #     這裡一定有值（即使最終跟 AI original 一樣也會填，因為
+    #     「User 曾對 AI 結果產生異議」本身是重要 feedback data）。
+    final_main_category = db.Column(db.String(100))
+    final_sub_category = db.Column(db.String(100))
+    final_secondary_main_category = db.Column(db.String(100))
+    final_secondary_sub_category = db.Column(db.String(100))
+    final_reasoning = db.Column(db.Text)
 
     # ── 狀態與時間戳 ──────────────────────────────────────
     status = db.Column(db.String(20), nullable=False, default=STATUS_PENDING)
@@ -165,6 +199,7 @@ class Response_Classification(db.Model):
             "segment_end": self.segment_end,
             "main_category": self.main_category,
             "sub_category": self.sub_category,
+            "secondary_main_category": self.secondary_main_category,
             "secondary_sub_category": self.secondary_sub_category,
             "reasoning": self.reasoning,
             "summary": self.summary,
@@ -172,6 +207,11 @@ class Response_Classification(db.Model):
             "citation": self.citation,
             "secondary_methodology": self.secondary_methodology,
             "secondary_citation": self.secondary_citation,
+            "final_main_category": self.final_main_category,
+            "final_sub_category": self.final_sub_category,
+            "final_secondary_main_category": self.final_secondary_main_category,
+            "final_secondary_sub_category": self.final_secondary_sub_category,
+            "final_reasoning": self.final_reasoning,
             "status": self.status,
             "review_status": self.review_status,
             "created_at": (

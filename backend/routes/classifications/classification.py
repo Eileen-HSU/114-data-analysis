@@ -231,6 +231,13 @@ def submit_survey_response():
 # ---------- 2. Excel 上傳分類 ----------
 @classification_bp.route("/api/classification/upload", methods=["POST"])
 def upload_excel_for_classification():
+    # Human Review 需要知道「這批上傳是誰的」才能做 ownership 判斷，
+    # 因此這條路由從這次改動起強制要求登入；沿用既有 verify_token()，
+    # 不另建第二套 authentication。
+    auth_user_id, auth_error = verify_token(request)
+    if auth_error:
+        return jsonify({"error": "Unauthorized"}), 401
+
     file = request.files.get("file")
     if not file:
         return jsonify({"error": "請提供檔案"}), 400
@@ -276,6 +283,7 @@ def upload_excel_for_classification():
 
         uploaded_answer = Uploaded_Answer(
             upload_batch_id=upload_batch_id,
+            user_id=auth_user_id,
             source_column=text_column,
             row_index=idx,
             answer_text=answer_text,
