@@ -184,6 +184,7 @@ db.init_app(app)
 
 with app.app_context():
     tables = [
+        m.User.__table__,
         m.Survey_Template.__table__,
         m.Survey_Response.__table__,
         m.Prompt_Template.__table__,
@@ -194,6 +195,7 @@ with app.app_context():
     db.metadata.create_all(bind=db.engine, tables=tables)
 
     db.session.add(m.Prompt_Template(prompt_key="leadership_and_dept", draft_content="d", live_content="LIVE_PROMPT"))
+    db.session.add(m.User(user_id=1, user_name="tester", email="tester@example.com", password_hash="x"))
     db.session.commit()
 
 client = app.test_client()
@@ -316,7 +318,11 @@ q({"segments": [masked_e2]})
 q({"classifications": [{"index": 0, "main_category": "m", "sub_category": "C1 教育訓練",
                           "secondary_sub_category": None, "reasoning": "r", "summary": "s", "confidence": "high"}]})
 
-resp4 = client.post("/api/classification/upload", data={"file": (buf, "t.xlsx"), "text_column": "意見"})
+resp4 = client.post(
+    "/api/classification/upload",
+    data={"file": (buf, "t.xlsx"), "text_column": "意見"},
+    headers=auth_header(1),
+)
 data4 = resp4.get_json()
 check("HTTP 201", resp4.status_code == 201)
 check("saved_answer_count 為 3", data4.get("saved_answer_count") == 3)
@@ -330,6 +336,17 @@ with app.app_context():
     dup_row = [r for r in rc_excel if r.answer_text == "主管很願意聽取意見，謝謝"][0]
     check("Excel 內部沿用正確，sub_category 相同", dup_row.sub_category == "A2 回饋與溝通")
     check("Excel 沿用後座標指向自己的原文", dup_row.answer_text[dup_row.segment_start:dup_row.segment_end] == "主管很願意聽取意見")
+
+    ua_rows4 = m.Uploaded_Answer.query.filter_by(upload_batch_id=batch_id).all()
+    check("Uploaded_Answer.user_id 正確帶入 authenticated user", all(u.user_id == 1 for u in ua_rows4))
+
+
+print("\n--- B5：Excel 上傳未帶 token，應該 401 ---")
+buf5 = io.BytesIO()
+df.to_excel(buf5, index=False)
+buf5.seek(0)
+resp5 = client.post("/api/classification/upload", data={"file": (buf5, "t.xlsx"), "text_column": "意見"})
+check("未帶 Authorization 時 HTTP 401", resp5.status_code == 401)
 
 
 print("\n" + "=" * 50)

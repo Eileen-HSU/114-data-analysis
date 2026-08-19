@@ -6,6 +6,8 @@ from extensions import db, taiwan_now
 from response_classification import Response_Classification 
 from response_segmentation_status import Response_Segmentation_Status
 from uploaded_answer import Uploaded_Answer
+from classification_review import Classification_Review, Classification_Review_Message
+from report import Report, Report_Aggregation, Report_Aggregation_Item
 
 
 # ═══════════════════════════════════════════════════════════════
