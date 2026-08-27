@@ -17,6 +17,47 @@ const WELCOME_MSG = {
 };
 const ACTIVE_WORKSPACE_KEY = "dataanalysis_active_workspace";
 const EMPTY_SURVEY_TABLE_MARKER = "[[EMPTY_SURVEY_TABLE]]";
+/* ============================================================
+ * 【新增｜2026-08-27】串接後端真實 Gemini 分類功能
+ * 取代原本 workspace 聊天室裡「純前端算數字套中文句型」的假分析。
+ * 對應後端 API：POST /api/classification/upload
+ *   （後端會依序做 PII 遮罩 → TF-IDF 去重 → 送 Gemini 分類 → 直接回傳結果）
+ * 這一整段（helper function + ClassificationTable 元件 + runExcelClassification
+ * + sendMessage 裡的分流判斷 + 附加檔案 UI 的欄位輸入框）都是新增，
+ * 用「新增｜2026-08-27」這幾個字搜尋可以找到全部相關區塊。
+ * ============================================================ */
+const CLASSIFICATION_TABLE_MARKER = "[[CLASSIFICATION_TABLE]]";
+
+// 判斷附加的檔案是不是 Excel（.xlsx / .xls），用來決定要不要走真分類流程
+function isExcelFile(file) {
+  return !!file && /\.(xlsx|xls)$/i.test(file.name || "");
+}
+
+// 把 /api/classification/upload 回傳的 classifications 陣列，
+// 只挑出畫面要顯示的 5 個欄位，序列化成訊息內容存起來（含 marker 方便還原）。
+// 存進 chat_history 的 message_content 也是存這個字串，重新整理/切換 session
+// 後靠開頭的 marker 認出「這是分類結果表格」，見下面 parseClassificationMessageContent。
+function buildClassificationMessageContent(classifications, meta) {
+  const rows = (classifications || []).map((r) => ({
+    main_category: r.main_category || "",
+    sub_category: r.sub_category || "",
+    answer_text: r.answer_text || "",
+    reasoning: r.reasoning || "",   // 後端還有 methodology / citation 欄位，這裡故意不取
+    summary: r.summary || "",
+  }));
+  return `${CLASSIFICATION_TABLE_MARKER}${JSON.stringify({ rows, meta: meta || {} })}`;
+}
+
+// 跟上面成對：把存起來的字串還原成表格資料。回傳 null 代表「這不是分類結果訊息」。
+function parseClassificationMessageContent(content) {
+  if (!content || !content.startsWith(CLASSIFICATION_TABLE_MARKER)) return null;
+  try {
+    return JSON.parse(content.slice(CLASSIFICATION_TABLE_MARKER.length));
+  } catch {
+    return null; // JSON 壞掉（例如存到一半被截斷）就當作不是分類訊息，退回顯示原始文字
+  }
+}
+/* 【新增區塊到此為止的第 1 段，下面接原本就有的 getAuthHeader】 */
 
 function getAuthHeader() {
   try {
@@ -313,7 +354,61 @@ function AssistantTableContent({ content }) {
   );
 }
 
+/* 【串backend】渲染真實分類結果的表格元件。
+ * 5 欄對照使用者要的格式：大類別／子類別／問卷回覆內容／判斷原因與說明／受試者建議摘要。
+ * 資料來源：parseClassificationMessageContent() 從訊息內容還原出來的 rows。 */
+function ClassificationTable({ rows, meta }) {
+  if (!rows || rows.length === 0) {
+    return (
+      <div className="assistant-output-panel">
+        <div className="assistant-output-intro">這批資料沒有產生任何分類結果。</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="assistant-output-panel">
+      <div className="assistant-output-intro">
+        分類完成，共 {rows.length} 筆結果
+        {meta?.classified_count != null ? `（本次新分類 ${meta.classified_count} 筆）` : ""}。
+      </div>
+      <div className="assistant-output-table-wrap">
+        <table className="assistant-output-table classification-table">
+          <thead>
+            <tr>
+              <th>大類別</th>
+              <th>子類別</th>
+              <th>問卷回覆內容</th>
+              <th>判斷原因與說明</th>
+              <th>受試者建議摘要</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={index}>
+                <td>{row.main_category}</td>
+                <td>{row.sub_category}</td>
+                <td>{row.answer_text}</td>
+                <td>{row.reasoning}</td>
+                <td>{row.summary}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function MessageContent({ message }) {
+  // 優先判斷是不是真分類結果訊息，是的話直接渲染表格，
+  // 不要讓它掉進下面 AssistantTableContent 那個舊的、給假分析用的文字解析邏輯。
+  const classificationData = parseClassificationMessageContent(message.content);
+  if (classificationData) {
+    return <ClassificationTable rows={classificationData.rows} meta={classificationData.meta} />;
+  }
+  // 【新增區塊到此為止，以下都是原本就有的邏輯，沒有改動】
+
   if (message.role === "assistant") {
     return <AssistantTableContent content={message.content} />;
   }
@@ -360,6 +455,10 @@ export default function WorkspacePage() {
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [attachedFile, setAttachedFile] = useState(null);
+  // 【串backend】真分類流程用的 state：
+  // classificationTextColumn = 使用者填的文字欄位名稱；isClassifying = 分類中鎖定輸入框
+  const [classificationTextColumn, setClassificationTextColumn] = useState("");
+  const [isClassifying, setIsClassifying] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [renamingId, setRenamingId] = useState(null);
   const [renameValue, setRenameValue] = useState("");
@@ -800,9 +899,82 @@ export default function WorkspacePage() {
       String(s.code || "").toLowerCase().includes(surveyPickerSearch.toLowerCase())
   );
 
+  /* 【串backend】
+   * 真的把 Excel 送去後端做 PII 遮罩 → TF-IDF 去重 → Gemini 分類，
+   * 取代原本純前端算數字套句型的假分析。
+   * 打的 API：POST /api/classification/upload （multipart/form-data: file, text_column）
+   * debug 時先看這支 API 的 Network 回應，data.error 會直接顯示在聊天室裡。 */
+  const runExcelClassification = async (file, textColumn, sid, projectId) => {
+    const userContent = `[檔案：${file.name}] 上傳並分類文字欄位「${textColumn}」`;
+    const userMsg = { id: Date.now().toString(), role: "user", content: userContent };
+    appendMessage(sid, userMsg);
+    setIsClassifying(true);
+    setIsTyping(true);
+
+    if (projectId && !String(projectId).startsWith("temp-") && !String(projectId).startsWith("survey-")) {
+      saveChatMessage(projectId, "user", userContent);
+    }
+
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("text_column", textColumn);
+
+      // 打後端 Gemini 分類的地方 
+      const res = await fetch(apiUrl("/api/classification/upload"), {
+        method: "POST",
+        headers: getAuthHeader(),
+        body: form,
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        const errMsg = `分類失敗：${data?.error || res.status}`;
+        appendMessage(sid, { id: `a-${Date.now()}`, role: "assistant", content: errMsg });
+        showToast(errMsg);
+        return;
+      }
+
+      const assistantContent = buildClassificationMessageContent(data.classifications, {
+        classified_count: data.classified_count,
+        saved_answer_count: data.saved_answer_count,
+        upload_batch_id: data.upload_batch_id,
+      });
+      appendMessage(sid, { id: `a-${Date.now()}`, role: "assistant", content: assistantContent });
+
+      if (projectId && !String(projectId).startsWith("temp-") && !String(projectId).startsWith("survey-")) {
+        saveChatMessage(projectId, "assistant", assistantContent);
+      }
+    } catch (err) {
+      const errMsg = `分類失敗：${err?.message || "網路錯誤"}`;
+      appendMessage(sid, { id: `a-${Date.now()}`, role: "assistant", content: errMsg });
+      showToast(errMsg);
+    } finally {
+      setIsClassifying(false);
+      setIsTyping(false);
+    }
+  };
+
   const sendMessage = async () => {
     if (!input.trim() && !attachedFile) return;
     if (!activeSessionId) return;
+
+    /* 【串backend】
+     * 附加的是 Excel、而且有填文字欄位名稱 → 走真的分類流程，不走假分析。
+     * 其他所有情況（沒附檔、附的不是 Excel、Excel 但沒填欄位名稱）
+     * 都會直接往下掉到原本的邏輯，跟改之前完全一樣，沒有被動到。 */
+    if (attachedFile && isExcelFile(attachedFile) && classificationTextColumn.trim()) {
+      const sid = activeSessionId;
+      const session = sessions.find((s) => s.id === sid);
+      const projectId = session?.project_id;
+      const file = attachedFile;
+      const textColumn = classificationTextColumn.trim();
+      setAttachedFile(null);
+      setClassificationTextColumn("");
+      setInput("");
+      await runExcelClassification(file, textColumn, sid, projectId);
+      return;
+    }
 
     const draftInput = input;
     const draftFile = attachedFile;
@@ -1239,9 +1411,23 @@ export default function WorkspacePage() {
                     <div className="file-attachment">
                       <i className="ri-attachment-line"></i>
                       <span>{attachedFile.name}</span>
-                      <button onClick={() => setAttachedFile(null)}>
+                      <button onClick={() => { setAttachedFile(null); setClassificationTextColumn(""); }}>
                         <i className="ri-close-line"></i>
                       </button>
+                    </div>
+                  )}
+                  {/* 【串backend】附加 Excel 時才出現的文字欄位名稱輸入框，
+                      填了才會在 sendMessage 裡走真分類流程 */}
+                  {attachedFile && isExcelFile(attachedFile) && (
+                    <div className="file-attachment classification-column-input">
+                      <i className="ri-table-line"></i>
+                      <input
+                        type="text"
+                        value={classificationTextColumn}
+                        onChange={(e) => setClassificationTextColumn(e.target.value)}
+                        placeholder="請輸入要分類的文字欄位名稱（例如：開放式回答）"
+                        disabled={isClassifying}
+                      />
                     </div>
                   )}
                   <div className="input-wrapper">

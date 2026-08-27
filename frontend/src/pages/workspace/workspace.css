@@ -380,6 +380,41 @@
   background: rgba(255, 241, 242, 0.5);
 }
 
+/* ============================================================
+ * 【新增】真實 Gemini 分類功能的樣式
+ * 對應 page.jsx 裡的 ClassificationTable 元件 + 文字欄位名稱輸入框
+ * ============================================================ */
+.classification-table td:first-child {
+  width: auto;
+  background: transparent;
+  font-weight: 700;
+}
+
+.classification-table {
+  min-width: 900px;
+}
+
+.classification-table th,
+.classification-table td {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.classification-column-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.classification-column-input input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  color: var(--slate-700);
+}
+
 .assistant-output-actions {
   display: flex;
   justify-content: flex-end;
