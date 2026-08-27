@@ -18,3 +18,4 @@ presidio-analyzer
 presidio-anonymizer
 spacy
 scikit-learn
+google-generativeai
