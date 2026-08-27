@@ -78,6 +78,35 @@ def _build_routing_context(column_name: str, samples: list) -> str:
     return f"欄位名稱：{column_name}\n\n實際回答範例（已遮罩個資）：\n{sample_block}"
 
 
+# 【新增｜2026-08-27｜串接前端「不用手動輸入欄位名稱」的需求】
+# 使用者上傳 Excel 時不再需要自己打文字欄位名稱，改由後端自動判斷。
+# 判斷邏輯：只看文字型（非數字）欄位，排除明顯是 ID / 編號的欄位名稱，
+# 在剩下的欄位裡取「平均字數最長」的那一欄——開放式回答通常比姓名、
+# 選項這類欄位長很多，用平均字數是最穩定、不用額外套件的判斷方式。
+_ID_LIKE_COLUMN_KEYWORDS = ("id", "編號", "序號", "代碼", "code", "no.", "no")
+
+
+def _auto_detect_text_column(df):
+    candidates = []
+    for col in df.columns:
+        col_str = str(col).strip().lower()
+        if col_str in _ID_LIKE_COLUMN_KEYWORDS:
+            continue
+        if pd.api.types.is_numeric_dtype(df[col]) or pd.api.types.is_bool_dtype(df[col]):
+            continue
+        series = df[col].dropna().astype(str)
+        if series.empty:
+            continue
+        avg_len = series.str.len().mean()
+        if avg_len < 2:  # 太短的欄位（例如姓名、代號）不太可能是開放式回答
+            continue
+        candidates.append((col, avg_len))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda x: x[1], reverse=True)
+    return candidates[0][0]
+
+
 def _collect_masked_routing_samples(df, text_column: str) -> list:
     """
     取前 _MAX_ROUTING_SAMPLES 筆非空文字樣本，各自用既有 mask_pii()
@@ -244,8 +273,17 @@ def upload_excel_for_classification():
 
     df = pd.read_excel(file)
     text_column = request.form.get("text_column")
+
+    # 【新增｜2026-08-27】前端不再強制使用者輸入欄位名稱：
+    # 沒有提供、或提供的欄位名稱不存在時，自動判斷最可能的開放式文字欄位。
+    # 仍然保留手動指定 text_column 的能力（例如未來別的呼叫端要精準指定時可用）。
+    auto_detected = False
     if not text_column or text_column not in df.columns:
-        return jsonify({"error": "請指定有效的 text_column 欄位名稱"}), 400
+        text_column = _auto_detect_text_column(df)
+        auto_detected = True
+
+    if not text_column or text_column not in df.columns:
+        return jsonify({"error": "無法自動判斷文字欄位，請確認 Excel 內容是否包含開放式文字回答"}), 400
 
     upload_batch_id = str(uuid.uuid4())
 
@@ -333,6 +371,10 @@ def upload_excel_for_classification():
         "saved_answer_count": saved_answer_count,
         "classified_count": classified_count,
         "classifications": [r.to_dict() for r in all_classification_rows],
+        # 【新增｜2026-08-27】讓前端可以顯示「系統自動判斷用的是哪一欄」，
+        # 方便使用者確認判斷得對不對，判斷錯的話也知道問題出在哪。
+        "text_column": text_column,
+        "text_column_auto_detected": auto_detected,
     }), 201
 
 
