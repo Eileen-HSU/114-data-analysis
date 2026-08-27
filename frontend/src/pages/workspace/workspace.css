@@ -503,6 +503,13 @@
   font-weight: 600;
 }
 
+/* 【串backend】附加 Excel 檔案時顯示「送出後將自動分類」的提示文字 */
+.classification-hint {
+  font-weight: 400;
+  color: var(--rose-400);
+  font-size: 13px;
+}
+
 .file-attachment button {
   background: none;
   border: none;

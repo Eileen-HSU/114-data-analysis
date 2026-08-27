@@ -371,6 +371,13 @@ function ClassificationTable({ rows, meta }) {
       <div className="assistant-output-intro">
         分類完成，共 {rows.length} 筆結果
         {meta?.classified_count != null ? `（本次新分類 ${meta.classified_count} 筆）` : ""}。
+        {meta?.text_column && (
+          <>
+            {" "}系統判斷的文字欄位是「{meta.text_column}」
+            {meta.text_column_auto_detected ? "（自動判斷）" : ""}
+            {meta.text_column_auto_detected && "，如果判斷錯了，請確認 Excel 欄位標題是否清楚描述內容。"}
+          </>
+        )}
       </div>
       <div className="assistant-output-table-wrap">
         <table className="assistant-output-table classification-table">
@@ -456,8 +463,7 @@ export default function WorkspacePage() {
   const [isTyping, setIsTyping] = useState(false);
   const [attachedFile, setAttachedFile] = useState(null);
   // 【串backend】真分類流程用的 state：
-  // classificationTextColumn = 使用者填的文字欄位名稱；isClassifying = 分類中鎖定輸入框
-  const [classificationTextColumn, setClassificationTextColumn] = useState("");
+  // isClassifying = 分類中鎖定輸入框（欄位名稱不用使用者輸入，後端自動判斷）
   const [isClassifying, setIsClassifying] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [renamingId, setRenamingId] = useState(null);
@@ -904,8 +910,15 @@ export default function WorkspacePage() {
    * 取代原本純前端算數字套句型的假分析。
    * 打的 API：POST /api/classification/upload （multipart/form-data: file, text_column）
    * debug 時先看這支 API 的 Network 回應，data.error 會直接顯示在聊天室裡。 */
-  const runExcelClassification = async (file, textColumn, sid, projectId) => {
-    const userContent = `[檔案：${file.name}] 上傳並分類文字欄位「${textColumn}」`;
+  /* 【新增｜2026-08-27｜第 4 段｜串接後端核心】
+   * 真的把 Excel 送去後端做 PII 遮罩 → TF-IDF 去重 → Gemini 分類，
+   * 取代原本純前端算數字套句型的假分析。
+   * 打的 API：POST /api/classification/upload （multipart/form-data: file）
+   * 不用使用者輸入文字欄位名稱——後端會自動判斷最可能的開放式回答欄位，
+   * 回傳的 text_column / text_column_auto_detected 讓畫面上可以顯示判斷結果。
+   * debug 時先看這支 API 的 Network 回應，data.error 會直接顯示在聊天室裡。 */
+  const runExcelClassification = async (file, sid, projectId) => {
+    const userContent = `[檔案：${file.name}] 上傳並自動分類`;
     const userMsg = { id: Date.now().toString(), role: "user", content: userContent };
     appendMessage(sid, userMsg);
     setIsClassifying(true);
@@ -918,9 +931,10 @@ export default function WorkspacePage() {
     try {
       const form = new FormData();
       form.append("file", file);
-      form.append("text_column", textColumn);
+      // 不附 text_column，交給後端自動判斷（見 backend/routes/classifications/classification.py
+      // 的 _auto_detect_text_column）
 
-      // 打後端 Gemini 分類的地方 
+      // 打後端 Gemini 分類的地方
       const res = await fetch(apiUrl("/api/classification/upload"), {
         method: "POST",
         headers: getAuthHeader(),
@@ -939,6 +953,8 @@ export default function WorkspacePage() {
         classified_count: data.classified_count,
         saved_answer_count: data.saved_answer_count,
         upload_batch_id: data.upload_batch_id,
+        text_column: data.text_column,
+        text_column_auto_detected: data.text_column_auto_detected,
       });
       appendMessage(sid, { id: `a-${Date.now()}`, role: "assistant", content: assistantContent });
 
@@ -960,19 +976,18 @@ export default function WorkspacePage() {
     if (!activeSessionId) return;
 
     /* 【串backend】
-     * 附加的是 Excel、而且有填文字欄位名稱 → 走真的分類流程，不走假分析。
-     * 其他所有情況（沒附檔、附的不是 Excel、Excel 但沒填欄位名稱）
-     * 都會直接往下掉到原本的邏輯，跟改之前完全一樣，沒有被動到。 */
-    if (attachedFile && isExcelFile(attachedFile) && classificationTextColumn.trim()) {
+     * 附加的是 Excel → 走真的分類流程，不走假分析，不需要使用者輸入欄位名稱
+     * （後端自動判斷最可能的開放式回答欄位）。
+     * 其他所有情況（沒附檔、附的不是 Excel）都會直接往下掉到原本的邏輯，
+     * 跟改之前完全一樣，沒有被動到。 */
+    if (attachedFile && isExcelFile(attachedFile)) {
       const sid = activeSessionId;
       const session = sessions.find((s) => s.id === sid);
       const projectId = session?.project_id;
       const file = attachedFile;
-      const textColumn = classificationTextColumn.trim();
       setAttachedFile(null);
-      setClassificationTextColumn("");
       setInput("");
-      await runExcelClassification(file, textColumn, sid, projectId);
+      await runExcelClassification(file, sid, projectId);
       return;
     }
 
@@ -1411,25 +1426,17 @@ export default function WorkspacePage() {
                     <div className="file-attachment">
                       <i className="ri-attachment-line"></i>
                       <span>{attachedFile.name}</span>
-                      <button onClick={() => { setAttachedFile(null); setClassificationTextColumn(""); }}>
+                      {isExcelFile(attachedFile) && (
+                        <span className="classification-hint">（送出後將自動分類）</span>
+                      )}
+                      <button onClick={() => setAttachedFile(null)} disabled={isClassifying}>
                         <i className="ri-close-line"></i>
                       </button>
                     </div>
                   )}
-                  {/* 【串backend】附加 Excel 時才出現的文字欄位名稱輸入框，
-                      填了才會在 sendMessage 裡走真分類流程 */}
-                  {attachedFile && isExcelFile(attachedFile) && (
-                    <div className="file-attachment classification-column-input">
-                      <i className="ri-table-line"></i>
-                      <input
-                        type="text"
-                        value={classificationTextColumn}
-                        onChange={(e) => setClassificationTextColumn(e.target.value)}
-                        placeholder="請輸入要分類的文字欄位名稱（例如：開放式回答）"
-                        disabled={isClassifying}
-                      />
-                    </div>
-                  )}
+                  {/* 【串backend】原本這裡有一個要求使用者輸入文字欄位名稱的輸入框，
+                      已移除——欄位名稱改由後端自動判斷（見 runExcelClassification 說明），
+                      使用者只要附加 Excel 直接送出即可。 */}
                   <div className="input-wrapper">
                     <div className="survey-picker-wrapper" ref={surveyPickerRef}>
                       <button
