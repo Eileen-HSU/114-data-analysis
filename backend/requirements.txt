@@ -19,3 +19,4 @@ presidio-anonymizer
 spacy
 scikit-learn
 google-generativeai
+pandas
