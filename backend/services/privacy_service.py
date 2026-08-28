@@ -858,10 +858,13 @@ def mask_pii_with_mapping(text: str):
             text=text,
             analyzer_results=analyzer_results,
             operators=operators,
-            # 刻意關閉「相鄰實體合併」，讓每個偵測到的 PII 各自對應
-            # 唯一一筆替換紀錄，才能跟 analyzer_results 做可靠的
-            # 一對一位置對照；不影響遮罩後文字的標籤內容本身。
-            merge_entities_with_spaces=False,
+            # 【修正｜2026-08-27】原本這裡多傳了 merge_entities_with_spaces=False，
+            # 但這個參數從未存在於 presidio-anonymizer 任何一個版本（查過 2.2.1～
+            # 2.2.364 全部沒有），只要一呼叫就會 TypeError，導致 PII 遮罩（含位置
+            # 對照）100% 失敗。拿掉這個參數，改成跟 mask_pii() 一樣的呼叫方式，
+            # 兩者本來就共用同一個 _get_engines()。下面 _build_position_map()
+            # 本身有針對「找不到逐字相符內容」做 fail-closed 錯誤處理，
+            # 不會因為拿掉這個參數就悄悄跑出錯的位置對照。
         )
 
         position_map = _build_position_map(
