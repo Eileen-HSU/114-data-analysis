@@ -325,6 +325,13 @@
   width: min(760px, 100%);
 }
 
+/* 【修正｜表格被切掉】分類結果的表格欄位比較多，760px 裝不下 5 欄，
+   之前用 overflow:hidden 導致超出的內容直接被切掉、看不到也滑不出來。
+   分類結果用專屬的寬容器，並改成可以左右滑動而不是裁切。 */
+.assistant-output-panel--wide {
+  width: min(1100px, 100%);
+}
+
 .assistant-output-intro {
   color: var(--slate-800);
   font-weight: 900;
@@ -337,7 +344,8 @@
   border: 1px solid var(--rose-100);
   border-radius: 12px;
   background: white;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .assistant-output-table {
