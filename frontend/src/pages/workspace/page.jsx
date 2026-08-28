@@ -367,7 +367,7 @@ function ClassificationTable({ rows, meta }) {
   }
 
   return (
-    <div className="assistant-output-panel">
+    <div className="assistant-output-panel assistant-output-panel--wide">
       <div className="assistant-output-intro">
         分類完成，共 {rows.length} 筆結果
         {meta?.classified_count != null ? `（本次新分類 ${meta.classified_count} 筆）` : ""}。
