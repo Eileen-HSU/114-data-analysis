@@ -16,6 +16,11 @@ export default defineConfig({
     __READDY_VERSION_ID__: JSON.stringify(process.env.VERSION_ID || ""),
     __READDY_AI_DOMAIN__: JSON.stringify(process.env.READDY_AI_DOMAIN || ""),
   },
+
+  preview: {
+    allowedHosts: true
+  },
+  
   plugins: [
     // ...proxyPlugins,
     react(),
