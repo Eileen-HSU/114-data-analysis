@@ -6,6 +6,9 @@ export default defineConfig(({ mode }) => {
   const apiBaseUrl = env.VITE_API_BASE_URL || "http://localhost:5001";
 
   return {
+    preview: {
+      allowedHosts: true
+    },
     resolve: {
       alias: {
         "@": fileURLToPath(new URL("./src", import.meta.url)),
