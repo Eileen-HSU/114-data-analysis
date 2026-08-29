@@ -409,7 +409,7 @@ async function downloadClassificationCSV(rows, chatId, showToast, sourceFilename
     return;
   }
 
-  showToast?.("製作中…");
+  showToast?.("製作中…請稍後至「專案管理→匯出檔案」查看完成狀態");
   // 讓「製作中」至少有感地停留一下，避免網路太快、提示一閃而過，
   // 使用者感受不到「有在處理」這件事。
   await new Promise((resolve) => setTimeout(resolve, 600));
