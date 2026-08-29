@@ -382,9 +382,9 @@ function AssistantTableContent({ content }) {
 
 // 【匯出功能】把分類結果匯出成 CSV，讓使用者能真的下載檔案。
 // 純前端實作，不用等後端支援：資料本來就已經在畫面上了。
-// 開頭加 UTF-8 BOM。
+// 開頭加 UTF-8 BOM，不然中文在 Excel 打開會變亂碼。
 function downloadClassificationCSV(rows) {
-  const headers = ["受試者", "大類別", "子類別", "問卷回覆內容", "判斷原因與說明", "受試者建議摘要"];
+  const headers = ["大類別", "子類別", "問卷回覆內容", "判斷原因與說明", "受試者建議摘要"];
   const escapeCell = (val) => {
     const s = String(val ?? "");
     // 內容裡有逗號、換行、雙引號的話，CSV 規範要求整格用雙引號包起來，
@@ -396,18 +396,16 @@ function downloadClassificationCSV(rows) {
   };
   const lines = [
     headers.map(escapeCell).join(","),
-    ...rows.map((row) =>
-      [
-        row.respondent_number != null ? `受試者${row.respondent_number}` : "",
-        row.main_category,
-        row.sub_category,
-        row.answer_text,
-        row.reasoning,
-        row.summary,
-      ]
+    ...rows.map((row) => {
+      // 【受試者標籤改成接在內容前面，CSV 也保持跟畫面一致】
+      const answerWithRespondent =
+        row.respondent_number != null
+          ? `受試者${row.respondent_number}：${row.answer_text || ""}`
+          : row.answer_text || "";
+      return [row.main_category, row.sub_category, answerWithRespondent, row.reasoning, row.summary]
         .map(escapeCell)
-        .join(",")
-    ),
+        .join(",");
+    }),
   ];
   const csvContent = "\uFEFF" + lines.join("\r\n"); // \uFEFF = UTF-8 BOM
 
@@ -452,7 +450,6 @@ function ClassificationTable({ rows, meta }) {
         <table className="assistant-output-table classification-table">
           <thead>
             <tr>
-              <th>受試者</th>
               <th>大類別</th>
               <th>子類別</th>
               <th>問卷回覆內容</th>
@@ -463,10 +460,15 @@ function ClassificationTable({ rows, meta }) {
           <tbody>
             {rows.map((row, index) => (
               <tr key={index}>
-                <td>{row.respondent_number != null ? `受試者${row.respondent_number}` : "—"}</td>
                 <td>{row.main_category}</td>
                 <td>{row.sub_category}</td>
-                <td>{row.answer_text}</td>
+                <td>
+                  {/* 【調整｜受試者標籤改成接在內容前面，不再獨立一欄】 */}
+                  {row.respondent_number != null && (
+                    <span className="respondent-tag">受試者{row.respondent_number}：</span>
+                  )}
+                  {row.answer_text}
+                </td>
                 <td>{row.reasoning}</td>
                 <td>{row.summary}</td>
               </tr>
@@ -474,7 +476,7 @@ function ClassificationTable({ rows, meta }) {
           </tbody>
         </table>
       </div>
-      {/* 【匯出功能】真的能下載 CSV，不是原本那個只會導到空頁面的假按鈕 */}
+      {/* 【新增｜匯出功能】真的能下載 CSV，不是原本那個只會導到空頁面的假按鈕 */}
       <div className="assistant-output-actions">
         <button
           className="assistant-export-btn"
