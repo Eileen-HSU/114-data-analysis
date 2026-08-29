@@ -463,7 +463,7 @@ function ClassificationTable({ rows, meta }) {
                       {row.main_category}
                     </td>
                   )}
-                  <td>{row.sub_category}</td>
+                  <td className="sub-category-cell">{row.sub_category}</td>
                   <td>
                     {/* 受試者片段每人一行，respondent_text 裡本來就用 \n 分隔 */}
                     <MultilineText text={row.respondent_text} />
