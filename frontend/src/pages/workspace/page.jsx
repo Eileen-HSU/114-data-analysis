@@ -371,11 +371,13 @@ function downloadClassificationCSV(rows) {
   };
   const lines = [
     headers.map(escapeCell).join(","),
-    ...rows.map((row) =>
-      [row.main_category, row.sub_category, row.respondent_text, row.aggregated_reasoning, row.aggregated_summary]
+    ...rows.map((row, i, arr) => {
+      // 【新增】CSV 也跟畫面一致：大類別跟前一列相同時留空，不重複寫
+      const mainCategoryCell = i > 0 && arr[i - 1].main_category === row.main_category ? "" : row.main_category;
+      return [mainCategoryCell, row.sub_category, row.respondent_text, row.aggregated_reasoning, row.aggregated_summary]
         .map(escapeCell)
-        .join(",")
-    ),
+        .join(",");
+    }),
   ];
   const csvContent = "\uFEFF" + lines.join("\r\n"); // \uFEFF = UTF-8 BOM
 
@@ -441,25 +443,31 @@ function ClassificationTable({ rows, meta }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, index) => (
-              <tr key={index}>
-                <td>{row.main_category}</td>
-                <td>{row.sub_category}</td>
-                <td>
-                  {/* 受試者片段每人一行，respondent_text 裡本來就用 \n 分隔 */}
-                  <MultilineText text={row.respondent_text} />
-                </td>
-                <td><MultilineText text={row.aggregated_reasoning} /></td>
-                <td>
-                  <MultilineText text={row.aggregated_summary} />
-                  {row.synthesis_status === "fallback" && (
-                    <div className="synthesis-fallback-note">
-                      （彙整摘要暫時失敗，以下為個別意見簡易拼接，非完整統整）
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {rows.map((row, index) => {
+              // 【新增】大類別跟前一列相同時不重複顯示，比照參考文件的合併儲存格效果
+              const isSameMainAsPrev = index > 0 && rows[index - 1].main_category === row.main_category;
+              return (
+                <tr key={index}>
+                  <td className={isSameMainAsPrev ? "merged-cell-blank" : ""}>
+                    {isSameMainAsPrev ? "" : row.main_category}
+                  </td>
+                  <td>{row.sub_category}</td>
+                  <td>
+                    {/* 受試者片段每人一行，respondent_text 裡本來就用 \n 分隔 */}
+                    <MultilineText text={row.respondent_text} />
+                  </td>
+                  <td><MultilineText text={row.aggregated_reasoning} /></td>
+                  <td>
+                    <MultilineText text={row.aggregated_summary} />
+                    {row.synthesis_status === "fallback" && (
+                      <div className="synthesis-fallback-note">
+                        （彙整摘要暫時失敗，以下為個別意見簡易拼接，非完整統整）
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
