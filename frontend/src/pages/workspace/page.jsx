@@ -362,7 +362,7 @@ function AssistantTableContent({ content }) {
 // 這樣才會出現在「專案管理 → 匯出檔案」那頁的清單裡，不是只下載到本機。
 // 存後端失敗也不影響本機下載照常進行——使用者當下最在意的是能不能
 // 拿到檔案，清單只是附加價值，不該因為清單存不進去就讓下載跟著失敗。
-async function downloadClassificationCSV(rows, chatId) {
+async function downloadClassificationCSV(rows, chatId, showToast) {
   const headers = ["大類別", "子類別", "問卷回覆內容", "判斷原因與說明", "受試者建議摘要"];
   const escapeCell = (val) => {
     const s = String(val ?? "");
@@ -392,7 +392,7 @@ async function downloadClassificationCSV(rows, chatId) {
   // 只做本機下載——Export_File.chat_id 是 NOT NULL，沒有就不能硬存。
   if (chatId) {
     try {
-      await fetch(apiUrl("/api/exports"), {
+      const res = await fetch(apiUrl("/api/exports"), {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeader() },
         body: JSON.stringify({
@@ -402,11 +402,15 @@ async function downloadClassificationCSV(rows, chatId) {
           row_count: rows.length,
         }),
       });
+      if (!res.ok) {
+        showToast?.("已下載到本機，但存入「專案管理→匯出檔案」清單失敗");
+      }
     } catch (err) {
       console.error("匯出紀錄存後端失敗（不影響本機下載）：", err);
+      showToast?.("已下載到本機，但存入「專案管理→匯出檔案」清單失敗");
     }
   } else {
-    console.warn("這則訊息還沒有 chat_id，匯出只會下載到本機，不會出現在「專案管理 → 匯出檔案」清單裡");
+    showToast?.("已下載到本機，但這則訊息還沒同步完成，不會出現在「專案管理→匯出檔案」清單裡");
   }
 
   // 不管上面存後端有沒有成功，本機下載照常進行
@@ -435,7 +439,7 @@ function MultilineText({ text }) {
   ));
 }
 
-function ClassificationTable({ rows, meta, chatId }) {
+function ClassificationTable({ rows, meta, chatId, showToast }) {
   if (!rows || rows.length === 0) {
     return (
       <div className="assistant-output-panel">
@@ -516,7 +520,7 @@ function ClassificationTable({ rows, meta, chatId }) {
         <button
           className="assistant-export-btn"
           type="button"
-          onClick={() => downloadClassificationCSV(rows, chatId)}
+          onClick={() => downloadClassificationCSV(rows, chatId, showToast)}
         >
           <i className="ri-download-cloud-2-line"></i>
           匯出成 CSV
@@ -526,7 +530,7 @@ function ClassificationTable({ rows, meta, chatId }) {
   );
 }
 
-function MessageContent({ message }) {
+function MessageContent({ message, showToast }) {
   // 優先判斷是不是真分類結果訊息，是的話直接渲染表格，
   // 不要讓它掉進下面 AssistantTableContent 那個舊的、給假分析用的文字解析邏輯。
   const classificationData = parseClassificationMessageContent(message.content);
@@ -536,6 +540,7 @@ function MessageContent({ message }) {
         rows={classificationData.rows}
         meta={classificationData.meta}
         chatId={message.chatId}
+        showToast={showToast}
       />
     );
   }
@@ -785,6 +790,11 @@ export default function WorkspacePage() {
             id: String(h.chat_id),
             role: h.role || (h.sender_type === "user" ? "user" : "assistant"),
             content: h.content || h.message_content || "",
+            // 【修正｜匯出清單抓不到 chat_id】後端明明有回傳 chat_id（上面
+            // 拿去當 id 用了），但這裡漏了存進 chatId 欄位——導致頁面重新
+            // 整理、或切換 session 後再回來，分類結果訊息的匯出按鈕會找不到
+            // chat_id，誤判成「這則訊息還沒同步」，其實只是忘了帶進來。
+            chatId: h.chat_id,
           }));
 
           if (fetchedMessages.length > 0) {
@@ -1554,7 +1564,7 @@ export default function WorkspacePage() {
                         <i className={msg.role === "user" ? "ri-user-line" : "ri-robot-line"}></i>
                       </div>
                       <div className={`message-bubble ${msg.role === "user" ? "user-bubble" : "assistant-bubble"}`}>
-                        <MessageContent message={msg} />
+                        <MessageContent message={msg} showToast={showToast} />
                       </div>
                     </div>
                   ))}
