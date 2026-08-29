@@ -455,6 +455,10 @@ function ClassificationTable({ rows, meta, chatId, showToast }) {
     return (
       <div className="assistant-output-panel">
         <div className="assistant-output-intro">這批資料沒有產生任何分類結果。</div>
+        {/* 【新增｜診斷訊息】沒結果時顯示後端算出來的原因，不要讓使用者猜 */}
+        {meta?.diagnostic_message && (
+          <div className="assistant-output-diagnostic">{meta.diagnostic_message}</div>
+        )}
       </div>
     );
   }
@@ -956,6 +960,9 @@ export default function WorkspacePage() {
             {
               classified_count: analyzeData.newly_classified_count,
               source_filename: `${surveyTitle}（問卷）`,
+              // 【新增｜診斷訊息】沒有結果時，把後端算出來的原因帶過去，
+              // 不要只顯示「沒有結果」讓使用者猜。
+              diagnostic_message: analyzeData.diagnostic?.message,
             }
           );
           setSessions((currentList) =>
@@ -1117,6 +1124,7 @@ export default function WorkspacePage() {
           {
             classified_count: analyzeData.newly_classified_count,
             source_filename: `${detail.title}（問卷）`,
+            diagnostic_message: analyzeData.diagnostic?.message,
           }
         );
         setSessions((currentList) =>
@@ -1213,7 +1221,7 @@ export default function WorkspacePage() {
         upload_batch_id: data.upload_batch_id,
         text_column: data.text_column,
         text_column_auto_detected: data.text_column_auto_detected,
-        // 【新增｜匯出檔名跟原始上傳檔名對應】方便使用者從匯出清單就
+        // 【匯出檔名跟原始上傳檔名對應】方便使用者從匯出清單就
         // 知道這批結果對應哪一份原始 Excel。
         source_filename: file.name,
       });
@@ -1221,7 +1229,7 @@ export default function WorkspacePage() {
       appendMessage(sid, { id: assistantMsgId, role: "assistant", content: assistantContent });
 
       if (projectId && !String(projectId).startsWith("temp-") && !String(projectId).startsWith("survey-")) {
-        // 【新增｜串接 Export_File】拿到這則訊息真正的 chat_id，補到訊息上——
+        // 【串接 Export_File】拿到這則訊息真正的 chat_id，補到訊息上——
         // 分類結果的匯出（Export_File）要綁在這個 chat_id 上，之後匯出按鈕
         // 才知道要把匯出紀錄掛在哪一則對話底下。
         const savedChatId = await saveChatMessage(projectId, "assistant", assistantContent);

@@ -285,7 +285,9 @@
 .messages-area {
   flex: 1;
   overflow-y: auto;
-  
+  /* 【修正｜邀請檢視按鈕重疊】原本 top padding 只有 32px，跟右上角浮動的
+     「邀請檢視」按鈕（top:24px + 高度約42px）打架，訊息少時第一則會被蓋到。
+     加大到 88px，讓訊息內容從按鈕下方開始，兩者不再重疊。 */
   padding: 88px 40px 32px;
 }
 
@@ -326,6 +328,9 @@
   width: min(760px, 100%);
 }
 
+/* 【修正｜表格被切掉】分類結果的表格欄位比較多，760px 裝不下 5 欄，
+   之前用 overflow:hidden 導致超出的內容直接被切掉、看不到也滑不出來。
+   分類結果用專屬的寬容器，並改成可以左右滑動而不是裁切。 */
 .assistant-output-panel--wide {
   width: min(1100px, 100%);
 }
@@ -335,6 +340,17 @@
   font-weight: 900;
   line-height: 1.65;
   margin: 0 0 12px;
+}
+
+/* 【新增】沒有分類結果時的診斷訊息 */
+.assistant-output-diagnostic {
+  color: var(--slate-500);
+  font-size: 14px;
+  line-height: 1.6;
+  background: var(--rose-50, #fff1f2);
+  border: 1px solid var(--rose-100, #ffe4e6);
+  border-radius: 10px;
+  padding: 12px 16px;
 }
 
 .assistant-output-table-wrap {
@@ -390,9 +406,16 @@
  * 【新增】真實 Gemini 分類功能的樣式
  * 對應 page.jsx 裡的 ClassificationTable 元件 + 文字欄位名稱輸入框
  * ============================================================ */
+/* 【修正｜子類別粗細不一致】原本用 :first-child 判斷粗體，但改用 rowSpan
+   合併儲存格之後，被合併掉的列子類別格子會意外變成「第一格」，跟著被
+   套上粗體。改成粗體樣式直接指定給大類別專用的 .merged-cell-center，
+   不再依賴「第幾個格子」這種容易被表格結構變化影響的寫法。 */
 .classification-table td:first-child {
   width: auto;
   background: transparent;
+  /* 【修正】上面 .assistant-output-table td:first-child 設了 font-weight:900，
+     只刪掉這裡的宣告不會蓋掉它（CSS 沒被覆寫的規則會繼續生效），
+     要明確設回 normal 才能真的取消粗體。 */
   font-weight: normal;
 }
 
@@ -404,7 +427,7 @@
 .classification-table td {
   white-space: normal;
   word-break: break-word;
-  /* 【欄與欄之間要有線】原本共用的 .assistant-output-table 只有
+  /* 【新增｜欄與欄之間要有線】原本共用的 .assistant-output-table 只有
      橫線（列與列之間），沒有直線（欄與欄之間），這裡只針對分類表格加上。 */
   border-right: 1px solid var(--rose-100);
 }
@@ -429,8 +452,8 @@
   color: var(--slate-700);
 }
 
-/* 受試者標籤，接在「問卷回覆內容」文字前面 */
-/* 彙整摘要失敗時的提示文字（退回簡易拼接時顯示） */
+/* 【新增】受試者標籤，接在「問卷回覆內容」文字前面 */
+/* 【新增】彙整摘要失敗時的提示文字（退回簡易拼接時顯示） */
 .synthesis-fallback-note {
   margin-top: 6px;
   font-size: 12px;
@@ -438,14 +461,14 @@
   font-style: italic;
 }
 
-/* 大類別改用真正的 rowSpan，文字水平+垂直都置中在整個合併區塊正中央 */
+/* 【修正】大類別改用真正的 rowSpan，文字水平+垂直都置中在整個合併區塊正中央 */
 .classification-table td.merged-cell-center {
   text-align: center;
   vertical-align: middle;
   font-weight: 700;
 }
 
-/* 子類別粗體，跟大類別一致；用專屬 class 指定，
+/* 【新增】子類別也要粗體，跟大類別一致；用專屬 class 指定，
    不依賴「第幾個格子」，這樣 rowSpan 合併儲存格造成的欄位位移
    不會再影響到粗細顯示 */
 .classification-table td.sub-category-cell {
