@@ -302,6 +302,10 @@ def upload_excel_for_classification():
     saved_answer_count = 0
     classified_count = 0
     all_classification_rows = []
+    # 【受試者編號】記錄「這筆 Uploaded_Answer 對應到 Excel 裡第幾列」，
+    # 這樣分類結果回傳時才能標出「受試者N」，方便對照原始資料。
+    # 只在這支 route 的回應裡組出來，不寫進資料庫，不影響任何既有欄位/表格。
+    answer_id_to_row_index = {}
 
     # 先把整批要送分類的資料收集起來（Uploaded_Answer 不論
     # question_type 有沒有結果都先各自保存），question_type 有結果時
@@ -329,6 +333,7 @@ def upload_excel_for_classification():
         )
         db.session.add(uploaded_answer)
         db.session.flush()  # 取得 uploaded_answer.id，供下面 FK 使用
+        answer_id_to_row_index[uploaded_answer.id] = idx
         saved_answer_count += 1
 
         if question_type and prompt_row:
@@ -365,13 +370,23 @@ def upload_excel_for_classification():
 
     db.session.commit()
 
+    # 【受試者編號】把 row_index 換算成「受試者N」（從 1 開始比較符合
+    # 一般人講話習慣），組進每一筆分類結果的字典裡，不動 to_dict() 本身、
+    # 不動資料庫，只在這支 API 回傳前額外加一個欄位。
+    classifications_payload = []
+    for r in all_classification_rows:
+        d = r.to_dict()
+        row_index = answer_id_to_row_index.get(r.uploaded_answer_id)
+        d["respondent_number"] = (row_index + 1) if row_index is not None else None
+        classifications_payload.append(d)
+
     return jsonify({
         "upload_batch_id": upload_batch_id,
         "question_type": question_type,
         "saved_answer_count": saved_answer_count,
         "classified_count": classified_count,
-        "classifications": [r.to_dict() for r in all_classification_rows],
-        # 【新增｜2026-08-27】讓前端可以顯示「系統自動判斷用的是哪一欄」，
+        "classifications": classifications_payload,
+        # 讓前端可以顯示「系統自動判斷用的是哪一欄」，
         # 方便使用者確認判斷得對不對，判斷錯的話也知道問題出在哪。
         "text_column": text_column,
         "text_column_auto_detected": auto_detected,
