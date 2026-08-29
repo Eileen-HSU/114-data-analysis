@@ -402,6 +402,10 @@
 .classification-table td:first-child {
   width: auto;
   background: transparent;
+  /* 【修正】上面 .assistant-output-table td:first-child 設了 font-weight:900，
+     只刪掉這裡的宣告不會蓋掉它（CSS 沒被覆寫的規則會繼續生效），
+     要明確設回 normal 才能真的取消粗體。 */
+  font-weight: normal;
 }
 
 .classification-table {
@@ -437,8 +441,8 @@
   color: var(--slate-700);
 }
 
-/* 【新增】受試者標籤，接在「問卷回覆內容」文字前面 */
-/* 【新增】彙整摘要失敗時的提示文字（退回簡易拼接時顯示） */
+/* 受試者標籤，接在「問卷回覆內容」文字前面 */
+/* 彙整摘要失敗時的提示文字（退回簡易拼接時顯示） */
 .synthesis-fallback-note {
   margin-top: 6px;
   font-size: 12px;
@@ -446,7 +450,7 @@
   font-style: italic;
 }
 
-/* 【修正】大類別改用真正的 rowSpan，文字水平+垂直都置中在整個合併區塊正中央 */
+/* 大類別改用真正的 rowSpan，文字水平+垂直都置中在整個合併區塊正中央 */
 .classification-table td.merged-cell-center {
   text-align: center;
   vertical-align: middle;
