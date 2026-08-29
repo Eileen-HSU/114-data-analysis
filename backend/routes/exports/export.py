@@ -72,7 +72,20 @@ def create_export():
     db.session.add(export)
     db.session.commit()
 
-    return jsonify(export.to_dict()), 201
+    # 【新增｜匯出來源路徑】新增當下也一起回傳，跟清單 API 保持一致
+    workspace = Workspace.query.get(chat.project_id)
+    result = export.to_dict()
+    result["source_path"] = _build_source_path(workspace) if workspace else None
+    result["project_id"] = chat.project_id
+    return jsonify(result), 201
+
+
+def _build_source_path(workspace):
+    """把 Workspace 組成「資料夾 / 工作區名稱」這種路徑字串，
+    沒有資料夾的話就只顯示工作區名稱。"""
+    if workspace.folder_name:
+        return f"{workspace.folder_name} / {workspace.project_name}"
+    return workspace.project_name
 
 
 @exports_bp.route("/api/exports", methods=["GET"])
@@ -81,15 +94,23 @@ def list_exports():
     if auth_error:
         return auth_error
 
-    exports = (
-        db.session.query(Export_File)
+    # 【新增｜匯出來源路徑】使用者要能一眼看出這筆匯出是從哪個工作區
+    # 匯出的，一起把 Workspace 撈出來，不用額外多打一次 API。
+    rows = (
+        db.session.query(Export_File, Workspace)
         .join(Chat_History, Chat_History.chat_id == Export_File.chat_id)
         .join(Workspace, Workspace.project_id == Chat_History.project_id)
         .filter(Workspace.user_id == current_user_id)
         .order_by(Export_File.created_at.desc())
         .all()
     )
-    return jsonify([e.to_dict() for e in exports]), 200
+    result = []
+    for export, workspace in rows:
+        item = export.to_dict()
+        item["source_path"] = _build_source_path(workspace)
+        item["project_id"] = workspace.project_id
+        result.append(item)
+    return jsonify(result), 200
 
 
 @exports_bp.route("/api/exports/<int:export_id>/download", methods=["GET"])
@@ -108,7 +129,7 @@ def download_export(export_id):
     if not export:
         return jsonify({"error": "找不到這筆匯出紀錄"}), 404
 
-    # HTTP 標頭只能放 Latin-1 字元，
+    # 【修正｜中文檔名讓下載直接 500】HTTP 標頭只能放 Latin-1 字元，
     # export_name 是中文（例如「分類結果_2026-08-29.csv」），直接塞進
     # Content-Disposition 會在真正的 WSGI 伺服器（gunicorn）送出回應時
     # UnicodeEncodeError，導致整個 worker 掛掉——這也是為什麼本機用
