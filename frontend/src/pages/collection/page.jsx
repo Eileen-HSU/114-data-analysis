@@ -20,6 +20,16 @@ const FILE_ICONS = {
 
 const getFileFolderName = (file) => file.folder_name ?? null;
 
+function getAuthHeader() {
+  try {
+    const user = JSON.parse(localStorage.getItem("dataanalysis_auth"));
+    const token = user?.token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+}
+
 export default function CollectionPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -40,6 +50,11 @@ export default function CollectionPage() {
   } = useCollection();
 
   const [activeView, setActiveView] = useState("folders");
+  // 【新增｜串接匯出清單】真正的匯出紀錄，取代原本寫死 stats.exports = 0
+  // 的假資料。進到「exports」這個檢視畫面時才去抓，不用一開頁就打 API。
+  const [exportsList, setExportsList] = useState([]);
+  const [exportsLoading, setExportsLoading] = useState(false);
+  const [exportsError, setExportsError] = useState(null);
   const [openFolders, setOpenFolders] = useState(new Set(["f1"]));
   const [draggingId, setDraggingId] = useState(null);
   const [dragOverTarget, setDragOverTarget] = useState(null);
@@ -64,6 +79,50 @@ export default function CollectionPage() {
       window.history.replaceState({}, "");
     }
   }, [location.state]);
+
+  // 【新增｜串接匯出清單】切到「exports」這個檢視畫面時才抓，
+  // 不用一開這個頁面就打 API，減少不必要的請求。
+  useEffect(() => {
+    if (activeView !== "exports" || !isLoggedIn) return;
+    let cancelled = false;
+    setExportsLoading(true);
+    setExportsError(null);
+    fetch(apiUrl("/api/exports"), { headers: getAuthHeader() })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        if (!cancelled) setExportsList(Array.isArray(data) ? data : []);
+      })
+      .catch((err) => {
+        if (!cancelled) setExportsError(err?.message || "載入失敗");
+      })
+      .finally(() => {
+        if (!cancelled) setExportsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [activeView, isLoggedIn]);
+
+  const handleDownloadExport = async (exportItem) => {
+    try {
+      const res = await fetch(apiUrl(`/api/exports/${exportItem.export_id}/download`), {
+        headers: getAuthHeader(),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = exportItem.export_name || "匯出檔案.csv";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("下載匯出檔案失敗：", err);
+    }
+  };
 
   if (!isLoggedIn) {
     return (
@@ -133,10 +192,10 @@ export default function CollectionPage() {
     return {
       folders: folderNames.size,
       chats: chatSessions.size,
-      exports: 0,
+      exports: exportsList.length,
       deleted: deletedItems.length,
     };
-  }, [workspaceSessions, folders, deletedItems.length]);
+  }, [workspaceSessions, folders, deletedItems.length, exportsList.length]);
 
   const toggleFolder = (id) => {
     setOpenFolders((prev) => {
@@ -863,10 +922,44 @@ export default function CollectionPage() {
                 匯出檔案
                 <span className="loose-count">{stats.exports} 個</span>
               </h2>
-              <div className="empty-loose">
-                <i className="ri-download-cloud-2-line"></i>
-                <p>目前沒有匯出檔案。</p>
-              </div>
+              {exportsLoading ? (
+                <div className="empty-loose">
+                  <i className="ri-loader-4-line"></i>
+                  <p>載入中…</p>
+                </div>
+              ) : exportsError ? (
+                <div className="empty-loose">
+                  <i className="ri-error-warning-line"></i>
+                  <p>載入失敗：{exportsError}</p>
+                </div>
+              ) : exportsList.length === 0 ? (
+                <div className="empty-loose">
+                  <i className="ri-download-cloud-2-line"></i>
+                  <p>目前沒有匯出檔案。</p>
+                </div>
+              ) : (
+                <div className="exports-list">
+                  {exportsList.map((item) => (
+                    <button
+                      key={item.export_id}
+                      type="button"
+                      className="export-list-item"
+                      onClick={() => handleDownloadExport(item)}
+                      title="點擊下載"
+                    >
+                      <i className="ri-file-text-line export-list-item-icon"></i>
+                      <div className="export-list-item-info">
+                        <div className="export-list-item-name">{item.export_name}</div>
+                        <div className="export-list-item-meta">
+                          {item.row_count != null ? `${item.row_count} 筆` : ""}
+                          {item.created_at ? `　${new Date(item.created_at).toLocaleString("zh-TW")}` : ""}
+                        </div>
+                      </div>
+                      <i className="ri-download-2-line export-list-item-download"></i>
+                    </button>
+                  ))}
+                </div>
+              )}
             </section>
           )}
 
