@@ -444,13 +444,25 @@ function ClassificationTable({ rows, meta }) {
           </thead>
           <tbody>
             {rows.map((row, index) => {
-              // 【新增】大類別跟前一列相同時不重複顯示，比照參考文件的合併儲存格效果
+              // 【修正】改用真正的表格 rowSpan 合併儲存格，而不是留空行模擬——
+              // 這樣「置中」才會是整個合併區塊的正中央，不是卡在第一列。
               const isSameMainAsPrev = index > 0 && rows[index - 1].main_category === row.main_category;
+              let mainCategoryRowSpan = 1;
+              if (!isSameMainAsPrev) {
+                for (let j = index + 1; j < rows.length && rows[j].main_category === row.main_category; j++) {
+                  mainCategoryRowSpan++;
+                }
+              }
               return (
                 <tr key={index}>
-                  <td className={isSameMainAsPrev ? "merged-cell-blank" : ""}>
-                    {isSameMainAsPrev ? "" : row.main_category}
-                  </td>
+                  {/* rowSpan 合併儲存格：只有區塊第一列要渲染這個 <td>，
+                      後面被合併的列完全不渲染，交給瀏覽器的 rowSpan 機制處理，
+                      不能渲染空的 <td> 出來，不然表格欄位數量會對不齊。 */}
+                  {!isSameMainAsPrev && (
+                    <td rowSpan={mainCategoryRowSpan} className="merged-cell-center">
+                      {row.main_category}
+                    </td>
+                  )}
                   <td>{row.sub_category}</td>
                   <td>
                     {/* 受試者片段每人一行，respondent_text 裡本來就用 \n 分隔 */}
