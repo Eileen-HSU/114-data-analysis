@@ -33,44 +33,19 @@ function isExcelFile(file) {
   return !!file && /\.(xlsx|xls)$/i.test(file.name || "");
 }
 
-// 把 /api/classification/upload 回傳的 classifications 陣列，
-// 只挑出畫面要顯示的 5 個欄位，序列化成訊息內容存起來（含 marker 方便還原）。
-// 存進 chat_history 的 message_content 也是存這個字串，重新整理/切換 session
-// 後靠開頭的 marker 認出「這是分類結果表格」，見下面 parseClassificationMessageContent。
-// 「無具體建議」是分類清單裡設計給「真的沒有具體內容」用的萬用分類，
-// 不該被拿來勉強塞進不合適的內容（例如時間安排這種清單裡沒有對應類別的
-// 意見，被硬歸進這裡）。這種結果直接濾掉，不顯示在表格裡。
-function isFallbackNoSpecificSuggestion(subCategory) {
-  return typeof subCategory === "string" && subCategory.includes("無具體建議");
-}
-
-function buildClassificationMessageContent(classifications, meta) {
-  const rows = (classifications || [])
-    .filter((r) => !isFallbackNoSpecificSuggestion(r.sub_category))
-    .map((r) => {
-      // 【新增｜只顯示對應該分類的那一小段，不是整段原文重複顯示】
-      // segment_start / segment_end 是後端對照回「原文」座標算出來的，
-      // 同一筆回答被拆成多個分類時，每一列改成只顯示自己對應的那一段。
-      const fullText = r.answer_text || "";
-      const hasValidSegment =
-        Number.isInteger(r.segment_start) &&
-        Number.isInteger(r.segment_end) &&
-        r.segment_start >= 0 &&
-        r.segment_end > r.segment_start &&
-        r.segment_end <= fullText.length;
-      const excerpt = hasValidSegment
-        ? fullText.slice(r.segment_start, r.segment_end)
-        : fullText; // 座標異常時保守 fallback 回整段原文，不要顯示空白
-
-      return {
-        respondent_number: r.respondent_number ?? null,
-        main_category: r.main_category || "",
-        sub_category: r.sub_category || "",
-        answer_text: excerpt,
-        reasoning: r.reasoning || "",   // 後端還有 methodology / citation 欄位，這裡故意不取
-        summary: r.summary || "",
-      };
-    });
+// 把 /api/classification/upload 回傳的 aggregated_groups 陣列存進訊息內容
+// （含 marker 方便還原）。分組、過濾「無具體建議」、彙整判斷原因跟建議摘要
+// 都已經在後端做完了，這裡不用再處理，直接存、直接顯示。
+function buildClassificationMessageContent(aggregatedGroups, meta) {
+  const rows = (aggregatedGroups || []).map((g) => ({
+    main_category: g.main_category || "",
+    sub_category: g.sub_category || "",
+    respondent_text: g.respondent_text || "",
+    aggregated_reasoning: g.aggregated_reasoning || "",
+    aggregated_summary: g.aggregated_summary || "",
+    synthesis_status: g.synthesis_status || "ok",
+    respondent_count: g.respondent_count ?? null,
+  }));
   return `${CLASSIFICATION_TABLE_MARKER}${JSON.stringify({ rows, meta: meta || {} })}`;
 }
 
@@ -380,7 +355,7 @@ function AssistantTableContent({ content }) {
   );
 }
 
-// 【匯出功能】把分類結果匯出成 CSV，讓使用者能真的下載檔案。
+// 【新增｜匯出功能】把分類結果匯出成 CSV，讓使用者能真的下載檔案。
 // 純前端實作，不用等後端支援：資料本來就已經在畫面上了。
 // 開頭加 UTF-8 BOM，不然中文在 Excel 打開會變亂碼。
 function downloadClassificationCSV(rows) {
@@ -396,16 +371,11 @@ function downloadClassificationCSV(rows) {
   };
   const lines = [
     headers.map(escapeCell).join(","),
-    ...rows.map((row) => {
-      // 【受試者標籤改成接在內容前面，CSV 也保持跟畫面一致】
-      const answerWithRespondent =
-        row.respondent_number != null
-          ? `受試者${row.respondent_number}：${row.answer_text || ""}`
-          : row.answer_text || "";
-      return [row.main_category, row.sub_category, answerWithRespondent, row.reasoning, row.summary]
+    ...rows.map((row) =>
+      [row.main_category, row.sub_category, row.respondent_text, row.aggregated_reasoning, row.aggregated_summary]
         .map(escapeCell)
-        .join(",");
-    }),
+        .join(",")
+    ),
   ];
   const csvContent = "\uFEFF" + lines.join("\r\n"); // \uFEFF = UTF-8 BOM
 
@@ -433,11 +403,13 @@ function ClassificationTable({ rows, meta }) {
     );
   }
 
+  const totalRespondents = rows.reduce((sum, r) => sum + (r.respondent_count || 0), 0);
+
   return (
     <div className="assistant-output-panel assistant-output-panel--wide">
       <div className="assistant-output-intro">
-        分類完成，共 {rows.length} 筆結果
-        {meta?.classified_count != null ? `（本次新分類 ${meta.classified_count} 筆）` : ""}。
+        分類完成，共 {rows.length} 個類別
+        {totalRespondents > 0 ? `（涵蓋 ${totalRespondents} 位受試者）` : ""}。
         {meta?.text_column && (
           <>
             {" "}系統判斷的文字欄位是「{meta.text_column}」
@@ -463,14 +435,23 @@ function ClassificationTable({ rows, meta }) {
                 <td>{row.main_category}</td>
                 <td>{row.sub_category}</td>
                 <td>
-                  {/* 【調整｜受試者標籤改成接在內容前面，不再獨立一欄】 */}
-                  {row.respondent_number != null && (
-                    <span className="respondent-tag">受試者{row.respondent_number}：</span>
-                  )}
-                  {row.answer_text}
+                  {/* 受試者片段每人一行，respondent_text 裡本來就用 \n 分隔 */}
+                  {(row.respondent_text || "").split("\n").map((line, i) => (
+                    <span key={i}>
+                      {i > 0 && <br />}
+                      {line}
+                    </span>
+                  ))}
                 </td>
-                <td>{row.reasoning}</td>
-                <td>{row.summary}</td>
+                <td>{row.aggregated_reasoning}</td>
+                <td>
+                  {row.aggregated_summary}
+                  {row.synthesis_status === "fallback" && (
+                    <div className="synthesis-fallback-note">
+                      （彙整摘要暫時失敗，以下為個別意見簡易拼接，非完整統整）
+                    </div>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -1033,7 +1014,7 @@ export default function WorkspacePage() {
         return;
       }
 
-      const assistantContent = buildClassificationMessageContent(data.classifications, {
+      const assistantContent = buildClassificationMessageContent(data.aggregated_groups, {
         classified_count: data.classified_count,
         saved_answer_count: data.saved_answer_count,
         upload_batch_id: data.upload_batch_id,

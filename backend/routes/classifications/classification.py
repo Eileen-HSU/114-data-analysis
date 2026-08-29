@@ -63,10 +63,90 @@ from services.classify_v2 import classify_response_multi_segment, is_text_respon
 from services.privacy_service import mask_pii, PiiMaskingError
 from services.question_routing_service import route_question_type
 from services.batch_classification_service import run_batch_analysis
+from services.aggregated_summary_service import build_aggregated_summary, AggregatedSummaryError
 from routes.surveys.survey import verify_token, find_survey_by_access_or_short_code
 import pandas as pd
 
 classification_bp = Blueprint("classification", __name__)
+
+
+# 【新增｜受試者分組彙整】把「一筆分類一列」的結果，依 (大類別、子類別)
+# 分組成一列，同一組內所有受試者片段合併顯示、「判斷原因」跟「建議摘要」
+# 各自再呼叫一次 build_aggregated_summary() 統整成一段話。
+# 「無具體建議」這種勉強歸類的結果，分組前就先排除，不參與彙整、不顯示。
+def _build_aggregated_groups(all_classification_rows, answer_id_to_row_index):
+    groups = {}  # (main_category, sub_category) -> {"items": [...]}
+    order = []   # 記錄分組第一次出現的順序，回傳時維持穩定順序
+
+    for r in all_classification_rows:
+        sub_category = r.sub_category or ""
+        if "無具體建議" in sub_category:
+            continue  # 這種萬用分類不該出現在彙整結果裡
+
+        key = (r.main_category or "", sub_category)
+        if key not in groups:
+            groups[key] = {"items": []}
+            order.append(key)
+
+        row_index = answer_id_to_row_index.get(r.uploaded_answer_id)
+        excerpt = r.answer_text
+        if (
+            isinstance(r.segment_start, int)
+            and isinstance(r.segment_end, int)
+            and 0 <= r.segment_start < r.segment_end <= len(r.answer_text)
+        ):
+            excerpt = r.answer_text[r.segment_start:r.segment_end]
+
+        groups[key]["items"].append({
+            "respondent_number": (row_index + 1) if row_index is not None else None,
+            "excerpt": excerpt,
+            "reasoning": r.reasoning or "",
+            "summary": r.summary or "",
+        })
+
+    result = []
+    for key in order:
+        main_category, sub_category = key
+        items = groups[key]["items"]
+
+        respondent_text = "\n".join(
+            f"受試者{it['respondent_number']}：{it['excerpt']}"
+            if it["respondent_number"] is not None else it["excerpt"]
+            for it in items
+        )
+
+        # 彙整這一步失敗時（Gemini 出錯、格式跑掉），不能讓整支 API 跟著
+        # 失敗——每個人的分類結果已經成功存進資料庫了，退回成簡單拼接文字，
+        # 並標記 synthesis_status 讓前端知道這組是 fallback 出來的。
+        synthesis_status = "ok"
+        try:
+            reasoning_items = [{"matched_segment_text": it["reasoning"]} for it in items if it["reasoning"]]
+            aggregated_reasoning = (
+                build_aggregated_summary(main_category, sub_category, reasoning_items)
+                if reasoning_items else ""
+            )
+            summary_items = [{"matched_segment_text": it["summary"]} for it in items if it["summary"]]
+            aggregated_summary = (
+                build_aggregated_summary(main_category, sub_category, summary_items)
+                if summary_items else ""
+            )
+        except AggregatedSummaryError as e:
+            print("[AGGREGATED_SUMMARY_FAILED]", repr(e))
+            synthesis_status = "fallback"
+            aggregated_reasoning = "；".join(it["reasoning"] for it in items if it["reasoning"])
+            aggregated_summary = "；".join(it["summary"] for it in items if it["summary"])
+
+        result.append({
+            "main_category": main_category,
+            "sub_category": sub_category,
+            "respondent_text": respondent_text,
+            "aggregated_reasoning": aggregated_reasoning,
+            "aggregated_summary": aggregated_summary,
+            "synthesis_status": synthesis_status,
+            "respondent_count": len(items),
+        })
+
+    return result
 
 _MAX_ROUTING_SAMPLES = 5
 
@@ -302,7 +382,7 @@ def upload_excel_for_classification():
     saved_answer_count = 0
     classified_count = 0
     all_classification_rows = []
-    # 【受試者編號】記錄「這筆 Uploaded_Answer 對應到 Excel 裡第幾列」，
+    # 【新增｜受試者編號】記錄「這筆 Uploaded_Answer 對應到 Excel 裡第幾列」，
     # 這樣分類結果回傳時才能標出「受試者N」，方便對照原始資料。
     # 只在這支 route 的回應裡組出來，不寫進資料庫，不影響任何既有欄位/表格。
     answer_id_to_row_index = {}
@@ -370,7 +450,7 @@ def upload_excel_for_classification():
 
     db.session.commit()
 
-    # 【受試者編號】把 row_index 換算成「受試者N」（從 1 開始比較符合
+    # 【新增｜受試者編號】把 row_index 換算成「受試者N」（從 1 開始比較符合
     # 一般人講話習慣），組進每一筆分類結果的字典裡，不動 to_dict() 本身、
     # 不動資料庫，只在這支 API 回傳前額外加一個欄位。
     classifications_payload = []
@@ -380,13 +460,17 @@ def upload_excel_for_classification():
         d["respondent_number"] = (row_index + 1) if row_index is not None else None
         classifications_payload.append(d)
 
+    # 【新增｜受試者分組彙整】依類別分組、合併受試者片段、統整判斷原因與建議摘要
+    aggregated_groups = _build_aggregated_groups(all_classification_rows, answer_id_to_row_index)
+
     return jsonify({
         "upload_batch_id": upload_batch_id,
         "question_type": question_type,
         "saved_answer_count": saved_answer_count,
         "classified_count": classified_count,
         "classifications": classifications_payload,
-        # 讓前端可以顯示「系統自動判斷用的是哪一欄」，
+        "aggregated_groups": aggregated_groups,
+        # 【新增｜2026-08-27】讓前端可以顯示「系統自動判斷用的是哪一欄」，
         # 方便使用者確認判斷得對不對，判斷錯的話也知道問題出在哪。
         "text_column": text_column,
         "text_column_auto_detected": auto_detected,
