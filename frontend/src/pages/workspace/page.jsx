@@ -37,14 +37,40 @@ function isExcelFile(file) {
 // 只挑出畫面要顯示的 5 個欄位，序列化成訊息內容存起來（含 marker 方便還原）。
 // 存進 chat_history 的 message_content 也是存這個字串，重新整理/切換 session
 // 後靠開頭的 marker 認出「這是分類結果表格」，見下面 parseClassificationMessageContent。
+// 「無具體建議」是分類清單裡設計給「真的沒有具體內容」用的萬用分類，
+// 不該被拿來勉強塞進不合適的內容（例如時間安排這種清單裡沒有對應類別的
+// 意見，被硬歸進這裡）。這種結果直接濾掉，不顯示在表格裡。
+function isFallbackNoSpecificSuggestion(subCategory) {
+  return typeof subCategory === "string" && subCategory.includes("無具體建議");
+}
+
 function buildClassificationMessageContent(classifications, meta) {
-  const rows = (classifications || []).map((r) => ({
-    main_category: r.main_category || "",
-    sub_category: r.sub_category || "",
-    answer_text: r.answer_text || "",
-    reasoning: r.reasoning || "",   // 後端還有 methodology / citation 欄位，這裡故意不取
-    summary: r.summary || "",
-  }));
+  const rows = (classifications || [])
+    .filter((r) => !isFallbackNoSpecificSuggestion(r.sub_category))
+    .map((r) => {
+      // 【新增｜只顯示對應該分類的那一小段，不是整段原文重複顯示】
+      // segment_start / segment_end 是後端對照回「原文」座標算出來的，
+      // 同一筆回答被拆成多個分類時，每一列改成只顯示自己對應的那一段。
+      const fullText = r.answer_text || "";
+      const hasValidSegment =
+        Number.isInteger(r.segment_start) &&
+        Number.isInteger(r.segment_end) &&
+        r.segment_start >= 0 &&
+        r.segment_end > r.segment_start &&
+        r.segment_end <= fullText.length;
+      const excerpt = hasValidSegment
+        ? fullText.slice(r.segment_start, r.segment_end)
+        : fullText; // 座標異常時保守 fallback 回整段原文，不要顯示空白
+
+      return {
+        respondent_number: r.respondent_number ?? null,
+        main_category: r.main_category || "",
+        sub_category: r.sub_category || "",
+        answer_text: excerpt,
+        reasoning: r.reasoning || "",   // 後端還有 methodology / citation 欄位，這裡故意不取
+        summary: r.summary || "",
+      };
+    });
   return `${CLASSIFICATION_TABLE_MARKER}${JSON.stringify({ rows, meta: meta || {} })}`;
 }
 
@@ -354,6 +380,49 @@ function AssistantTableContent({ content }) {
   );
 }
 
+// 【匯出功能】把分類結果匯出成 CSV，讓使用者能真的下載檔案。
+// 純前端實作，不用等後端支援：資料本來就已經在畫面上了。
+// 開頭加 UTF-8 BOM。
+function downloadClassificationCSV(rows) {
+  const headers = ["受試者", "大類別", "子類別", "問卷回覆內容", "判斷原因與說明", "受試者建議摘要"];
+  const escapeCell = (val) => {
+    const s = String(val ?? "");
+    // 內容裡有逗號、換行、雙引號的話，CSV 規範要求整格用雙引號包起來，
+    // 裡面原本的雙引號要變成兩個雙引號escape
+    if (/[",\n]/.test(s)) {
+      return `"${s.replace(/"/g, '""')}"`;
+    }
+    return s;
+  };
+  const lines = [
+    headers.map(escapeCell).join(","),
+    ...rows.map((row) =>
+      [
+        row.respondent_number != null ? `受試者${row.respondent_number}` : "",
+        row.main_category,
+        row.sub_category,
+        row.answer_text,
+        row.reasoning,
+        row.summary,
+      ]
+        .map(escapeCell)
+        .join(",")
+    ),
+  ];
+  const csvContent = "\uFEFF" + lines.join("\r\n"); // \uFEFF = UTF-8 BOM
+
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  a.href = url;
+  a.download = `分類結果_${timestamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 /* 【串backend】渲染真實分類結果的表格元件。
  * 5 欄對照使用者要的格式：大類別／子類別／問卷回覆內容／判斷原因與說明／受試者建議摘要。
  * 資料來源：parseClassificationMessageContent() 從訊息內容還原出來的 rows。 */
@@ -383,6 +452,7 @@ function ClassificationTable({ rows, meta }) {
         <table className="assistant-output-table classification-table">
           <thead>
             <tr>
+              <th>受試者</th>
               <th>大類別</th>
               <th>子類別</th>
               <th>問卷回覆內容</th>
@@ -393,6 +463,7 @@ function ClassificationTable({ rows, meta }) {
           <tbody>
             {rows.map((row, index) => (
               <tr key={index}>
+                <td>{row.respondent_number != null ? `受試者${row.respondent_number}` : "—"}</td>
                 <td>{row.main_category}</td>
                 <td>{row.sub_category}</td>
                 <td>{row.answer_text}</td>
@@ -402,6 +473,17 @@ function ClassificationTable({ rows, meta }) {
             ))}
           </tbody>
         </table>
+      </div>
+      {/* 【匯出功能】真的能下載 CSV，不是原本那個只會導到空頁面的假按鈕 */}
+      <div className="assistant-output-actions">
+        <button
+          className="assistant-export-btn"
+          type="button"
+          onClick={() => downloadClassificationCSV(rows)}
+        >
+          <i className="ri-download-cloud-2-line"></i>
+          匯出成 CSV
+        </button>
       </div>
     </div>
   );
