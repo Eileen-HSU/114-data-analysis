@@ -363,7 +363,7 @@ function AssistantTableContent({ content }) {
 // 這樣才會出現在「專案管理 → 匯出檔案」那頁的清單裡，不是只下載到本機。
 // 存後端失敗也不影響本機下載照常進行——使用者當下最在意的是能不能
 // 拿到檔案，清單只是附加價值，不該因為清單存不進去就讓下載跟著失敗。
-async function downloadClassificationCSV(rows, chatId, showToast) {
+async function downloadClassificationCSV(rows, chatId, showToast, sourceFilename) {
   const headers = ["大類別", "子類別", "問卷回覆內容", "判斷原因與說明", "受試者建議摘要"];
   const escapeCell = (val) => {
     const s = String(val ?? "");
@@ -385,8 +385,20 @@ async function downloadClassificationCSV(rows, chatId, showToast) {
     }),
   ];
   const csvContent = "\uFEFF" + lines.join("\r\n"); // \uFEFF = UTF-8 BOM
-  const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-  const filename = `分類結果_${timestamp}.csv`;
+
+  // 【修正｜改用原始上傳檔名命名】優先用使用者當初上傳的 Excel 檔名
+  // （去掉副檔名，加上「_分類結果」），方便對照是哪一批資料匯出的。
+  // 沒有這個資訊時（例如舊訊息，還沒有 source_filename 這個 meta）
+  // 才 fallback 回時間戳記命名，順便修正原本用 UTC 而非台灣時間的問題。
+  let filename;
+  if (sourceFilename) {
+    const baseName = sourceFilename.replace(/\.[^.]+$/, ""); // 去掉副檔名
+    filename = `${baseName}_分類結果.csv`;
+  } else {
+    const taiwanTime = new Date(Date.now() + 8 * 60 * 60 * 1000);
+    const timestamp = taiwanTime.toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    filename = `分類結果_${timestamp}.csv`;
+  }
 
   // 【修正｜不要跳本機下載，改成「製作中→完成」的提示】使用者要的體驗是
   // 點下去先看到「製作中」，做完之後去「專案管理」拿檔案，不要跳瀏覽器
@@ -397,7 +409,7 @@ async function downloadClassificationCSV(rows, chatId, showToast) {
     return;
   }
 
-  showToast?.("製作中…請稍後至「專案管理→匯出檔案」查看完成狀態");
+  showToast?.("製作中…");
   // 讓「製作中」至少有感地停留一下，避免網路太快、提示一閃而過，
   // 使用者感受不到「有在處理」這件事。
   await new Promise((resolve) => setTimeout(resolve, 600));
@@ -518,7 +530,7 @@ function ClassificationTable({ rows, meta, chatId, showToast }) {
         <button
           className="assistant-export-btn"
           type="button"
-          onClick={() => downloadClassificationCSV(rows, chatId, showToast)}
+          onClick={() => downloadClassificationCSV(rows, chatId, showToast, meta?.source_filename)}
         >
           <i className="ri-download-cloud-2-line"></i>
           匯出成 CSV
@@ -1112,6 +1124,9 @@ export default function WorkspacePage() {
         upload_batch_id: data.upload_batch_id,
         text_column: data.text_column,
         text_column_auto_detected: data.text_column_auto_detected,
+        // 【新增｜匯出檔名跟原始上傳檔名對應】方便使用者從匯出清單就
+        // 知道這批結果對應哪一份原始 Excel。
+        source_filename: file.name,
       });
       const assistantMsgId = `a-${Date.now()}`;
       appendMessage(sid, { id: assistantMsgId, role: "assistant", content: assistantContent });
