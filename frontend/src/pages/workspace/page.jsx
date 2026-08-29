@@ -355,7 +355,8 @@ function AssistantTableContent({ content }) {
   );
 }
 
-// 【新增｜匯出功能】把分類結果匯出成 CSV，讓使用者能真的下載檔案。
+// 【新增｜匯出功能】把分類結果存成 CSV，存到後端（Export_File），
+// 使用者之後在「專案管理 → 匯出檔案」下載，不是點下去馬上跳瀏覽器下載。
 // 純前端實作，不用等後端支援：資料本來就已經在畫面上了。
 // 開頭加 UTF-8 BOM，不然中文在 Excel 打開會變亂碼。
 // 【新增｜串接匯出清單後端】把匯出內容存到後端（POST /api/exports），
@@ -387,42 +388,39 @@ async function downloadClassificationCSV(rows, chatId, showToast) {
   const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
   const filename = `分類結果_${timestamp}.csv`;
 
-  // 先存進後端（Export_File），讓它出現在「專案管理 → 匯出檔案」清單裡。
-  // 沒有 chatId（例如這則訊息還沒同步成功、或是暫存工作區）就不存後端，
-  // 只做本機下載——Export_File.chat_id 是 NOT NULL，沒有就不能硬存。
-  if (chatId) {
-    try {
-      const res = await fetch(apiUrl("/api/exports"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeader() },
-        body: JSON.stringify({
-          chat_id: chatId,
-          filename,
-          content: csvContent,
-          row_count: rows.length,
-        }),
-      });
-      if (!res.ok) {
-        showToast?.("已下載到本機，但存入「專案管理→匯出檔案」清單失敗");
-      }
-    } catch (err) {
-      console.error("匯出紀錄存後端失敗（不影響本機下載）：", err);
-      showToast?.("已下載到本機，但存入「專案管理→匯出檔案」清單失敗");
-    }
-  } else {
-    showToast?.("已下載到本機，但這則訊息還沒同步完成，不會出現在「專案管理→匯出檔案」清單裡");
+  // 【修正｜不要跳本機下載，改成「製作中→完成」的提示】使用者要的體驗是
+  // 點下去先看到「製作中」，做完之後去「專案管理」拿檔案，不要跳瀏覽器
+  // 下載視窗。沒有 chatId（訊息還沒同步成功、或暫存工作區）就沒地方存，
+  // 直接告知使用者，不會假裝製作中卻永遠做不完。
+  if (!chatId) {
+    showToast?.("這則訊息還沒同步完成，請稍後再試一次匯出");
+    return;
   }
 
-  // 不管上面存後端有沒有成功，本機下載照常進行
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  showToast?.("製作中…");
+  // 讓「製作中」至少有感地停留一下，避免網路太快、提示一閃而過，
+  // 使用者感受不到「有在處理」這件事。
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  try {
+    const res = await fetch(apiUrl("/api/exports"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify({
+        chat_id: chatId,
+        filename,
+        content: csvContent,
+        row_count: rows.length,
+      }),
+    });
+    if (!res.ok) {
+      showToast?.("匯出失敗，請稍後再試一次");
+      return;
+    }
+    showToast?.("已完成，請至「專案管理→匯出檔案」查看");
+  } catch (err) {
+    console.error("匯出紀錄存後端失敗：", err);
+    showToast?.("匯出失敗，請稍後再試一次");
+  }
 }
 
 /* 【串backend】渲染真實分類結果的表格元件。
