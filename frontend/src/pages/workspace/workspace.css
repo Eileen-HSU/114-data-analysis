@@ -435,6 +435,11 @@
   font-style: italic;
 }
 
+/* 【新增】大類別合併顯示時，空白那幾格背景跟前一格對齊，看起來像同一塊 */
+.classification-table td.merged-cell-blank {
+  border-top: none;
+}
+
 .assistant-output-actions {
   display: flex;
   justify-content: flex-end;

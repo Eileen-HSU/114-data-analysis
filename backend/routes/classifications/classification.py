@@ -114,10 +114,32 @@ def _build_aggregated_groups(all_classification_rows, answer_id_to_row_index, qu
     order_index = {sub: i for i, sub in enumerate(canonical_order)}
     order.sort(key=lambda key: order_index.get(key[1], len(canonical_order)))
 
+    # 【新增｜子類別重新編號】原本的編號是完整清單裡的位置（例如這批資料
+    # 只出現 A2、A5、A8，畫面上就會直接顯示 A2、A5、A8，看起來像跳號）。
+    # 改成依照排序後「這批資料實際出現的順序」重新編號，字母（大類別
+    # 對應的那個字母）保留，數字從 1 開始，同一個大類別底下依序累加、
+    # 換下一個大類別時歸零重來。原始 sub_category 字串格式固定是
+    # 「{字母}{數字} {說明文字}」（例如「A5 教育訓練」），用正則抓出
+    # 字母跟說明文字，數字整個換成重新編過的。
+    import re as _re
+    renumbered_sub_category = {}
+    counter_by_main = {}
+    for key in order:
+        main_category, sub_category = key
+        m = _re.match(r"^([A-Za-z]+)\d+\s*(.*)$", sub_category)
+        if m:
+            letter, description = m.group(1), m.group(2)
+            counter_by_main[main_category] = counter_by_main.get(main_category, 0) + 1
+            renumbered_sub_category[key] = f"{letter}{counter_by_main[main_category]} {description}"
+        else:
+            # 格式不符預期（理論上不該發生）時，保留原字串，不硬套規則
+            renumbered_sub_category[key] = sub_category
+
     result = []
     for key in order:
         main_category, sub_category = key
         items = groups[key]["items"]
+        display_sub_category = renumbered_sub_category[key]
 
         # 【修正｜同一受試者被拆成多段時，同一組內連續出現的同一人合併成一行】
         # all_classification_rows 的順序本來就是「同一筆原始回答的所有 segment
@@ -166,7 +188,7 @@ def _build_aggregated_groups(all_classification_rows, answer_id_to_row_index, qu
 
         result.append({
             "main_category": main_category,
-            "sub_category": sub_category,
+            "sub_category": display_sub_category,
             "respondent_text": respondent_text,
             "aggregated_reasoning": aggregated_reasoning,
             "aggregated_summary": aggregated_summary,
