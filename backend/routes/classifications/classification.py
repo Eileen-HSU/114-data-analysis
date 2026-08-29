@@ -75,7 +75,16 @@ classification_bp = Blueprint("classification", __name__)
 # 分組成一列，同一組內所有受試者片段合併顯示、「判斷原因」跟「建議摘要」
 # 各自再呼叫一次 build_aggregated_summary() 統整成一段話。
 # 「無具體建議」這種勉強歸類的結果，分組前就先排除，不參與彙整、不顯示。
-def _build_aggregated_groups(all_classification_rows, answer_id_to_row_index, question_type):
+def _build_aggregated_groups(all_classification_rows, id_to_row_index, question_type, id_field="uploaded_answer_id"):
+    """
+    依 (大類別、子類別) 分組、合併受試者片段、彙整判斷原因與建議摘要。
+
+    id_field: 用哪個欄位當「受試者編號」的查表 key。Excel 上傳來源用
+        "uploaded_answer_id"（原本的行為，預設值，不影響既有呼叫端）；
+        問卷來源改用 "response_id"，因為問卷的 Response_Classification
+        沒有 uploaded_answer_id（那是 Excel 上傳專用欄位），而是用
+        response_id 對應到是哪一筆問卷回覆。
+    """
     groups = {}  # (main_category, sub_category) -> {"items": [...]}
     order = []   # 記錄分組第一次出現的順序，回傳時維持穩定順序
 
@@ -89,7 +98,7 @@ def _build_aggregated_groups(all_classification_rows, answer_id_to_row_index, qu
             groups[key] = {"items": []}
             order.append(key)
 
-        row_index = answer_id_to_row_index.get(r.uploaded_answer_id)
+        row_index = id_to_row_index.get(getattr(r, id_field))
         excerpt = r.answer_text
         if (
             isinstance(r.segment_start, int)
@@ -559,16 +568,55 @@ def analyze_survey(access_code):
     }
 
     if not question_type_map:
+        # 【修正】這個分支原本沒有回傳 aggregated_groups，前端會拿到
+        # undefined、當成「沒有結果」處理，跟真的分析完但沒結果分不出來。
+        # 補上這個欄位（固定空陣列），並附上診斷資訊，方便知道問卷本身
+        # 是不是根本沒有任何一題被判定成「可分類的開放式文字題」——
+        # 這種情況下不管有幾個人回答，都不會產生任何分類結果，因為
+        # 沒有一題符合「type == short 且有 question_type routing 結果」
+        # 這個條件。
+        short_type_items = [item for item in items if item.get("type") == "short"]
         return jsonify({
             "template_id": template_id,
             "analyzed_question_ids": [],
             "newly_classified_count": 0,
+            "aggregated_groups": [],
+            "diagnostic": {
+                "total_question_items": len(items),
+                "short_type_question_count": len(short_type_items),
+                "short_type_with_routing_count": len(
+                    [item for item in short_type_items if item.get("question_type")]
+                ),
+                "message": (
+                    "這份問卷沒有任何一題符合「開放式文字題（type=short）且有分類"
+                    "路由結果（question_type）」的條件，所以完全不會產生分類結果，"
+                    "不管有幾個人回答都一樣。"
+                ),
+            },
         }), 200
 
-    responses = Survey_Response.query.filter_by(template_id=template_id).all()
+    responses = Survey_Response.query.filter_by(template_id=template_id).order_by(
+        Survey_Response.response_id.asc()
+    ).all()
+
+    # 【新增｜受試者編號】跟 Excel 上傳那條路一樣，讓分析結果知道「這是第
+    # 幾位受試者」。問卷這邊沒有 row_index 概念，改用 response_id 本身的
+    # 遞增順序當作編號依據。
+    response_id_to_number = {
+        response.response_id: idx for idx, response in enumerate(responses)
+    }
 
     analyzed_question_ids = []
     newly_classified_count = 0
+    # 【新增｜彙整用】依 question_type 分開收集這次分析涉及到的所有分類
+    # 結果（包含這次新分類的、以及之前已經分類過、這次重跑沒有重新送
+    # Gemini 但仍要納入彙整畫面的），最後才依類別分組、彙整成一段話。
+    rows_by_question_type = {}
+    # 【新增｜診斷用】記錄每個可分類題目「有幾筆回覆」跟「有幾筆是有效
+    # 文字回覆」，如果全部人都被判定成無效文字（例如答案是空字串、
+    # 或格式跟預期不符），就會出現「有 N 人回答但分類結果是空」的情況，
+    # 這個資訊能直接看出問題出在哪一步。
+    per_question_diagnostic = {}
 
     for question_id, question_type in question_type_map.items():
         prompt_row = Prompt_Template.query.get(question_type)
@@ -577,15 +625,19 @@ def analyze_survey(access_code):
 
         existing_references = []
         pending_items = []
+        diag = {"total_responses": len(responses), "missing_key": 0, "invalid_text": 0, "valid": 0}
 
         for response in responses:
             answers = (response.answer_json or {}).get("answers", {})
             if question_id not in answers:
+                diag["missing_key"] += 1
                 continue
             answer_value = answers[question_id]
             if not is_text_response(answer_value):
+                diag["invalid_text"] += 1
                 continue
             answer_text = str(answer_value)
+            diag["valid"] += 1
 
             existing_status = Response_Segmentation_Status.query.filter_by(
                 response_id=response.response_id, question_id=question_id
@@ -597,6 +649,9 @@ def analyze_survey(access_code):
                 existing_rows = Response_Classification.query.filter_by(
                     response_id=response.response_id, question_id=question_id
                 ).all()
+                # 【新增｜彙整用】舊資料也要收進來，不然重新分析一次，
+                # 之前已經分類過的結果就會從彙整畫面消失。
+                rows_by_question_type.setdefault(question_type, []).extend(existing_rows)
                 existing_references.append({
                     "identifier": response.response_id,
                     "answer_text": answer_text,
@@ -624,6 +679,8 @@ def analyze_survey(access_code):
                     "answer_text": answer_text,
                 })
 
+        per_question_diagnostic[question_id] = diag
+
         if not pending_items:
             continue  # 這題沒有新回答需要處理
 
@@ -632,23 +689,39 @@ def analyze_survey(access_code):
         )
 
         for item, result in zip(pending_items, results):
-            _persist_segmentation_result(
+            _, new_rows = _persist_segmentation_result(
                 result,
                 source_type="survey",
                 answer_text=item["answer_text"],
                 question_id=question_id,
                 response_id=item["identifier"],
             )
+            rows_by_question_type.setdefault(question_type, []).extend(new_rows)
             newly_classified_count += 1
 
         analyzed_question_ids.append(question_id)
 
     db.session.commit()
 
+    # 【survey 受試者分組彙整】依 question_type 分開彙整（不同題目對應不同
+    # 固定分類清單，排序邏輯不能混在一起），結果合併成一個列表回傳，
+    # 前端可以直接沿用 Excel 上傳那條路已經在用的表格渲染元件。
+    aggregated_groups = []
+    for q_type, rows in rows_by_question_type.items():
+        aggregated_groups.extend(
+            _build_aggregated_groups(rows, response_id_to_number, q_type, id_field="response_id")
+        )
+
     return jsonify({
         "template_id": template_id,
         "analyzed_question_ids": analyzed_question_ids,
         "newly_classified_count": newly_classified_count,
+        "aggregated_groups": aggregated_groups,
+        "diagnostic": {
+            "question_type_map_size": len(question_type_map),
+            "total_responses": len(responses),
+            "per_question": per_question_diagnostic,
+        },
     }), 200
 
 
