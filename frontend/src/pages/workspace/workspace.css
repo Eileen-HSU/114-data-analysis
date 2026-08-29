@@ -409,6 +409,14 @@
 .classification-table td {
   white-space: normal;
   word-break: break-word;
+  /* 【新增｜欄與欄之間要有線】原本共用的 .assistant-output-table 只有
+     橫線（列與列之間），沒有直線（欄與欄之間），這裡只針對分類表格加上。 */
+  border-right: 1px solid var(--rose-100);
+}
+
+.classification-table th:last-child,
+.classification-table td:last-child {
+  border-right: none;
 }
 
 .classification-column-input {
