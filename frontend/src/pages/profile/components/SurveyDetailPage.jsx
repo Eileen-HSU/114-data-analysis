@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import Navbar from "../../../components/feature/Navbar";
 import DeadlineDateTimePicker from "../../../components/feature/DeadlineDateTimePicker";
 import { buildExternalSurveyShortUrl, buildSurveyFillUrl } from "../../../lib/surveyLinks";
-import { buildSurveyChatContent as buildSharedSurveyChatContent } from "../../../lib/surveyChatContent";
+// 【修正】原本這裡有 import buildSurveyChatContent，用來組出使用者訊息的完整文字內容，現在改成簡短一行不再需要這個函式，拿掉未使用的 import。
 
 const TYPE_LABELS = {
   rating: "評分",
@@ -262,12 +262,18 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
   const handleImportToChat = () => {
     setImportSuccess(true);
     setTimeout(() => {
+      const surveyTitle = currentSurvey.title || currentSurvey.survey_name || "未命名問卷";
       onImportToChat?.({
         survey: currentSurvey,
         questions,
         responses,
-        sessionTitle: `問卷分析：${currentSurvey.title || currentSurvey.survey_name || "未命名問卷"}`,
-        message: buildSharedSurveyChatContent(currentSurvey, questions, responses),
+        sessionTitle: `問卷分析：${surveyTitle}`,
+        // 【改成簡短一行，不要把整份問卷回覆逐字列出來】原本
+        // 這裡用 buildSharedSurveyChatContent(...) 會把每一題、每個人
+        // 的回答全部列成一大段文字塞進使用者訊息，跟真正的分析邏輯
+        // 完全無關（分析是後端直接讀資料庫），純粹是顯示太冗長，
+        // 比照 Excel 上傳那條路改成一行簡短說明。
+        message: `[問卷：${surveyTitle}] 觸發自動分析`,
       });
     }, 450);
   };

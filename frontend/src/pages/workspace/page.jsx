@@ -6,7 +6,8 @@ import { useAuth } from "../../hooks/AuthContext";
 import { useCollection } from "../../hooks/CollectionContext";
 import { useActivity } from "../../hooks/ActivityContext";
 import { apiUrl } from "../../lib/api";
-import { buildSurveyChatContent as buildSharedSurveyChatContent } from "../../lib/surveyChatContent";
+// 【修正】原本這裡有 import buildSurveyChatContent，現在不再用它組長文字
+// 訊息內容，改成簡短一行，拿掉未使用的 import。
 import "./workspace.css";
 
 const WELCOME_MSG = {
@@ -409,7 +410,7 @@ async function downloadClassificationCSV(rows, chatId, showToast, sourceFilename
     return;
   }
 
-  showToast?.("製作中…請稍後至「專案管理→匯出檔案」查看完成狀態");
+  showToast?.("製作中…");
   // 讓「製作中」至少有感地停留一下，避免網路太快、提示一閃而過，
   // 使用者感受不到「有在處理」這件事。
   await new Promise((resolve) => setTimeout(resolve, 600));
@@ -930,24 +931,68 @@ export default function WorkspacePage() {
       setActiveSessionId(String(data.project_id));
 
       setIsTyping(true);
-      setTimeout(() => {
-        const aiReply = buildAssistantReply(message, surveyDetail || null, surveyTitle);
-        setSessions((currentList) =>
-          (Array.isArray(currentList) ? currentList : []).map((session) =>
-            session.id === String(data.project_id)
-              ? {
-                  ...session,
-                  messages: [
-                    ...(session.messages || []),
-                    { id: `a-${Date.now()}`, role: "assistant", content: aiReply },
-                  ],
-                }
-              : session
-          )
-        );
-        setIsTyping(false);
-        saveChatMessage(data.project_id, "assistant", aiReply, templateId);
-      }, 1800);
+      // 【修正｜串接真實 Gemini 分析，取代原本純前端組字串的假回覆】
+      // 對應後端 POST /api/surveys/<code>/analyze，會真的對整份問卷觸發
+      // PII 遮罩 → TF-IDF 去重 → Gemini 分類 → 依類別分組彙整，
+      // 沿用跟 Excel 上傳分類同一套 buildClassificationMessageContent /
+      // ClassificationTable 渲染邏輯，不用另外做一套畫面。
+      (async () => {
+        const assistantMsgId = `a-${Date.now()}`;
+        try {
+          if (!surveyCode) {
+            throw new Error("找不到問卷代碼，無法觸發分析");
+          }
+          const analyzeRes = await fetch(
+            apiUrl(`/api/surveys/${encodeURIComponent(surveyCode)}/analyze`),
+            { method: "POST", headers: getAuthHeader() }
+          );
+          const analyzeData = await analyzeRes.json();
+          if (!analyzeRes.ok) {
+            throw new Error(analyzeData?.error || `HTTP ${analyzeRes.status}`);
+          }
+
+          const assistantContent = buildClassificationMessageContent(
+            analyzeData.aggregated_groups,
+            {
+              classified_count: analyzeData.newly_classified_count,
+              source_filename: `${surveyTitle}（問卷）`,
+            }
+          );
+          setSessions((currentList) =>
+            (Array.isArray(currentList) ? currentList : []).map((session) =>
+              session.id === String(data.project_id)
+                ? {
+                    ...session,
+                    messages: [
+                      ...(session.messages || []),
+                      { id: assistantMsgId, role: "assistant", content: assistantContent },
+                    ],
+                  }
+                : session
+            )
+          );
+          const savedChatId = await saveChatMessage(data.project_id, "assistant", assistantContent, templateId);
+          updateMessageChatId(String(data.project_id), assistantMsgId, savedChatId);
+        } catch (err) {
+          const errMsg = `分析失敗：${err?.message || "網路錯誤"}`;
+          setSessions((currentList) =>
+            (Array.isArray(currentList) ? currentList : []).map((session) =>
+              session.id === String(data.project_id)
+                ? {
+                    ...session,
+                    messages: [
+                      ...(session.messages || []),
+                      { id: assistantMsgId, role: "assistant", content: errMsg },
+                    ],
+                  }
+                : session
+            )
+          );
+          saveChatMessage(data.project_id, "assistant", errMsg, templateId);
+        } finally {
+          setIsTyping(false);
+        }
+      })();
     })
     .catch((err) => console.error("問卷匯入建立 workspace 失敗", err));
 
@@ -1027,7 +1072,9 @@ export default function WorkspacePage() {
   const handleSelectSurvey = async (record) => {
     const detail = normalizeSurveyDetail(record.detail);
     if (!detail || !activeSessionId) return;
-    const content = buildSharedSurveyChatContent(detail);
+    // 【修正｜改成簡短一行】原本會把整份問卷回覆逐字列出來，跟 SurveyDetailPage.jsx
+    // 的 handleImportToChat 是同一個問題，一起改成一行簡短說明。
+    const content = `[問卷：${detail.title}] 觸發自動分析`;
     const userMsg = { id: `u-${Date.now()}`, role: "user", content };
 
     const selectedSession = sessions.find((session) => session.id === activeSessionId);
@@ -1046,25 +1093,67 @@ export default function WorkspacePage() {
 
     setIsTyping(true);
     const sid = activeSessionId;
-    setTimeout(() => {
-      const aiReply = buildAssistantReply(content, detail, record.title);
-      
-      setSessions((currentList) =>
-        (Array.isArray(currentList) ? currentList : []).map((session) =>
-          session.id === sid
-            ? {
-                ...session,
-                messages: [
-                  ...(session.messages || []),
-                  { id: `a-${Date.now()}`, role: "assistant", content: aiReply },
-                ],
-              }
-            : session
-        )
-      );
-      setIsTyping(false);
-      saveChatMessage(projectId, "assistant", aiReply, detail.id);
-    }, 1800);
+    // 【修正｜串接真實 Gemini 分析，取代原本純前端組字串的假回覆】
+    // 跟「專案管理→匯入」那個入口共用同一套後端 API 跟渲染邏輯，
+    // 只是問卷代碼、chat_id 的取得方式不同（這裡是已經在一個既有
+    // session 裡挑問卷，不用另外建新的 workspace）。
+    (async () => {
+      const assistantMsgId = `a-${Date.now()}`;
+      try {
+        if (!detail.code) {
+          throw new Error("找不到問卷代碼，無法觸發分析");
+        }
+        const analyzeRes = await fetch(
+          apiUrl(`/api/surveys/${encodeURIComponent(detail.code)}/analyze`),
+          { method: "POST", headers: getAuthHeader() }
+        );
+        const analyzeData = await analyzeRes.json();
+        if (!analyzeRes.ok) {
+          throw new Error(analyzeData?.error || `HTTP ${analyzeRes.status}`);
+        }
+
+        const assistantContent = buildClassificationMessageContent(
+          analyzeData.aggregated_groups,
+          {
+            classified_count: analyzeData.newly_classified_count,
+            source_filename: `${detail.title}（問卷）`,
+          }
+        );
+        setSessions((currentList) =>
+          (Array.isArray(currentList) ? currentList : []).map((session) =>
+            session.id === sid
+              ? {
+                  ...session,
+                  messages: [
+                    ...(session.messages || []),
+                    { id: assistantMsgId, role: "assistant", content: assistantContent },
+                  ],
+                }
+              : session
+          )
+        );
+        const savedChatId = await saveChatMessage(projectId, "assistant", assistantContent, detail.id);
+        updateMessageChatId(sid, assistantMsgId, savedChatId);
+      } catch (err) {
+        const errMsg = `分析失敗：${err?.message || "網路錯誤"}`;
+        setSessions((currentList) =>
+          (Array.isArray(currentList) ? currentList : []).map((session) =>
+            session.id === sid
+              ? {
+                  ...session,
+                  messages: [
+                    ...(session.messages || []),
+                    { id: assistantMsgId, role: "assistant", content: errMsg },
+                  ],
+                }
+              : session
+          )
+        );
+        saveChatMessage(projectId, "assistant", errMsg, detail.id);
+      } finally {
+        setIsTyping(false);
+      }
+    })();
   };
 
   const surveyPickerRecords = getSurveyPickerRecords(apiSurveys);
