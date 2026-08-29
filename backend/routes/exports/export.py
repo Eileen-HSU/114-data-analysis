@@ -18,6 +18,7 @@ content 欄位（見 models.py Export_File 的註解）。
 """
 
 from flask import Blueprint, jsonify, request, Response
+from urllib.parse import quote
 
 from extensions import db
 from models import Export_File, Chat_History, Workspace
@@ -107,10 +108,19 @@ def download_export(export_id):
     if not export:
         return jsonify({"error": "找不到這筆匯出紀錄"}), 404
 
+    # HTTP 標頭只能放 Latin-1 字元，
+    # export_name 是中文（例如「分類結果_2026-08-29.csv」），直接塞進
+    # Content-Disposition 會在真正的 WSGI 伺服器（gunicorn）送出回應時
+    # UnicodeEncodeError，導致整個 worker 掛掉——這也是為什麼本機用
+    # Flask test_client 測不出來，只有接上真的 gunicorn 才會爆。
+    # 改用 RFC 5987/6266 標準寫法：filename 放一個純英數的保底檔名（給
+    # 不支援新標準的舊工具用），filename* 用 UTF-8 + percent-encoding
+    # 放真正的中文檔名，現代瀏覽器都認得這個標準、會下載成正確的中文檔名。
+    encoded_filename = quote(export.export_name or "export.csv")
+    content_disposition = f"attachment; filename=\"export.csv\"; filename*=UTF-8''{encoded_filename}"
+
     return Response(
         export.content or "",
         mimetype="text/csv",
-        headers={
-            "Content-Disposition": f'attachment; filename="{export.export_name}"'
-        },
+        headers={"Content-Disposition": content_disposition},
     )
