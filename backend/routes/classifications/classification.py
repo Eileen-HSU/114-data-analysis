@@ -64,6 +64,7 @@ from services.privacy_service import mask_pii, PiiMaskingError
 from services.question_routing_service import route_question_type
 from services.batch_classification_service import run_batch_analysis
 from services.aggregated_summary_service import build_aggregated_summary, AggregatedSummaryError
+from services.subcategory_methodology import all_subcategories
 from routes.surveys.survey import verify_token, find_survey_by_access_or_short_code
 import pandas as pd
 
@@ -74,7 +75,7 @@ classification_bp = Blueprint("classification", __name__)
 # 分組成一列，同一組內所有受試者片段合併顯示、「判斷原因」跟「建議摘要」
 # 各自再呼叫一次 build_aggregated_summary() 統整成一段話。
 # 「無具體建議」這種勉強歸類的結果，分組前就先排除，不參與彙整、不顯示。
-def _build_aggregated_groups(all_classification_rows, answer_id_to_row_index):
+def _build_aggregated_groups(all_classification_rows, answer_id_to_row_index, question_type):
     groups = {}  # (main_category, sub_category) -> {"items": [...]}
     order = []   # 記錄分組第一次出現的順序，回傳時維持穩定順序
 
@@ -103,6 +104,15 @@ def _build_aggregated_groups(all_classification_rows, answer_id_to_row_index):
             "reasoning": r.reasoning or "",
             "summary": r.summary or "",
         })
+
+    # 【修正｜排序】原本是「哪個類別先出現在資料裡就排第幾個」，等於是隨機的。
+    # 改成照 subcategory_methodology.py 裡固定清單本來的順序排（A1、A2、A3…、
+    # B1、B2…），跟你們團隊文件裡的排法一致。清單裡查不到的子類別（理論上
+    # 不該發生，但保守起見還是處理一下）排在最後面，順序照它們原本出現的
+    # 先後，不會憑空消失。
+    canonical_order = all_subcategories(question_type)
+    order_index = {sub: i for i, sub in enumerate(canonical_order)}
+    order.sort(key=lambda key: order_index.get(key[1], len(canonical_order)))
 
     result = []
     for key in order:
@@ -479,7 +489,7 @@ def upload_excel_for_classification():
         classifications_payload.append(d)
 
     # 【新增｜受試者分組彙整】依類別分組、合併受試者片段、統整判斷原因與建議摘要
-    aggregated_groups = _build_aggregated_groups(all_classification_rows, answer_id_to_row_index)
+    aggregated_groups = _build_aggregated_groups(all_classification_rows, answer_id_to_row_index, question_type)
 
     return jsonify({
         "upload_batch_id": upload_batch_id,
