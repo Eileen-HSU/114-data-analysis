@@ -109,7 +109,12 @@ export default function CollectionPage() {
       const res = await fetch(apiUrl(`/api/exports/${exportItem.export_id}/download`), {
         headers: getAuthHeader(),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        // 【修正】之前失敗只印在 console 裡，使用者完全看不到、
+        // 感覺就像「點了沒反應」。這裡照這個頁面既有的 alert() 慣例補上。
+        alert(`下載失敗（HTTP ${res.status}），請稍後再試。`);
+        return;
+      }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -121,6 +126,7 @@ export default function CollectionPage() {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error("下載匯出檔案失敗：", err);
+      alert("下載失敗，請稍後再試。");
     }
   };
 
@@ -950,6 +956,12 @@ export default function CollectionPage() {
                       <i className="ri-file-text-line export-list-item-icon"></i>
                       <div className="export-list-item-info">
                         <div className="export-list-item-name">{item.export_name}</div>
+                        {/* 【新增｜匯出來源路徑】讓使用者知道這筆是從哪個工作區匯出的 */}
+                        {item.source_path && (
+                          <div className="export-list-item-source">
+                            <i className="ri-folder-3-line"></i> {item.source_path}
+                          </div>
+                        )}
                         <div className="export-list-item-meta">
                           {item.row_count != null ? `${item.row_count} 筆` : ""}
                           {item.created_at ? `　${new Date(item.created_at).toLocaleString("zh-TW")}` : ""}
