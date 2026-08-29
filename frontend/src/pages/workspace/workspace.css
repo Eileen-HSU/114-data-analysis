@@ -443,9 +443,10 @@
   font-style: italic;
 }
 
-/* 【新增】大類別合併顯示時，空白那幾格背景跟前一格對齊，看起來像同一塊 */
-.classification-table td.merged-cell-blank {
-  border-top: none;
+/* 【修正】大類別改用真正的 rowSpan，文字水平+垂直都置中在整個合併區塊正中央 */
+.classification-table td.merged-cell-center {
+  text-align: center;
+  vertical-align: middle;
 }
 
 .assistant-output-actions {
