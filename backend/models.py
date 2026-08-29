@@ -213,12 +213,20 @@ class Export_File(db.Model):
     export_status = db.Column(db.String(20), default="processing")  # processing / completed / failed
     created_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
 
+    # 【新增｜分類結果 CSV 匯出】目前沒有真正的檔案儲存服務，CSV 內容直接
+    # 存這裡；export_path 沿用舊欄位、對這種情況填空字串，不強改它的語意。
+    # 用 MEDIUMTEXT（沿用專案裡 avatar_url 已經在用的型別），上限 16MB，
+    # 對 CSV 表格內容綽綽有餘。
+    content = db.Column(MEDIUMTEXT, nullable=True)
+    row_count = db.Column(db.Integer, nullable=True)
+
     def to_dict(self) -> dict:
         return {
             "export_id": self.export_id,
             "chat_id": self.chat_id,
             "export_name": self.export_name,
             "export_type": self.export_type,
+            "row_count": self.row_count,
             "export_path": self.export_path,
             "export_status": self.export_status,
             "created_at": (

@@ -21,6 +21,7 @@ from routes.workspaces.trash import trash_bp, start_scheduler
 from routes.classifications.classification import classification_bp
 from routes.classifications.review import review_bp
 from routes.classifications.report import report_bp
+from routes.exports.export import exports_bp
 
 load_dotenv()
 
@@ -195,6 +196,13 @@ def ensure_runtime_schema():
             ensure_table(Report)
             ensure_table(Report_Aggregation)
             ensure_table(Report_Aggregation_Item)
+            # 【新增｜Export_File 補欄位】原本 Export_File 是為了「產生檔案存到
+            # 某個路徑」設計的（export_path），但目前沒有真正的檔案儲存服務，
+            # 分類結果的 CSV 匯出改成直接把內容存進資料庫，所以補一個 content
+            # 欄位。用 ensure_column 而不是動 export_path 的意義，避免混淆
+            # 「路徑」跟「內容」這兩種不同語意。
+            ensure_column("Export_File", "content", "`content` MEDIUMTEXT NULL")
+            ensure_column("Export_File", "row_count", "`row_count` INT NULL")
         except Exception as exc:
             db.session.rollback()
             app.logger.exception("Runtime schema check failed: %s", exc)
@@ -214,6 +222,7 @@ app.register_blueprint(trash_bp)
 app.register_blueprint(classification_bp)
 app.register_blueprint(review_bp)
 app.register_blueprint(report_bp)
+app.register_blueprint(exports_bp)
 
 start_scheduler(app)
 
@@ -277,4 +286,3 @@ def handle_options():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))
     app.run(host="0.0.0.0", port=port)
-

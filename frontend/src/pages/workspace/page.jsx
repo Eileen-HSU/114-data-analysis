@@ -358,7 +358,11 @@ function AssistantTableContent({ content }) {
 // 【新增｜匯出功能】把分類結果匯出成 CSV，讓使用者能真的下載檔案。
 // 純前端實作，不用等後端支援：資料本來就已經在畫面上了。
 // 開頭加 UTF-8 BOM，不然中文在 Excel 打開會變亂碼。
-function downloadClassificationCSV(rows) {
+// 【新增｜串接匯出清單後端】把匯出內容存到後端（POST /api/exports），
+// 這樣才會出現在「專案管理 → 匯出檔案」那頁的清單裡，不是只下載到本機。
+// 存後端失敗也不影響本機下載照常進行——使用者當下最在意的是能不能
+// 拿到檔案，清單只是附加價值，不該因為清單存不進去就讓下載跟著失敗。
+async function downloadClassificationCSV(rows, chatId) {
   const headers = ["大類別", "子類別", "問卷回覆內容", "判斷原因與說明", "受試者建議摘要"];
   const escapeCell = (val) => {
     const s = String(val ?? "");
@@ -380,13 +384,37 @@ function downloadClassificationCSV(rows) {
     }),
   ];
   const csvContent = "\uFEFF" + lines.join("\r\n"); // \uFEFF = UTF-8 BOM
+  const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  const filename = `分類結果_${timestamp}.csv`;
 
+  // 先存進後端（Export_File），讓它出現在「專案管理 → 匯出檔案」清單裡。
+  // 沒有 chatId（例如這則訊息還沒同步成功、或是暫存工作區）就不存後端，
+  // 只做本機下載——Export_File.chat_id 是 NOT NULL，沒有就不能硬存。
+  if (chatId) {
+    try {
+      await fetch(apiUrl("/api/exports"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeader() },
+        body: JSON.stringify({
+          chat_id: chatId,
+          filename,
+          content: csvContent,
+          row_count: rows.length,
+        }),
+      });
+    } catch (err) {
+      console.error("匯出紀錄存後端失敗（不影響本機下載）：", err);
+    }
+  } else {
+    console.warn("這則訊息還沒有 chat_id，匯出只會下載到本機，不會出現在「專案管理 → 匯出檔案」清單裡");
+  }
+
+  // 不管上面存後端有沒有成功，本機下載照常進行
   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
   a.href = url;
-  a.download = `分類結果_${timestamp}.csv`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -407,7 +435,7 @@ function MultilineText({ text }) {
   ));
 }
 
-function ClassificationTable({ rows, meta }) {
+function ClassificationTable({ rows, meta, chatId }) {
   if (!rows || rows.length === 0) {
     return (
       <div className="assistant-output-panel">
@@ -488,7 +516,7 @@ function ClassificationTable({ rows, meta }) {
         <button
           className="assistant-export-btn"
           type="button"
-          onClick={() => downloadClassificationCSV(rows)}
+          onClick={() => downloadClassificationCSV(rows, chatId)}
         >
           <i className="ri-download-cloud-2-line"></i>
           匯出成 CSV
@@ -503,7 +531,13 @@ function MessageContent({ message }) {
   // 不要讓它掉進下面 AssistantTableContent 那個舊的、給假分析用的文字解析邏輯。
   const classificationData = parseClassificationMessageContent(message.content);
   if (classificationData) {
-    return <ClassificationTable rows={classificationData.rows} meta={classificationData.meta} />;
+    return (
+      <ClassificationTable
+        rows={classificationData.rows}
+        meta={classificationData.meta}
+        chatId={message.chatId}
+      />
+    );
   }
   // 【新增區塊到此為止，以下都是原本就有的邏輯，沒有改動】
 
@@ -910,6 +944,26 @@ export default function WorkspacePage() {
     );
   }, [setSessions]);
 
+  // 【新增｜串接 Export_File】把後端回傳的 chat_id 補到已經 append 進畫面
+  // 的那則訊息上（只更新 React state，不影響存進資料庫的 message_content
+  // 本身）。分類結果的匯出要綁在 chat_id 上（沿用既有 Export_File 設計），
+  // 這個 chat_id 只有存訊息成功之後才拿得到，所以需要事後補上去。
+  const updateMessageChatId = useCallback((sessionId, messageId, chatId) => {
+    if (!chatId) return;
+    setSessions((currentList) =>
+      (Array.isArray(currentList) ? currentList : []).map((session) =>
+        session.id === sessionId
+          ? {
+              ...session,
+              messages: (session.messages || []).map((m) =>
+                m.id === messageId ? { ...m, chatId } : m
+              ),
+            }
+          : session
+      )
+    );
+  }, [setSessions]);
+
   const saveChatMessage = useCallback(async (projectId, role, content, templateId = null) => {
     if (
       !projectId ||
@@ -917,13 +971,13 @@ export default function WorkspacePage() {
       String(projectId).startsWith("survey-")
     ) {
       console.log("[SaveChat] 偵測到臨時工作區，暫緩同步至後端：", projectId);
-      return;
+      return null;
     }
 
     const intProjectId = Number(projectId);
     if (!Number.isInteger(intProjectId)) {
       console.error("[SaveChat] projectId 格式錯誤：", projectId);
-      return;
+      return null;
     }
 
     try {
@@ -940,9 +994,13 @@ export default function WorkspacePage() {
 
       if (!res.ok) {
         console.error("訊息同步至資料庫失敗：", res.status);
+        return null;
       }
+      const data = await res.json();
+      return data?.chat_history?.chat_id ?? null;
     } catch (err) {
       console.error("訊息同步至資料庫失敗", err);
+      return null;
     }
   }, []);
 
@@ -1047,10 +1105,15 @@ export default function WorkspacePage() {
         text_column: data.text_column,
         text_column_auto_detected: data.text_column_auto_detected,
       });
-      appendMessage(sid, { id: `a-${Date.now()}`, role: "assistant", content: assistantContent });
+      const assistantMsgId = `a-${Date.now()}`;
+      appendMessage(sid, { id: assistantMsgId, role: "assistant", content: assistantContent });
 
       if (projectId && !String(projectId).startsWith("temp-") && !String(projectId).startsWith("survey-")) {
-        saveChatMessage(projectId, "assistant", assistantContent);
+        // 【新增｜串接 Export_File】拿到這則訊息真正的 chat_id，補到訊息上——
+        // 分類結果的匯出（Export_File）要綁在這個 chat_id 上，之後匯出按鈕
+        // 才知道要把匯出紀錄掛在哪一則對話底下。
+        const savedChatId = await saveChatMessage(projectId, "assistant", assistantContent);
+        updateMessageChatId(sid, assistantMsgId, savedChatId);
       }
     } catch (err) {
       const errMsg = `分類失敗：${err?.message || "網路錯誤"}`;
