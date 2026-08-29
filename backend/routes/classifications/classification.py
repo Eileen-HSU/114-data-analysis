@@ -109,10 +109,28 @@ def _build_aggregated_groups(all_classification_rows, answer_id_to_row_index):
         main_category, sub_category = key
         items = groups[key]["items"]
 
+        # 【修正｜同一受試者被拆成多段時，同一組內連續出現的同一人合併成一行】
+        # all_classification_rows 的順序本來就是「同一筆原始回答的所有 segment
+        # 連續出現」，所以同一組（同一大類別/子類別）裡，同一個受試者的
+        # 多個 segment 一定是相鄰的，可以簡單依序合併，不用另外排序。
+        merged_lines = []
+        for it in items:
+            if (
+                merged_lines
+                and it["respondent_number"] is not None
+                and merged_lines[-1]["respondent_number"] == it["respondent_number"]
+            ):
+                merged_lines[-1]["excerpt"] += it["excerpt"]
+            else:
+                merged_lines.append({
+                    "respondent_number": it["respondent_number"],
+                    "excerpt": it["excerpt"],
+                })
+
         respondent_text = "\n".join(
-            f"受試者{it['respondent_number']}：{it['excerpt']}"
-            if it["respondent_number"] is not None else it["excerpt"]
-            for it in items
+            f"受試者{ml['respondent_number']}：{ml['excerpt']}"
+            if ml["respondent_number"] is not None else ml["excerpt"]
+            for ml in merged_lines
         )
 
         # 彙整這一步失敗時（Gemini 出錯、格式跑掉），不能讓整支 API 跟著
@@ -133,8 +151,8 @@ def _build_aggregated_groups(all_classification_rows, answer_id_to_row_index):
         except AggregatedSummaryError as e:
             print("[AGGREGATED_SUMMARY_FAILED]", repr(e))
             synthesis_status = "fallback"
-            aggregated_reasoning = "；".join(it["reasoning"] for it in items if it["reasoning"])
-            aggregated_summary = "；".join(it["summary"] for it in items if it["summary"])
+            aggregated_reasoning = "\n".join(it["reasoning"] for it in items if it["reasoning"])
+            aggregated_summary = "\n".join(it["summary"] for it in items if it["summary"])
 
         result.append({
             "main_category": main_category,
