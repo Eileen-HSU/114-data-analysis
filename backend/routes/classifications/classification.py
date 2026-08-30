@@ -649,7 +649,12 @@ def analyze_survey(access_code):
 
         existing_references = []
         pending_items = []
-        diag = {"total_responses": len(responses), "missing_key": 0, "invalid_text": 0, "valid": 0}
+        diag = {
+            "total_responses": len(responses), "missing_key": 0, "invalid_text": 0, "valid": 0,
+            # 【新增】記錄這次有幾筆是「之前卡在 failed/partial_failed、
+            # 這次被清掉重新處理」的，方便確認這個修正是否真的生效。
+            "reset_stuck_records": 0,
+        }
 
         for response in responses:
             answers = (response.answer_json or {}).get("answers", {})
@@ -667,7 +672,15 @@ def analyze_survey(access_code):
                 response_id=response.response_id, question_id=question_id
             ).first()
 
-            if existing_status is not None:
+            # 【修正｜卡住的失敗紀錄要能重跑】原本「不論 completed /
+            # partial_failed / failed 都當作已處理、不重新分類」——這在
+            # 平常沒問題，但今天後端一直中途崩潰，有些回答被標記成
+            # failed/partial_failed 之後就永遠卡住、再也不會被重新送
+            # Gemini，即使問卷本身填答人數對得上，最後畫面上看到的
+            # 分類結果卻少了一大半。改成：只有真的「completed」才算
+            # 已處理、跳過；failed / partial_failed 清掉舊紀錄、當成
+            # 全新資料重新處理一次。
+            if existing_status is not None and existing_status.segmentation_status == "completed":
                 # 已處理過（不論 completed / partial_failed / failed），
                 # 不重新分類，但可以當 duplicate reference
                 existing_rows = Response_Classification.query.filter_by(
@@ -698,6 +711,20 @@ def analyze_survey(access_code):
                     ],
                 })
             else:
+                if existing_status is not None:
+                    # 卡在 failed / partial_failed 狀態——清掉舊的狀態紀錄
+                    # 跟任何殘留的分類結果（不完整、不可信，不該留著混淆
+                    # 彙整畫面），讓這筆回答用全新的狀態重新走一次分類流程。
+                    diag["reset_stuck_records"] += 1
+                    Response_Classification.query.filter_by(
+                        response_id=response.response_id, question_id=question_id
+                    ).delete()
+                    db.session.delete(existing_status)
+                    # 【修正】一定要先 flush，把上面的刪除真的送進資料庫，
+                    # 不然等一下新分類結果要寫入同一個 (response_id,
+                    # question_id) 組合時，資料庫還看得到「舊紀錄還在」，
+                    # 會撞到唯一鍵限制直接報錯。
+                    db.session.flush()
                 pending_items.append({
                     "identifier": response.response_id,
                     "answer_text": answer_text,
