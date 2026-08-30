@@ -20,6 +20,14 @@ subcategory_methodology.py
 QUESTION_LEADERSHIP = "leadership_and_dept"
 QUESTION_CAREER = "career_and_feedback"
 
+# 【動態分類】給「內容跟前兩個固定主題都對不上」的問卷/題目用。
+# 這個 type 故意不出現在下面 SUBCATEGORY_METHODOLOGY 裡——沒有固定
+# 子類別清單，也沒有對應的方法論／文獻，這是設計上刻意的：這條路徑
+# 讓 Gemini 依實際內容自己產生合適的大類別、子類別，get_methodology()
+# 對這個 type 永遠查不到、回傳 None，分類結果一樣會被保存，只是
+# methodology/citation 保持空白，前端表格本來就不顯示這兩欄，不受影響。
+QUESTION_OTHER = "other"
+
 
 # key 為完整子類別字串（含編號，如 "A1 工作與生活邊界"），
 # 因為不同題目底下可能有相同編號但不同意涵的子類別（如兩題各自都有一個
