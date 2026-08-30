@@ -59,12 +59,12 @@ from models import (
     Response_Segmentation_Status,
     Uploaded_Answer,
 )
-from services.classify_v2 import classify_response_multi_segment, is_text_response
+from services.classify_v2 import classify_response_multi_segment, is_text_response, DYNAMIC_GENERAL_PROMPT
 from services.privacy_service import mask_pii, PiiMaskingError
 from services.question_routing_service import route_question_type
 from services.batch_classification_service import run_batch_analysis
 from services.aggregated_summary_service import build_aggregated_summary, AggregatedSummaryError
-from services.subcategory_methodology import all_subcategories
+from services.subcategory_methodology import all_subcategories, QUESTION_OTHER
 from routes.surveys.survey import verify_token, find_survey_by_access_or_short_code
 import pandas as pd
 
@@ -178,6 +178,7 @@ def _build_aggregated_groups(all_classification_rows, id_to_row_index, question_
         # 失敗——每個人的分類結果已經成功存進資料庫了，退回成簡單拼接文字，
         # 並標記 synthesis_status 讓前端知道這組是 fallback 出來的。
         synthesis_status = "ok"
+        synthesis_error = None
         try:
             reasoning_items = [{"matched_segment_text": it["reasoning"]} for it in items if it["reasoning"]]
             aggregated_reasoning = (
@@ -192,6 +193,9 @@ def _build_aggregated_groups(all_classification_rows, id_to_row_index, question_
         except AggregatedSummaryError as e:
             print("[AGGREGATED_SUMMARY_FAILED]", repr(e))
             synthesis_status = "fallback"
+            # 【新增】原本失敗原因只印在後端 log 裡，前端完全看不到，
+            # 只能靠猜。現在把訊息也帶進回應裡，畫面上就能直接顯示。
+            synthesis_error = str(e)[:300]
             aggregated_reasoning = "\n".join(it["reasoning"] for it in items if it["reasoning"])
             aggregated_summary = "\n".join(it["summary"] for it in items if it["summary"])
 
@@ -202,6 +206,7 @@ def _build_aggregated_groups(all_classification_rows, id_to_row_index, question_
             "aggregated_reasoning": aggregated_reasoning,
             "aggregated_summary": aggregated_summary,
             "synthesis_status": synthesis_status,
+            "synthesis_error": synthesis_error,
             "respondent_count": len(items),
         })
 
@@ -429,14 +434,22 @@ def upload_excel_for_classification():
     # 一次上傳只 routing 一次：欄位名稱 + 前幾筆遮罩後樣本
     samples = _collect_masked_routing_samples(df, text_column)
     routing_context = _build_routing_context(text_column, samples)
-    question_type = route_question_type(routing_context)
-
-    prompt_row = None
-    if question_type:
-        prompt_row = Prompt_Template.query.get(question_type)
-        if prompt_row is None:
-            # 理論上不該發生；保守處理成沒有 routing 結果
-            question_type = None
+    routed_question_type = route_question_type(routing_context)
+    # 【修正｜動態分類】原本 routing 判斷不出來（None）就直接跳過這批
+    # 資料，現在改成 fall back 到「其他主題」動態分類，不再直接放棄。
+    if routed_question_type:
+        prompt_row = Prompt_Template.query.get(routed_question_type)
+        if prompt_row is not None:
+            question_type = routed_question_type
+            prompt_content_for_batch = prompt_row.live_content
+        else:
+            # 理論上不該發生（合法 question_type 卻查無 Prompt_Template）；
+            # 保守 fallback 成動態分類，不讓這批資料整個被跳過
+            question_type = QUESTION_OTHER
+            prompt_content_for_batch = DYNAMIC_GENERAL_PROMPT
+    else:
+        question_type = QUESTION_OTHER
+        prompt_content_for_batch = DYNAMIC_GENERAL_PROMPT
 
     saved_answer_count = 0
     classified_count = 0
@@ -475,7 +488,9 @@ def upload_excel_for_classification():
         answer_id_to_row_index[uploaded_answer.id] = idx
         saved_answer_count += 1
 
-        if question_type and prompt_row:
+        # question_type 現在一定有值（固定主題或 QUESTION_OTHER 動態分類），
+        # 不會再是 None，這個判斷保留只是防禦性寫法。
+        if question_type:
             pending_items.append({
                 "identifier": uploaded_answer.id,
                 "answer_text": answer_text,
@@ -492,7 +507,7 @@ def upload_excel_for_classification():
                 {"identifier": item["identifier"], "answer_text": item["answer_text"]}
                 for item in pending_items
             ],
-            prompt_content=prompt_row.live_content,
+            prompt_content=prompt_content_for_batch,
             question_type=question_type,
         )
         for item, result in zip(pending_items, results):
@@ -559,12 +574,14 @@ def analyze_survey(access_code):
     question_json = survey.question_json or {}
     items = question_json.get("items", [])
 
-    # 只處理已經有 routing 結果的開放式文字題；type != "short" 或
-    # question_type 是 None 的題目，這裡完全不會碰
+    # 【修正｜動態分類】原本這裡只收「type == short 且已經有 routing
+    # 結果」的題目，內容跟兩個固定主題都對不上的題目（question_type
+    # 是 None）會被整個排除，不管有幾個人回答都不會被分析。現在改成
+    # 這種題目也納入，用 QUESTION_OTHER 動態分類處理，不再直接放棄。
     question_type_map = {
-        item.get("id"): item.get("question_type")
+        item.get("id"): (item.get("question_type") or QUESTION_OTHER)
         for item in items
-        if item.get("type") == "short" and item.get("question_type")
+        if item.get("type") == "short"
     }
 
     if not question_type_map:
@@ -619,9 +636,16 @@ def analyze_survey(access_code):
     per_question_diagnostic = {}
 
     for question_id, question_type in question_type_map.items():
-        prompt_row = Prompt_Template.query.get(question_type)
-        if prompt_row is None:
-            continue  # 理論上不該發生，保守跳過
+        # 【修正｜動態分類】QUESTION_OTHER 沒有對應的 Prompt_Template
+        # 資料庫紀錄（本來就不需要固定清單），改用寫死的動態分類 prompt；
+        # 其他兩個固定主題維持原本從資料庫撈 prompt 的方式不變。
+        if question_type == QUESTION_OTHER:
+            prompt_content_for_batch = DYNAMIC_GENERAL_PROMPT
+        else:
+            prompt_row = Prompt_Template.query.get(question_type)
+            if prompt_row is None:
+                continue  # 理論上不該發生，保守跳過
+            prompt_content_for_batch = prompt_row.live_content
 
         existing_references = []
         pending_items = []
@@ -685,7 +709,7 @@ def analyze_survey(access_code):
             continue  # 這題沒有新回答需要處理
 
         results = run_batch_analysis(
-            existing_references, pending_items, prompt_row.live_content, question_type
+            existing_references, pending_items, prompt_content_for_batch, question_type
         )
 
         for item, result in zip(pending_items, results):
@@ -703,7 +727,7 @@ def analyze_survey(access_code):
 
     db.session.commit()
 
-    # 【survey 受試者分組彙整】依 question_type 分開彙整（不同題目對應不同
+    # 【受試者分組彙整】依 question_type 分開彙整（不同題目對應不同
     # 固定分類清單，排序邏輯不能混在一起），結果合併成一個列表回傳，
     # 前端可以直接沿用 Excel 上傳那條路已經在用的表格渲染元件。
     aggregated_groups = []

@@ -45,6 +45,7 @@ function buildClassificationMessageContent(aggregatedGroups, meta) {
     aggregated_reasoning: g.aggregated_reasoning || "",
     aggregated_summary: g.aggregated_summary || "",
     synthesis_status: g.synthesis_status || "ok",
+    synthesis_error: g.synthesis_error || null,
     respondent_count: g.respondent_count ?? null,
   }));
   return `${CLASSIFICATION_TABLE_MARKER}${JSON.stringify({ rows, meta: meta || {} })}`;
@@ -521,6 +522,9 @@ function ClassificationTable({ rows, meta, chatId, showToast }) {
                     {row.synthesis_status === "fallback" && (
                       <div className="synthesis-fallback-note">
                         （彙整摘要暫時失敗，以下為個別意見簡易拼接，非完整統整）
+                        {row.synthesis_error && (
+                          <div className="synthesis-error-detail">錯誤原因：{row.synthesis_error}</div>
+                        )}
                       </div>
                     )}
                   </td>

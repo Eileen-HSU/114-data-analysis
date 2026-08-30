@@ -27,6 +27,7 @@ services/privacy_service.mask_pii() 遮罩，沿用既有 privacy_service
 import json
 import os
 import re
+import time
 
 import google.generativeai as genai
 
@@ -95,25 +96,37 @@ def build_aggregated_summary(main_category: str, sub_category: str, items: list)
         f"這個類別底下的回覆片段：\n{segments_block}"
     )
 
-    try:
-        model = genai.GenerativeModel(
-            model_name="gemini-3.1-flash-lite",
-            system_instruction=AGGREGATED_SUMMARY_SYSTEM_INSTRUCTION,
-        )
-        response = model.generate_content(
-            user_content,
-            generation_config={"temperature": 0},
-        )
-        parsed = _parse_json(response.text)
-        summary = parsed.get("summary")
-        if not summary or not isinstance(summary, str):
-            raise AggregatedSummaryError(
-                f"group ({main_category}/{sub_category}) Gemini 回傳格式缺少有效的 summary 欄位"
+    # 【重試機制】類別一多，彙整這一步要額外呼叫的 Gemini 次數會
+    # 疊加在分類本身的呼叫量之上（一批 8 組就要多打 16 次），比較容易
+    # 撞到免費額度的速率限制（RPM），造成短暫失敗。加上「稍等再試一次」
+    # 的重試（最多 2 次、間隔遞增），可以撐過大部分暫時性的限流，
+    # 不是每次撞到就直接放棄、整組退回成簡易拼接。
+    last_error = None
+    for attempt in range(3):
+        try:
+            model = genai.GenerativeModel(
+                model_name="gemini-3.1-flash-lite",
+                system_instruction=AGGREGATED_SUMMARY_SYSTEM_INSTRUCTION,
             )
-        return summary
-    except AggregatedSummaryError:
-        raise
-    except Exception as e:
-        raise AggregatedSummaryError(
-            f"group ({main_category}/{sub_category}) 摘要產生失敗：{str(e)[:180]}"
-        ) from e
+            response = model.generate_content(
+                user_content,
+                generation_config={"temperature": 0},
+            )
+            parsed = _parse_json(response.text)
+            summary = parsed.get("summary")
+            if not summary or not isinstance(summary, str):
+                raise AggregatedSummaryError(
+                    f"group ({main_category}/{sub_category}) Gemini 回傳格式缺少有效的 summary 欄位"
+                )
+            return summary
+        except AggregatedSummaryError:
+            raise
+        except Exception as e:
+            last_error = e
+            if attempt < 2:
+                time.sleep(2 * (attempt + 1))  # 2 秒、4 秒遞增等待
+                continue
+            raise AggregatedSummaryError(
+                f"group ({main_category}/{sub_category}) 摘要產生失敗（重試 3 次後放棄）："
+                f"{type(last_error).__name__}: {str(last_error)[:180]}"
+            ) from last_error
