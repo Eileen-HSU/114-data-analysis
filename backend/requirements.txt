@@ -21,3 +21,4 @@ scikit-learn
 google-generativeai
 pandas
 openpyxl
+python-docx
