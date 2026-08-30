@@ -488,6 +488,11 @@
   padding: 12px 2px 0;
 }
 
+/* 【新增】三個格式按鈕並排，之間留間距 */
+.assistant-output-actions--multi {
+  gap: 10px;
+}
+
 .assistant-export-btn {
   display: inline-flex;
   align-items: center;

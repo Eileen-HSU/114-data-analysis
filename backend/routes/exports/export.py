@@ -19,12 +19,27 @@ content 欄位（見 models.py Export_File 的註解）。
 
 from flask import Blueprint, jsonify, request, Response
 from urllib.parse import quote
+import base64
 
 from extensions import db
 from models import Export_File, Chat_History, Workspace
 from routes.workspaces.workspace import authorize_request
+from services.export_file_service import build_xlsx, build_docx
 
 exports_bp = Blueprint("exports", __name__)
+
+# 每種格式對應的副檔名跟 MIME type，下載時要用
+_FORMAT_META = {
+    "csv": {"ext": "csv", "mimetype": "text/csv"},
+    "xlsx": {
+        "ext": "xlsx",
+        "mimetype": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    },
+    "docx": {
+        "ext": "docx",
+        "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    },
+}
 
 
 def _get_owned_chat(chat_id, current_user_id):
@@ -46,27 +61,53 @@ def create_export():
     data = request.get_json(silent=True) or {}
     chat_id = data.get("chat_id")
     filename = data.get("filename")
-    content = data.get("content")
     row_count = data.get("row_count")
+    # 【新增｜Excel／Word 匯出】export_type 決定要走哪條路：
+    #   "csv"（預設，向下相容）：前端直接把組好的 CSV 文字放在 content，
+    #     照舊直接存文字，不用後端額外處理。
+    #   "xlsx" / "docx"：前端改傳結構化的 rows 資料，後端用
+    #     services/export_file_service 真的產生二進位檔案，
+    #     base64 編碼後存進同一個 content 欄位（MEDIUMTEXT 存不了原始
+    #     二進位，base64 是最簡單、不用改資料庫欄位型別的做法）。
+    export_type = data.get("export_type") or "csv"
+    if export_type not in _FORMAT_META:
+        return jsonify({"error": f"不支援的格式：{export_type}"}), 400
 
     if not chat_id:
         return jsonify({"error": "缺少 chat_id"}), 400
     if not filename or not isinstance(filename, str):
         return jsonify({"error": "缺少 filename"}), 400
-    if not content or not isinstance(content, str):
-        return jsonify({"error": "缺少 content"}), 400
 
     chat = _get_owned_chat(chat_id, current_user_id)
     if not chat:
         return jsonify({"error": "找不到這個對話，或您無權限操作"}), 404
 
+    if export_type == "csv":
+        content = data.get("content")
+        if not content or not isinstance(content, str):
+            return jsonify({"error": "缺少 content"}), 400
+        stored_content = content
+    else:
+        rows = data.get("rows")
+        if not rows or not isinstance(rows, list):
+            return jsonify({"error": "缺少 rows（xlsx/docx 需要結構化資料，不是純文字）"}), 400
+        title = data.get("title") or "分類結果"
+        try:
+            if export_type == "xlsx":
+                file_bytes = build_xlsx(rows, title=title)
+            else:  # docx
+                file_bytes = build_docx(rows, title=title)
+        except Exception as e:
+            return jsonify({"error": f"產生 {export_type} 檔案失敗：{str(e)[:200]}"}), 500
+        stored_content = base64.b64encode(file_bytes).decode("ascii")
+
     export = Export_File(
         chat_id=chat_id,
         export_name=filename,
-        export_type="csv",
+        export_type=export_type,
         export_path="",  # 沒有真正的檔案儲存服務，內容直接存 content 欄位
         export_status="completed",
-        content=content,
+        content=stored_content,
         row_count=row_count if isinstance(row_count, int) else None,
     )
     db.session.add(export)
@@ -129,6 +170,18 @@ def download_export(export_id):
     if not export:
         return jsonify({"error": "找不到這筆匯出紀錄"}), 404
 
+    format_meta = _FORMAT_META.get(export.export_type, _FORMAT_META["csv"])
+
+    # 【新增｜Excel／Word 下載】csv 是純文字，直接回傳；xlsx/docx 存的是
+    # base64，要先解碼回原始二進位，不然下載下來的檔案打不開。
+    if export.export_type == "csv":
+        file_data = export.content or ""
+    else:
+        try:
+            file_data = base64.b64decode(export.content or "")
+        except Exception:
+            return jsonify({"error": "檔案內容毀損，無法下載"}), 500
+
     # 【修正｜中文檔名讓下載直接 500】HTTP 標頭只能放 Latin-1 字元，
     # export_name 是中文（例如「分類結果_2026-08-29.csv」），直接塞進
     # Content-Disposition 會在真正的 WSGI 伺服器（gunicorn）送出回應時
@@ -137,11 +190,14 @@ def download_export(export_id):
     # 改用 RFC 5987/6266 標準寫法：filename 放一個純英數的保底檔名（給
     # 不支援新標準的舊工具用），filename* 用 UTF-8 + percent-encoding
     # 放真正的中文檔名，現代瀏覽器都認得這個標準、會下載成正確的中文檔名。
-    encoded_filename = quote(export.export_name or "export.csv")
-    content_disposition = f"attachment; filename=\"export.csv\"; filename*=UTF-8''{encoded_filename}"
+    encoded_filename = quote(export.export_name or f"export.{format_meta['ext']}")
+    content_disposition = (
+        f"attachment; filename=\"export.{format_meta['ext']}\"; "
+        f"filename*=UTF-8''{encoded_filename}"
+    )
 
     return Response(
-        export.content or "",
-        mimetype="text/csv",
+        file_data,
+        mimetype=format_meta["mimetype"],
         headers={"Content-Disposition": content_disposition},
     )

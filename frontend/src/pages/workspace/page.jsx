@@ -365,53 +365,72 @@ function AssistantTableContent({ content }) {
 // 這樣才會出現在「專案管理 → 匯出檔案」那頁的清單裡，不是只下載到本機。
 // 存後端失敗也不影響本機下載照常進行——使用者當下最在意的是能不能
 // 拿到檔案，清單只是附加價值，不該因為清單存不進去就讓下載跟著失敗。
-async function downloadClassificationCSV(rows, chatId, showToast, sourceFilename) {
-  const headers = ["大類別", "子類別", "問卷回覆內容", "判斷原因與說明", "受試者建議摘要"];
-  const escapeCell = (val) => {
-    const s = String(val ?? "");
-    // 內容裡有逗號、換行、雙引號的話，CSV 規範要求整格用雙引號包起來，
-    // 裡面原本的雙引號要變成兩個雙引號escape
-    if (/[",\n]/.test(s)) {
-      return `"${s.replace(/"/g, '""')}"`;
-    }
-    return s;
-  };
-  const lines = [
-    headers.map(escapeCell).join(","),
-    ...rows.map((row, i, arr) => {
-      // 【新增】CSV 也跟畫面一致：大類別跟前一列相同時留空，不重複寫
-      const mainCategoryCell = i > 0 && arr[i - 1].main_category === row.main_category ? "" : row.main_category;
-      return [mainCategoryCell, row.sub_category, row.respondent_text, row.aggregated_reasoning, row.aggregated_summary]
-        .map(escapeCell)
-        .join(",");
-    }),
-  ];
-  const csvContent = "\uFEFF" + lines.join("\r\n"); // \uFEFF = UTF-8 BOM
+async function downloadClassificationCSV(rows, chatId, showToast, sourceFilename, exportFormat = "csv") {
+  // 【修正｜支援 Excel、Word】原本這個函式只做 CSV，現在加上 xlsx/docx。
+  // CSV 沿用原本邏輯（前端組字串，格式簡單不用勞動後端）；xlsx/docx
+  // 改成把結構化的 rows 直接傳給後端，交給後端用 openpyxl/python-docx
+  // 產生真正的二進位檔案——瀏覽器端沒有好用的函式庫能產生這兩種格式。
+  const FORMAT_LABELS = { csv: "CSV", xlsx: "Excel", docx: "Word" };
+  const FORMAT_EXT = { csv: "csv", xlsx: "xlsx", docx: "docx" };
 
-  // 【修正｜改用原始上傳檔名命名】優先用使用者當初上傳的 Excel 檔名
-  // （去掉副檔名，加上「_分類結果」），方便對照是哪一批資料匯出的。
-  // 沒有這個資訊時（例如舊訊息，還沒有 source_filename 這個 meta）
-  // 才 fallback 回時間戳記命名，順便修正原本用 UTC 而非台灣時間的問題。
-  let filename;
-  if (sourceFilename) {
-    const baseName = sourceFilename.replace(/\.[^.]+$/, ""); // 去掉副檔名
-    filename = `${baseName}_分類結果.csv`;
-  } else {
-    const taiwanTime = new Date(Date.now() + 8 * 60 * 60 * 1000);
-    const timestamp = taiwanTime.toISOString().slice(0, 19).replace(/[:T]/g, "-");
-    filename = `分類結果_${timestamp}.csv`;
-  }
-
-  // 【修正｜不要跳本機下載，改成「製作中→完成」的提示】使用者要的體驗是
-  // 點下去先看到「製作中」，做完之後去「專案管理」拿檔案，不要跳瀏覽器
-  // 下載視窗。沒有 chatId（訊息還沒同步成功、或暫存工作區）就沒地方存，
-  // 直接告知使用者，不會假裝製作中卻永遠做不完。
   if (!chatId) {
     showToast?.("這則訊息還沒同步完成，請稍後再試一次匯出");
     return;
   }
 
-  showToast?.("製作中…");
+  // 【修正｜改用原始上傳檔名命名】優先用使用者當初上傳的 Excel 檔名
+  // （去掉副檔名，加上「_分類結果」），方便對照是哪一批資料匯出的。
+  // 沒有這個資訊時（例如舊訊息，還沒有 source_filename 這個 meta）
+  // 才 fallback 回時間戳記命名，用台灣時間而不是 UTC。
+  let baseFilename;
+  if (sourceFilename) {
+    baseFilename = sourceFilename.replace(/\.[^.]+$/, ""); // 去掉副檔名
+  } else {
+    const taiwanTime = new Date(Date.now() + 8 * 60 * 60 * 1000);
+    const timestamp = taiwanTime.toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    baseFilename = `分類結果_${timestamp}`;
+  }
+  const filename = `${baseFilename}_分類結果.${FORMAT_EXT[exportFormat]}`;
+
+  const requestBody = {
+    chat_id: chatId,
+    filename,
+    export_type: exportFormat,
+    row_count: rows.length,
+  };
+
+  if (exportFormat === "csv") {
+    const headers = ["大類別", "子類別", "問卷回覆內容", "判斷原因與說明", "受試者建議摘要"];
+    const escapeCell = (val) => {
+      const s = String(val ?? "");
+      // 內容裡有逗號、換行、雙引號的話，CSV 規範要求整格用雙引號包起來，
+      // 裡面原本的雙引號要變成兩個雙引號escape
+      if (/[",\n]/.test(s)) {
+        return `"${s.replace(/"/g, '""')}"`;
+      }
+      return s;
+    };
+    const lines = [
+      headers.map(escapeCell).join(","),
+      ...rows.map((row, i, arr) => {
+        // 大類別跟前一列相同時留空，不重複寫，跟畫面顯示一致
+        const mainCategoryCell = i > 0 && arr[i - 1].main_category === row.main_category ? "" : row.main_category;
+        return [mainCategoryCell, row.sub_category, row.respondent_text, row.aggregated_reasoning, row.aggregated_summary]
+          .map(escapeCell)
+          .join(",");
+      }),
+    ];
+    requestBody.content = "\uFEFF" + lines.join("\r\n"); // \uFEFF = UTF-8 BOM
+  } else {
+    // xlsx / docx：不用前端組內容，直接把 rows 原樣傳給後端產生檔案
+    requestBody.rows = rows;
+    requestBody.title = baseFilename;
+  }
+
+  // 【修正｜不要跳本機下載，改成「製作中→完成」的提示】使用者要的體驗是
+  // 點下去先看到「製作中」，做完之後去「專案管理」拿檔案，不要跳瀏覽器
+  // 下載視窗。
+  showToast?.(`製作中（${FORMAT_LABELS[exportFormat]}）…`);
   // 讓「製作中」至少有感地停留一下，避免網路太快、提示一閃而過，
   // 使用者感受不到「有在處理」這件事。
   await new Promise((resolve) => setTimeout(resolve, 600));
@@ -419,12 +438,7 @@ async function downloadClassificationCSV(rows, chatId, showToast, sourceFilename
     const res = await fetch(apiUrl("/api/exports"), {
       method: "POST",
       headers: { "Content-Type": "application/json", ...getAuthHeader() },
-      body: JSON.stringify({
-        chat_id: chatId,
-        filename,
-        content: csvContent,
-        row_count: rows.length,
-      }),
+      body: JSON.stringify(requestBody),
     });
     if (!res.ok) {
       showToast?.("匯出失敗，請稍後再試一次");
@@ -465,12 +479,26 @@ function ClassificationTable({ rows, meta, chatId, showToast }) {
   }
 
   const totalRespondents = rows.reduce((sum, r) => sum + (r.respondent_count || 0), 0);
+  // 【修正｜避免誤導】原本「涵蓋 N 位受試者」是把每組人數加總，
+  // 但同一個人如果一則回答同時談到兩個主題，會被拆成兩段分到兩組，
+  // 導致這個人被算兩次，數字看起來比實際填答人數還多，容易誤導。
+  // 改成額外算出「不重複的真實人數」，兩個數字都顯示，講清楚差異。
+  const uniqueRespondentNumbers = new Set();
+  rows.forEach((r) => {
+    (r.respondent_text || "").split("\n").forEach((line) => {
+      const m = line.match(/^受試者(\d+)：/);
+      if (m) uniqueRespondentNumbers.add(m[1]);
+    });
+  });
+  const uniqueRespondentCount = uniqueRespondentNumbers.size;
 
   return (
     <div className="assistant-output-panel assistant-output-panel--wide">
       <div className="assistant-output-intro">
         分類完成，共 {rows.length} 個類別
-        {totalRespondents > 0 ? `（涵蓋 ${totalRespondents} 位受試者）` : ""}。
+        {uniqueRespondentCount > 0
+          ? `（實際 ${uniqueRespondentCount} 位受試者，共產生 ${totalRespondents} 筆分類——同一人若一則回答談到多個主題，會分別計入對應類別）`
+          : ""}。
         {meta?.text_column && (
           <>
             {" "}系統判斷的文字欄位是「{meta.text_column}」
@@ -534,15 +562,32 @@ function ClassificationTable({ rows, meta, chatId, showToast }) {
           </tbody>
         </table>
       </div>
-      {/* 【新增｜匯出功能】真的能下載 CSV，不是原本那個只會導到空頁面的假按鈕 */}
-      <div className="assistant-output-actions">
+      {/* 【修正｜支援 Excel、Word】原本只有 CSV 一個按鈕，現在改成三個
+          格式各自一顆按鈕，都真的能存進「專案管理→匯出檔案」清單 */}
+      <div className="assistant-output-actions assistant-output-actions--multi">
         <button
           className="assistant-export-btn"
           type="button"
-          onClick={() => downloadClassificationCSV(rows, chatId, showToast, meta?.source_filename)}
+          onClick={() => downloadClassificationCSV(rows, chatId, showToast, meta?.source_filename, "csv")}
         >
-          <i className="ri-download-cloud-2-line"></i>
+          <i className="ri-file-text-line"></i>
           匯出成 CSV
+        </button>
+        <button
+          className="assistant-export-btn"
+          type="button"
+          onClick={() => downloadClassificationCSV(rows, chatId, showToast, meta?.source_filename, "xlsx")}
+        >
+          <i className="ri-file-excel-2-line"></i>
+          匯出成 Excel
+        </button>
+        <button
+          className="assistant-export-btn"
+          type="button"
+          onClick={() => downloadClassificationCSV(rows, chatId, showToast, meta?.source_filename, "docx")}
+        >
+          <i className="ri-file-word-2-line"></i>
+          匯出成 Word
         </button>
       </div>
     </div>
@@ -1225,7 +1270,7 @@ export default function WorkspacePage() {
         upload_batch_id: data.upload_batch_id,
         text_column: data.text_column,
         text_column_auto_detected: data.text_column_auto_detected,
-        // 【匯出檔名跟原始上傳檔名對應】方便使用者從匯出清單就
+        // 【新增｜匯出檔名跟原始上傳檔名對應】方便使用者從匯出清單就
         // 知道這批結果對應哪一份原始 Excel。
         source_filename: file.name,
       });
@@ -1233,7 +1278,7 @@ export default function WorkspacePage() {
       appendMessage(sid, { id: assistantMsgId, role: "assistant", content: assistantContent });
 
       if (projectId && !String(projectId).startsWith("temp-") && !String(projectId).startsWith("survey-")) {
-        // 【串接 Export_File】拿到這則訊息真正的 chat_id，補到訊息上——
+        // 【新增｜串接 Export_File】拿到這則訊息真正的 chat_id，補到訊息上——
         // 分類結果的匯出（Export_File）要綁在這個 chat_id 上，之後匯出按鈕
         // 才知道要把匯出紀錄掛在哪一則對話底下。
         const savedChatId = await saveChatMessage(projectId, "assistant", assistantContent);
