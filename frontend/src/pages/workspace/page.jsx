@@ -488,41 +488,25 @@ function ClassificationTable({ rows, meta, chatId, showToast }) {
   if (!rows || rows.length === 0) {
     return (
       <div className="assistant-output-panel">
-        <div className="assistant-output-intro">這批資料沒有產生任何分類結果。</div>
-        {/* 【新增｜診斷訊息】沒結果時顯示後端算出來的原因，不要讓使用者猜 */}
+        <div className="assistant-output-intro">
+          這批資料沒有產生任何分類結果。
+        </div>
+
         {meta?.diagnostic_message && (
-          <div className="assistant-output-diagnostic">{meta.diagnostic_message}</div>
+          <div className="assistant-output-diagnostic">
+            {meta.diagnostic_message}
+          </div>
         )}
       </div>
     );
   }
 
-  const totalRespondents = rows.reduce((sum, r) => sum + (r.respondent_count || 0), 0);
-  // 【修正｜避免誤導】原本「涵蓋 N 位受試者」是把每組人數加總，
-  // 但同一個人如果一則回答同時談到兩個主題，會被拆成兩段分到兩組，
-  // 導致這個人被算兩次，數字看起來比實際填答人數還多，容易誤導。
-  // 改成額外算出「不重複的真實人數」，兩個數字都顯示，講清楚差異。
-  const uniqueRespondentNumbers = new Set();
-  rows.forEach((r) => {
-    (r.respondent_text || "").split("\n").forEach((line) => {
-      const m = line.match(/^受試者(\d+)：/);
-      if (m) uniqueRespondentNumbers.add(m[1]);
-    });
-  });
-  const uniqueRespondentCount = uniqueRespondentNumbers.size;
-
   return (
     <div className="assistant-output-panel assistant-output-panel--wide">
       <div className="assistant-output-intro">
         分類完成，共 {rows.length} 個類別。
-        {meta?.text_column && (
-          <>
-            {" "}系統判斷的文字欄位是「{meta.text_column}」
-            {meta.text_column_auto_detected ? "（自動判斷）" : ""}
-            {meta.text_column_auto_detected && "，如果判斷錯了，請確認 Excel 欄位標題是否清楚描述內容。"}
-          </>
-        )}
       </div>
+
       <div className="assistant-output-table-wrap">
         <table className="assistant-output-table classification-table">
           <thead>
@@ -534,40 +518,63 @@ function ClassificationTable({ rows, meta, chatId, showToast }) {
               <th>受試者建議摘要</th>
             </tr>
           </thead>
+
           <tbody>
             {rows.map((row, index) => {
-              // 【修正】改用真正的表格 rowSpan 合併儲存格，而不是留空行模擬——
-              // 這樣「置中」才會是整個合併區塊的正中央，不是卡在第一列。
-              const isSameMainAsPrev = index > 0 && rows[index - 1].main_category === row.main_category;
+              const isSameMainAsPrev =
+                index > 0 &&
+                rows[index - 1].main_category === row.main_category;
+
               let mainCategoryRowSpan = 1;
+
               if (!isSameMainAsPrev) {
-                for (let j = index + 1; j < rows.length && rows[j].main_category === row.main_category; j++) {
+                for (
+                  let j = index + 1;
+                  j < rows.length &&
+                  rows[j].main_category === row.main_category;
+                  j++
+                ) {
                   mainCategoryRowSpan++;
                 }
               }
+
               return (
                 <tr key={index}>
-                  {/* rowSpan 合併儲存格：只有區塊第一列要渲染這個 <td>，
-                      後面被合併的列完全不渲染，交給瀏覽器的 rowSpan 機制處理，
-                      不能渲染空的 <td> 出來，不然表格欄位數量會對不齊。 */}
                   {!isSameMainAsPrev && (
-                    <td rowSpan={mainCategoryRowSpan} className="merged-cell-center">
+                    <td
+                      rowSpan={mainCategoryRowSpan}
+                      className="merged-cell-center"
+                    >
                       {row.main_category}
                     </td>
                   )}
-                  <td className="sub-category-cell">{row.sub_category}</td>
+
+                  <td className="sub-category-cell">
+                    {row.sub_category}
+                  </td>
+
                   <td>
                     <MultilineText
-                      text={row.respondent_text} highlightRespondent={true}/>
+                      text={row.respondent_text}
+                      highlightRespondent={true}
+                    />
                   </td>
-                  <td><MultilineText text={row.aggregated_reasoning} /></td>
+
+                  <td>
+                    <MultilineText text={row.aggregated_reasoning} />
+                  </td>
+
                   <td>
                     <MultilineText text={row.aggregated_summary} />
+
                     {row.synthesis_status === "fallback" && (
                       <div className="synthesis-fallback-note">
                         （彙整摘要暫時失敗，以下為個別意見簡易拼接，非完整統整）
+
                         {row.synthesis_error && (
-                          <div className="synthesis-error-detail">錯誤原因：{row.synthesis_error}</div>
+                          <div className="synthesis-error-detail">
+                            錯誤原因：{row.synthesis_error}
+                          </div>
                         )}
                       </div>
                     )}
@@ -578,20 +585,38 @@ function ClassificationTable({ rows, meta, chatId, showToast }) {
           </tbody>
         </table>
       </div>
-      {/* 【支援 Excel、Word 輸出】 */}
+
+      {/* Excel / Word 匯出 */}
       <div className="assistant-output-actions assistant-output-actions--multi">
         <button
           className="assistant-export-btn"
           type="button"
-          onClick={() => downloadClassificationCSV(rows, chatId, showToast, meta?.source_filename, "xlsx")}
+          onClick={() =>
+            downloadClassificationCSV(
+              rows,
+              chatId,
+              showToast,
+              meta?.source_filename,
+              "xlsx"
+            )
+          }
         >
           <i className="ri-file-excel-2-line"></i>
           匯出成 Excel
         </button>
+
         <button
           className="assistant-export-btn"
           type="button"
-          onClick={() => downloadClassificationCSV(rows, chatId, showToast, meta?.source_filename, "docx")}
+          onClick={() =>
+            downloadClassificationCSV(
+              rows,
+              chatId,
+              showToast,
+              meta?.source_filename,
+              "docx"
+            )
+          }
         >
           <i className="ri-file-word-2-line"></i>
           匯出成 Word
