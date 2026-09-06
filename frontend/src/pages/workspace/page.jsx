@@ -459,13 +459,29 @@ async function downloadClassificationFile(
  * 資料來源：parseClassificationMessageContent() 從訊息內容還原出來的 rows。 */
 // 把用 \n 分隔的多行文字渲染成真的換行（respondent_text、fallback 時的
 // aggregated_reasoning/aggregated_summary 都可能是這種多行字串）
-function MultilineText({ text }) {
-  return (text || "").split("\n").map((line, i) => (
-    <span key={i}>
-      {i > 0 && <br />}
-      {line}
-    </span>
-  ));
+function MultilineText({ text, highlightRespondent = false }) {
+  return (text || "").split("\n").map((line, i) => {
+    if (highlightRespondent) {
+      const match = line.match(/^(受試者\d+：)(.*)$/);
+
+      if (match) {
+        return (
+          <span key={i}>
+            {i > 0 && <br />}
+            <span className="respondent-label">{match[1]}</span>
+            {match[2]}
+          </span>
+        );
+      }
+    }
+
+    return (
+      <span key={i}>
+        {i > 0 && <br />}
+        {line}
+      </span>
+    );
+  });
 }
 
 function ClassificationTable({ rows, meta, chatId, showToast }) {
@@ -544,8 +560,8 @@ function ClassificationTable({ rows, meta, chatId, showToast }) {
                   )}
                   <td className="sub-category-cell">{row.sub_category}</td>
                   <td>
-                    {/* 受試者片段每人一行，respondent_text 裡本來就用 \n 分隔 */}
-                    <MultilineText text={row.respondent_text} />
+                    <MultilineText
+                      text={row.respondent_text} highlightRespondent={true}/>
                   </td>
                   <td><MultilineText text={row.aggregated_reasoning} /></td>
                   <td>
