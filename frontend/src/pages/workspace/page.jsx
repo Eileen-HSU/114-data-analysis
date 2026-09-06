@@ -594,7 +594,11 @@ function ClassificationTable({ rows, meta, chatId, showToast }) {
   );
 }
 
-function MessageContent({ message, showToast }) {
+// 【新增｜邀請瀏覽】export 出去給 SharedWorkspacePage.jsx 重複使用，
+// 這樣唯讀頁面才能沿用同一套已經驗證過的分類結果表格渲染邏輯，
+// 不用另外重寫一份（重寫容易漏掉今天調過的細節，例如大類別合併、
+// 受試者片段合併顯示這些規則）。
+export function MessageContent({ message, showToast }) {
   // 優先判斷是不是真分類結果訊息，是的話直接渲染表格，
   // 不要讓它掉進下面 AssistantTableContent 那個舊的、給假分析用的文字解析邏輯。
   const classificationData = parseClassificationMessageContent(message.content);
@@ -687,6 +691,39 @@ export default function WorkspacePage() {
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
   const messages = activeSession?.messages ?? [];
+
+  // 【新增｜邀請瀏覽】點「邀請檢視」時，跟後端要一組邀請碼（第一次會
+  // 產生，之後同一個工作區重複點擊拿回同一組），組成連結複製到剪貼簿。
+  // 暫存工作區（temp-/survey- 開頭）根本沒有真正的 project_id，
+  // 邀請連結沒有意義，直接告知使用者先送出至少一則訊息。
+  const handleInviteView = async () => {
+    if (!activeSession) {
+      showToast?.("請先開啟一個工作區");
+      return;
+    }
+    const projectId = activeSession.project_id;
+    if (!projectId || String(projectId).startsWith("temp-") || String(projectId).startsWith("survey-")) {
+      showToast?.("這個工作區還沒同步完成，請先傳送一則訊息後再邀請檢視");
+      return;
+    }
+    try {
+      const res = await fetch(apiUrl(`/api/workspace/${projectId}/share`), {
+        method: "POST",
+        headers: getAuthHeader(),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast?.(data?.error || "產生邀請連結失敗");
+        return;
+      }
+      const shareLink = `${window.location.origin}/shared/${data.share_code}`;
+      await navigator.clipboard.writeText(shareLink);
+      showToast?.("邀請連結已複製到剪貼簿");
+    } catch (err) {
+      console.error("產生邀請連結失敗：", err);
+      showToast?.("產生邀請連結失敗，請稍後再試");
+    }
+  };
 
   useEffect(() => {
     const headers = getAuthHeader();
@@ -1684,7 +1721,7 @@ export default function WorkspacePage() {
           {/* Main Chat */}
           <main className="workspace-main">
             <div className="workspace-share-float">
-              <button className="workspace-share-btn" type="button">
+              <button className="workspace-share-btn" type="button" onClick={handleInviteView}>
                 <i className="ri-eye-line"></i>
                 <span>邀請檢視</span>
               </button>
