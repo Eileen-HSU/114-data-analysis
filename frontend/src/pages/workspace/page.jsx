@@ -365,88 +365,91 @@ function AssistantTableContent({ content }) {
 // 這樣才會出現在「專案管理 → 匯出檔案」那頁的清單裡，不是只下載到本機。
 // 存後端失敗也不影響本機下載照常進行——使用者當下最在意的是能不能
 // 拿到檔案，清單只是附加價值，不該因為清單存不進去就讓下載跟著失敗。
-async function downloadClassificationCSV(rows, chatId, showToast, sourceFilename, exportFormat = "csv") {
-  // 【修正｜支援 Excel、Word】原本這個函式只做 CSV，現在加上 xlsx/docx。
-  // CSV 沿用原本邏輯（前端組字串，格式簡單不用勞動後端）；xlsx/docx
-  // 改成把結構化的 rows 直接傳給後端，交給後端用 openpyxl/python-docx
-  // 產生真正的二進位檔案——瀏覽器端沒有好用的函式庫能產生這兩種格式。
-  const FORMAT_LABELS = { csv: "CSV", xlsx: "Excel", docx: "Word" };
-  const FORMAT_EXT = { csv: "csv", xlsx: "xlsx", docx: "docx" };
+async function downloadClassificationFile(
+  rows,
+  chatId,
+  showToast,
+  sourceFilename,
+  exportFormat
+) {
+  const FORMAT_LABELS = {
+    xlsx: "Excel",
+    docx: "Word",
+  };
+
+  const FORMAT_EXT = {
+    xlsx: "xlsx",
+    docx: "docx",
+  };
+
+  if (!["xlsx", "docx"].includes(exportFormat)) {
+    showToast?.("不支援的匯出格式");
+    return;
+  }
 
   if (!chatId) {
     showToast?.("這則訊息還沒同步完成，請稍後再試一次匯出");
     return;
   }
 
-  // 【修正｜改用原始上傳檔名命名】優先用使用者當初上傳的 Excel 檔名
-  // （去掉副檔名，加上「_分類結果」），方便對照是哪一批資料匯出的。
-  // 沒有這個資訊時（例如舊訊息，還沒有 source_filename 這個 meta）
-  // 才 fallback 回時間戳記命名，用台灣時間而不是 UTC。
   let baseFilename;
+
   if (sourceFilename) {
-    baseFilename = sourceFilename.replace(/\.[^.]+$/, ""); // 去掉副檔名
+    baseFilename = sourceFilename.replace(/\.[^.]+$/, "");
   } else {
     const taiwanTime = new Date(Date.now() + 8 * 60 * 60 * 1000);
-    const timestamp = taiwanTime.toISOString().slice(0, 19).replace(/[:T]/g, "-");
+
+    const timestamp = taiwanTime
+      .toISOString()
+      .slice(0, 19)
+      .replace(/[:T]/g, "-");
+
     baseFilename = `分類結果_${timestamp}`;
   }
-  const filename = `${baseFilename}_分類結果.${FORMAT_EXT[exportFormat]}`;
+
+  const filename =
+    `${baseFilename}_分類結果.${FORMAT_EXT[exportFormat]}`;
 
   const requestBody = {
     chat_id: chatId,
     filename,
     export_type: exportFormat,
     row_count: rows.length,
+    rows,
+    title: baseFilename,
   };
 
-  if (exportFormat === "csv") {
-    const headers = ["大類別", "子類別", "問卷回覆內容", "判斷原因與說明", "受試者建議摘要"];
-    const escapeCell = (val) => {
-      const s = String(val ?? "");
-      // 內容裡有逗號、換行、雙引號的話，CSV 規範要求整格用雙引號包起來，
-      // 裡面原本的雙引號要變成兩個雙引號escape
-      if (/[",\n]/.test(s)) {
-        return `"${s.replace(/"/g, '""')}"`;
-      }
-      return s;
-    };
-    const lines = [
-      headers.map(escapeCell).join(","),
-      ...rows.map((row, i, arr) => {
-        // 大類別跟前一列相同時留空，不重複寫，跟畫面顯示一致
-        const mainCategoryCell = i > 0 && arr[i - 1].main_category === row.main_category ? "" : row.main_category;
-        return [mainCategoryCell, row.sub_category, row.respondent_text, row.aggregated_reasoning, row.aggregated_summary]
-          .map(escapeCell)
-          .join(",");
-      }),
-    ];
-    requestBody.content = "\uFEFF" + lines.join("\r\n"); // \uFEFF = UTF-8 BOM
-  } else {
-    // xlsx / docx：不用前端組內容，直接把 rows 原樣傳給後端產生檔案
-    requestBody.rows = rows;
-    requestBody.title = baseFilename;
-  }
+  showToast?.(
+    `製作中（${FORMAT_LABELS[exportFormat]}）…`
+  );
 
-  // 【修正｜不要跳本機下載，改成「製作中→完成」的提示】使用者要的體驗是
-  // 點下去先看到「製作中」，做完之後去「專案管理」拿檔案，不要跳瀏覽器
-  // 下載視窗。
-  showToast?.(`製作中（${FORMAT_LABELS[exportFormat]}）…`);
-  // 讓「製作中」至少有感地停留一下，避免網路太快、提示一閃而過，
-  // 使用者感受不到「有在處理」這件事。
-  await new Promise((resolve) => setTimeout(resolve, 600));
+  await new Promise((resolve) =>
+    setTimeout(resolve, 600)
+  );
+
   try {
     const res = await fetch(apiUrl("/api/exports"), {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeader(),
+      },
       body: JSON.stringify(requestBody),
     });
+
     if (!res.ok) {
-      showToast?.("匯出失敗，請稍後再試一次");
+      const data = await res.json().catch(() => ({}));
+      showToast?.(
+        data?.error || "匯出失敗，請稍後再試一次"
+      );
       return;
     }
-    showToast?.("已完成，請至「專案管理→匯出檔案」查看");
+
+    showToast?.(
+      "已完成，請至「專案管理→匯出檔案」查看"
+    );
   } catch (err) {
-    console.error("匯出紀錄存後端失敗：", err);
+    console.error("匯出檔案失敗：", err);
     showToast?.("匯出失敗，請稍後再試一次");
   }
 }
@@ -562,17 +565,8 @@ function ClassificationTable({ rows, meta, chatId, showToast }) {
           </tbody>
         </table>
       </div>
-      {/* 【修正｜支援 Excel、Word】原本只有 CSV 一個按鈕，現在改成三個
-          格式各自一顆按鈕，都真的能存進「專案管理→匯出檔案」清單 */}
+      {/* 【支援 Excel、Word 輸出】 */}
       <div className="assistant-output-actions assistant-output-actions--multi">
-        <button
-          className="assistant-export-btn"
-          type="button"
-          onClick={() => downloadClassificationCSV(rows, chatId, showToast, meta?.source_filename, "csv")}
-        >
-          <i className="ri-file-text-line"></i>
-          匯出成 CSV
-        </button>
         <button
           className="assistant-export-btn"
           type="button"
