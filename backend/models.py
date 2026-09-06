@@ -101,6 +101,12 @@ class Workspace(db.Model):
     deleted_at = db.Column(db.DateTime(timezone=True))
     created_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
 
+    # 【新增｜邀請瀏覽】用邀請碼讓別人不用登入就能唯讀查看這個工作區，
+    # 比照 Survey_Template.access_code 的設計方式：欄位存在但值是 None
+    # 代表「還沒產生過邀請碼」，第一次點「邀請檢視」按鈕時才產生，
+    # 之後同一個工作區重複點擊會拿回同一組碼，不會每次都換一個。
+    share_code = db.Column(db.String(10), unique=True, nullable=True)
+
     # 子資料表關聯
     chats = db.relationship("Chat_History", backref="workspace")
 

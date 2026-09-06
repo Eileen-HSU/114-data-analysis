@@ -1,11 +1,13 @@
 import os
+import random
+import string
 from datetime import timedelta
 
 import jwt
 from flask import Blueprint, jsonify, request
 
 from extensions import db
-from models import Workspace, taiwan_now
+from models import Workspace, Chat_History, taiwan_now
 
 workspace_bp = Blueprint("workspace", __name__)
 
@@ -191,3 +193,70 @@ def delete_workspace(project_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
+
+
+# ---------- 邀請瀏覽 ----------
+# 這兩支路由對應「邀請瀏覽」這個功能：擁有者產生一組邀請碼，
+# 任何人拿著這組碼都能唯讀查看這個工作區的對話紀錄，不需要登入
+# ——比照 Survey_Template.access_code 讓問卷可以免登入被填寫的設計。
+# 「唯讀」是刻意的邊界：這兩支路由都不提供任何寫入操作（不能傳訊息、
+# 不能上傳檔案觸發分類），避免邀請連結被拿來冒充擁有者操作帳號內容。
+
+def _generate_unique_share_code():
+    while True:
+        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        if not Workspace.query.filter_by(share_code=code).first():
+            return code
+
+
+@workspace_bp.route("/api/workspace/<int:project_id>/share", methods=["POST"])
+def create_share_link(project_id):
+    """擁有者產生（或拿回既有的）邀請碼。需要登入、且必須是這個工作區的擁有者。"""
+    current_user_id, auth_error = authorize_request()
+    if auth_error:
+        return auth_error
+
+    workspace = Workspace.query.filter_by(
+        project_id=project_id, user_id=current_user_id, is_deleted=False
+    ).first()
+    if not workspace:
+        return jsonify({"error": "找不到專案"}), 404
+
+    if not workspace.share_code:
+        workspace.share_code = _generate_unique_share_code()
+        db.session.commit()
+
+    return jsonify({"share_code": workspace.share_code}), 200
+
+
+@workspace_bp.route("/api/public/workspace/<string:share_code>", methods=["GET"])
+def get_shared_workspace(share_code):
+    """
+    給邀請連結用，刻意不呼叫 authorize_request()——任何人拿著正確的邀請碼
+    都應該能看到內容，這是「邀請瀏覽」的定義，不是漏掉權限檢查。
+
+    只回傳唯讀資訊（工作區名稱、對話紀錄），不包含任何可以拿去操作
+    帳號本身的欄位（例如 user_id、其他 workspace 清單）。
+    """
+    workspace = Workspace.query.filter_by(share_code=share_code, is_deleted=False).first()
+    if not workspace:
+        return jsonify({"error": "邀請連結無效或已失效"}), 404
+
+    chats = (
+        Chat_History.query.filter_by(project_id=workspace.project_id)
+        .order_by(Chat_History.created_at.asc())
+        .all()
+    )
+
+    return jsonify({
+        "project_name": workspace.project_name,
+        "messages": [
+            {
+                "chat_id": c.chat_id,
+                "sender_type": c.sender_type,
+                "content": c.message_content,
+                "created_at": c.created_at.isoformat() if c.created_at else None,
+            }
+            for c in chats
+        ],
+    }), 200

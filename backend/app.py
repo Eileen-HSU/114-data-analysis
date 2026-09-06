@@ -203,6 +203,9 @@ def ensure_runtime_schema():
             # 「路徑」跟「內容」這兩種不同語意。
             ensure_column("Export_File", "content", "`content` MEDIUMTEXT NULL")
             ensure_column("Export_File", "row_count", "`row_count` INT NULL")
+            # 【新增｜邀請瀏覽】Workspace 補上 share_code 欄位，用來產生
+            # 免登入的唯讀邀請連結。
+            ensure_column("Workspace", "share_code", "`share_code` VARCHAR(10) NULL UNIQUE")
         except Exception as exc:
             db.session.rollback()
             app.logger.exception("Runtime schema check failed: %s", exc)
