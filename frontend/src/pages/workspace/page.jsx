@@ -514,10 +514,7 @@ function ClassificationTable({ rows, meta, chatId, showToast }) {
   return (
     <div className="assistant-output-panel assistant-output-panel--wide">
       <div className="assistant-output-intro">
-        分類完成，共 {rows.length} 個類別
-        {uniqueRespondentCount > 0
-          ? `（實際 ${uniqueRespondentCount} 位受試者，共產生 ${totalRespondents} 筆分類——同一人若一則回答談到多個主題，會分別計入對應類別）`
-          : ""}。
+        分類完成，共 {rows.length} 個類別。
         {meta?.text_column && (
           <>
             {" "}系統判斷的文字欄位是「{meta.text_column}」
