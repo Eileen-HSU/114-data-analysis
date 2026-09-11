@@ -16,7 +16,7 @@ CSV 沒有放在這裡——CSV 是純文字格式，前端組字串就能產生
 import io
 
 import openpyxl
-from openpyxl.styles import Font, Alignment, PatternFill
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from docx import Document
 from docx.shared import Pt, Cm
@@ -48,12 +48,19 @@ def build_xlsx(rows: list, title: str = "分類結果") -> bytes:
     body_font = Font(name="微軟正黑體")
     wrap_alignment = Alignment(wrap_text=True, vertical="top", horizontal="left")
     center_alignment = Alignment(wrap_text=True, vertical="center", horizontal="center")
+    thin_border = Border(
+        left=Side(style="thin", color="#17181B"),
+        right=Side(style="thin", color="#17181B"),
+        top=Side(style="thin", color="#17181B"),
+        bottom=Side(style="thin", color="#17181B"),
+    )
 
     for col_idx, header in enumerate(COLUMN_HEADERS, start=1):
         cell = ws.cell(row=1, column=col_idx, value=header)
         cell.font = header_font
         cell.fill = header_fill
         cell.alignment = center_alignment
+        cell.border = thin_border
 
     for row_idx, row in enumerate(rows, start=2):
         values = _row_values(row)
@@ -61,6 +68,7 @@ def build_xlsx(rows: list, title: str = "分類結果") -> bytes:
             cell = ws.cell(row=row_idx, column=col_idx, value=value)
             cell.font = body_font
             cell.alignment = wrap_alignment
+            cell.border = thin_border
 
     # 大類別（第一欄）連續相同時合併儲存格，比照前端畫面上的 rowSpan 效果
     merge_start_row = 2
