@@ -20,5 +20,5 @@ spacy
 scikit-learn
 google-generativeai
 pandas
-openpyxl
+openpyxl==3.1.5
 python-docx

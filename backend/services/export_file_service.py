@@ -43,16 +43,17 @@ def build_xlsx(rows: list, title: str = "分類結果") -> bytes:
     ws = wb.active
     ws.title = title[:31] if title else "分類結果"  # Excel 分頁名稱上限 31 字元
 
-    header_font = Font(name="微軟正黑體", bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="F43F5E", end_color="F43F5E", fill_type="solid")
+    
+    header_font = Font(name="微軟正黑體", bold=True, color="FFFFFFFF")
+    header_fill = PatternFill(start_color="FFF43F5E", end_color="FFF43F5E", fill_type="solid")
     body_font = Font(name="微軟正黑體")
     wrap_alignment = Alignment(wrap_text=True, vertical="top", horizontal="left")
     center_alignment = Alignment(wrap_text=True, vertical="center", horizontal="center")
     thin_border = Border(
-        left=Side(style="thin", color="#17181B"),
-        right=Side(style="thin", color="#17181B"),
-        top=Side(style="thin", color="#17181B"),
-        bottom=Side(style="thin", color="#17181B"),
+        left=Side(style="thin", color="FF000000"),
+        right=Side(style="thin", color="FF000000"),
+        top=Side(style="thin", color="FF000000"),
+        bottom=Side(style="thin", color="FF000000"),
     )
 
     for col_idx, header in enumerate(COLUMN_HEADERS, start=1):
