@@ -429,6 +429,11 @@
   white-space: normal;
   word-break: break-word;
   border-right: 1.5px solid #475569;
+  border-bottom: 1.5px solid #475569;
+}
+
+.classification-table tr:last-child td {
+  border-bottom: none;
 }
 
 
