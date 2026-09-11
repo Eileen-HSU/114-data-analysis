@@ -25,6 +25,7 @@ from extensions import db
 from models import Export_File, Chat_History, Workspace
 from routes.workspaces.workspace import authorize_request
 from services.export_file_service import build_xlsx, build_docx
+from sqlalchemy.orm import defer
 
 exports_bp = Blueprint("exports", __name__)
 
@@ -142,8 +143,17 @@ def list_exports():
 
     # 【新增｜匯出來源路徑】使用者要能一眼看出這筆匯出是從哪個工作區
     # 匯出的，一起把 Workspace 撈出來，不用額外多打一次 API。
+    # 【修正｜清單載入很慢】原本這裡用 query(Export_File, Workspace)，
+    # SQLAlchemy 預設會把 Export_File 的「所有欄位」都從資料庫撈出來，
+    # 包含 content 這個存放 base64 二進位檔案內容的欄位（可能好幾十~
+    # 上百 KB），即使 to_dict() 根本不會用到它。隨著匯出檔案累積越多，
+    # 這支清單 API 要傳輸的資料量會跟著線性變大、越來越慢。
+    # 用 defer(Export_File.content) 明確告訴 SQLAlchemy 不要抓這個欄位，
+    # 只有真的呼叫 .content 屬性時才會另外查一次（清單畫面用不到，
+    # 所以這裡永遠不會觸發額外查詢）。
     rows = (
         db.session.query(Export_File, Workspace)
+        .options(defer(Export_File.content))
         .join(Chat_History, Chat_History.chat_id == Export_File.chat_id)
         .join(Workspace, Workspace.project_id == Chat_History.project_id)
         .filter(Workspace.user_id == current_user_id)
@@ -156,6 +166,54 @@ def list_exports():
         item["source_path"] = _build_source_path(workspace)
         item["project_id"] = workspace.project_id
         result.append(item)
+    return jsonify(result), 200
+
+
+@exports_bp.route("/api/exports/<int:export_id>", methods=["PATCH"])
+def rename_export(export_id):
+    """
+    重新命名一筆匯出紀錄。預設檔名是原始上傳檔案的名稱（由前端組出來，
+    見 downloadClassificationFile 的 baseFilename 邏輯），這支路由讓
+    使用者事後可以改成自己想要的名稱。
+
+    只改名字（export_name），不動副檔名本身代表的格式（export_type）、
+    也不重新產生檔案內容——重新命名跟「這是什麼格式」是兩件事，不用
+    因為改名字就重新跑一次 openpyxl/python-docx。
+    """
+    current_user_id, auth_error = authorize_request()
+    if auth_error:
+        return auth_error
+
+    data = request.get_json(silent=True) or {}
+    new_filename = data.get("filename")
+    if not new_filename or not isinstance(new_filename, str) or not new_filename.strip():
+        return jsonify({"error": "缺少 filename，或 filename 不能是空字串"}), 400
+    new_filename = new_filename.strip()
+
+    export = (
+        db.session.query(Export_File)
+        .options(defer(Export_File.content))
+        .join(Chat_History, Chat_History.chat_id == Export_File.chat_id)
+        .join(Workspace, Workspace.project_id == Chat_History.project_id)
+        .filter(Export_File.export_id == export_id, Workspace.user_id == current_user_id)
+        .first()
+    )
+    if not export:
+        return jsonify({"error": "找不到這筆匯出紀錄"}), 404
+
+    # 【修正】使用者改名字時，很容易忘記或不小心把副檔名一起改掉/刪掉，
+    # 這裡保守處理：如果新名字沒有以正確的副檔名結尾，自動幫他補上，
+    # 不會因為漏打副檔名就下載出一個打不開、副檔名對不上內容的檔案。
+    correct_ext = "." + _FORMAT_META[export.export_type]["ext"]
+    if not new_filename.lower().endswith(correct_ext.lower()):
+        new_filename = f"{new_filename}{correct_ext}"
+
+    export.export_name = new_filename
+    db.session.commit()
+
+    workspace = Workspace.query.get(export.chat.project_id) if export.chat else None
+    result = export.to_dict()
+    result["source_path"] = _build_source_path(workspace) if workspace else None
     return jsonify(result), 200
 
 
