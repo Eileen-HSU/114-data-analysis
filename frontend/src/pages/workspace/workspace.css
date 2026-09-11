@@ -427,9 +427,7 @@
 .classification-table td {
   white-space: normal;
   word-break: break-word;
-  /* 【新增｜欄與欄之間要有線】原本共用的 .assistant-output-table 只有
-     橫線（列與列之間），沒有直線（欄與欄之間），這裡只針對分類表格加上。 */
-  border-right: 1px solid var(--rose-100);
+  border-right: 2px solid #374151;
 }
 
 .classification-table th:last-child,
@@ -452,8 +450,6 @@
   color: var(--slate-700);
 }
 
-/* 【新增】受試者標籤，接在「問卷回覆內容」文字前面 */
-/* 【新增】彙整摘要失敗時的提示文字（退回簡易拼接時顯示） */
 .synthesis-fallback-note {
   margin-top: 6px;
   font-size: 12px;
