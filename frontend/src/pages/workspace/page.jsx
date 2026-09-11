@@ -357,7 +357,7 @@ function AssistantTableContent({ content }) {
   );
 }
 
-// 【新增｜匯出功能】把分類結果存成 CSV，存到後端（Export_File），
+// 【新增｜匯出功能】把分類結果存成 EXCEL/WORD，存到後端（Export_File），
 // 使用者之後在「專案管理 → 匯出檔案」下載，不是點下去馬上跳瀏覽器下載。
 // 純前端實作，不用等後端支援：資料本來就已經在畫面上了。
 // 開頭加 UTF-8 BOM，不然中文在 Excel 打開會變亂碼。
@@ -592,7 +592,7 @@ function ClassificationTable({ rows, meta, chatId, showToast }) {
           className="assistant-export-btn"
           type="button"
           onClick={() =>
-            downloadClassificationCSV(
+            downloadClassificationFile(
               rows,
               chatId,
               showToast,
@@ -609,7 +609,7 @@ function ClassificationTable({ rows, meta, chatId, showToast }) {
           className="assistant-export-btn"
           type="button"
           onClick={() =>
-            downloadClassificationCSV(
+            downloadClassificationFile(
               rows,
               chatId,
               showToast,
