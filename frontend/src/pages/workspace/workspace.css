@@ -421,19 +421,16 @@
 
 .classification-table {
   min-width: 900px;
+  border-collapse: collapse;
 }
 
 .classification-table th,
 .classification-table td {
   white-space: normal;
   word-break: break-word;
-  border-right: 2px solid #374151;
+  border-right: 1.5px solid #475569;
 }
 
-.classification-table th:last-child,
-.classification-table td:last-child {
-  border-right: none;
-}
 
 .classification-column-input {
   display: flex;
