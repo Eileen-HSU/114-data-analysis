@@ -5,7 +5,7 @@
 .share-heading-icon { flex-shrink: 0; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; background: #f7effa; color: #9867b4; font-size: 23px; }
 .share-heading h2 { margin: 0 0 4px; font-size: 21px; font-weight: 750; color: #334155; }
 .share-heading p { margin: 0; font-size: 13px; line-height: 1.5; color: #8490a2; }
-.workspace-share-card button, .share-dialog-actions a { font: inherit; cursor: pointer; border: 0; text-decoration: none; }
+.workspace-share-card button { font: inherit; cursor: pointer; border: 0; text-decoration: none; }
 .workspace-share-card .share-close { display: grid; place-items: center; flex-shrink: 0; width: 30px; height: 30px; margin-left: auto; border-radius: 50%; background: #f5f6f8; color: #8490a2; font-size: 19px; }
 .workspace-share-card :focus-visible { outline: 3px solid #d4b9e7; outline-offset: 3px; }
 .share-conversation { display: flex; align-items: center; gap: 10px; margin: 24px 0; padding: 14px; border: 1px solid #f0e8ef; border-radius: 12px; background: #fcf9fc; }
@@ -24,8 +24,7 @@
 .share-access-note { display: flex; gap: 9px; align-items: flex-start; color: #929aab; font-size: 12px; line-height: 1.7; }
 .share-access-note i { font-size: 16px; color: #a68ab6; }
 .share-access-note p { margin: 0; }
-.share-dialog-actions { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #f0edf2; margin-top: 21px; padding-top: 17px; gap: 12px; }
-.share-dialog-actions a { color: #9867a8; font-size: 13px; }
+.share-dialog-actions { display: flex; align-items: center; justify-content: flex-end; border-top: 1px solid #f0edf2; margin-top: 21px; padding-top: 17px; gap: 12px; }
 .share-dialog-actions button { padding: 9px 25px; border-radius: 9px; background: #f3f4f7; color: #64748b; }
 .workspace-share-btn:disabled { opacity: .6; cursor: wait; }
 .shared-workspace { background: #fff; color: #475569; }
