@@ -1,13 +1,22 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { apiUrl } from "../../lib/api";
 import { MessageContent, WELCOME_MSG } from "./page";
 import Navbar from "../../components/feature/Navbar";
+import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
+import { useAuth } from "../../hooks/AuthContext";
 import "./workspace.css";
 import "./sharing.css";
 
 export default function SharedWorkspacePage() {
   const { shareCode } = useParams();
+  const navigate = useNavigate();
+  const { isLoggedIn } = useAuth();
+  const [loginFeature, setLoginFeature] = useState("");
+  const requestNewChat = () => {
+    if (!isLoggedIn) setLoginFeature("新增對話");
+    else navigate("/workspace");
+  };
   const [result, setResult] = useState(null);
   useEffect(() => {
     const controller = new AbortController();
@@ -37,7 +46,12 @@ export default function SharedWorkspacePage() {
 
   return (
     <>
-      <Navbar readOnly />
+      <Navbar readOnly onRequireLogin={setLoginFeature} />
+      {loginFeature && <div className="shared-login-prompt"><LoginRequiredModal
+        message={`請先登入才能使用${loginFeature}。`}
+        onLogin={() => navigate("/login")}
+        onCancel={() => setLoginFeature("")}
+      /></div>}
       <div className="workspace-page shared-workspace">
         <div className="workspace-body">
           <aside className="workspace-sidebar" aria-label="分享的對話">
@@ -52,17 +66,17 @@ export default function SharedWorkspacePage() {
               {result?.data && <div className="session-item active" aria-current="true">
                 <div className="session-info">
                   <h1 className="session-title">{result.data.project_name}</h1>
-                  <p className="session-date">分享的對話 · 唯讀</p>
+                  <p className="session-date">分享的對話 · 訪客檢視</p>
                 </div>
               </div>}
             </div>
             <div className="sidebar-footer">
-              <button className="btn-new-session sidebar-bottom-add" type="button" disabled aria-label="新增對話（唯讀模式無法使用）"><i className="ri-add-line" /></button>
+              <button className="btn-new-session sidebar-bottom-add" type="button" onClick={requestNewChat} aria-label="新增對話"><i className="ri-add-line" /></button>
             </div>
           </aside>
           <main className="workspace-main" aria-label={result?.data?.project_name || "分享對話"}>
             <div className="workspace-share-float">
-              <span className="workspace-share-btn shared-view-label"><i className="ri-eye-line" /> 唯讀檢視</span>
+              <span className="workspace-share-btn shared-view-label"><i className="ri-eye-line" /> 訪客檢視</span>
             </div>
             <section className="messages-area" aria-label="分享的對話紀錄">
               {!result ? <p className="shared-status" role="status">對話載入中...</p>
@@ -80,7 +94,7 @@ export default function SharedWorkspacePage() {
             </section>
             <div className="input-area">
               <div className="input-wrapper">
-                <button className="attach-btn survey-pick-btn" type="button" disabled aria-label="選擇問卷（唯讀模式無法使用）"><i className="ri-survey-line" /></button>
+                <button className="attach-btn survey-pick-btn" type="button" onClick={() => navigate("/survey")} aria-label="問卷調查"><i className="ri-survey-line" /></button>
                 <button className="attach-btn" type="button" disabled aria-label="上傳檔案（唯讀模式無法使用）"><i className="ri-attachment-line" /></button>
                 <textarea placeholder="此對話僅供檢視，無法輸入指令..." aria-label="對話輸入（唯讀）" rows={1} disabled />
                 <button className="send-btn" type="button" disabled aria-label="傳送訊息（唯讀模式無法使用）"><i className="ri-send-plane-line" /></button>
