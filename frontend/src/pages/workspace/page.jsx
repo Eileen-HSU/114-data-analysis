@@ -9,6 +9,7 @@ import { apiUrl } from "../../lib/api";
 // 【修正】原本這裡有 import buildSurveyChatContent，現在不再用它組長文字
 // 訊息內容，改成簡短一行，拿掉未使用的 import。
 import "./workspace.css";
+import ShareWorkspaceDialog from "./ShareWorkspaceDialog";
 
 const WELCOME_MSG = {
   id: "welcome",
@@ -309,7 +310,7 @@ function PlainMessageContent({ content }) {
   ));
 }
 
-function AssistantTableContent({ content }) {
+function AssistantTableContent({ content, readOnly = false }) {
   const navigate = useNavigate();
   const { intro, rows } = parseAssistantTableRows(content);
   const isSurveyAnalysisReply = intro.includes("問卷資料") && intro.includes("初步分析結果");
@@ -343,7 +344,7 @@ function AssistantTableContent({ content }) {
           </tbody>
         </table>
       </div>
-      <div className="assistant-output-actions">
+      {!readOnly && <div className="assistant-output-actions">
         <button
           className="assistant-export-btn"
           type="button"
@@ -352,7 +353,7 @@ function AssistantTableContent({ content }) {
           <i className="ri-download-cloud-2-line"></i>
           匯出檔案
         </button>
-      </div>
+      </div>}
     </div>
   );
 }
@@ -484,7 +485,7 @@ function MultilineText({ text, highlightRespondent = false }) {
   });
 }
 
-function ClassificationTable({ rows, meta, chatId, showToast }) {
+function ClassificationTable({ rows, meta, chatId, showToast, readOnly = false }) {
   if (!rows || rows.length === 0) {
     return (
       <div className="assistant-output-panel">
@@ -587,7 +588,7 @@ function ClassificationTable({ rows, meta, chatId, showToast }) {
       </div>
 
       {/* Excel / Word 匯出 */}
-      <div className="assistant-output-actions assistant-output-actions--multi">
+      {!readOnly && <div className="assistant-output-actions assistant-output-actions--multi">
         <button
           className="assistant-export-btn"
           type="button"
@@ -621,7 +622,7 @@ function ClassificationTable({ rows, meta, chatId, showToast }) {
           <i className="ri-file-word-2-line"></i>
           匯出成 Word
         </button>
-      </div>
+      </div>}
     </div>
   );
 }
@@ -630,13 +631,14 @@ function ClassificationTable({ rows, meta, chatId, showToast }) {
 // 這樣唯讀頁面才能沿用同一套已經驗證過的分類結果表格渲染邏輯，
 // 不用另外重寫一份（重寫容易漏掉今天調過的細節，例如大類別合併、
 // 受試者片段合併顯示這些規則）。
-export function MessageContent({ message, showToast }) {
+export function MessageContent({ message, showToast, readOnly = false }) {
   // 優先判斷是不是真分類結果訊息，是的話直接渲染表格，
   // 不要讓它掉進下面 AssistantTableContent 那個舊的、給假分析用的文字解析邏輯。
   const classificationData = parseClassificationMessageContent(message.content);
   if (classificationData) {
     return (
       <ClassificationTable
+        readOnly={readOnly}
         rows={classificationData.rows}
         meta={classificationData.meta}
         chatId={message.chatId}
@@ -647,7 +649,7 @@ export function MessageContent({ message, showToast }) {
   // 【新增區塊到此為止，以下都是原本就有的邏輯，沒有改動】
 
   if (message.role === "assistant") {
-    return <AssistantTableContent content={message.content} />;
+    return <AssistantTableContent content={message.content} readOnly={readOnly} />;
   }
 
   return <PlainMessageContent content={message.content} />;
@@ -703,6 +705,8 @@ export default function WorkspacePage() {
   const [apiSurveys, setApiSurveys] = useState([]);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeletingSession, setIsDeletingSession] = useState(false);
+  const [shareInvite, setShareInvite] = useState(null);
+  const [isSharing, setIsSharing] = useState(false);
   const [toastMsg, setToastMsg] = useState(null);
   const [isEntryLoading, setIsEntryLoading] = useState(() => sessionStorage.getItem("dataanalysis_login_loading") === "1");
   const [historyLoadingSessionId, setHistoryLoadingSessionId] = useState(() => location.state?.openSession?.sessionId || null);
@@ -724,11 +728,11 @@ export default function WorkspacePage() {
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
   const messages = activeSession?.messages ?? [];
 
-  // 【新增｜邀請瀏覽】點「邀請檢視」時，跟後端要一組邀請碼（第一次會
-  // 產生，之後同一個工作區重複點擊拿回同一組），組成連結複製到剪貼簿。
+  // 分享目前工作區，成功後顯示可複製及預覽的邀請連結。
   // 暫存工作區（temp-/survey- 開頭）根本沒有真正的 project_id，
   // 邀請連結沒有意義，直接告知使用者先送出至少一則訊息。
   const handleInviteView = async () => {
+    if (isSharing) return;
     if (!activeSession) {
       showToast?.("請先開啟一個工作區");
       return;
@@ -738,6 +742,7 @@ export default function WorkspacePage() {
       showToast?.("這個工作區還沒同步完成，請先傳送一則訊息後再邀請檢視");
       return;
     }
+    setIsSharing(true);
     try {
       const res = await fetch(apiUrl(`/api/workspace/${projectId}/share`), {
         method: "POST",
@@ -749,11 +754,13 @@ export default function WorkspacePage() {
         return;
       }
       const shareLink = `${window.location.origin}/shared/${data.share_code}`;
-      await navigator.clipboard.writeText(shareLink);
-      showToast?.("邀請連結已複製到剪貼簿");
+      if (!data.share_code) throw new Error("Missing share code");
+      setShareInvite({ link: shareLink, title: activeSession.title || "分析對話" });
     } catch (err) {
       console.error("產生邀請連結失敗：", err);
       showToast?.("產生邀請連結失敗，請稍後再試");
+    } finally {
+      setIsSharing(false);
     }
   };
 
@@ -1753,9 +1760,9 @@ export default function WorkspacePage() {
           {/* Main Chat */}
           <main className="workspace-main">
             <div className="workspace-share-float">
-              <button className="workspace-share-btn" type="button" onClick={handleInviteView}>
+              <button className="workspace-share-btn" type="button" onClick={handleInviteView} disabled={isSharing}>
                 <i className="ri-eye-line"></i>
-                <span>邀請檢視</span>
+                <span>{isSharing ? "產生連結中..." : "邀請檢視"}</span>
               </button>
             </div>
             {activeSession === null ? (
@@ -1951,6 +1958,7 @@ export default function WorkspacePage() {
           </main>
         </div>
       </div>
+      {shareInvite && <ShareWorkspaceDialog invite={shareInvite} onClose={() => setShareInvite(null)} />}
       {deleteTarget && (
         <div className="workspace-modal-backdrop" onClick={() => !isDeletingSession && setDeleteTarget(null)}>
           <div className="workspace-alert-modal" onClick={(event) => event.stopPropagation()}>
