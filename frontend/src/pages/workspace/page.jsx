@@ -11,7 +11,7 @@ import { apiUrl } from "../../lib/api";
 import "./workspace.css";
 import ShareWorkspaceDialog from "./ShareWorkspaceDialog";
 
-const WELCOME_MSG = {
+export const WELCOME_MSG = {
   id: "welcome",
   role: "assistant",
   content:

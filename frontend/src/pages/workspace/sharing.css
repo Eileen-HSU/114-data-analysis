@@ -11,11 +11,24 @@
 .share-dialog-actions { display: flex; gap: 12px; }
 .share-dialog-actions > * { flex: 1; background: #f1f5f9; color: #475569; }
 .workspace-share-btn:disabled { opacity: .6; cursor: wait; }
-.shared-workspace { min-height: 100vh; background: #fff; color: #475569; }
-.shared-workspace-header { padding: 28px max(20px, calc((100vw - 1200px) / 2)); border-bottom: 1px solid #f3d8df; background: #fff9fb; }
-.shared-workspace-header h1 { font-size: 24px; overflow-wrap: anywhere; margin: 16px 0 8px; }
-.shared-readonly-badge { color: #ce577c; font-weight: 700; }
-.shared-workspace .messages-area { max-width: 1200px; margin: auto; padding: 32px 20px; overflow: visible; }
+.shared-workspace { background: #fff; color: #475569; }
+.shared-workspace .workspace-main { min-width: 0; }
 .shared-workspace .message-bubble { min-width: 0; overflow-wrap: anywhere; }
+.shared-workspace .session-item, .shared-view-label { cursor: default; }
+.shared-workspace .input-area { flex-shrink: 0; }
+.shared-workspace .input-wrapper textarea { flex: 1; min-width: 0; resize: none; }
+.shared-workspace :disabled { cursor: not-allowed; }
+.shared-workspace .btn-new-session:disabled { opacity: .5; }
 .shared-status { padding: 32px 20px; text-align: center; }
-@media (max-width: 600px) { .workspace-share-card { padding: 22px; } .shared-workspace .message-bubble { max-width: calc(100% - 48px); } }
+@media (max-width: 767px) {
+  .shared-workspace .messages-area { padding-top: 80px; }
+  .shared-workspace .message-bubble { max-width: calc(100% - 48px); }
+  .workspace-share-card { padding: 22px; }
+}
+
+@media (max-width: 767px) {
+  .navbar-shared .container-fluid { flex-wrap: nowrap; }
+  .navbar-shared .nav-link-btn:not(.active) { display: none; }
+  .navbar-shared .navbar-logo-img { width: 100px; height: auto; }
+  .navbar-shared .nav-user-name { display: none; }
+}
