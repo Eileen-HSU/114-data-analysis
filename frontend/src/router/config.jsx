@@ -14,7 +14,10 @@ import CreateSurveyPage from "../pages/survey/CreateSurveyPage.jsx";
 import FillSurveyPage from "../pages/survey/FillSurveyPage.jsx";
 import TrashPage from "../pages/trash/TrashPage.jsx";
 
+import SharedWorkspacePage from "../pages/workspace/SharedWorkspacePage.jsx";
+
 const routes = [
+  { path: "/shared/:shareCode", element: <SharedWorkspacePage /> },
   { path: "/", element: <HomePage /> },
   { path: "/login", element: <LoginPage /> },
   { path: "/signup", element: <SignUpPage /> },

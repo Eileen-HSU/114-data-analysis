@@ -1,5 +1,5 @@
 import os
-import random
+import secrets
 import string
 from datetime import timedelta
 
@@ -204,7 +204,7 @@ def delete_workspace(project_id):
 
 def _generate_unique_share_code():
     while True:
-        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(10))
         if not Workspace.query.filter_by(share_code=code).first():
             return code
 
@@ -248,7 +248,7 @@ def get_shared_workspace(share_code):
         .all()
     )
 
-    return jsonify({
+    response = jsonify({
         "project_name": workspace.project_name,
         "messages": [
             {
@@ -259,4 +259,7 @@ def get_shared_workspace(share_code):
             }
             for c in chats
         ],
-    }), 200
+    })
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return response, 200
