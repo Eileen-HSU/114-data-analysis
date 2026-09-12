@@ -5,7 +5,7 @@ import conqightLogo from "../../assets/conqight-logo.png";
 
 const DEFAULT_AVATAR = "https://static.readdy.ai/image/db4f710102ca6cc45db44808c8658987/b181cfaad2165c1909b7c8fa8339cbe7.png";
 
-export default function Navbar({ transparent = false, readOnly = false }) {
+export default function Navbar({ transparent = false, readOnly = false, onRequireLogin }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { isLoggedIn, user, logout } = useAuth();
@@ -36,28 +36,28 @@ export default function Navbar({ transparent = false, readOnly = false }) {
         {/* Left */}
         <div className="d-flex align-items-center gap-2 me-auto">
           <a
-            aria-disabled={readOnly || undefined}
             className={`nav-link-btn ${location.pathname === "/collection" ? "active" : ""}`}
-            onClick={() => !readOnly && navigate("/collection")}
-            style={{ cursor: readOnly ? "default" : "pointer" }}
+            href="/collection"
+            onClick={(event) => { event.preventDefault(); if (readOnly && !isLoggedIn) onRequireLogin?.("專案管理"); else navigate("/collection"); }}
+            style={{ cursor: "pointer" }}
           >
             <i className="ri-folder-chart-line"></i>
             <span>專案管理</span>
           </a>
           <a
-            aria-disabled={readOnly || undefined}
             className={`nav-link-btn ${(readOnly || location.pathname === "/workspace") ? "active" : ""}`}
-            onClick={() => !readOnly && navigate("/workspace")}
-            style={{ cursor: readOnly ? "default" : "pointer" }}
+            href="/workspace"
+            onClick={(event) => { event.preventDefault(); if (readOnly && !isLoggedIn) onRequireLogin?.("新增對話"); else navigate("/workspace"); }}
+            style={{ cursor: "pointer" }}
           >
             <i className="ri-add-circle-line"></i>
             <span>分析助理</span>
           </a>
           <a
-            aria-disabled={readOnly || undefined}
             className={`nav-link-btn ${location.pathname.startsWith("/survey") ? "active" : ""}`}
-            onClick={() => !readOnly && navigate("/survey")}
-            style={{ cursor: readOnly ? "default" : "pointer" }}
+            href="/survey"
+            onClick={(event) => { event.preventDefault(); navigate("/survey"); }}
+            style={{ cursor: "pointer" }}
           >
             <i className="ri-survey-line"></i>
             <span>問卷調查</span>
@@ -67,9 +67,9 @@ export default function Navbar({ transparent = false, readOnly = false }) {
         {/* Center Logo */}
         <a
           className="navbar-brand d-flex align-items-center"
-          onClick={() => !readOnly && navigate(isLoggedIn ? "/workspace" : "/")}
+          onClick={() => navigate(isLoggedIn ? "/workspace" : "/")}
           style={{
-            cursor: readOnly ? "default" : "pointer",
+            cursor: "pointer",
             textDecoration: "none",
             position: "absolute",
             left: "50%",
@@ -85,14 +85,12 @@ export default function Navbar({ transparent = false, readOnly = false }) {
 
         {/* Right */}
         <div className="d-flex align-items-center gap-2 ms-auto">
-          {readOnly ? (
-            <span className="nav-user-btn"><i className="ri-eye-line" /><span className="nav-user-name">訪客檢視</span></span>
-          ) : isLoggedIn ? (
+          {isLoggedIn ? (
             <div className="position-relative">
               <button
                 className="nav-user-btn"
                 onClick={() => setShowUserMenu(!showUserMenu)}
-                style={{ cursor: readOnly ? "default" : "pointer" }}
+                style={{ cursor: "pointer" }}
               >
                 <div className="nav-user-avatar" style={{ overflow: "hidden", background: "transparent", padding: 0 }}>
                   <img
@@ -106,11 +104,11 @@ export default function Navbar({ transparent = false, readOnly = false }) {
               </button>
               {showUserMenu && (
                 <div className="nav-user-dropdown">
-                  <a className="dropdown-item" href="/profile" onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); setShowUserMenu(false); navigate("/profile"); window.setTimeout(() => { if (window.location.pathname !== "/profile") window.location.assign("/profile"); }, 0); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowUserMenu(false); navigate("/profile"); }} style={{ cursor: readOnly ? "default" : "pointer" }}>
+                  <a className="dropdown-item" href="/profile" onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); setShowUserMenu(false); navigate("/profile"); window.setTimeout(() => { if (window.location.pathname !== "/profile") window.location.assign("/profile"); }, 0); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowUserMenu(false); navigate("/profile"); }} style={{ cursor: "pointer" }}>
                     <i className="ri-user-settings-line me-2"></i>個人資料
                   </a>
                   <div className="dropdown-divider"></div>
-                  <a className="dropdown-item text-danger" href="/" onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); logout(); setShowUserMenu(false); navigate("/"); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); logout(); setShowUserMenu(false); navigate("/"); }} style={{ cursor: readOnly ? "default" : "pointer" }}>
+                  <a className="dropdown-item text-danger" href="/" onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); logout(); setShowUserMenu(false); navigate("/"); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); logout(); setShowUserMenu(false); navigate("/"); }} style={{ cursor: "pointer" }}>
                     <i className="ri-logout-box-r-line me-2"></i>登出
                   </a>
                 </div>
@@ -118,10 +116,10 @@ export default function Navbar({ transparent = false, readOnly = false }) {
             </div>
           ) : (
             <>
-              <a className="nav-login-btn" onClick={() => !readOnly && navigate("/login")} style={{ cursor: readOnly ? "default" : "pointer" }}>
+              <a className="nav-login-btn" href="/login" onClick={(event) => { event.preventDefault(); navigate("/login"); }} style={{ cursor: "pointer" }}>
                 登入
               </a>
-              <a className="nav-signup-btn" onClick={() => !readOnly && navigate("/signup")} style={{ cursor: readOnly ? "default" : "pointer" }}>
+              <a className="nav-signup-btn" href="/signup" onClick={(event) => { event.preventDefault(); navigate("/signup"); }} style={{ cursor: "pointer" }}>
                 註冊
               </a>
             </>
