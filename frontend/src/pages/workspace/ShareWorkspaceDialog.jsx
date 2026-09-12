@@ -46,7 +46,6 @@ export default function ShareWorkspaceDialog({ invite, onClose }) {
         <p className="share-copy-status" role="status">{copyStatus}</p>
         <div className="share-access-note"><i className="ri-shield-check-line" /><p>取得連結即可免登入查看。<br />訪客無法傳送指令或修改這段對話。</p></div>
         <footer className="share-dialog-actions">
-          <a href={invite.link} target="_blank" rel="noopener noreferrer">開啟檢視 <i className="ri-external-link-line" /></a>
           <button type="button" onClick={onClose}>完成</button>
         </footer>
       </div>
