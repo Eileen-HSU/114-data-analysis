@@ -1,11 +1,22 @@
 import { useState } from "react";
 
-export default function ExportFileRow({ item, onDownload, onRename }) {
+export default function ExportFileRow({ item, onDownload, onRename, onOpenChat }) {
+  const [opening, setOpening] = useState(false);
+  const [sourceError, setSourceError] = useState("");
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const extension = /\.[^.]+$/.exec(item.export_name || "")?.[0] || (item.export_type ? `.${item.export_type}` : "");
+
+  async function openSourceChat() {
+    if (opening) return;
+    setOpening(true);
+    setSourceError("");
+    try { await onOpenChat(item); }
+    catch (err) { setSourceError(err.message || "無法開啟來源對話。"); }
+    finally { setOpening(false); }
+  }
 
   function startRename() {
     setName(extension && item.export_name?.endsWith(extension)
@@ -35,6 +46,16 @@ export default function ExportFileRow({ item, onDownload, onRename }) {
 
   return (
     <div className={`export-list-item${editing ? " is-renaming" : ""}`}>
+      <div className="export-source-column">
+        <span className="export-column-label">來源 Chat</span>
+        <button type="button" className="export-source-link" onClick={openSourceChat}
+          disabled={opening || !item.project_id} title="前往分析助理查看此對話">
+          <i className={opening ? "ri-loader-4-line ri-spin" : "ri-chat-3-line"} />
+          <span>{item.source_path || "來源對話"}</span>
+          {item.project_id && <i className="ri-arrow-right-up-line" />}
+        </button>
+        {sourceError && <p className="export-source-error" role="alert">{sourceError}</p>}
+      </div>
       {editing ? (
         <form className="export-rename-form" onSubmit={save}>
           <label htmlFor={`export-name-${item.export_id}`}>修改檔案名稱</label>
@@ -62,8 +83,8 @@ export default function ExportFileRow({ item, onDownload, onRename }) {
           <button type="button" className="export-download-target" onClick={() => onDownload(item)} title="點擊下載">
             <i className="ri-file-text-line export-list-item-icon" />
             <div className="export-list-item-info">
+              <span className="export-column-label">匯出檔案</span>
               <div className="export-list-item-name">{item.export_name}</div>
-              {item.source_path && <div className="export-list-item-source"><i className="ri-folder-3-line" /> {item.source_path}</div>}
               <div className="export-list-item-meta">
                 {item.row_count != null ? `${item.row_count} 筆` : ""}
                 {item.created_at ? `　${new Date(item.created_at).toLocaleString("zh-TW")}` : ""}
