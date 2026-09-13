@@ -33,13 +33,31 @@ if not os.environ.get('JWT_SECRET_KEY'):
     print('[WARN] JWT_SECRET_KEY 未設定，已使用本機開發預設值（請勿用於生產環境）')
 
 app = Flask(__name__)
+ALLOWED_CORS_ORIGINS = {
+    "https://site--frontend--d6tvmpswrhlp.code.run",
+    "https://one14-data-analysis-frontend.onrender.com",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+}
+
 CORS(app,
-    resources={r"/api/*": {"origins": "*"}},
+    resources={r"/api/*": {"origins": list(ALLOWED_CORS_ORIGINS)}},
     supports_credentials=False,
     allow_headers=["Content-Type", "Authorization"],
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     automatic_options=False
 )
+
+
+@app.after_request
+def add_cors_headers(response):
+    origin = request.headers.get("Origin")
+    if origin in ALLOWED_CORS_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Vary"] = "Origin"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    return response
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 
