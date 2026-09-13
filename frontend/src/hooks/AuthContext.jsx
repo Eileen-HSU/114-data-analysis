@@ -50,7 +50,12 @@ export function AuthProvider({ children }) {
         // 登入後馬上把 avatar 存進 user，Navbar 不用等 ProfilePage
         setUser((currentUser) => {
           if (!currentUser) return currentUser;
-          const nextUser = { ...currentUser, avatar: data.avatar_url || "" , email_2fa_enabled: data.email_2fa_enabled === true };
+          const nextUser = {
+            ...currentUser,
+            avatar: data.avatar_url || "",
+            email_2fa_enabled: data.email_2fa_enabled === true,
+            language: ["zh-TW", "en"].includes(data.language) ? data.language : currentUser.language,
+          };
           localStorage.setItem(AUTH_KEY, JSON.stringify(nextUser));
           return nextUser;
         });

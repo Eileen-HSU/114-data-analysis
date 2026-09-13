@@ -219,6 +219,7 @@ def login_verify_2fa():
             "email": user.email,
             "user_name": user.user_name,
             "name": user.user_name,
+            "role": user.role,
         }
     }), 200
 

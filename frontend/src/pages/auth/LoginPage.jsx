@@ -69,13 +69,13 @@ export default function LoginPage() {
       if (!res.ok) {
         setIsSubmitting(false);
         sessionStorage.removeItem("dataanalysis_login_loading");
-        
-        // 失敗次數>5，強制跳轉修改密碼
+
         if (data.require_password_reset) {
-          navigate(`/forgot-password?email=${encodeURIComponent(data.email)}`);
+          const targetEmail = data.email || email;
+          window.location.assign(`/forgot-password?email=${encodeURIComponent(targetEmail)}`);
           return;
         }
-        
+
         setLoginError(data.error || "登入失敗，請確認帳號或密碼是否正確。");
         return;
       }
@@ -85,6 +85,7 @@ export default function LoginPage() {
         user_name: data.user_name,
         email: data.email,
         user_id: data.user_id,
+        role: data.role,
         token: data.token,
         pre_auth_token: data.pre_auth_token,
         email_2fa_enabled: data.email_2fa_enabled,

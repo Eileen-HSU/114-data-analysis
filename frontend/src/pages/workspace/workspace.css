@@ -233,6 +233,7 @@
 /* Main Area */
 .workspace-main {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -285,7 +286,10 @@
 .messages-area {
   flex: 1;
   overflow-y: auto;
-  padding: 32px 40px;
+  /* 【修正｜邀請檢視按鈕重疊】原本 top padding 只有 32px，跟右上角浮動的
+     「邀請檢視」按鈕（top:24px + 高度約42px）打架，訊息少時第一則會被蓋到。
+     加大到 88px，讓訊息內容從按鈕下方開始，兩者不再重疊。 */
+  padding: 88px 40px 32px;
 }
 
 .message-row {
@@ -325,11 +329,35 @@
   width: min(760px, 100%);
 }
 
+/* 【修正｜表格被切掉】分類結果的表格欄位比較多，760px 裝不下 5 欄，
+   之前用 overflow:hidden 導致超出的內容直接被切掉、看不到也滑不出來。
+   分類結果用專屬的寬容器，並改成可以左右滑動而不是裁切。 */
+.assistant-output-panel--wide {
+  width: min(960px, 100%);
+}
+
+.message-bubble:has(.assistant-output-panel--wide) {
+  width: min(960px, 100%);
+  max-width: 100%;
+  min-width: 0;
+}
+
 .assistant-output-intro {
   color: var(--slate-800);
   font-weight: 900;
   line-height: 1.65;
   margin: 0 0 12px;
+}
+
+/* 【新增】沒有分類結果時的診斷訊息 */
+.assistant-output-diagnostic {
+  color: var(--slate-500);
+  font-size: 14px;
+  line-height: 1.6;
+  background: var(--rose-50, #fff1f2);
+  border: 1px solid var(--rose-100, #ffe4e6);
+  border-radius: 10px;
+  padding: 12px 16px;
 }
 
 .assistant-output-table-wrap {
@@ -343,23 +371,25 @@
 .assistant-output-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 520px;
-  font-size: 14px;
-  line-height: 1.55;
+  min-width: 0;
+  table-layout: fixed;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .assistant-output-table th {
-  padding: 14px 16px;
+  padding: 10px 12px;
   text-align: left;
   background: var(--rose-50);
   color: var(--rose-500);
   font-weight: 900;
   border-bottom: 1px solid var(--rose-100);
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .assistant-output-table td {
-  padding: 16px 16px;
+  padding: 11px 12px;
   vertical-align: top;
   border-bottom: 1px solid var(--slate-100);
   color: var(--slate-600);
@@ -380,10 +410,95 @@
   background: rgba(255, 241, 242, 0.5);
 }
 
+/* ============================================================
+ * 【新增】真實 Gemini 分類功能的樣式
+ * 對應 page.jsx 裡的 ClassificationTable 元件 + 文字欄位名稱輸入框
+ * ============================================================ */
+/* 【修正｜子類別粗細不一致】原本用 :first-child 判斷粗體，但改用 rowSpan
+   合併儲存格之後，被合併掉的列子類別格子會意外變成「第一格」，跟著被
+   套上粗體。改成粗體樣式直接指定給大類別專用的 .merged-cell-center，
+   不再依賴「第幾個格子」這種容易被表格結構變化影響的寫法。 */
+.classification-table td:first-child {
+  width: auto;
+  background: transparent;
+  /* 【修正】上面 .assistant-output-table td:first-child 設了 font-weight:900，
+     只刪掉這裡的宣告不會蓋掉它（CSS 沒被覆寫的規則會繼續生效），
+     要明確設回 normal 才能真的取消粗體。 */
+  font-weight: normal;
+}
+
+.classification-table {
+  min-width: 0;
+  border-collapse: collapse;
+}
+
+.classification-table th,
+.classification-table td {
+  border-right: 1.5px solid #475569;
+  border-bottom: 1.5px solid #475569;
+}
+
+.classification-table tr:last-child td {
+  border-bottom: none;
+}
+
+
+.classification-column-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.classification-column-input input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  color: var(--slate-700);
+}
+
+.synthesis-fallback-note {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--slate-400);
+  font-style: italic;
+}
+
+.synthesis-error-detail {
+  margin-top: 4px;
+  font-style: normal;
+  color: var(--rose-400, #fb7185);
+  word-break: break-all;
+}
+.respondent-label {
+  color: #ba6a78;
+  font-weight: 700;
+}
+
+/* 【修正】大類別改用真正的 rowSpan，文字水平+垂直都置中在整個合併區塊正中央 */
+.classification-table td.merged-cell-center {
+  text-align: center;
+  vertical-align: middle;
+  font-weight: 700;
+}
+
+/* 【新增】子類別也要粗體，跟大類別一致；用專屬 class 指定，
+   不依賴「第幾個格子」，這樣 rowSpan 合併儲存格造成的欄位位移
+   不會再影響到粗細顯示 */
+.classification-table td.sub-category-cell {
+  font-weight: 700;
+}
+
 .assistant-output-actions {
   display: flex;
   justify-content: flex-end;
   padding: 12px 2px 0;
+}
+
+/* 【新增】三個格式按鈕並排，之間留間距 */
+.assistant-output-actions--multi {
+  gap: 10px;
 }
 
 .assistant-export-btn {
@@ -466,6 +581,13 @@
   color: var(--rose-600);
   font-size: 14px;
   font-weight: 600;
+}
+
+/* 【串backend】附加 Excel 檔案時顯示「送出後將自動分類」的提示文字 */
+.classification-hint {
+  font-weight: 400;
+  color: var(--rose-400);
+  font-size: 13px;
 }
 
 .file-attachment button {
@@ -931,3 +1053,34 @@
   .workspace-alert-modal { padding: 34px 24px 26px; }
   .workspace-alert-actions { flex-direction: column; }
 }
+.export-generation-status, .export-generation-error { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; padding: 12px 14px; border-radius: 10px; font-size: 14px; line-height: 1.7; }
+.export-generation-status { color: #7a668b; background: #f7f0fb; border: 1px solid #e9ddf0; }
+.export-generation-error { color: #bd536b; background: #fff2f4; border: 1px solid #f4d5dd; }
+.export-generation .assistant-export-btn:disabled { opacity: .6; cursor: wait; }
+.classification-table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.classification-table th,
+.classification-table td.merged-cell-center,
+.classification-table td.sub-category-cell {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.classification-table td:not(.merged-cell-center):not(.sub-category-cell) {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.classification-table th:nth-child(1),
+.classification-table td.merged-cell-center { width: 12%; }
+.classification-table th:nth-child(2),
+.classification-table td.sub-category-cell { width: 16%; }
+.classification-table th:nth-child(3) { width: 28%; }
+.classification-table th:nth-child(4) { width: 24%; }
+.classification-table th:nth-child(5) { width: 20%; }

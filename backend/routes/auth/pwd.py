@@ -3,8 +3,6 @@ import logging
 import os
 import secrets
 
-import sib_api_v3_sdk
-from sib_api_v3_sdk.rest import ApiException
 from flask import Blueprint, jsonify, request
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -13,7 +11,14 @@ from models import User, UserVerification
 
 pwd_bp = Blueprint("pwd", __name__)
 
-_brevo_client: sib_api_v3_sdk.TransactionalEmailsApi | None = None
+# 【修正｜2026-08-27｜串backend 部署穩定性】
+# sib_api_v3_sdk 改成延後到真的要寄信時才 import（見 _get_brevo_client）。
+# 原因：這個套件很久沒更新，在較新的 Python 版本上安裝環境可能裝不完整/裝不到，
+# 一旦寫在檔案最上面就 import，只要這個套件裝失敗，整個 Flask app 會直接開不了機
+# ——連跟寄信完全無關的功能（分類、workspace…）也會一起壞掉。
+# 延後 import 之後：沒有這個套件時，只有「忘記密碼寄信」這個功能會在真的被呼叫
+# 到的當下報錯，其他所有功能不受影響。
+_brevo_client = None
 _brevo_sender: dict | None = None
 
 
@@ -21,9 +26,11 @@ def taiwan_now():
     return datetime.utcnow() + timedelta(hours=8)
 
 
-def _get_brevo_client() -> tuple[sib_api_v3_sdk.TransactionalEmailsApi, dict]:
+def _get_brevo_client():
     global _brevo_client, _brevo_sender
     if _brevo_client is None:
+        import sib_api_v3_sdk  # 延後 import，見上方說明
+
         api_key = os.getenv("BREVO_API_KEY", "").strip()
         if not api_key:
             raise RuntimeError("BREVO_API_KEY is not configured")
@@ -43,6 +50,9 @@ def _get_brevo_client() -> tuple[sib_api_v3_sdk.TransactionalEmailsApi, dict]:
 
 
 def send_password_email_via_resend(recipient: str, subject: str, body_text: str):
+    import sib_api_v3_sdk  # 延後 import，見檔案開頭說明
+    from sib_api_v3_sdk.rest import ApiException
+
     api_instance, sender = _get_brevo_client()
     html_body = "<p>" + body_text.replace("\n", "<br>") + "</p>"
     send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
@@ -108,12 +118,30 @@ def send_otp():
 
         action_text = "變更密碼" if verify_type == "PASSWORD_CHANGE" else "重設密碼"
         subject = f"DataAnalysis {action_text}驗證碼"
-        message_body = (
-            f"您好，\n\n"
-            f"您正在進行 {action_text}。\n"
-            f"您的驗證碼是：{otp}\n\n"
-            f"此驗證碼將在 10 分鐘後失效。"
-        )
+
+        if verify_type == "PASSWORD_CHANGE":
+            # 修改密碼
+            message_body = (
+                f"您好，\n\n"
+                f"您正在進行 {action_text}。\n"
+                f"您的驗證碼是：{otp}\n\n"
+                f"此驗證碼將在 10 分鐘後失效。\n"
+                f"如果您沒有發起這個請求，請忽略此信件。"
+            )
+        else:
+            # 忘記密碼
+            reset_link = (
+                f"{frontend_url}/reset-password"
+                f"?email={email}&from={from_param}"
+            )
+            message_body = (
+                f"您好，\n\n"
+                f"您正在進行 {action_text}。\n"
+                f"您的驗證碼是：{otp}\n\n"
+                f"請點擊以下連結前往輸入驗證碼：\n{reset_link}\n\n"
+                f"此驗證碼將在 10 分鐘後失效。\n"
+                f"如果您沒有發起這個請求，請忽略此信件。"
+            )
         send_password_email_via_resend(email, subject, message_body)
         return jsonify({"message": f"{action_text}驗證碼已寄出"}), 200
 

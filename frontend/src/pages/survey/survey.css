@@ -102,6 +102,30 @@
   background: #8aa9c4;
 }
 
+.survey-entry-card.ppt-generate {
+  width: 100%;
+  min-height: 178px;
+  padding: 22px;
+  align-items: center;
+  gap: 16px;
+  border: 1px solid #edf2f7;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.survey-entry-card.ppt-generate::before {
+  background: #7cb7a5;
+}
+
+.survey-entry-card.ppt-generate:hover {
+  border-color: #bde2d6;
+}
+
+.entry-card-icon.ppt-icon {
+  background: #effaf6;
+  color: #4f927f;
+}
+
 .survey-entry-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 18px 42px rgba(42, 64, 98, 0.1);
@@ -680,6 +704,408 @@
 
 @keyframes survey-spin {
   to { transform: rotate(360deg); }
+}
+
+/* PPT AI Survey Modal */
+.ppt-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(45, 52, 72, 0.44);
+  backdrop-filter: blur(7px);
+}
+
+.ppt-modal {
+  width: min(1180px, 100%);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 30px 90px rgba(42, 64, 98, 0.22);
+}
+
+.ppt-modal-header,
+.ppt-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px;
+  border-bottom: 1px solid #edf2f7;
+}
+
+.ppt-modal-footer {
+  border-top: 1px solid #edf2f7;
+  border-bottom: none;
+}
+
+.ppt-modal-header h2 {
+  margin: 0;
+  color: var(--slate-800);
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.ppt-modal-body {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 330px 1fr;
+  gap: 0;
+  overflow: hidden;
+}
+
+.ppt-config-panel {
+  overflow-y: auto;
+  padding: 22px;
+  border-right: 1px solid #edf2f7;
+  background: #fbfafb;
+}
+
+.ppt-upload-zone {
+  min-height: 154px;
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  padding: 20px;
+  border: 2px dashed #cbd5e1;
+  border-radius: 14px;
+  background: #ffffff;
+  color: var(--slate-500);
+  text-align: center;
+  cursor: pointer;
+}
+
+.ppt-upload-zone input {
+  display: none;
+}
+
+.ppt-upload-zone i {
+  color: #4f927f;
+  font-size: 34px;
+}
+
+.ppt-upload-zone strong {
+  max-width: 250px;
+  color: var(--slate-800);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.ppt-upload-zone span {
+  color: var(--slate-400);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ppt-field-grid,
+.ppt-draft-meta {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.ppt-field {
+  display: grid;
+  gap: 7px;
+}
+
+.ppt-field span,
+.ppt-type-limits > span {
+  color: var(--slate-600);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.ppt-field input,
+.ppt-field textarea,
+.ppt-question-title,
+.ppt-chat-box textarea,
+.ppt-question-head select {
+  width: 100%;
+  border: 1.5px solid #dbe3ec;
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--slate-800);
+  font: inherit;
+  outline: none;
+  background: #ffffff;
+}
+
+.ppt-field textarea,
+.ppt-chat-box textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.ppt-field input:focus,
+.ppt-field textarea:focus,
+.ppt-question-title:focus,
+.ppt-chat-box textarea:focus,
+.ppt-question-head select:focus {
+  border-color: #7cb7a5;
+  box-shadow: 0 0 0 3px #e8f6f1;
+}
+
+.ppt-type-limits {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.ppt-type-limits label,
+.ppt-question-head label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--slate-600);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.ppt-primary-btn,
+.ppt-secondary-btn,
+.ppt-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  border-radius: 10px;
+  font: inherit;
+  font-weight: 850;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, transform 0.2s;
+  white-space: nowrap;
+}
+
+.ppt-primary-btn {
+  min-height: 42px;
+  padding: 0 16px;
+  background: #4f927f;
+  color: #ffffff;
+}
+
+.ppt-primary-btn:hover {
+  background: #407967;
+  transform: translateY(-1px);
+}
+
+.ppt-primary-btn:disabled,
+.ppt-secondary-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+  transform: none;
+}
+
+.ppt-primary-btn .ri-loader-4-line,
+.ppt-loading-state .ri-loader-4-line,
+.ppt-chat-message.loading .ri-loader-4-line {
+  animation: survey-spin 0.9s linear infinite;
+}
+
+.ppt-secondary-btn {
+  min-height: 38px;
+  padding: 0 13px;
+  border: 1px solid #dbe3ec;
+  background: #ffffff;
+  color: var(--slate-600);
+}
+
+.ppt-secondary-btn:hover {
+  background: #f8fafc;
+}
+
+.ppt-icon-btn {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  background: #f1f5f9;
+  color: var(--slate-500);
+}
+
+.ppt-icon-btn:hover {
+  background: #e2e8f0;
+  color: var(--slate-800);
+}
+
+.ppt-error {
+  margin: 12px 0 0;
+  color: #dc2626;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.ppt-preview-panel {
+  min-width: 0;
+  min-height: 540px;
+  overflow: auto;
+  padding: 22px;
+  background: #ffffff;
+}
+
+.ppt-empty-state,
+.ppt-loading-state {
+  min-height: 480px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  border: 1px dashed #dbe3ec;
+  border-radius: 14px;
+  color: var(--slate-400);
+  text-align: center;
+}
+
+.ppt-empty-state i,
+.ppt-loading-state i {
+  color: #7cb7a5;
+  font-size: 38px;
+}
+
+.ppt-empty-state strong,
+.ppt-loading-state strong {
+  color: var(--slate-700);
+  font-size: 16px;
+}
+
+.ppt-draft-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 18px;
+}
+
+.ppt-draft-editor,
+.ppt-ai-chat {
+  min-width: 0;
+}
+
+.ppt-draft-question-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.ppt-draft-question {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #edf2f7;
+  border-radius: 12px;
+  background: #fbfafb;
+}
+
+.ppt-question-head {
+  display: grid;
+  grid-template-columns: auto minmax(110px, 150px) auto auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.ppt-question-head > span {
+  min-width: 34px;
+  color: #4f927f;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.ppt-rating-preview {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ppt-rating-preview span {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #dbe3ec;
+  border-radius: 9px;
+  background: #ffffff;
+  color: var(--slate-500);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.ppt-draft-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.ppt-ai-chat {
+  display: grid;
+  grid-template-rows: minmax(250px, 1fr) auto;
+  gap: 12px;
+  position: sticky;
+  top: 0;
+}
+
+.ppt-chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 260px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 12px;
+  border: 1px solid #edf2f7;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.ppt-chat-message {
+  max-width: 90%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.ppt-chat-message.user {
+  align-self: flex-end;
+  background: #4f927f;
+  color: #ffffff;
+}
+
+.ppt-chat-message.assistant {
+  align-self: flex-start;
+  background: #ffffff;
+  color: var(--slate-600);
+  border: 1px solid #edf2f7;
+}
+
+.ppt-chat-box {
+  display: grid;
+  gap: 10px;
+}
+
+.ppt-save-result {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  color: var(--slate-600);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.ppt-save-result span {
+  overflow-wrap: anywhere;
+  color: var(--slate-500);
+}
+
+.ppt-save-result a {
+  color: #4f927f;
+  font-weight: 900;
 }
 
 /* Success Modal */
@@ -1805,6 +2231,10 @@
     min-height: 150px;
     padding: 18px;
   }
+  .survey-entry-card.ppt-generate {
+    min-height: 150px;
+    padding: 18px;
+  }
   .entry-card-footer {
     align-items: flex-start;
     flex-direction: column;
@@ -1818,4 +2248,34 @@
   .create-survey-body { padding: 24px 16px; }
   .survey-form-card, .code-entry-card { padding: 28px 20px; }
   .survey-identity-options { grid-template-columns: 1fr; }
+  .ppt-modal-backdrop { padding: 10px; }
+  .ppt-modal { max-height: 94vh; }
+  .ppt-modal-header,
+  .ppt-modal-footer {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 16px;
+  }
+  .ppt-modal-body,
+  .ppt-draft-layout {
+    grid-template-columns: 1fr;
+  }
+  .ppt-config-panel {
+    border-right: none;
+    border-bottom: 1px solid #edf2f7;
+  }
+  .ppt-preview-panel {
+    min-height: 360px;
+    padding: 16px;
+  }
+  .ppt-question-head {
+    grid-template-columns: auto 1fr;
+  }
+  .ppt-question-head label,
+  .ppt-question-head .ppt-icon-btn {
+    justify-self: start;
+  }
+  .ppt-ai-chat {
+    position: static;
+  }
 }

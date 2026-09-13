@@ -14,3 +14,13 @@ resend
 PyJWT
 APScheduler
 sib-api-v3-sdk
+presidio-analyzer
+presidio-anonymizer
+spacy
+scikit-learn
+google-generativeai
+google-genai
+pandas
+openpyxl==3.1.5
+python-docx
+pypdf

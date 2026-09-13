@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import "./auth.css";
 import axios from "axios";
 import { apiUrl } from "../../lib/api";
@@ -7,21 +7,29 @@ import conqightLogo from "../../assets/conqight-logo.png";
 
 export default function ForgotPasswordPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const emailRef = useRef(null);
   const errorRef = useRef(null);
   const stepSendRef = useRef(null);
   const stepDoneRef = useRef(null);
   const sentEmailRef = useRef(null);
   const submitBtnRef = useRef(null);
+  const initialEmail = new URLSearchParams(location.search).get("email")?.trim() || "";
 
   useEffect(() => {
-    const clearFields = () => {
-      if (emailRef.current) emailRef.current.value = "";
+    const restoreEmail = () => {
+      if (emailRef.current) {
+        emailRef.current.value = initialEmail;
+      }
     };
-    clearFields();
-    const timer = window.setTimeout(clearFields, 200);
-    return () => window.clearTimeout(timer);
-  }, []);
+
+    restoreEmail();
+
+    if (!initialEmail) {
+      const timer = window.setTimeout(restoreEmail, 200);
+      return () => window.clearTimeout(timer);
+    }
+  }, [initialEmail]);
 
   const showError = (msg) => {
     const el = errorRef.current;

@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request
 from extensions import db
 from models import Chat_History, Workspace, UploadedFile
-from routes.auth.workspace import authorize_request
+from routes.workspaces.workspace import authorize_request
 import os
 
 chat_bp = Blueprint("chat", __name__)

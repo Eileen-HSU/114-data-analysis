@@ -5,6 +5,7 @@ import SurveyDetailPage from "./components/SurveyDetailPage";
 import { useAuth } from "../../hooks/AuthContext";
 import { useActivity } from "../../hooks/ActivityContext";
 import { apiUrl } from "../../lib/api";
+import { useLanguage } from "../../context/LanguageContext";
 import "./profile.css";
 
 const DEFAULT_AVATAR = "https://static.readdy.ai/image/db4f710102ca6cc45db44808c8658987/b181cfaad2165c1909b7c8fa8339cbe7.png";
@@ -70,6 +71,7 @@ export default function ProfilePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, updateUser, profileCache } = useAuth();
+  const { language, setLanguage, t } = useLanguage();
   const { activities, recordActivity, clearActivities } = useActivity();
   const avatarInputRef = useRef(null);
   const editSectionRef = useRef(null);
@@ -107,6 +109,7 @@ export default function ProfilePage() {
     location: "",
     bio: "",
     createdAt: "",
+    language: language,
   });
   const [editProfile, setEditProfile] = useState(profile);
   const twoFactorStorageKey = `${TWO_FACTOR_KEY_PREFIX}_${getUserStorageId(user)}`;
@@ -179,6 +182,7 @@ export default function ProfilePage() {
         location:  profileCache.location     || "",
         bio:       profileCache.bio          || "",
         createdAt: profileCache.created_at   || "",
+        language:  profileCache.language     || language,
       };
       setProfile(loaded);
       if (!profileLoadedRef.current) {
@@ -202,6 +206,7 @@ export default function ProfilePage() {
           location:  data.location     || "",
           bio:       data.bio          || "",
           createdAt: data.created_at   || "",
+          language:  data.language     || language,
         };
         setProfile(loaded);
         if (!profileLoadedRef.current) {
@@ -530,6 +535,7 @@ export default function ProfilePage() {
           gender:       editProfile.gender,
           location:     editProfile.location,
           bio:          editProfile.bio,
+          language:     editProfile.language,
           avatar_url:   avatarSrc,
           updated_at:   new Date().toISOString(),
         }),
@@ -539,6 +545,7 @@ export default function ProfilePage() {
       if (!res.ok) throw new Error(result.error || '儲存失敗，請稍後再試');
 
       setProfile(editProfile);
+      setLanguage(editProfile.language);
       recordActivity({
         text: "更新個人資料",
         icon: "ri-user-settings-line",

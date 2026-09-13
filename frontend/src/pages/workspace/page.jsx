@@ -6,10 +6,13 @@ import { useAuth } from "../../hooks/AuthContext";
 import { useCollection } from "../../hooks/CollectionContext";
 import { useActivity } from "../../hooks/ActivityContext";
 import { apiUrl } from "../../lib/api";
-import { buildSurveyChatContent as buildSharedSurveyChatContent } from "../../lib/surveyChatContent";
+// 【修正】原本這裡有 import buildSurveyChatContent，現在不再用它組長文字
+// 訊息內容，改成簡短一行，拿掉未使用的 import。
 import "./workspace.css";
+import ShareWorkspaceDialog from "./ShareWorkspaceDialog";
+import ExportActions from "./ExportActions";
 
-const WELCOME_MSG = {
+export const WELCOME_MSG = {
   id: "welcome",
   role: "assistant",
   content:
@@ -17,6 +20,49 @@ const WELCOME_MSG = {
 };
 const ACTIVE_WORKSPACE_KEY = "dataanalysis_active_workspace";
 const EMPTY_SURVEY_TABLE_MARKER = "[[EMPTY_SURVEY_TABLE]]";
+/* ============================================================
+ * 【新增｜2026-08-27】串接後端真實 Gemini 分類功能
+ * 取代原本 workspace 聊天室裡「純前端算數字套中文句型」的假分析。
+ * 對應後端 API：POST /api/classification/upload
+ *   （後端會依序做 PII 遮罩 → TF-IDF 去重 → 送 Gemini 分類 → 直接回傳結果）
+ * 這一整段（helper function + ClassificationTable 元件 + runExcelClassification
+ * + sendMessage 裡的分流判斷 + 附加檔案 UI 的欄位輸入框）都是新增，
+ * 用「新增｜2026-08-27」這幾個字搜尋可以找到全部相關區塊。
+ * ============================================================ */
+const CLASSIFICATION_TABLE_MARKER = "[[CLASSIFICATION_TABLE]]";
+
+// 判斷附加的檔案是不是 Excel（.xlsx / .xls），用來決定要不要走真分類流程
+function isExcelFile(file) {
+  return !!file && /\.(xlsx|xls)$/i.test(file.name || "");
+}
+
+// 把 /api/classification/upload 回傳的 aggregated_groups 陣列存進訊息內容
+// （含 marker 方便還原）。分組、過濾「無具體建議」、彙整判斷原因跟建議摘要
+// 都已經在後端做完了，這裡不用再處理，直接存、直接顯示。
+function buildClassificationMessageContent(aggregatedGroups, meta) {
+  const rows = (aggregatedGroups || []).map((g) => ({
+    main_category: g.main_category || "",
+    sub_category: g.sub_category || "",
+    respondent_text: g.respondent_text || "",
+    aggregated_reasoning: g.aggregated_reasoning || "",
+    aggregated_summary: g.aggregated_summary || "",
+    synthesis_status: g.synthesis_status || "ok",
+    synthesis_error: g.synthesis_error || null,
+    respondent_count: g.respondent_count ?? null,
+  }));
+  return `${CLASSIFICATION_TABLE_MARKER}${JSON.stringify({ rows, meta: meta || {} })}`;
+}
+
+// 跟上面成對：把存起來的字串還原成表格資料。回傳 null 代表「這不是分類結果訊息」。
+function parseClassificationMessageContent(content) {
+  if (!content || !content.startsWith(CLASSIFICATION_TABLE_MARKER)) return null;
+  try {
+    return JSON.parse(content.slice(CLASSIFICATION_TABLE_MARKER.length));
+  } catch {
+    return null; // JSON 壞掉（例如存到一半被截斷）就當作不是分類訊息，退回顯示原始文字
+  }
+}
+/* 【新增區塊到此為止的第 1 段，下面接原本就有的 getAuthHeader】 */
 
 function getAuthHeader() {
   try {
@@ -30,6 +76,7 @@ function getAuthHeader() {
 
 function normalizeSurveyDetail(survey) {
   const code = survey?.code || survey?.access_code;
+  const responses = Array.isArray(survey?.responses) ? survey.responses : [];
   return {
     ...survey,
     id: survey?.id || survey?.template_id || code,
@@ -37,35 +84,13 @@ function normalizeSurveyDetail(survey) {
     code,
     createdAt: survey?.createdAt || survey?.created_at || "",
     questions: Array.isArray(survey?.questions) ? survey.questions : [],
-    responses: Array.isArray(survey?.responses) ? survey.responses : [],
+    responses,
+    responseCount: survey?.responseCount ?? survey?.response_count ?? responses.length,
   };
 }
 
-function getStoredSurveyRecords(user, apiSurveys = []) {
-  let surveys = [];
-  try {
-    const stored = JSON.parse(localStorage.getItem("surveys") || "{}");
-    surveys = Object.values(stored || {});
-  } catch {
-    surveys = [];
-  }
-
-  const localRecords = surveys
-    .filter((survey) => {
-      if (!user) return false;
-      if (!survey.ownerId && !survey.ownerEmail) return false;
-      return survey.ownerId === user?.user_id || survey.ownerEmail === user?.email;
-    })
-    .map((survey) => ({
-      id: survey.id || survey.code,
-      title: survey.title,
-      code: survey.code,
-      createdAt: survey.createdAt,
-      responseCount: survey.responses?.length || 0,
-      detail: survey,
-    }));
-
-  const backendRecords = apiSurveys
+function getSurveyPickerRecords(apiSurveys = []) {
+  return apiSurveys
     .map(normalizeSurveyDetail)
     .filter((survey) => survey.code)
     .map((survey) => ({
@@ -73,13 +98,10 @@ function getStoredSurveyRecords(user, apiSurveys = []) {
       title: survey.title,
       code: survey.code,
       createdAt: survey.createdAt,
-      responseCount: survey.responses.length,
+      responseCount: survey.responseCount,
+      status: survey.status || "active",
       detail: survey,
     }));
-  const backendCodes = new Set(backendRecords.map((survey) => survey.code).filter(Boolean));
-  const uniqueLocalRecords = localRecords.filter((survey) => !backendCodes.has(survey.code));
-
-  return [...backendRecords, ...uniqueLocalRecords];
 }
 
 
@@ -289,7 +311,7 @@ function PlainMessageContent({ content }) {
   ));
 }
 
-function AssistantTableContent({ content }) {
+function AssistantTableContent({ content, readOnly = false }) {
   const navigate = useNavigate();
   const { intro, rows } = parseAssistantTableRows(content);
   const isSurveyAnalysisReply = intro.includes("問卷資料") && intro.includes("初步分析結果");
@@ -323,7 +345,7 @@ function AssistantTableContent({ content }) {
           </tbody>
         </table>
       </div>
-      <div className="assistant-output-actions">
+      {!readOnly && <div className="assistant-output-actions">
         <button
           className="assistant-export-btn"
           type="button"
@@ -332,14 +354,171 @@ function AssistantTableContent({ content }) {
           <i className="ri-download-cloud-2-line"></i>
           匯出檔案
         </button>
-      </div>
+      </div>}
     </div>
   );
 }
 
-function MessageContent({ message }) {
+/* 【串backend】渲染真實分類結果的表格元件。
+ * 5 欄對照使用者要的格式：大類別／子類別／問卷回覆內容／判斷原因與說明／受試者建議摘要。
+ * 資料來源：parseClassificationMessageContent() 從訊息內容還原出來的 rows。 */
+// 把用 \n 分隔的多行文字渲染成真的換行（respondent_text、fallback 時的
+// aggregated_reasoning/aggregated_summary 都可能是這種多行字串）
+function MultilineText({ text, highlightRespondent = false }) {
+  return (text || "").split("\n").map((line, i) => {
+    if (highlightRespondent) {
+      const match = line.match(/^(受試者\d+：)(.*)$/);
+
+      if (match) {
+        return (
+          <span key={i}>
+            {i > 0 && <br />}
+            <span className="respondent-label">{match[1]}</span>
+            {match[2]}
+          </span>
+        );
+      }
+    }
+
+    return (
+      <span key={i}>
+        {i > 0 && <br />}
+        {line}
+      </span>
+    );
+  });
+}
+
+function ClassificationTable({ rows, meta, chatId, showToast, readOnly = false }) {
+  if (!rows || rows.length === 0) {
+    return (
+      <div className="assistant-output-panel">
+        <div className="assistant-output-intro">
+          這批資料沒有產生任何分類結果。
+        </div>
+
+        {meta?.diagnostic_message && (
+          <div className="assistant-output-diagnostic">
+            {meta.diagnostic_message}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="assistant-output-panel assistant-output-panel--wide">
+      <div className="assistant-output-intro">
+        分類完成，共 {rows.length} 個類別。
+      </div>
+
+      <div className="assistant-output-table-wrap">
+        <table className="assistant-output-table classification-table">
+          <thead>
+            <tr>
+              <th>大類別</th>
+              <th>子類別</th>
+              <th>問卷回覆內容</th>
+              <th>判斷原因與說明</th>
+              <th>受試者建議摘要</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {rows.map((row, index) => {
+              const isSameMainAsPrev =
+                index > 0 &&
+                rows[index - 1].main_category === row.main_category;
+
+              let mainCategoryRowSpan = 1;
+
+              if (!isSameMainAsPrev) {
+                for (
+                  let j = index + 1;
+                  j < rows.length &&
+                  rows[j].main_category === row.main_category;
+                  j++
+                ) {
+                  mainCategoryRowSpan++;
+                }
+              }
+
+              return (
+                <tr key={index}>
+                  {!isSameMainAsPrev && (
+                    <td
+                      rowSpan={mainCategoryRowSpan}
+                      className="merged-cell-center"
+                    >
+                      {row.main_category}
+                    </td>
+                  )}
+
+                  <td className="sub-category-cell">
+                    {row.sub_category}
+                  </td>
+
+                  <td>
+                    <MultilineText
+                      text={row.respondent_text}
+                      highlightRespondent={true}
+                    />
+                  </td>
+
+                  <td>
+                    <MultilineText text={row.aggregated_reasoning} />
+                  </td>
+
+                  <td>
+                    <MultilineText text={row.aggregated_summary} />
+
+                    {row.synthesis_status === "fallback" && (
+                      <div className="synthesis-fallback-note">
+                        （彙整摘要暫時失敗，以下為個別意見簡易拼接，非完整統整）
+
+                        {row.synthesis_error && (
+                          <div className="synthesis-error-detail">
+                            錯誤原因：{row.synthesis_error}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {!readOnly && <ExportActions rows={rows} chatId={chatId} sourceFilename={meta?.source_filename} />}
+    </div>
+  );
+}
+
+// 【新增｜邀請瀏覽】export 出去給 SharedWorkspacePage.jsx 重複使用，
+// 這樣唯讀頁面才能沿用同一套已經驗證過的分類結果表格渲染邏輯，
+// 不用另外重寫一份（重寫容易漏掉今天調過的細節，例如大類別合併、
+// 受試者片段合併顯示這些規則）。
+export function MessageContent({ message, showToast, readOnly = false }) {
+  // 優先判斷是不是真分類結果訊息，是的話直接渲染表格，
+  // 不要讓它掉進下面 AssistantTableContent 那個舊的、給假分析用的文字解析邏輯。
+  const classificationData = parseClassificationMessageContent(message.content);
+  if (classificationData) {
+    return (
+      <ClassificationTable
+        readOnly={readOnly}
+        rows={classificationData.rows}
+        meta={classificationData.meta}
+        chatId={message.chatId}
+        showToast={showToast}
+      />
+    );
+  }
+  // 【新增區塊到此為止，以下都是原本就有的邏輯，沒有改動】
+
   if (message.role === "assistant") {
-    return <AssistantTableContent content={message.content} />;
+    return <AssistantTableContent content={message.content} readOnly={readOnly} />;
   }
 
   return <PlainMessageContent content={message.content} />;
@@ -384,6 +563,9 @@ export default function WorkspacePage() {
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [attachedFile, setAttachedFile] = useState(null);
+  // 【串backend】真分類流程用的 state：
+  // isClassifying = 分類中鎖定輸入框（欄位名稱不用使用者輸入，後端自動判斷）
+  const [isClassifying, setIsClassifying] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [renamingId, setRenamingId] = useState(null);
   const [renameValue, setRenameValue] = useState("");
@@ -392,12 +574,16 @@ export default function WorkspacePage() {
   const [apiSurveys, setApiSurveys] = useState([]);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeletingSession, setIsDeletingSession] = useState(false);
+  const [shareInvite, setShareInvite] = useState(null);
+  const [isSharing, setIsSharing] = useState(false);
   const [toastMsg, setToastMsg] = useState(null);
   const [isEntryLoading, setIsEntryLoading] = useState(() => sessionStorage.getItem("dataanalysis_login_loading") === "1");
+  const [historyLoadingSessionId, setHistoryLoadingSessionId] = useState(() => location.state?.openSession?.sessionId || null);
   const [isSurveyPickerLoading, setIsSurveyPickerLoading] = useState(true);
   const toastTimerRef = useRef(null);
 
   const messagesEndRef = useRef(null);
+  const scrollToBottomSessionRef = useRef(location.state?.openSession?.scrollToBottom ? location.state.openSession.sessionId : null);
   const fileInputRef = useRef(null);
   const textareaRef = useRef(null);
   const surveyImportHandled = useRef(false);
@@ -411,6 +597,42 @@ export default function WorkspacePage() {
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
   const messages = activeSession?.messages ?? [];
+
+  // 分享目前工作區，成功後顯示可複製及預覽的邀請連結。
+  // 暫存工作區（temp-/survey- 開頭）根本沒有真正的 project_id，
+  // 邀請連結沒有意義，直接告知使用者先送出至少一則訊息。
+  const handleInviteView = async () => {
+    if (isSharing) return;
+    if (!activeSession) {
+      showToast?.("請先開啟一個工作區");
+      return;
+    }
+    const projectId = activeSession.project_id;
+    if (!projectId || String(projectId).startsWith("temp-") || String(projectId).startsWith("survey-")) {
+      showToast?.("這個工作區還沒同步完成，請先傳送一則訊息後再邀請檢視");
+      return;
+    }
+    setIsSharing(true);
+    try {
+      const res = await fetch(apiUrl(`/api/workspace/${projectId}/share`), {
+        method: "POST",
+        headers: getAuthHeader(),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast?.(data?.error || "產生邀請連結失敗");
+        return;
+      }
+      const shareLink = `${window.location.origin}/shared/${data.share_code}`;
+      if (!data.share_code) throw new Error("Missing share code");
+      setShareInvite({ link: shareLink, title: activeSession.title || "分析對話" });
+    } catch (err) {
+      console.error("產生邀請連結失敗：", err);
+      showToast?.("產生邀請連結失敗，請稍後再試");
+    } finally {
+      setIsSharing(false);
+    }
+  };
 
   useEffect(() => {
     const headers = getAuthHeader();
@@ -544,17 +766,25 @@ export default function WorkspacePage() {
     useEffect(() => {
       if (!activeSessionId || !isLoggedIn) return;
 
-      const currentSession = sessions.find((s) => s.id === activeSessionId);
+      const currentSession = sessions.find(
+        (s) => String(s.id) === String(activeSessionId)
+      );
       if (!currentSession?.project_id) return;
       
       // 已經載入過就跳過
-      if (loadedProjectIds.current.has(currentSession.project_id)) return;
+      if (loadedProjectIds.current.has(currentSession.project_id)) {
+        setHistoryLoadingSessionId((current) => current === activeSessionId ? null : current);
+        return;
+      }
       if (currentSession.messages && currentSession.messages.length > 1) {
         loadedProjectIds.current.add(currentSession.project_id);
+        setHistoryLoadingSessionId((current) => current === activeSessionId ? null : current);
         return;
       }
 
       loadedProjectIds.current.add(currentSession.project_id); // 先標記，防止重複打
+
+      setHistoryLoadingSessionId((current) => current || activeSessionId);
 
       const fetchHistory = async () => {
         try {
@@ -563,17 +793,24 @@ export default function WorkspacePage() {
           });
           if (!res.ok) return;
           const histData = await res.json();
-          const historyList = Array.isArray(histData?.chat_history) ? histData.chat_history : [];
+          const historyList = Array.isArray(histData?.chat_history)
+            ? histData.chat_history.filter((item) => item.type !== "file")
+            : [];
           const fetchedMessages = historyList.map((h) => ({
             id: String(h.chat_id),
-            role: h.sender_type === "user" ? "user" : "assistant",
-            content: h.message_content || "",
+            role: h.role || (h.sender_type === "user" ? "user" : "assistant"),
+            content: h.content || h.message_content || "",
+            // 【修正｜匯出清單抓不到 chat_id】後端明明有回傳 chat_id（上面
+            // 拿去當 id 用了），但這裡漏了存進 chatId 欄位——導致頁面重新
+            // 整理、或切換 session 後再回來，分類結果訊息的匯出按鈕會找不到
+            // chat_id，誤判成「這則訊息還沒同步」，其實只是忘了帶進來。
+            chatId: h.chat_id,
           }));
 
           if (fetchedMessages.length > 0) {
             setSessions((currentList) =>
               (Array.isArray(currentList) ? currentList : []).map((session) => {
-                if (session.id !== activeSessionId) return session;
+                if (String(session.id) !== String(activeSessionId)) return session;
 
                 const localMessages = Array.isArray(session.messages) ? session.messages : [];
                 const messageKey = (msg) => `${msg.role || ""}::${msg.content || ""}`;
@@ -592,11 +829,13 @@ export default function WorkspacePage() {
           }
         } catch (err) {
           console.error("動態載入歷史對話失敗：", err);
+        } finally {
+          setHistoryLoadingSessionId((current) => current === activeSessionId ? null : current);
         }
       };
 
       fetchHistory();
-  }, [activeSessionId, isLoggedIn]); // sessions 移出 dependency array
+  }, [activeSessionId, isLoggedIn, sessions, setSessions]);
 
   useEffect(() => {
     if (activeSessionId || sessions.length === 0) return;
@@ -611,8 +850,15 @@ export default function WorkspacePage() {
   }, [activeSessionId]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isTyping]);
+    const forceBottom = scrollToBottomSessionRef.current === activeSessionId;
+    if (forceBottom && (historyLoadingSessionId || isEntryLoading)) return;
+    const frame = requestAnimationFrame(() => {
+      const messageArea = messagesEndRef.current?.closest(".messages-area");
+      messageArea?.scrollTo({ top: messageArea.scrollHeight, behavior: forceBottom ? "instant" : "smooth" });
+      if (forceBottom && messagesEndRef.current) scrollToBottomSessionRef.current = null;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [messages, isTyping, activeSessionId, historyLoadingSessionId, isEntryLoading]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -629,6 +875,8 @@ export default function WorkspacePage() {
     const state = location.state;
     if (!state?.openSession) return;
     const { sessionId } = state.openSession;
+    scrollToBottomSessionRef.current = state.openSession.scrollToBottom ? sessionId : null;
+    setHistoryLoadingSessionId(sessionId);
     setActiveSessionId(sessionId);
     window.history.replaceState({}, "");
   }, [location.state]);
@@ -690,24 +938,71 @@ export default function WorkspacePage() {
       setActiveSessionId(String(data.project_id));
 
       setIsTyping(true);
-      setTimeout(() => {
-        const aiReply = buildAssistantReply(message, surveyDetail || null, surveyTitle);
-        setSessions((currentList) =>
-          (Array.isArray(currentList) ? currentList : []).map((session) =>
-            session.id === String(data.project_id)
-              ? {
-                  ...session,
-                  messages: [
-                    ...(session.messages || []),
-                    { id: `a-${Date.now()}`, role: "assistant", content: aiReply },
-                  ],
-                }
-              : session
-          )
-        );
-        setIsTyping(false);
-        saveChatMessage(data.project_id, "assistant", aiReply, templateId);
-      }, 1800);
+      // 【修正｜串接真實 Gemini 分析，取代原本純前端組字串的假回覆】
+      // 對應後端 POST /api/surveys/<code>/analyze，會真的對整份問卷觸發
+      // PII 遮罩 → TF-IDF 去重 → Gemini 分類 → 依類別分組彙整，
+      // 沿用跟 Excel 上傳分類同一套 buildClassificationMessageContent /
+      // ClassificationTable 渲染邏輯，不用另外做一套畫面。
+      (async () => {
+        const assistantMsgId = `a-${Date.now()}`;
+        try {
+          if (!surveyCode) {
+            throw new Error("找不到問卷代碼，無法觸發分析");
+          }
+          const analyzeRes = await fetch(
+            apiUrl(`/api/surveys/${encodeURIComponent(surveyCode)}/analyze`),
+            { method: "POST", headers: getAuthHeader() }
+          );
+          const analyzeData = await analyzeRes.json();
+          if (!analyzeRes.ok) {
+            throw new Error(analyzeData?.error || `HTTP ${analyzeRes.status}`);
+          }
+
+          const assistantContent = buildClassificationMessageContent(
+            analyzeData.aggregated_groups,
+            {
+              classified_count: analyzeData.newly_classified_count,
+              source_filename: `${surveyTitle}（問卷）`,
+              // 【新增｜診斷訊息】沒有結果時，把後端算出來的原因帶過去，
+              // 不要只顯示「沒有結果」讓使用者猜。
+              diagnostic_message: analyzeData.diagnostic?.message,
+            }
+          );
+          setSessions((currentList) =>
+            (Array.isArray(currentList) ? currentList : []).map((session) =>
+              session.id === String(data.project_id)
+                ? {
+                    ...session,
+                    messages: [
+                      ...(session.messages || []),
+                      { id: assistantMsgId, role: "assistant", content: assistantContent },
+                    ],
+                  }
+                : session
+            )
+          );
+          const savedChatId = await saveChatMessage(data.project_id, "assistant", assistantContent, templateId);
+          updateMessageChatId(String(data.project_id), assistantMsgId, savedChatId);
+        } catch (err) {
+          const errMsg = `分析失敗：${err?.message || "網路錯誤"}`;
+          setSessions((currentList) =>
+            (Array.isArray(currentList) ? currentList : []).map((session) =>
+              session.id === String(data.project_id)
+                ? {
+                    ...session,
+                    messages: [
+                      ...(session.messages || []),
+                      { id: assistantMsgId, role: "assistant", content: errMsg },
+                    ],
+                  }
+                : session
+            )
+          );
+          saveChatMessage(data.project_id, "assistant", errMsg, templateId);
+        } finally {
+          setIsTyping(false);
+        }
+      })();
     })
     .catch((err) => console.error("問卷匯入建立 workspace 失敗", err));
 
@@ -724,6 +1019,26 @@ export default function WorkspacePage() {
     );
   }, [setSessions]);
 
+  // 【新增｜串接 Export_File】把後端回傳的 chat_id 補到已經 append 進畫面
+  // 的那則訊息上（只更新 React state，不影響存進資料庫的 message_content
+  // 本身）。分類結果的匯出要綁在 chat_id 上（沿用既有 Export_File 設計），
+  // 這個 chat_id 只有存訊息成功之後才拿得到，所以需要事後補上去。
+  const updateMessageChatId = useCallback((sessionId, messageId, chatId) => {
+    if (!chatId) return;
+    setSessions((currentList) =>
+      (Array.isArray(currentList) ? currentList : []).map((session) =>
+        session.id === sessionId
+          ? {
+              ...session,
+              messages: (session.messages || []).map((m) =>
+                m.id === messageId ? { ...m, chatId } : m
+              ),
+            }
+          : session
+      )
+    );
+  }, [setSessions]);
+
   const saveChatMessage = useCallback(async (projectId, role, content, templateId = null) => {
     if (
       !projectId ||
@@ -731,13 +1046,13 @@ export default function WorkspacePage() {
       String(projectId).startsWith("survey-")
     ) {
       console.log("[SaveChat] 偵測到臨時工作區，暫緩同步至後端：", projectId);
-      return;
+      return null;
     }
 
     const intProjectId = Number(projectId);
     if (!Number.isInteger(intProjectId)) {
       console.error("[SaveChat] projectId 格式錯誤：", projectId);
-      return;
+      return null;
     }
 
     try {
@@ -754,16 +1069,22 @@ export default function WorkspacePage() {
 
       if (!res.ok) {
         console.error("訊息同步至資料庫失敗：", res.status);
+        return null;
       }
+      const data = await res.json();
+      return data?.chat_history?.chat_id ?? null;
     } catch (err) {
       console.error("訊息同步至資料庫失敗", err);
+      return null;
     }
   }, []);
 
   const handleSelectSurvey = async (record) => {
     const detail = normalizeSurveyDetail(record.detail);
     if (!detail || !activeSessionId) return;
-    const content = buildSharedSurveyChatContent(detail);
+    // 【修正｜改成簡短一行】原本會把整份問卷回覆逐字列出來，跟 SurveyDetailPage.jsx
+    // 的 handleImportToChat 是同一個問題，一起改成一行簡短說明。
+    const content = `[問卷：${detail.title}] 觸發自動分析`;
     const userMsg = { id: `u-${Date.now()}`, role: "user", content };
 
     const selectedSession = sessions.find((session) => session.id === activeSessionId);
@@ -782,37 +1103,170 @@ export default function WorkspacePage() {
 
     setIsTyping(true);
     const sid = activeSessionId;
-    setTimeout(() => {
-      const aiReply = buildAssistantReply(content, detail, record.title);
-      
-      setSessions((currentList) =>
-        (Array.isArray(currentList) ? currentList : []).map((session) =>
-          session.id === sid
-            ? {
-                ...session,
-                messages: [
-                  ...(session.messages || []),
-                  { id: `a-${Date.now()}`, role: "assistant", content: aiReply },
-                ],
-              }
-            : session
-        )
-      );
-      setIsTyping(false);
-      saveChatMessage(projectId, "assistant", aiReply, detail.id);
-    }, 1800);
+    // 【修正｜串接真實 Gemini 分析，取代原本純前端組字串的假回覆】
+    // 跟「專案管理→匯入」那個入口共用同一套後端 API 跟渲染邏輯，
+    // 只是問卷代碼、chat_id 的取得方式不同（這裡是已經在一個既有
+    // session 裡挑問卷，不用另外建新的 workspace）。
+    (async () => {
+      const assistantMsgId = `a-${Date.now()}`;
+      try {
+        if (!detail.code) {
+          throw new Error("找不到問卷代碼，無法觸發分析");
+        }
+        const analyzeRes = await fetch(
+          apiUrl(`/api/surveys/${encodeURIComponent(detail.code)}/analyze`),
+          { method: "POST", headers: getAuthHeader() }
+        );
+        const analyzeData = await analyzeRes.json();
+        if (!analyzeRes.ok) {
+          throw new Error(analyzeData?.error || `HTTP ${analyzeRes.status}`);
+        }
+
+        const assistantContent = buildClassificationMessageContent(
+          analyzeData.aggregated_groups,
+          {
+            classified_count: analyzeData.newly_classified_count,
+            source_filename: `${detail.title}（問卷）`,
+            diagnostic_message: analyzeData.diagnostic?.message,
+          }
+        );
+        setSessions((currentList) =>
+          (Array.isArray(currentList) ? currentList : []).map((session) =>
+            session.id === sid
+              ? {
+                  ...session,
+                  messages: [
+                    ...(session.messages || []),
+                    { id: assistantMsgId, role: "assistant", content: assistantContent },
+                  ],
+                }
+              : session
+          )
+        );
+        const savedChatId = await saveChatMessage(projectId, "assistant", assistantContent, detail.id);
+        updateMessageChatId(sid, assistantMsgId, savedChatId);
+      } catch (err) {
+        const errMsg = `分析失敗：${err?.message || "網路錯誤"}`;
+        setSessions((currentList) =>
+          (Array.isArray(currentList) ? currentList : []).map((session) =>
+            session.id === sid
+              ? {
+                  ...session,
+                  messages: [
+                    ...(session.messages || []),
+                    { id: assistantMsgId, role: "assistant", content: errMsg },
+                  ],
+                }
+              : session
+          )
+        );
+        saveChatMessage(projectId, "assistant", errMsg, detail.id);
+      } finally {
+        setIsTyping(false);
+      }
+    })();
   };
 
-  const surveyPickerRecords = getStoredSurveyRecords(user, apiSurveys);
+  const surveyPickerRecords = getSurveyPickerRecords(apiSurveys);
   const filteredSurveyPicker = surveyPickerRecords.filter(
     (s) =>
       String(s.title || "").toLowerCase().includes(surveyPickerSearch.toLowerCase()) ||
       String(s.code || "").toLowerCase().includes(surveyPickerSearch.toLowerCase())
   );
 
+  /* 【串backend】
+   * 真的把 Excel 送去後端做 PII 遮罩 → TF-IDF 去重 → Gemini 分類，
+   * 取代原本純前端算數字套句型的假分析。
+   * 打的 API：POST /api/classification/upload （multipart/form-data: file, text_column）
+   * debug 時先看這支 API 的 Network 回應，data.error 會直接顯示在聊天室裡。 */
+  /* 【新增｜2026-08-27｜第 4 段｜串接後端核心】
+   * 真的把 Excel 送去後端做 PII 遮罩 → TF-IDF 去重 → Gemini 分類，
+   * 取代原本純前端算數字套句型的假分析。
+   * 打的 API：POST /api/classification/upload （multipart/form-data: file）
+   * 不用使用者輸入文字欄位名稱——後端會自動判斷最可能的開放式回答欄位，
+   * 回傳的 text_column / text_column_auto_detected 讓畫面上可以顯示判斷結果。
+   * debug 時先看這支 API 的 Network 回應，data.error 會直接顯示在聊天室裡。 */
+  const runExcelClassification = async (file, sid, projectId) => {
+    const userContent = `[檔案：${file.name}] 上傳並自動分類`;
+    const userMsg = { id: Date.now().toString(), role: "user", content: userContent };
+    appendMessage(sid, userMsg);
+    setIsClassifying(true);
+    setIsTyping(true);
+
+    if (projectId && !String(projectId).startsWith("temp-") && !String(projectId).startsWith("survey-")) {
+      saveChatMessage(projectId, "user", userContent);
+    }
+
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      // 不附 text_column，交給後端自動判斷（見 backend/routes/classifications/classification.py
+      // 的 _auto_detect_text_column）
+
+      // 打後端 Gemini 分類的地方
+      const res = await fetch(apiUrl("/api/classification/upload"), {
+        method: "POST",
+        headers: getAuthHeader(),
+        body: form,
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        const errMsg = `分類失敗：${data?.error || res.status}`;
+        appendMessage(sid, { id: `a-${Date.now()}`, role: "assistant", content: errMsg });
+        showToast(errMsg);
+        return;
+      }
+
+      const assistantContent = buildClassificationMessageContent(data.aggregated_groups, {
+        classified_count: data.classified_count,
+        saved_answer_count: data.saved_answer_count,
+        upload_batch_id: data.upload_batch_id,
+        text_column: data.text_column,
+        text_column_auto_detected: data.text_column_auto_detected,
+        // 【新增｜匯出檔名跟原始上傳檔名對應】方便使用者從匯出清單就
+        // 知道這批結果對應哪一份原始 Excel。
+        source_filename: file.name,
+      });
+      const assistantMsgId = `a-${Date.now()}`;
+      appendMessage(sid, { id: assistantMsgId, role: "assistant", content: assistantContent });
+
+      if (projectId && !String(projectId).startsWith("temp-") && !String(projectId).startsWith("survey-")) {
+        // 【新增｜串接 Export_File】拿到這則訊息真正的 chat_id，補到訊息上——
+        // 分類結果的匯出（Export_File）要綁在這個 chat_id 上，之後匯出按鈕
+        // 才知道要把匯出紀錄掛在哪一則對話底下。
+        const savedChatId = await saveChatMessage(projectId, "assistant", assistantContent);
+        updateMessageChatId(sid, assistantMsgId, savedChatId);
+      }
+    } catch (err) {
+      const errMsg = `分類失敗：${err?.message || "網路錯誤"}`;
+      appendMessage(sid, { id: `a-${Date.now()}`, role: "assistant", content: errMsg });
+      showToast(errMsg);
+    } finally {
+      setIsClassifying(false);
+      setIsTyping(false);
+    }
+  };
+
   const sendMessage = async () => {
     if (!input.trim() && !attachedFile) return;
     if (!activeSessionId) return;
+
+    /* 【串backend】
+     * 附加的是 Excel → 走真的分類流程，不走假分析，不需要使用者輸入欄位名稱
+     * （後端自動判斷最可能的開放式回答欄位）。
+     * 其他所有情況（沒附檔、附的不是 Excel）都會直接往下掉到原本的邏輯，
+     * 跟改之前完全一樣，沒有被動到。 */
+    if (attachedFile && isExcelFile(attachedFile)) {
+      const sid = activeSessionId;
+      const session = sessions.find((s) => s.id === sid);
+      const projectId = session?.project_id;
+      const file = attachedFile;
+      setAttachedFile(null);
+      setInput("");
+      await runExcelClassification(file, sid, projectId);
+      return;
+    }
 
     const draftInput = input;
     const draftFile = attachedFile;
@@ -1051,7 +1505,7 @@ export default function WorkspacePage() {
     );
   }
 
-  if (isEntryLoading) {
+  if (isEntryLoading || historyLoadingSessionId) {
     return (
       <>
         <Navbar />
@@ -1060,8 +1514,8 @@ export default function WorkspacePage() {
             <div className="workspace-entry-loading-icon">
               <i className="ri-loader-4-line"></i>
             </div>
-            <h1>正在載入工作區...</h1>
-            <p>正在整理您的專案管理、歷史對話紀錄與分析資料，請稍候。</p>
+            <h1>{isEntryLoading ? "正在載入工作區..." : "正在載入歷史對話..."}</h1>
+            <p>{isEntryLoading ? "正在整理您的專案管理、歷史對話紀錄與分析資料，請稍候。" : "正在取得這個 Chat 的歷史資料，完成後會自動顯示。"}</p>
           </div>
         </main>
       </>
@@ -1184,9 +1638,9 @@ export default function WorkspacePage() {
           {/* Main Chat */}
           <main className="workspace-main">
             <div className="workspace-share-float">
-              <button className="workspace-share-btn" type="button">
+              <button className="workspace-share-btn" type="button" onClick={handleInviteView} disabled={isSharing}>
                 <i className="ri-eye-line"></i>
-                <span>邀請檢視</span>
+                <span>{isSharing ? "產生連結中..." : "邀請檢視"}</span>
               </button>
             </div>
             {activeSession === null ? (
@@ -1223,7 +1677,7 @@ export default function WorkspacePage() {
                         <i className={msg.role === "user" ? "ri-user-line" : "ri-robot-line"}></i>
                       </div>
                       <div className={`message-bubble ${msg.role === "user" ? "user-bubble" : "assistant-bubble"}`}>
-                        <MessageContent message={msg} />
+                        <MessageContent message={msg} showToast={showToast} />
                       </div>
                     </div>
                   ))}
@@ -1249,11 +1703,17 @@ export default function WorkspacePage() {
                     <div className="file-attachment">
                       <i className="ri-attachment-line"></i>
                       <span>{attachedFile.name}</span>
-                      <button onClick={() => setAttachedFile(null)}>
+                      {isExcelFile(attachedFile) && (
+                        <span className="classification-hint">（送出後將自動分類）</span>
+                      )}
+                      <button onClick={() => setAttachedFile(null)} disabled={isClassifying}>
                         <i className="ri-close-line"></i>
                       </button>
                     </div>
                   )}
+                  {/* 【串backend】原本這裡有一個要求使用者輸入文字欄位名稱的輸入框，
+                      已移除——欄位名稱改由後端自動判斷（見 runExcelClassification 說明），
+                      使用者只要附加 Excel 直接送出即可。 */}
                   <div className="input-wrapper">
                     <div className="survey-picker-wrapper" ref={surveyPickerRef}>
                       <button
@@ -1376,6 +1836,7 @@ export default function WorkspacePage() {
           </main>
         </div>
       </div>
+      {shareInvite && <ShareWorkspaceDialog invite={shareInvite} onClose={() => setShareInvite(null)} />}
       {deleteTarget && (
         <div className="workspace-modal-backdrop" onClick={() => !isDeletingSession && setDeleteTarget(null)}>
           <div className="workspace-alert-modal" onClick={(event) => event.stopPropagation()}>
