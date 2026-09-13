@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import time
 
 import google.generativeai as genai
 
@@ -13,6 +14,49 @@ from services.privacy_service import mask_pii, mask_pii_with_mapping, PiiMasking
 from services.segmentation_service import segment_answer
 
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+
+# 【修正】Gemini #2（批次分類）原本完全沒有重試機制，撞到免費層 429
+# 限流就直接放棄、整筆標記失敗。做法比照 services/aggregated_summary_service.py
+# 跟 services/segmentation_service.py 已經驗證過的修法：只在真的撞到
+# 限流時，讀 Gemini 錯誤訊息裡自己附的建議秒數等待後再重試。
+_RETRY_DELAY_PATTERNS = (
+    re.compile(r"[Rr]etry in ([\d.]+)s"),
+    re.compile(r'"retryDelay"\s*:\s*"([\d.]+)s"'),
+)
+
+
+def _extract_retry_delay_seconds(exc: Exception):
+    text = str(exc)
+    for pattern in _RETRY_DELAY_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            try:
+                return float(match.group(1))
+            except ValueError:
+                continue
+    return None
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    text = str(exc)
+    return "429" in text or "ResourceExhausted" in type(exc).__name__ or "RESOURCE_EXHAUSTED" in text
+
+
+def _generate_with_retry(model, user_message: str):
+    """對 model.generate_content() 的統一包裝：只有真的撞到免費層
+    429 限流時才等待重試，其他錯誤（prompt 有問題、解析失敗等）
+    維持原本行為，立刻讓例外往上拋，不做無意義的重試。"""
+    last_error = None
+    for attempt in range(3):
+        try:
+            return model.generate_content(user_message, generation_config={"temperature": 0})
+        except Exception as e:
+            last_error = e
+            if attempt < 2 and _is_rate_limit_error(e):
+                delay = _extract_retry_delay_seconds(e) or 20.0
+                time.sleep(delay + 1.0)
+                continue
+            raise last_error
 
 
 # Gemini #2（批次分類）專用：附加在 prompt_content 之後的輸出格式
@@ -271,10 +315,7 @@ def _call_gemini_and_parse(masked_text: str, prompt_content: str, question_type:
             model_name="gemini-3.1-flash-lite",
             system_instruction=prompt_content,
         )
-        response = model.generate_content(
-            f"問卷回覆內容:\n{masked_text}",
-            generation_config={"temperature": 0},
-        )
+        response = _generate_with_retry(model, f"問卷回覆內容:\n{masked_text}")
         parsed = _parse_json(response.text)
 
         result["main_category"] = parsed["main_category"]
@@ -433,10 +474,7 @@ def _call_gemini_batch_classification(masked_segments: list, prompt_content: str
             model_name="gemini-3.1-flash-lite",
             system_instruction=batch_system_instruction,
         )
-        response = model.generate_content(
-            user_message,
-            generation_config={"temperature": 0},
-        )
+        response = _generate_with_retry(model, user_message)
         parsed = _parse_json(response.text)
         items = parsed["classifications"]
 

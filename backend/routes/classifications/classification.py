@@ -425,6 +425,21 @@ def upload_excel_for_classification():
     text_column_param = request.form.get("text_column")
     total_row_count = len(df)
 
+    # 【修正｜每個欄位都要分析，不能只挑一欄】
+    # 原本這裡只自動判斷「一個」最像開放式回答的欄位，如果 Excel 裡
+    # 有好幾個開放式問題（好幾個文字欄位），其他欄位的受試者回答會
+    # 整批被漏掉，而且沒有任何提示——這正是先前「上傳 26 筆卻只跑出
+    # 幾筆結果」的根本原因之一。
+    #
+    # 現在改成：沒有手動指定 text_column 時，把每一個看起來像開放式
+    # 文字回答的欄位都找出來（_detect_candidate_text_columns），逐欄
+    # 各自跑一次完整流程。TF-IDF 去重（services/batch_classification_service
+    # 的 run_batch_analysis）本來就是以 (upload_batch_id, source_column)
+    # 為單位各自比對，不同欄位的回答不會被誤判成重複，這裡沿用同一套
+    # 邏輯，只是從「只呼叫一次」改成「每欄各呼叫一次」。
+    #
+    # 仍然保留手動指定單一 text_column 的能力（例如未來別的呼叫端要
+    # 精準指定某一欄時可用），這種情況維持原本「只分析這一欄」的行為。
     if text_column_param and text_column_param in df.columns:
         text_columns = [text_column_param]
         auto_detected = False
@@ -604,10 +619,7 @@ def analyze_survey(access_code):
     question_json = survey.question_json or {}
     items = question_json.get("items", [])
 
-    # 【修正｜動態分類】原本這裡只收「type == short 且已經有 routing
-    # 結果」的題目，內容跟兩個固定主題都對不上的題目（question_type
-    # 是 None）會被整個排除，不管有幾個人回答都不會被分析。現在改成
-    # 這種題目也納入，用 QUESTION_OTHER 動態分類處理，不再直接放棄。
+    
     question_type_map = {
         item.get("id"): (item.get("question_type") or QUESTION_OTHER)
         for item in items
@@ -615,13 +627,7 @@ def analyze_survey(access_code):
     }
 
     if not question_type_map:
-        # 【修正】這個分支原本沒有回傳 aggregated_groups，前端會拿到
-        # undefined、當成「沒有結果」處理，跟真的分析完但沒結果分不出來。
-        # 補上這個欄位（固定空陣列），並附上診斷資訊，方便知道問卷本身
-        # 是不是根本沒有任何一題被判定成「可分類的開放式文字題」——
-        # 這種情況下不管有幾個人回答，都不會產生任何分類結果，因為
-        # 沒有一題符合「type == short 且有 question_type routing 結果」
-        # 這個條件。
+        
         short_type_items = [item for item in items if item.get("type") == "short"]
         return jsonify({
             "template_id": template_id,
@@ -646,29 +652,18 @@ def analyze_survey(access_code):
         Survey_Response.response_id.asc()
     ).all()
 
-    # 【新增｜受試者編號】跟 Excel 上傳那條路一樣，讓分析結果知道「這是第
-    # 幾位受試者」。問卷這邊沒有 row_index 概念，改用 response_id 本身的
-    # 遞增順序當作編號依據。
+    
     response_id_to_number = {
         response.response_id: idx for idx, response in enumerate(responses)
     }
 
     analyzed_question_ids = []
     newly_classified_count = 0
-    # 【新增｜彙整用】依 question_type 分開收集這次分析涉及到的所有分類
-    # 結果（包含這次新分類的、以及之前已經分類過、這次重跑沒有重新送
-    # Gemini 但仍要納入彙整畫面的），最後才依類別分組、彙整成一段話。
     rows_by_question_type = {}
-    # 【新增｜診斷用】記錄每個可分類題目「有幾筆回覆」跟「有幾筆是有效
-    # 文字回覆」，如果全部人都被判定成無效文字（例如答案是空字串、
-    # 或格式跟預期不符），就會出現「有 N 人回答但分類結果是空」的情況，
-    # 這個資訊能直接看出問題出在哪一步。
     per_question_diagnostic = {}
 
     for question_id, question_type in question_type_map.items():
-        # 【修正｜動態分類】QUESTION_OTHER 沒有對應的 Prompt_Template
-        # 資料庫紀錄（本來就不需要固定清單），改用寫死的動態分類 prompt；
-        # 其他兩個固定主題維持原本從資料庫撈 prompt 的方式不變。
+    
         if question_type == QUESTION_OTHER:
             prompt_content_for_batch = DYNAMIC_GENERAL_PROMPT
         else:
@@ -681,8 +676,6 @@ def analyze_survey(access_code):
         pending_items = []
         diag = {
             "total_responses": len(responses), "missing_key": 0, "invalid_text": 0, "valid": 0,
-            # 【新增】記錄這次有幾筆是「之前卡在 failed/partial_failed、
-            # 這次被清掉重新處理」的，方便確認這個修正是否真的生效。
             "reset_stuck_records": 0,
         }
 
@@ -702,22 +695,12 @@ def analyze_survey(access_code):
                 response_id=response.response_id, question_id=question_id
             ).first()
 
-            # 【修正｜卡住的失敗紀錄要能重跑】原本「不論 completed /
-            # partial_failed / failed 都當作已處理、不重新分類」——這在
-            # 平常沒問題，但今天後端一直中途崩潰，有些回答被標記成
-            # failed/partial_failed 之後就永遠卡住、再也不會被重新送
-            # Gemini，即使問卷本身填答人數對得上，最後畫面上看到的
-            # 分類結果卻少了一大半。改成：只有真的「completed」才算
-            # 已處理、跳過；failed / partial_failed 清掉舊紀錄、當成
-            # 全新資料重新處理一次。
             if existing_status is not None and existing_status.segmentation_status == "completed":
-                # 已處理過（不論 completed / partial_failed / failed），
-                # 不重新分類，但可以當 duplicate reference
+                
                 existing_rows = Response_Classification.query.filter_by(
                     response_id=response.response_id, question_id=question_id
                 ).all()
-                # 【新增｜彙整用】舊資料也要收進來，不然重新分析一次，
-                # 之前已經分類過的結果就會從彙整畫面消失。
+                
                 rows_by_question_type.setdefault(question_type, []).extend(existing_rows)
                 existing_references.append({
                     "identifier": response.response_id,
