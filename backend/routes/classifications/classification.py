@@ -63,7 +63,7 @@ from services.classify_v2 import classify_response_multi_segment, is_text_respon
 from services.privacy_service import mask_pii, PiiMaskingError
 from services.question_routing_service import route_question_type
 from services.batch_classification_service import run_batch_analysis
-from services.aggregated_summary_service import build_aggregated_summary, AggregatedSummaryError
+from services.aggregated_summary_service import build_aggregated_summary, build_aggregated_summary_pair, AggregatedSummaryError
 from services.subcategory_methodology import all_subcategories, QUESTION_OTHER
 from routes.surveys.survey import verify_token, find_survey_by_access_or_short_code
 import pandas as pd
@@ -181,14 +181,11 @@ def _build_aggregated_groups(all_classification_rows, id_to_row_index, question_
         synthesis_error = None
         try:
             reasoning_items = [{"matched_segment_text": it["reasoning"]} for it in items if it["reasoning"]]
-            aggregated_reasoning = (
-                build_aggregated_summary(main_category, sub_category, reasoning_items)
-                if reasoning_items else ""
-            )
             summary_items = [{"matched_segment_text": it["summary"]} for it in items if it["summary"]]
-            aggregated_summary = (
-                build_aggregated_summary(main_category, sub_category, summary_items)
-                if summary_items else ""
+            # 合併成 1 次 Gemini 呼叫（原本 reasoning、summary 各打一次，
+            # 一個 group 就要 2 次；免費層 RPM 額度緊，先從這裡減半）。
+            aggregated_reasoning, aggregated_summary = build_aggregated_summary_pair(
+                main_category, sub_category, reasoning_items, summary_items
             )
         except AggregatedSummaryError as e:
             print("[AGGREGATED_SUMMARY_FAILED]", repr(e))
