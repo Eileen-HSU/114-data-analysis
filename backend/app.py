@@ -22,6 +22,7 @@ from routes.classifications.classification import classification_bp
 from routes.classifications.review import review_bp
 from routes.classifications.report import report_bp
 from routes.exports.export import exports_bp
+from routes.admin.ai_admin import ai_admin_bp
 
 load_dotenv()
 
@@ -226,6 +227,7 @@ app.register_blueprint(classification_bp)
 app.register_blueprint(review_bp)
 app.register_blueprint(report_bp)
 app.register_blueprint(exports_bp)
+app.register_blueprint(ai_admin_bp)
 
 start_scheduler(app)
 
