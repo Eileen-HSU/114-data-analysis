@@ -219,15 +219,26 @@ def _build_routing_context(column_name: str, samples: list) -> str:
     return f"欄位名稱：{column_name}\n\n實際回答範例（已遮罩個資）：\n{sample_block}"
 
 
-# 【新增｜2026-08-27｜串接前端「不用手動輸入欄位名稱」的需求】
-# 使用者上傳 Excel 時不再需要自己打文字欄位名稱，改由後端自動判斷。
-# 判斷邏輯：只看文字型（非數字）欄位，排除明顯是 ID / 編號的欄位名稱，
-# 在剩下的欄位裡取「平均字數最長」的那一欄——開放式回答通常比姓名、
-# 選項這類欄位長很多，用平均字數是最穩定、不用額外套件的判斷方式。
+# 排除明顯是 ID / 編號的欄位名稱，不當成開放式文字回答欄位。
 _ID_LIKE_COLUMN_KEYWORDS = ("id", "編號", "序號", "代碼", "code", "no.", "no")
 
 
-def _auto_detect_text_column(df):
+def _detect_candidate_text_columns(df):
+    """
+    回傳「每一欄」看起來像開放式文字回答的欄位（依原始欄位順序），
+    不是只挑一欄。
+
+    【背景】原本的批次分類架構（services/batch_classification_service.py
+    的 TF-IDF 去重）本來就是以 (upload_batch_id, source_column) 為單位
+    各自去重、各自分類——設計上早就支援一份 Excel 有多個開放式問題
+    （多個文字欄位）。但這支 route 之前只挑「看起來最像」的單一欄位
+    分析，等於漏掉了其他欄位裡的受試者回答。這裡改成把所有合格欄位
+    都找出來，呼叫端會對每一欄各自跑一次完整流程（各自 routing、
+    各自 TF-IDF 去重、各自分類），彼此不會互相影響。
+
+    篩選規則跟原本單欄判斷一致：排除明顯是 ID/編號的欄位名稱、排除
+    數值/布林欄位、排除平均字數太短（< 2）的欄位（例如姓名、代號）。
+    """
     candidates = []
     for col in df.columns:
         col_str = str(col).strip().lower()
@@ -236,16 +247,14 @@ def _auto_detect_text_column(df):
         if pd.api.types.is_numeric_dtype(df[col]) or pd.api.types.is_bool_dtype(df[col]):
             continue
         series = df[col].dropna().astype(str)
+        series = series[series.str.strip() != ""]
         if series.empty:
             continue
         avg_len = series.str.len().mean()
-        if avg_len < 2:  # 太短的欄位（例如姓名、代號）不太可能是開放式回答
+        if avg_len < 2:
             continue
-        candidates.append((col, avg_len))
-    if not candidates:
-        return None
-    candidates.sort(key=lambda x: x[1], reverse=True)
-    return candidates[0][0]
+        candidates.append(col)
+    return candidates
 
 
 def _collect_masked_routing_samples(df, text_column: str) -> list:
@@ -413,115 +422,134 @@ def upload_excel_for_classification():
         return jsonify({"error": "請提供檔案"}), 400
 
     df = pd.read_excel(file)
-    text_column = request.form.get("text_column")
+    text_column_param = request.form.get("text_column")
+    total_row_count = len(df)
 
-    # 【新增｜2026-08-27】前端不再強制使用者輸入欄位名稱：
-    # 沒有提供、或提供的欄位名稱不存在時，自動判斷最可能的開放式文字欄位。
-    # 仍然保留手動指定 text_column 的能力（例如未來別的呼叫端要精準指定時可用）。
-    auto_detected = False
-    if not text_column or text_column not in df.columns:
-        text_column = _auto_detect_text_column(df)
+    if text_column_param and text_column_param in df.columns:
+        text_columns = [text_column_param]
+        auto_detected = False
+    else:
+        text_columns = _detect_candidate_text_columns(df)
         auto_detected = True
 
-    if not text_column or text_column not in df.columns:
+    if not text_columns:
         return jsonify({"error": "無法自動判斷文字欄位，請確認 Excel 內容是否包含開放式文字回答"}), 400
 
     upload_batch_id = str(uuid.uuid4())
 
-    # 一次上傳只 routing 一次：欄位名稱 + 前幾筆遮罩後樣本
-    samples = _collect_masked_routing_samples(df, text_column)
-    routing_context = _build_routing_context(text_column, samples)
-    routed_question_type = route_question_type(routing_context)
-    # 【修正｜動態分類】原本 routing 判斷不出來（None）就直接跳過這批
-    # 資料，現在改成 fall back 到「其他主題」動態分類，不再直接放棄。
-    if routed_question_type:
-        prompt_row = Prompt_Template.query.get(routed_question_type)
-        if prompt_row is not None:
-            question_type = routed_question_type
-            prompt_content_for_batch = prompt_row.live_content
-        else:
-            # 理論上不該發生（合法 question_type 卻查無 Prompt_Template）；
-            # 保守 fallback 成動態分類，不讓這批資料整個被跳過
-            question_type = QUESTION_OTHER
-            prompt_content_for_batch = DYNAMIC_GENERAL_PROMPT
-    else:
-        question_type = QUESTION_OTHER
-        prompt_content_for_batch = DYNAMIC_GENERAL_PROMPT
-
     saved_answer_count = 0
     classified_count = 0
     all_classification_rows = []
-    # 【新增｜受試者編號】記錄「這筆 Uploaded_Answer 對應到 Excel 裡第幾列」，
-    # 這樣分類結果回傳時才能標出「受試者N」，方便對照原始資料。
-    # 只在這支 route 的回應裡組出來，不寫進資料庫，不影響任何既有欄位/表格。
+    # 【受試者編號】記錄「這筆 Uploaded_Answer 對應到 Excel 裡第幾列」，
+    # 這樣分類結果回傳時才能標出「受試者N」，方便對照原始資料。同一列
+    # 在不同欄位各自有獨立的 Uploaded_Answer，但都對應同一個 row_index，
+    # 所以「受試者N」的編號在跨欄位時仍然一致。
     answer_id_to_row_index = {}
+    aggregated_groups = []   # 攤平版本：向後相容，只看這個欄位的舊呼叫端不用改
+    columns_summary = []     # 新增：每個欄位各自的統計 + 各自的 aggregated_groups
 
-    # 先把整批要送分類的資料收集起來（Uploaded_Answer 不論
-    # question_type 有沒有結果都先各自保存），question_type 有結果時
-    # 才收進 pending_items，交給批次協調服務一次處理整批（同一次
-    # upload_batch_id + source_column 內部互相去重，不需要每列各自
-    # 呼叫 Gemini）。upload_batch_id 每次上傳都是全新 UUID，所以這裡
-    # 的 existing_references 永遠是空清單——不可能有「這批資料裡有些
-    # 是舊的、已經分析過」的情況。
-    pending_items = []  # 每個元素額外帶一個 _question_id，DB 寫入時才用得到
+    for text_column in text_columns:
+        # 每個欄位各自 routing 一次（欄位名稱 + 這一欄前幾筆遮罩後樣本）
+        # ——不同欄位很可能對應不同題目、不同 question_type，不能共用
+        # 同一次判斷結果。
+        samples = _collect_masked_routing_samples(df, text_column)
+        routing_context = _build_routing_context(text_column, samples)
+        routed_question_type = route_question_type(routing_context)
+        # 【動態分類】routing 判斷不出來（None）就 fall back 到「其他
+        # 主題」動態分類，不直接放棄這一欄。
+        if routed_question_type:
+            prompt_row = Prompt_Template.query.get(routed_question_type)
+            if prompt_row is not None:
+                question_type = routed_question_type
+                prompt_content_for_batch = prompt_row.live_content
+            else:
+                # 理論上不該發生（合法 question_type 卻查無 Prompt_Template）；
+                # 保守 fallback 成動態分類，不讓這一欄整個被跳過
+                question_type = QUESTION_OTHER
+                prompt_content_for_batch = DYNAMIC_GENERAL_PROMPT
+        else:
+            question_type = QUESTION_OTHER
+            prompt_content_for_batch = DYNAMIC_GENERAL_PROMPT
 
-    for idx, row in df.iterrows():
-        answer = row[text_column]
-        if not is_text_response(answer):
-            continue
+        pending_items = []  # 每個元素額外帶一個 _question_id，DB 寫入時才用得到
+        column_saved_count = 0
 
-        answer_text = str(answer)
+        for idx, row in df.iterrows():
+            answer = row[text_column]
+            if not is_text_response(answer):
+                continue
 
-        uploaded_answer = Uploaded_Answer(
-            upload_batch_id=upload_batch_id,
-            user_id=auth_user_id,
-            source_column=text_column,
-            row_index=idx,
-            answer_text=answer_text,
-            question_type=question_type,
-        )
-        db.session.add(uploaded_answer)
-        db.session.flush()  # 取得 uploaded_answer.id，供下面 FK 使用
-        answer_id_to_row_index[uploaded_answer.id] = idx
-        saved_answer_count += 1
+            answer_text = str(answer)
 
-        # question_type 現在一定有值（固定主題或 QUESTION_OTHER 動態分類），
-        # 不會再是 None，這個判斷保留只是防禦性寫法。
-        if question_type:
+            uploaded_answer = Uploaded_Answer(
+                upload_batch_id=upload_batch_id,
+                user_id=auth_user_id,
+                source_column=text_column,
+                row_index=idx,
+                answer_text=answer_text,
+                question_type=question_type,
+            )
+            db.session.add(uploaded_answer)
+            db.session.flush()  # 取得 uploaded_answer.id，供下面 FK 使用
+            answer_id_to_row_index[uploaded_answer.id] = idx
+            saved_answer_count += 1
+            column_saved_count += 1
+
             pending_items.append({
                 "identifier": uploaded_answer.id,
                 "answer_text": answer_text,
                 "_question_id": f"{text_column}_row{idx}",
             })
-        # question_type 沒有結果：這筆 Uploaded_Answer 已經保存，
-        # 停在「待處理」狀態，不建立 Response_Segmentation_Status /
-        # Response_Classification
 
-    if pending_items:
-        results = run_batch_analysis(
-            existing_references=[],
-            pending_items=[
-                {"identifier": item["identifier"], "answer_text": item["answer_text"]}
-                for item in pending_items
-            ],
-            prompt_content=prompt_content_for_batch,
-            question_type=question_type,
-        )
-        for item, result in zip(pending_items, results):
-            _, rows = _persist_segmentation_result(
-                result,
-                source_type="user_upload",
-                answer_text=item["answer_text"],
-                question_id=item["_question_id"],
-                upload_batch_id=upload_batch_id,
-                uploaded_answer_id=item["identifier"],
+        column_classification_rows = []
+        if pending_items:
+            # 【TF-IDF 去重】沿用既有 run_batch_analysis：這裡每個欄位
+            # 各自呼叫一次，去重比對只發生在「同一欄位」內部，不會跟
+            # 其他欄位的回答混在一起判斷相似度。
+            results = run_batch_analysis(
+                existing_references=[],
+                pending_items=[
+                    {"identifier": item["identifier"], "answer_text": item["answer_text"]}
+                    for item in pending_items
+                ],
+                prompt_content=prompt_content_for_batch,
+                question_type=question_type,
             )
-            all_classification_rows.extend(rows)
-            classified_count += 1
+            for item, result in zip(pending_items, results):
+                _, rows = _persist_segmentation_result(
+                    result,
+                    source_type="user_upload",
+                    answer_text=item["answer_text"],
+                    question_id=item["_question_id"],
+                    upload_batch_id=upload_batch_id,
+                    uploaded_answer_id=item["identifier"],
+                )
+                column_classification_rows.extend(rows)
+                classified_count += 1
+
+        all_classification_rows.extend(column_classification_rows)
+
+        # 每個欄位各自彙整成自己的一組表格，不會把不同問題的回答混在
+        # 同一組摘要裡（不同欄位就是不同題目，混在一起彙整沒有意義）。
+        column_groups = _build_aggregated_groups(
+            column_classification_rows, answer_id_to_row_index, question_type
+        )
+        for g in column_groups:
+            g["source_column"] = text_column
+            g["question_type"] = question_type
+        aggregated_groups.extend(column_groups)
+
+        columns_summary.append({
+            "column": text_column,
+            "question_type": question_type,
+            "saved_answer_count": column_saved_count,
+            "classified_count": len(column_classification_rows),
+            "aggregated_groups": column_groups,
+        })
 
     db.session.commit()
 
-    # 【新增｜受試者編號】把 row_index 換算成「受試者N」（從 1 開始比較符合
+    # 【受試者編號】把 row_index 換算成「受試者N」（從 1 開始比較符合
     # 一般人講話習慣），組進每一筆分類結果的字典裡，不動 to_dict() 本身、
     # 不動資料庫，只在這支 API 回傳前額外加一個欄位。
     classifications_payload = []
@@ -531,20 +559,25 @@ def upload_excel_for_classification():
         d["respondent_number"] = (row_index + 1) if row_index is not None else None
         classifications_payload.append(d)
 
-    # 【新增｜受試者分組彙整】依類別分組、合併受試者片段、統整判斷原因與建議摘要
-    aggregated_groups = _build_aggregated_groups(all_classification_rows, answer_id_to_row_index, question_type)
-
     return jsonify({
         "upload_batch_id": upload_batch_id,
-        "question_type": question_type,
         "saved_answer_count": saved_answer_count,
         "classified_count": classified_count,
         "classifications": classifications_payload,
+        # 攤平版本：所有欄位的分組結果合併成一個 list，每組多帶
+        # source_column / question_type，讓舊前端不用改也能繼續運作
+        # （只是現在看得到「所有」欄位的結果，不再只有一欄）。
         "aggregated_groups": aggregated_groups,
-        # 【新增｜2026-08-27】讓前端可以顯示「系統自動判斷用的是哪一欄」，
-        # 方便使用者確認判斷得對不對，判斷錯的話也知道問題出在哪。
-        "text_column": text_column,
+        # 新增：依欄位拆開的版本，之後前端想分別顯示「第一題」「第二題」
+        # 各自的表格時可以用這個，不用自己從攤平版本反推。
+        "columns": columns_summary,
+        "text_columns": text_columns,
         "text_column_auto_detected": auto_detected,
+        "total_row_count": total_row_count,
+        # 向後相容：舊前端可能還在讀單數的 text_column / question_type，
+        # 多欄情況下沒有單一答案，給第一欄的值當 fallback。
+        "text_column": text_columns[0] if text_columns else None,
+        "question_type": columns_summary[0]["question_type"] if columns_summary else None,
     }), 201
 
 
