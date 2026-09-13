@@ -62,6 +62,17 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
             <i className="ri-survey-line"></i>
             <span>問卷調查</span>
           </a>
+          {user?.role === "admin" && (
+            <a
+              className={`nav-link-btn ${location.pathname.startsWith("/admin/ai") ? "active" : ""}`}
+              href="/admin/ai"
+              onClick={(event) => { event.preventDefault(); navigate("/admin/ai"); }}
+              style={{ cursor: "pointer" }}
+            >
+              <i className="ri-shield-star-line"></i>
+              <span>AI 管理</span>
+            </a>
+          )}
         </div>
 
         {/* Center Logo */}

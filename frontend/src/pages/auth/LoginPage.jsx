@@ -85,6 +85,7 @@ export default function LoginPage() {
         user_name: data.user_name,
         email: data.email,
         user_id: data.user_id,
+        role: data.role,
         token: data.token,
         pre_auth_token: data.pre_auth_token,
         email_2fa_enabled: data.email_2fa_enabled,

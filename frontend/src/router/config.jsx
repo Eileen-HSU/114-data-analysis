@@ -13,6 +13,7 @@ import SurveyPage from "../pages/survey/SurveyPage.jsx";
 import CreateSurveyPage from "../pages/survey/CreateSurveyPage.jsx";
 import FillSurveyPage from "../pages/survey/FillSurveyPage.jsx";
 import TrashPage from "../pages/trash/TrashPage.jsx";
+import AiAdminPage from "../pages/admin/AiAdminPage.jsx";
 
 import SharedWorkspacePage from "../pages/workspace/SharedWorkspacePage.jsx";
 
@@ -35,6 +36,7 @@ const routes = [
   { path: "/survey/fill/:code", element: <FillSurveyPage /> },
   { path: "/s/:code", element: <FillSurveyPage /> },
   { path: "/trash", element: <TrashPage /> },
+  { path: "/admin/ai", element: <AiAdminPage /> },
   { path: "/:code", element: <FillSurveyPage /> },
   { path: "*", element: <HomePage /> },
 ];
