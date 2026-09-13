@@ -155,7 +155,9 @@ export default function SurveyPage() {
       ]);
     } catch (error) {
       console.error("Generate PPT survey failed:", error);
-      setPptError(error?.message || "生成草稿失敗，請稍後再試。");
+      const message = error?.message || "生成草稿失敗，請稍後再試。";
+      setPptError(message);
+      window.alert(message);
     } finally {
       setIsGenerating(false);
     }
@@ -520,7 +522,7 @@ export default function SurveyPage() {
                   <div className="ppt-loading-state">
                     <i className="ri-loader-4-line"></i>
                     <strong>AI 正在整理教材重點</strong>
-                    <span>這裡已預留正式 API 串接位置。</span>
+                    <span>正在連接正式 API，請稍候。</span>
                   </div>
                 ) : pptDraft ? (
                   <div className="ppt-draft-layout">
