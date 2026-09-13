@@ -2,7 +2,7 @@ const RENDER_BACKEND_URL =
   "https://one14-data-analysis-uhkg.onrender.com";
 
 const NORTHFLANK_BACKEND_URL =
-  "https://site--data-analysisntub--d6tvmpswrhlp.code.run";
+  RENDER_BACKEND_URL;
 
 function getDefaultApiBaseUrl() {
   if (typeof window === "undefined") return "";
