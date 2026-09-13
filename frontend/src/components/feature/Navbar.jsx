@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../hooks/AuthContext";
 import conqightLogo from "../../assets/conqight-logo.png";
+import { useLanguage } from "../../context/LanguageContext";
 
 const DEFAULT_AVATAR = "https://static.readdy.ai/image/db4f710102ca6cc45db44808c8658987/b181cfaad2165c1909b7c8fa8339cbe7.png";
 
@@ -9,6 +10,7 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
   const navigate = useNavigate();
   const location = useLocation();
   const { isLoggedIn, user, logout } = useAuth();
+  const { language, setLanguage, t } = useLanguage();
   const [scrolled, setScrolled] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
@@ -42,7 +44,7 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
             style={{ cursor: "pointer" }}
           >
             <i className="ri-folder-chart-line"></i>
-            <span>專案管理</span>
+            <span>{t("project")}</span>
           </a>
           <a
             className={`nav-link-btn ${(readOnly || location.pathname === "/workspace") ? "active" : ""}`}
@@ -51,7 +53,7 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
             style={{ cursor: "pointer" }}
           >
             <i className="ri-add-circle-line"></i>
-            <span>分析助理</span>
+            <span>{t("assistant")}</span>
           </a>
           <a
             className={`nav-link-btn ${location.pathname.startsWith("/survey") ? "active" : ""}`}
@@ -60,7 +62,7 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
             style={{ cursor: "pointer" }}
           >
             <i className="ri-survey-line"></i>
-            <span>問卷調查</span>
+            <span>{t("survey")}</span>
           </a>
           {user?.role === "admin" && (
             <a
@@ -96,6 +98,10 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
 
         {/* Right */}
         <div className="d-flex align-items-center gap-2 ms-auto">
+          <div className="nav-language-switcher" role="group" aria-label={t("language")}>
+            <button type="button" className={language === "zh-TW" ? "active" : ""} onClick={() => setLanguage("zh-TW")}>中</button>
+            <button type="button" className={language === "en" ? "active" : ""} onClick={() => setLanguage("en")}>EN</button>
+          </div>
           {isLoggedIn ? (
             <div className="position-relative">
               <button
@@ -128,10 +134,10 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
           ) : (
             <>
               <a className="nav-login-btn" href="/login" onClick={(event) => { event.preventDefault(); navigate("/login"); }} style={{ cursor: "pointer" }}>
-                登入
+                {t("login")}
               </a>
               <a className="nav-signup-btn" href="/signup" onClick={(event) => { event.preventDefault(); navigate("/signup"); }} style={{ cursor: "pointer" }}>
-                註冊
+                {t("signup")}
               </a>
             </>
           )}

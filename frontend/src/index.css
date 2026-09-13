@@ -193,6 +193,13 @@ a[class*="btn"] i {
 
 .nav-login-btn:hover { color: var(--violet-600); }
 
+.nav-language-switcher { display: inline-flex; align-items: center; padding: 3px; border: 1px solid var(--slate-200); border-radius: 8px; background: rgba(255,255,255,.72); }
+.nav-language-switcher button { border: 0; border-radius: 5px; padding: 4px 7px; background: transparent; color: var(--slate-500); font-size: 12px; font-weight: 800; line-height: 1.2; }
+.nav-language-switcher button.active { background: var(--violet-100); color: var(--violet-700); }
+.navbar-transparent .nav-language-switcher { border-color: rgba(255,255,255,.35); background: rgba(255,255,255,.12); }
+.navbar-transparent .nav-language-switcher button { color: rgba(255,255,255,.8); }
+.navbar-transparent .nav-language-switcher button.active { background: rgba(255,255,255,.25); color: white; }
+
 .nav-signup-btn {
   padding: 10px 24px;
   font-size: 17px;
