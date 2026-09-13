@@ -112,7 +112,7 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
                 <div className="nav-user-avatar" style={{ overflow: "hidden", background: "transparent", padding: 0 }}>
                   <img
                     src={user?.avatar || DEFAULT_AVATAR}
-                    alt="頭像"
+                    alt={t("nav.profile")}
                     style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }}
                   />
                 </div>
@@ -122,11 +122,11 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
               {showUserMenu && (
                 <div className="nav-user-dropdown">
                   <a className="dropdown-item" href="/profile" onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); setShowUserMenu(false); navigate("/profile"); window.setTimeout(() => { if (window.location.pathname !== "/profile") window.location.assign("/profile"); }, 0); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowUserMenu(false); navigate("/profile"); }} style={{ cursor: "pointer" }}>
-                    <i className="ri-user-settings-line me-2"></i>個人資料
+                    <i className="ri-user-settings-line me-2"></i>{t("nav.profile")}
                   </a>
                   <div className="dropdown-divider"></div>
                   <a className="dropdown-item text-danger" href="/" onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); logout(); setShowUserMenu(false); navigate("/"); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); logout(); setShowUserMenu(false); navigate("/"); }} style={{ cursor: "pointer" }}>
-                    <i className="ri-logout-box-r-line me-2"></i>登出
+                    <i className="ri-logout-box-r-line me-2"></i>{t("nav.logout")}
                   </a>
                 </div>
               )}

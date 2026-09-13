@@ -12,6 +12,11 @@ const copy = {
     heroDescription: "整合問卷蒐集、專案管理與 AI 分析助理，協助顧問快速整理文字回饋、查看分類結果，提升課後回饋分析效率。",
     start: "立即開始使用", loginAccount: "登入帳號", scroll: "向下滾動探索",
     features: "核心功能", featureTitle: "讓每一份回饋，都成為可行動的洞察", how: "使用流程", howTitle: "四個步驟，開始使用",
+    "home.eyebrow": "AI 輔助的培訓回饋分析平台", "home.title": "將培訓回饋整理為", "home.highlight": "標準化分析結果",
+    "home.description": "整合問卷蒐集、專案管理與 AI 分析助理，協助顧問快速整理文字回饋、查看分類結果，提升課後回饋分析效率。",
+    "home.start": "立即開始使用", "home.login": "登入帳號", "home.scroll": "向下滾動探索", "home.features": "功能特色", "home.featureTitle": "培訓回饋整理所需的核心功能",
+    "profile.language": "偏好語言", "profile.languageHelp": "此設定會套用到您登入後的網站介面。", "profile.chinese": "繁體中文", "profile.english": "English",
+    "nav.profile": "個人資料", "nav.logout": "登出",
   },
   en: {
     project: "Projects", assistant: "Analysis Assistant", survey: "Surveys", login: "Log in", signup: "Sign up",
@@ -21,6 +26,11 @@ const copy = {
     heroDescription: "Bring survey collection, project management, and AI-assisted analysis together to organize open-text feedback and surface actionable insights.",
     start: "Get started", loginAccount: "Log in", scroll: "Scroll to explore",
     features: "CORE FEATURES", featureTitle: "Make every response actionable", how: "HOW IT WORKS", howTitle: "Get started in four steps",
+    "home.eyebrow": "AI-assisted training feedback analysis", "home.title": "Turn training feedback into", "home.highlight": "standardized insights",
+    "home.description": "Bring survey collection, project management, and AI-assisted analysis together to organize open-text feedback and surface actionable insights.",
+    "home.start": "Get started", "home.login": "Log in", "home.scroll": "Scroll to explore", "home.features": "CORE FEATURES", "home.featureTitle": "Make every response actionable",
+    "profile.language": "Preferred language", "profile.languageHelp": "This setting is applied to the interface after you sign in.", "profile.chinese": "Traditional Chinese", "profile.english": "English",
+    "nav.profile": "Profile", "nav.logout": "Log out",
   },
 };
 
