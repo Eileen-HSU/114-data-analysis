@@ -2,12 +2,14 @@ import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../../components/feature/Navbar";
 import { useAuth } from "../../hooks/AuthContext";
+import { useLanguage } from "../../context/LanguageContext";
 import "./home.css";
 
 export default function HomePage() {
   const navigate = useNavigate();
   const { isLoggedIn } = useAuth();
   const heroBgRef = useRef(null);
+  const { t } = useLanguage();
 
   useEffect(() => {
     if (isLoggedIn) {
@@ -37,21 +39,21 @@ export default function HomePage() {
         <div className="hero-content">
           <div className="badge-pill mb-4">
             <span className="pulse-dot"></span>
-            <span>AI 輔助的培訓回饋分析平台</span>
+            <span>{t("home.eyebrow")}</span>
           </div>
           <h1 className="hero-title">
-            將培訓回饋整理為<br />
-            <span className="highlight">標準化分析結果</span>
+            {t("home.title")}<br />
+            <span className="highlight">{t("home.highlight")}</span>
           </h1>
           <p className="hero-subtitle">
-            整合問卷蒐集、專案管理與 AI 分析助理，協助顧問快速整理文字回饋、查看分類結果，提升課後回饋分析效率。
+            {t("home.description")}
           </p>
           <div className="hero-buttons">
             <button className="btn btn-hero-primary" onClick={() => navigate("/signup")}>
-              <i className="ri-rocket-line me-2"></i>立即開始使用
+              <i className="ri-rocket-line me-2"></i>{t("home.start")}
             </button>
             <button className="btn btn-hero-secondary" onClick={() => navigate("/login")}>
-              <i className="ri-login-box-line me-2"></i>登入帳號
+              <i className="ri-login-box-line me-2"></i>{t("home.login")}
             </button>
           </div>
           <div className="hero-tags">
@@ -63,7 +65,7 @@ export default function HomePage() {
         </div>
 
         <div className="scroll-hint">
-          <span>向下滾動探索</span>
+          <span>{t("home.scroll")}</span>
           <i className="ri-arrow-down-line"></i>
         </div>
       </section>
@@ -72,8 +74,8 @@ export default function HomePage() {
       <section className="features-section">
         <div className="container">
           <div className="text-center mb-5">
-            <div className="section-badge mb-3"><span>功能特色</span></div>
-            <h2 className="section-title">培訓回饋整理所需的核心功能</h2>
+            <div className="section-badge mb-3"><span>{t("home.features")}</span></div>
+            <h2 className="section-title">{t("home.featureTitle")}</h2>
             <p className="section-subtitle">
               從問卷建立、回饋蒐集到 AI 輔助分析，系統協助顧問快速整理文字回饋，產生清楚的分類結果與分析紀錄。
             </p>
