@@ -1,27 +1,21 @@
-const RENDER_BACKEND_URL =
-  "https://one14-data-analysis-uhkg.onrender.com";
-
-const NORTHFLANK_BACKEND_URL =
-  RENDER_BACKEND_URL;
+// Fill this with the new backend origin if the deployment platform cannot set
+// VITE_API_BASE_URL. Example: "https://your-new-backend.example.com"
+const NEW_BACKEND_URL = "";
 
 function getDefaultApiBaseUrl() {
   if (typeof window === "undefined") return "";
 
   const { hostname } = window.location;
 
-  if (hostname === "one14-data-analysis-frontend.onrender.com") {
-    return RENDER_BACKEND_URL;
+  if (hostname === "localhost" || hostname === "127.0.0.1") {
+    return "";
   }
 
-  if (hostname === "site--frontend--d6tvmpswrhlp.code.run") {
-    return NORTHFLANK_BACKEND_URL;
-  }
-
-  return "";
+  return NEW_BACKEND_URL;
 }
 
 export const API_BASE_URL =
-  getDefaultApiBaseUrl() || import.meta.env.VITE_API_BASE_URL || "";
+  import.meta.env.VITE_API_BASE_URL || getDefaultApiBaseUrl();
 
 export function apiUrl(path) {
   return `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
