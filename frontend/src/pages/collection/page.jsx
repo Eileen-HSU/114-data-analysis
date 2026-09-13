@@ -7,6 +7,7 @@ import { useCollection } from "../../hooks/CollectionContext";
 import { useActivity } from "../../hooks/ActivityContext";
 import { apiUrl } from "../../lib/api";
 import "./collection.css";
+import ExportFileRow from "./ExportFileRow";
 
 const ACTIVE_WORKSPACE_KEY = "dataanalysis_active_workspace";
 
@@ -53,6 +54,14 @@ export default function CollectionPage() {
   // 【新增｜串接匯出清單】真正的匯出紀錄，取代原本寫死 stats.exports = 0
   // 的假資料。進到「exports」這個檢視畫面時才去抓，不用一開頁就打 API。
   const [exportsList, setExportsList] = useState([]);
+  const [exportSearch, setExportSearch] = useState("");
+  const [exportNotice, setExportNotice] = useState("");
+  const exportSearchTerm = exportSearch.trim().toLocaleLowerCase();
+  const filteredExports = useMemo(() => exportsList.filter((item) =>
+    [item.export_name, item.source_path].some((value) =>
+      String(value ?? "").toLocaleLowerCase().includes(exportSearchTerm)
+    )
+  ), [exportsList, exportSearchTerm]);
   const [exportsLoading, setExportsLoading] = useState(false);
   const [exportsError, setExportsError] = useState(null);
   const [openFolders, setOpenFolders] = useState(new Set(["f1"]));
@@ -103,6 +112,20 @@ export default function CollectionPage() {
       });
     return () => { cancelled = true; };
   }, [activeView, isLoggedIn]);
+
+  const handleRenameExport = async (item, filename) => {
+    setExportNotice("");
+    const response = await fetch(apiUrl(`/api/exports/${item.export_id}`), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify({ filename }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "重新命名失敗，請稍後再試。");
+    if (!data.export_name) throw new Error("伺服器未回傳檔案名稱，請重新整理確認。");
+    setExportsList((items) => items.map((entry) => entry.export_id === item.export_id ? { ...entry, ...data } : entry));
+    setExportNotice(`已將檔案重新命名為「${data.export_name}」。`);
+  };
 
   const handleDownloadExport = async (exportItem) => {
     try {
@@ -923,11 +946,25 @@ export default function CollectionPage() {
 
           {activeView === "exports" && (
             <section>
+              <div className="exports-toolbar">
               <h2 className="section-heading">
                 <span className="section-icon export-icon"><i className="ri-download-cloud-2-line"></i></span>
                 匯出檔案
-                <span className="loose-count">{stats.exports} 個</span>
+                <span className="loose-count" role="status">{exportSearchTerm ? `${filteredExports.length} / ${stats.exports} 個` : `${stats.exports} 個`}</span>
               </h2>
+              <div className="export-search" role="search" aria-label="搜尋匯出檔案">
+                <i className="ri-search-line" aria-hidden="true" />
+                <input
+                  type="search"
+                  aria-label="搜尋檔名或來源專案"
+                  placeholder="搜尋檔名或來源專案..."
+                  value={exportSearch}
+                  onChange={(event) => setExportSearch(event.target.value)}
+                />
+                {exportSearch && <button type="button" onClick={() => setExportSearch("")} aria-label="清除搜尋" title="清除搜尋"><i className="ri-close-line" aria-hidden="true" /></button>}
+              </div>
+              </div>
+              {exportNotice && <p className="export-notice" role="status">{exportNotice}</p>}
               {exportsLoading ? (
                 <div className="empty-loose">
                   <i className="ri-loader-4-line"></i>
@@ -943,32 +980,15 @@ export default function CollectionPage() {
                   <i className="ri-download-cloud-2-line"></i>
                   <p>目前沒有匯出檔案。</p>
                 </div>
+              ) : filteredExports.length === 0 ? (
+                <div className="empty-loose" role="status">
+                  <i className="ri-search-line" aria-hidden="true" />
+                  <p>找不到符合「{exportSearch.trim()}」的檔案，請試試其他關鍵字。</p>
+                </div>
               ) : (
                 <div className="exports-list">
-                  {exportsList.map((item) => (
-                    <button
-                      key={item.export_id}
-                      type="button"
-                      className="export-list-item"
-                      onClick={() => handleDownloadExport(item)}
-                      title="點擊下載"
-                    >
-                      <i className="ri-file-text-line export-list-item-icon"></i>
-                      <div className="export-list-item-info">
-                        <div className="export-list-item-name">{item.export_name}</div>
-                        {/* 【新增｜匯出來源路徑】讓使用者知道這筆是從哪個工作區匯出的 */}
-                        {item.source_path && (
-                          <div className="export-list-item-source">
-                            <i className="ri-folder-3-line"></i> {item.source_path}
-                          </div>
-                        )}
-                        <div className="export-list-item-meta">
-                          {item.row_count != null ? `${item.row_count} 筆` : ""}
-                          {item.created_at ? `　${new Date(item.created_at).toLocaleString("zh-TW")}` : ""}
-                        </div>
-                      </div>
-                      <i className="ri-download-2-line export-list-item-download"></i>
-                    </button>
+                  {filteredExports.map((item) => (
+                    <ExportFileRow key={item.export_id} item={item} onDownload={handleDownloadExport} onRename={handleRenameExport} />
                   ))}
                 </div>
               )}
