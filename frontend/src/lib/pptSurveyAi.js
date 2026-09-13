@@ -1,9 +1,10 @@
 import { apiUrl } from "./api";
 
 const PPT_SURVEY_TIMEOUT_MS = 90000;
+const CHAT_TIMEOUT_MS = 60000;
 const ALLOWED_TYPES = new Set(["short", "rating"]);
 
-function withTimeout(timeoutMs = PPT_SURVEY_TIMEOUT_MS) {
+function withTimeout(timeoutMs) {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
   return { controller, timeoutId };
@@ -12,8 +13,8 @@ function withTimeout(timeoutMs = PPT_SURVEY_TIMEOUT_MS) {
 function parseApiError(status, data) {
   if (data?.error) return data.error;
   if (status === 401) return "請先登入後再使用 AI 生成問卷。";
-  if (status === 413) return "檔案過大，請改用較小的 PPT/PDF。";
-  if (status === 429) return "AI 額度或速率限制不足，請稍後再試。";
+  if (status === 413) return "檔案太大，請上傳 25MB 以下的 PPT/PDF。";
+  if (status === 429) return "AI API 額度或頻率限制已達上限，請稍後再試。";
   if (status === 503) return "AI 服務尚未完成設定，請確認後端環境變數。";
   if (status >= 500) return "AI 服務暫時無法使用，請稍後再試。";
   return "請求失敗，請確認檔案與參數後再試。";
@@ -57,9 +58,17 @@ export async function generateSurveyFromPpt({ file, config, token }) {
 
   const formData = new FormData();
   formData.append("file", file);
-  formData.append("config", JSON.stringify(config || {}));
+  formData.append("config", JSON.stringify({
+    direction: config?.direction || "",
+    focus: config?.focus || "",
+    questionCount: config?.questionCount || 5,
+    typeLimits: {
+      short: config?.typeLimits?.short !== false,
+      rating: config?.typeLimits?.rating !== false,
+    },
+  }));
 
-  const { controller, timeoutId } = withTimeout();
+  const { controller, timeoutId } = withTimeout(PPT_SURVEY_TIMEOUT_MS);
   try {
     const response = await fetch(apiUrl("/api/ai/ppt-survey/generate"), {
       method: "POST",
@@ -73,7 +82,7 @@ export async function generateSurveyFromPpt({ file, config, token }) {
     return toCompatibleSurveyPayload(data.draft);
   } catch (error) {
     if (error.name === "AbortError") {
-      throw new Error("AI 生成逾時，請稍後再試或上傳較小的檔案。");
+      throw new Error("AI 分析逾時，請稍後再試或改用較小的檔案。");
     }
     throw error;
   } finally {
@@ -85,7 +94,7 @@ export async function reviseSurveyWithAi({ draft, message, token }) {
   if (!token) throw new Error("請先登入後再使用 AI 修改問卷。");
   if (!message?.trim()) throw new Error("請輸入修改指令。");
 
-  const { controller, timeoutId } = withTimeout(60000);
+  const { controller, timeoutId } = withTimeout(CHAT_TIMEOUT_MS);
   try {
     const response = await fetch(apiUrl("/api/ai/ppt-survey/chat"), {
       method: "POST",
@@ -103,7 +112,7 @@ export async function reviseSurveyWithAi({ draft, message, token }) {
     return toCompatibleSurveyPayload(data.draft);
   } catch (error) {
     if (error.name === "AbortError") {
-      throw new Error("AI 修改逾時，請稍後再試。");
+      throw new Error("AI 修改問卷逾時，請稍後再試。");
     }
     throw error;
   } finally {
