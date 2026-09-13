@@ -62,9 +62,9 @@ def validate_upload(file_storage):
 
     file_bytes = file_storage.read()
     if not file_bytes:
-        raise PptSurveyAiError("檔案內容是空的。", 400)
+        raise PptSurveyAiError("檔案內容是空的，請重新上傳。", 400)
     if len(file_bytes) > MAX_UPLOAD_BYTES:
-        raise PptSurveyAiError("檔案過大，請上傳 25MB 以下的教材檔案。", 413)
+        raise PptSurveyAiError("檔案太大，請上傳 25MB 以下的 PPT/PDF。", 413)
 
     return file_storage.filename, file_bytes
 
@@ -121,9 +121,10 @@ def normalize_type_limits(raw_limits):
         except json.JSONDecodeError:
             raw_limits = {}
 
-    allowed = []
     if not isinstance(raw_limits, dict):
         raw_limits = {}
+
+    allowed = []
     if raw_limits.get("short") is not False:
         allowed.append("short")
     if raw_limits.get("rating") is not False:
@@ -156,7 +157,7 @@ def _parse_json_response(text):
 
 def normalize_survey_draft(raw, fallback_title="AI 生成問卷"):
     if not isinstance(raw, dict):
-        raise PptSurveyAiError("AI 回傳格式錯誤，請重新生成。", 502)
+        raise PptSurveyAiError("AI 回傳格式不正確，無法建立問卷草稿。", 502)
 
     questions = raw.get("questions") or raw.get("items") or []
     normalized_questions = []
@@ -166,7 +167,7 @@ def normalize_survey_draft(raw, fallback_title="AI 生成問卷"):
         q_type = question.get("type") if question.get("type") in ALLOWED_TYPES else "short"
         title = str(question.get("title") or question.get("question") or "").strip()
         if not title:
-            title = f"請分享第 {index + 1} 題的回饋"
+            title = f"第 {index + 1} 題"
         normalized_questions.append({
             "id": str(question.get("id") or f"ai-q-{index + 1}"),
             "type": q_type,
@@ -176,7 +177,7 @@ def normalize_survey_draft(raw, fallback_title="AI 生成問卷"):
         })
 
     if not normalized_questions:
-        raise PptSurveyAiError("AI 未產生任何題目，請調整參數後再試。", 502)
+        raise PptSurveyAiError("AI 沒有產生有效題目，請調整生成重點後再試。", 502)
 
     return {
         "title": str(raw.get("title") or fallback_title).strip()[:100],
@@ -188,12 +189,12 @@ def normalize_survey_draft(raw, fallback_title="AI 生成問卷"):
 
 
 def _survey_json_instruction(allowed_types, question_count):
+    type_text = ", ".join(allowed_types)
     return f"""
-請只輸出 JSON，不要加 Markdown。
-JSON 必須符合：
+請只回傳 JSON，不要加 Markdown 或說明文字。格式必須完全符合：
 {{
-  "title": "100 字以內的問卷標題",
-  "description": "500 字以內的問卷說明",
+  "title": "問卷標題",
+  "description": "問卷說明",
   "identity_mode": "anonymous",
   "deadline_at": "",
   "questions": [
@@ -206,11 +207,22 @@ JSON 必須符合：
     }}
   ]
 }}
-題目數量必須是 {question_count} 題。
-題型只能使用：{", ".join(allowed_types)}。
-short 代表問答題，rating 代表 0 到 5 分評分題。
-所有 options 請固定輸出空陣列，避免破壞既有問卷格式。
+請產生 {question_count} 題。題型只能使用：{type_text}。
+short 代表問答題，rating 代表 0 到 5 評分題。
+options 必須維持空陣列，才能相容系統原本問卷資料結構。
 """
+
+
+def _handle_ai_exception(exc):
+    message = str(exc)
+    lower_message = message.lower()
+    if "quota" in lower_message or "429" in message:
+        raise PptSurveyAiError("AI API 額度或頻率限制已達上限，請稍後再試。", 429) from exc
+    if "deadline" in lower_message or "timeout" in lower_message:
+        raise PptSurveyAiError("AI 分析逾時，請稍後再試或改用較小的檔案。", 504) from exc
+    if "unauthenticated" in lower_message or "api key" in lower_message or "401" in message:
+        raise PptSurveyAiError("AI API key 驗證失敗，請確認 PPT_SURVEY_AI_API_KEY。", 401) from exc
+    raise PptSurveyAiError("AI 服務暫時無法完成分析，請稍後再試。", 502) from exc
 
 
 def _call_gemini(contents):
@@ -226,18 +238,11 @@ def _call_gemini(contents):
             ),
         )
     except Exception as exc:
-        message = str(exc)
-        if "quota" in message.lower() or "429" in message:
-            raise PptSurveyAiError("AI 額度或速率限制不足，請稍後再試。", 429) from exc
-        if "deadline" in message.lower() or "timeout" in message.lower():
-            raise PptSurveyAiError("AI 連線逾時，請稍後再試。", 504) from exc
-        if "unauthenticated" in message.lower() or "api key" in message.lower() or "401" in message:
-            raise PptSurveyAiError("AI API key 驗證失敗，請確認 PPT_SURVEY_AI_API_KEY。", 401) from exc
-        raise PptSurveyAiError("AI 生成服務暫時無法使用。", 502) from exc
+        _handle_ai_exception(exc)
 
     text = getattr(response, "text", "") or ""
     if not text.strip():
-        raise PptSurveyAiError("AI 沒有回傳內容，請重新生成。", 502)
+        raise PptSurveyAiError("AI 沒有回傳內容，請稍後再試。", 502)
     return _parse_json_response(text)
 
 
@@ -252,14 +257,14 @@ def generate_survey_from_material(filename, file_bytes, config):
     model = os.getenv("PPT_SURVEY_AI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
 
     prompt = f"""
-你是企業培訓課後問卷設計助理。請根據使用者上傳的 PPT/PDF 教材建立問卷草稿。
+你是教學問卷設計助理。請根據上傳的 PPT/PDF 內容產生一份可直接儲存的問卷草稿。
 檔名：{filename}
-題目方向：{direction or "課後回饋與學習成效"}
-生成重點：{focus or "課程內容理解、講師表達、實務應用與改善建議"}
+題目方向：{direction or "學習成效"}
+生成重點：{focus or "課程內容"}
 {_survey_json_instruction(allowed_types, question_count)}
 """
     if extracted_text:
-        prompt += f"\n以下是從檔案擷取的文字內容：\n{extracted_text}"
+        prompt += f"\n以下是從檔案擷取出的文字內容：\n{extracted_text}"
 
     contents = [
         types.Part.from_bytes(data=file_bytes, mime_type=mime_type),
@@ -279,23 +284,19 @@ def generate_survey_from_material(filename, file_bytes, config):
     except PptSurveyAiError:
         raise
     except Exception as exc:
-        # Some providers reject PPT binary input. Retry with extracted text when possible.
+        # Some AI providers reject PPT binary input. Retry with extracted text when possible.
         if extracted_text:
             raw = _call_gemini([prompt])
         else:
-            message = str(exc)
-            if "quota" in message.lower() or "429" in message:
-                raise PptSurveyAiError("AI 額度或速率限制不足，請稍後再試。", 429) from exc
-            if "unauthenticated" in message.lower() or "401" in message:
-                raise PptSurveyAiError("AI API key 驗證失敗，請確認 PPT_SURVEY_AI_API_KEY。", 401) from exc
-            raise PptSurveyAiError("AI 無法讀取此檔案，請改用 .pptx 或 .pdf 後再試。", 502) from exc
+            _handle_ai_exception(exc)
 
-    return normalize_survey_draft(raw, fallback_title=f"{os.path.splitext(filename)[0]} 課後回饋問卷")
+    fallback_title = f"{os.path.splitext(filename)[0]} 問卷"
+    return normalize_survey_draft(raw, fallback_title=fallback_title)
 
 
 def revise_survey_with_ai(draft, message):
     if not isinstance(draft, dict):
-        raise PptSurveyAiError("缺少可修改的問卷草稿。", 400)
+        raise PptSurveyAiError("缺少目前問卷草稿，無法修改。", 400)
     if not str(message or "").strip():
         raise PptSurveyAiError("請輸入修改指令。", 400)
 
@@ -303,12 +304,11 @@ def revise_survey_with_ai(draft, message):
     question_count = len(current_draft["questions"])
     allowed_types = sorted({q["type"] for q in current_draft["questions"]} | {"short", "rating"})
     prompt = f"""
-你是企業培訓問卷編修助理。請依講師指令修改既有問卷草稿。
+你是問卷編修助理。請依照講師指令修改問卷，並保持系統相容的 JSON 格式。
 講師指令：{message}
-目前問卷 JSON：
-{json.dumps(current_draft, ensure_ascii=False)}
+目前問卷 JSON：{json.dumps(current_draft, ensure_ascii=False)}
 {_survey_json_instruction(allowed_types, question_count)}
-可以依指令調整題目文字、題型、必填與題數；但輸出仍必須符合既有問卷資料結構。
+請盡量保留原本題數、題型與問卷結構，只修改講師要求的部分。
 """
     raw = _call_gemini([prompt])
     return normalize_survey_draft(raw, fallback_title=current_draft["title"])
