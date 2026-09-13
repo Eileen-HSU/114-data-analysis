@@ -22,7 +22,6 @@ from routes.classifications.classification import classification_bp
 from routes.classifications.review import review_bp
 from routes.classifications.report import report_bp
 from routes.exports.export import exports_bp
-from routes.admin.ai_admin import ai_admin_bp
 
 load_dotenv()
 
@@ -227,7 +226,6 @@ app.register_blueprint(classification_bp)
 app.register_blueprint(review_bp)
 app.register_blueprint(report_bp)
 app.register_blueprint(exports_bp)
-app.register_blueprint(ai_admin_bp)
 
 start_scheduler(app)
 
@@ -258,23 +256,21 @@ def health():
 @app.errorhandler(Exception)
 def handle_exception(e):
     from werkzeug.exceptions import HTTPException
-    # HTTP 例外（404、405 等）保留原本的 status code
+    
     if isinstance(e, HTTPException):
         response = jsonify({
             "error": e.description,
             "type": str(type(e)),
             "message": e.name,
         })
-        response.headers.add("Access-Control-Allow-Origin", "*")
         return response, e.code   # ← 保留原始 status code
-    
+
     # 非預期的 500
     response = jsonify({
         "error": str(e),
         "type": str(type(e)),
         "message": "伺服器發生錯誤，請稍後再試",
     })
-    response.headers.add("Access-Control-Allow-Origin", "*")
     return response, 500
 
 @app.before_request
