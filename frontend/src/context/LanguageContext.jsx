@@ -75,6 +75,13 @@ Object.assign(legacyEnglish, {
   "問卷載入中...": "Loading surveys…", "選擇問卷進行分析": "Choose a survey to analyze", "搜尋問卷名稱或代碼...": "Search survey title or code…", "找不到相關問卷": "No matching surveys", "進行中": "Active", "已結束": "Closed", "人回覆": "responses", "附加檔案": "Attach file", "檔案": "File", "輸入您的問題或上傳檔案進行分析...": "Ask a question or upload a file for analysis…",
   "建立問卷": "Create survey", "問卷標題": "Survey title", "問卷說明": "Survey description", "新增題目": "Add question", "儲存問卷": "Save survey", "預覽問卷": "Preview survey", "發布問卷": "Publish survey", "問卷已發布": "Survey published", "返回問卷": "Back to survey", "送出答案": "Submit answers", "提交成功": "Submitted successfully", "謝謝您的回覆": "Thank you for your response",
 
+  "資料上傳與匯入": "Upload and import data", "支援上傳問卷資料或文字檔案，讓使用者可將外部回饋資料匯入系統進行分析。": "Upload survey data or text files and bring external feedback into the analysis workspace.",
+  "AI 輔助分析": "AI-assisted analysis", "結合 TF-IDF 與 Gemini API，協助整理文字回饋內容，產生分類結果與分析紀錄。": "Combine TF-IDF and Gemini API to organize text feedback and produce categorized results.",
+  "專案管理": "Project management", "將不同培訓專案的問卷資料、分析結果與歷史紀錄集中保存，方便後續查詢與追蹤。": "Keep survey data, analysis results, and history for each training project together for easy follow-up.",
+  "歷史紀錄保存": "Save history", "系統可保存過去的分析專案與操作紀錄，方便使用者回顧、查詢與延續分析流程。": "Review past analysis projects and activity history whenever you need to continue your work.",
+  "表格式結果呈現": "Structured results", "分析結果以表格式呈現，方便使用者查看分類結果、回饋重點與分析紀錄。": "Review categorized results, key feedback, and analysis history in a clear table.",
+  "問卷建立與回饋蒐集": "Create surveys and collect feedback", "支援建立問卷、蒐集填答內容，並可將回饋資料提供給 AI 分析助理進行整理。": "Create surveys, collect responses, and send feedback to the AI Analysis Assistant for organization.",
+  "四個簡單步驟，完成培訓回饋整理與分析。": "Four simple steps to organize and analyze training feedback.",
 });
 function translateLegacyInterface(language) {
   if (!document.body) return;
