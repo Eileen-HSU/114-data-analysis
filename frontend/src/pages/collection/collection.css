@@ -737,3 +737,41 @@
 .file-icon-chat { background: #f5e8e6; color: #c97b72; }
 .badge-chat { background: #f0ebe8; color: #b89080; border-color: #e8d8d0; }
 .tag-chat { background: #f0ebe8; color: #b89080; border-color: #e8d8d0; }
+/* Export file search */
+.export-search { display: flex; align-items: center; gap: 10px; width: min(100%, 480px); box-sizing: border-box; margin-bottom: 20px; padding: 11px 14px; background: #fff; border: 1px solid #dce4ef; border-radius: 12px; color: #8b9db5; }
+.export-search:focus-within { border-color: #8da6c8; box-shadow: 0 0 0 3px #e6ecf4; }
+.export-search > i { font-size: 19px; }
+.export-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: #475569; font: inherit; font-size: 14px; }
+.export-search input::placeholder { color: #94a3b8; }
+.export-search input::-webkit-search-cancel-button { -webkit-appearance: none; }
+.export-search button { display: grid; place-items: center; width: 26px; height: 26px; border: 0; border-radius: 6px; background: #f1f5f9; color: #64748b; cursor: pointer; }
+.export-search button:focus-visible { outline: 2px solid #8da6c8; outline-offset: 2px; }
+.exports-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 20px; flex-wrap: wrap; }
+.exports-toolbar .section-heading { margin: 0; }
+.exports-toolbar .export-search { margin: 0; width: min(100%, 380px); margin-left: auto; }
+.export-notice { color: #568377; font-size: 14px; margin-bottom: 16px; overflow-wrap: anywhere; }
+.export-list-item { cursor: default; }
+.export-download-target { display: flex; align-items: center; gap: 16px; flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.export-rename-btn { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; padding: 8px 12px; border: 1px solid #dce4ef; border-radius: 8px; background: #f8fafc; color: #7189a7; font-size: 13px; cursor: pointer; }
+.export-rename-btn:hover { background: #e6ecf4; }
+.export-rename-form { width: 100%; }
+.export-rename-form label { display: block; margin-bottom: 9px; font-size: 14px; font-weight: 600; color: #64748b; }
+.export-rename-controls { display: flex; gap: 10px; align-items: center; }
+.export-name-field { display: flex; flex: 1; min-width: 0; align-items: center; gap: 8px; background: #fff; border: 1px solid #bacadd; padding: 8px 12px; border-radius: 8px; }
+.export-name-field input { width: 100%; min-width: 0; border: 0; outline: 0; color: #475569; background: transparent; }
+.export-name-field:focus-within { box-shadow: 0 0 0 3px #e6ecf4; }
+.export-name-field span { font-size: 13px; color: #94a3b8; }
+.export-rename-actions { display: flex; gap: 8px; }
+.export-rename-actions button { padding: 9px 15px; border: 0; border-radius: 8px; font-size: 13px; cursor: pointer; }
+.export-save-btn { background: #7b96b8; color: #fff; }
+.export-cancel-btn { background: #eef2f7; color: #64748b; }
+.export-rename-actions button:disabled { opacity: .6; cursor: wait; }
+.export-rename-error { margin: 8px 0 0; color: #c65a6a; font-size: 13px; }
+@media (max-width: 767px) {
+  .exports-toolbar .export-search { width: 100%; }
+  .export-rename-controls { flex-wrap: wrap; }
+  .export-name-field { flex-basis: 100%; }
+  .export-rename-actions { margin-left: auto; }
+  .export-rename-btn { padding: 8px; }
+  .export-rename-btn span { display: none; }
+}
