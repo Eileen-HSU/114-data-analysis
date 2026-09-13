@@ -126,7 +126,7 @@ def profile_handler(user_id):
             # 只更新有傳的欄位，沒傳的保留原值
             updatable_fields = (
                 'phone_number', 'company_name', 'gender',
-                'bio', 'location', 'avatar_url',
+                'bio', 'location', 'avatar_url', 'language',
             )
             for field in updatable_fields:
                 if field in data:

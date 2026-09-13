@@ -2,13 +2,15 @@ import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../hooks/AuthContext";
 import conqightLogo from "../../assets/conqight-logo.png";
+import { useLanguage } from "../../context/LanguageContext";
 
 const DEFAULT_AVATAR = "https://static.readdy.ai/image/db4f710102ca6cc45db44808c8658987/b181cfaad2165c1909b7c8fa8339cbe7.png";
 
-export default function Navbar({ transparent = false }) {
+export default function Navbar({ transparent = false, readOnly = false, onRequireLogin }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { isLoggedIn, user, logout } = useAuth();
+  const { language, setLanguage, t } = useLanguage();
   const [scrolled, setScrolled] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
@@ -29,7 +31,7 @@ export default function Navbar({ transparent = false }) {
   return (
     <nav
       id="mainNavbar"
-      className={`navbar navbar-expand-lg fixed-top ${isTransparentMode ? "navbar-transparent" : "navbar-white"}`}
+      className={`navbar navbar-expand-lg fixed-top ${readOnly ? "navbar-shared" : ""} ${isTransparentMode ? "navbar-transparent" : "navbar-white"}`}
       style={navStyle}
     >
       <div className="container-fluid px-4" style={{ position: "relative" }}>
@@ -37,28 +39,42 @@ export default function Navbar({ transparent = false }) {
         <div className="d-flex align-items-center gap-2 me-auto">
           <a
             className={`nav-link-btn ${location.pathname === "/collection" ? "active" : ""}`}
-            onClick={() => navigate("/collection")}
+            href="/collection"
+            onClick={(event) => { event.preventDefault(); if (readOnly && !isLoggedIn) onRequireLogin?.("專案管理"); else navigate("/collection"); }}
             style={{ cursor: "pointer" }}
           >
             <i className="ri-folder-chart-line"></i>
-            <span>專案管理</span>
+            <span>{t("project")}</span>
           </a>
           <a
-            className={`nav-link-btn ${location.pathname === "/workspace" ? "active" : ""}`}
-            onClick={() => navigate("/workspace")}
+            className={`nav-link-btn ${(readOnly || location.pathname === "/workspace") ? "active" : ""}`}
+            href="/workspace"
+            onClick={(event) => { event.preventDefault(); if (readOnly && !isLoggedIn) onRequireLogin?.("新增對話"); else navigate("/workspace"); }}
             style={{ cursor: "pointer" }}
           >
             <i className="ri-add-circle-line"></i>
-            <span>分析助理</span>
+            <span>{t("assistant")}</span>
           </a>
           <a
             className={`nav-link-btn ${location.pathname.startsWith("/survey") ? "active" : ""}`}
-            onClick={() => navigate("/survey")}
+            href="/survey"
+            onClick={(event) => { event.preventDefault(); navigate("/survey"); }}
             style={{ cursor: "pointer" }}
           >
             <i className="ri-survey-line"></i>
-            <span>問卷調查</span>
+            <span>{t("survey")}</span>
           </a>
+          {user?.role === "admin" && (
+            <a
+              className={`nav-link-btn ${location.pathname.startsWith("/admin/ai") ? "active" : ""}`}
+              href="/admin/ai"
+              onClick={(event) => { event.preventDefault(); navigate("/admin/ai"); }}
+              style={{ cursor: "pointer" }}
+            >
+              <i className="ri-shield-star-line"></i>
+              <span>AI 管理</span>
+            </a>
+          )}
         </div>
 
         {/* Center Logo */}
@@ -82,6 +98,10 @@ export default function Navbar({ transparent = false }) {
 
         {/* Right */}
         <div className="d-flex align-items-center gap-2 ms-auto">
+          <div className="nav-language-switcher" role="group" aria-label={t("language")}>
+            <button type="button" className={language === "zh-TW" ? "active" : ""} onClick={() => setLanguage("zh-TW")}>中</button>
+            <button type="button" className={language === "en" ? "active" : ""} onClick={() => setLanguage("en")}>EN</button>
+          </div>
           {isLoggedIn ? (
             <div className="position-relative">
               <button
@@ -92,7 +112,7 @@ export default function Navbar({ transparent = false }) {
                 <div className="nav-user-avatar" style={{ overflow: "hidden", background: "transparent", padding: 0 }}>
                   <img
                     src={user?.avatar || DEFAULT_AVATAR}
-                    alt="頭像"
+                    alt={t("nav.profile")}
                     style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }}
                   />
                 </div>
@@ -102,22 +122,22 @@ export default function Navbar({ transparent = false }) {
               {showUserMenu && (
                 <div className="nav-user-dropdown">
                   <a className="dropdown-item" href="/profile" onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); setShowUserMenu(false); navigate("/profile"); window.setTimeout(() => { if (window.location.pathname !== "/profile") window.location.assign("/profile"); }, 0); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowUserMenu(false); navigate("/profile"); }} style={{ cursor: "pointer" }}>
-                    <i className="ri-user-settings-line me-2"></i>個人資料
+                    <i className="ri-user-settings-line me-2"></i>{t("nav.profile")}
                   </a>
                   <div className="dropdown-divider"></div>
                   <a className="dropdown-item text-danger" href="/" onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); logout(); setShowUserMenu(false); navigate("/"); }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); logout(); setShowUserMenu(false); navigate("/"); }} style={{ cursor: "pointer" }}>
-                    <i className="ri-logout-box-r-line me-2"></i>登出
+                    <i className="ri-logout-box-r-line me-2"></i>{t("nav.logout")}
                   </a>
                 </div>
               )}
             </div>
           ) : (
             <>
-              <a className="nav-login-btn" onClick={() => navigate("/login")} style={{ cursor: "pointer" }}>
-                登入
+              <a className="nav-login-btn" href="/login" onClick={(event) => { event.preventDefault(); navigate("/login"); }} style={{ cursor: "pointer" }}>
+                {t("login")}
               </a>
-              <a className="nav-signup-btn" onClick={() => navigate("/signup")} style={{ cursor: "pointer" }}>
-                註冊
+              <a className="nav-signup-btn" href="/signup" onClick={(event) => { event.preventDefault(); navigate("/signup"); }} style={{ cursor: "pointer" }}>
+                {t("signup")}
               </a>
             </>
           )}

@@ -5,7 +5,11 @@ import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
 import { useAuth } from "../../hooks/AuthContext";
 import { useCollection } from "../../hooks/CollectionContext";
 import { useActivity } from "../../hooks/ActivityContext";
+import { apiUrl } from "../../lib/api";
 import "./collection.css";
+import ExportFileRow from "./ExportFileRow";
+
+const ACTIVE_WORKSPACE_KEY = "dataanalysis_active_workspace";
 
 const FILE_ICONS = {
   csv: "ri-file-chart-line",
@@ -17,10 +21,20 @@ const FILE_ICONS = {
 
 const getFileFolderName = (file) => file.folder_name ?? null;
 
+function getAuthHeader() {
+  try {
+    const user = JSON.parse(localStorage.getItem("dataanalysis_auth"));
+    const token = user?.token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+}
+
 export default function CollectionPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, user } = useAuth();
   const { recordActivity } = useActivity();
   const {
     folders,
@@ -36,7 +50,17 @@ export default function CollectionPage() {
     workspaceSessions,
   } = useCollection();
 
-  const [activeView, setActiveView] = useState("folders");
+  const [activeView, setActiveView] = useState(() => location.state?.activeView || "folders");
+  // 進入專案管理即載入匯出紀錄，讓統計卡片同步顯示實際數量。
+  const [exportsList, setExportsList] = useState([]);
+  const [exportSearch, setExportSearch] = useState("");
+  const [exportNotice, setExportNotice] = useState("");
+  const exportSearchTerm = exportSearch.trim().toLocaleLowerCase();
+  const filteredExports = useMemo(() => exportsList.filter((item) =>
+    String(item.export_name ?? "").toLocaleLowerCase().includes(exportSearchTerm)
+  ), [exportsList, exportSearchTerm]);
+  const [exportsLoading, setExportsLoading] = useState(isLoggedIn);
+  const [exportsError, setExportsError] = useState(null);
   const [openFolders, setOpenFolders] = useState(new Set(["f1"]));
   const [draggingId, setDraggingId] = useState(null);
   const [dragOverTarget, setDragOverTarget] = useState(null);
@@ -53,13 +77,102 @@ export default function CollectionPage() {
   const [fileMenuId, setFileMenuId] = useState(null);
   const [renameTarget, setRenameTarget] = useState(null);
   const [isSavingRename, setIsSavingRename] = useState(false);
+  const [isCreatingAnalysis, setIsCreatingAnalysis] = useState(false);
 
   useEffect(() => {
+    if (location.state?.exportCreated) setExportNotice(`「${location.state.exportCreated}」已生成完成，可點擊檔案下載。`);
     if (location.state?.activeView) {
       setActiveView(location.state.activeView);
       window.history.replaceState({}, "");
     }
   }, [location.state]);
+
+  // 登入後立即載入總數及清單，不必先點選匯出檔案。
+  useEffect(() => {
+    if (!isLoggedIn) { setExportsList([]); setExportsLoading(false); return; }
+    let cancelled = false;
+    setExportsLoading(true);
+    setExportsError(null);
+    fetch(apiUrl("/api/exports"), { headers: getAuthHeader() })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        if (!cancelled) setExportsList(Array.isArray(data) ? data : []);
+      })
+      .catch((err) => {
+        if (!cancelled) setExportsError(err?.message || "載入失敗");
+      })
+      .finally(() => {
+        if (!cancelled) setExportsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [isLoggedIn, user?.token]);
+
+  const handleOpenExportChat = async (item) => {
+    if (!item.project_id) throw new Error("找不到這個檔案的來源對話。");
+    const response = await fetch(apiUrl(`/api/workspace/${item.project_id}`), { headers: getAuthHeader() });
+    if (!response.ok) throw new Error(response.status === 404
+      ? "來源對話已刪除或無法存取。" : "無法開啟來源對話，請稍後再試。");
+    const workspace = await response.json();
+    if (!workspace.project_id || String(workspace.project_id) !== String(item.project_id)) {
+      throw new Error("無法確認來源對話，請重新整理後再試。");
+    }
+    const existing = workspaceSessions.find((session) => String(session.project_id ?? session.id) === String(workspace.project_id));
+    const sessionId = existing?.id || String(workspace.project_id);
+    const session = {
+      ...existing, id: sessionId, project_id: workspace.project_id,
+      title: workspace.project_name, name: workspace.project_name,
+      folder_name: workspace.folder_name ?? null,
+      date: workspace.created_at ? workspace.created_at.slice(0, 10) : "",
+    };
+    setWorkspaceSessions((current) => [session, ...current.filter((entry) =>
+      String(entry.project_id ?? entry.id) !== String(workspace.project_id)
+    )]);
+    localStorage.setItem(ACTIVE_WORKSPACE_KEY, String(sessionId));
+    navigate("/workspace", { state: { openSession: { sessionId, scrollToBottom: true } } });
+  };
+
+  const handleRenameExport = async (item, filename) => {
+    setExportNotice("");
+    const response = await fetch(apiUrl(`/api/exports/${item.export_id}`), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify({ filename }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "重新命名失敗，請稍後再試。");
+    if (!data.export_name) throw new Error("伺服器未回傳檔案名稱，請重新整理確認。");
+    setExportsList((items) => items.map((entry) => entry.export_id === item.export_id ? { ...entry, ...data } : entry));
+    setExportNotice(`已將檔案重新命名為「${data.export_name}」。`);
+  };
+
+  const handleDownloadExport = async (exportItem) => {
+    try {
+      const res = await fetch(apiUrl(`/api/exports/${exportItem.export_id}/download`), {
+        headers: getAuthHeader(),
+      });
+      if (!res.ok) {
+        // 【修正】之前失敗只印在 console 裡，使用者完全看不到、
+        // 感覺就像「點了沒反應」。這裡照這個頁面既有的 alert() 慣例補上。
+        alert(`下載失敗（HTTP ${res.status}），請稍後再試。`);
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = exportItem.export_name || "匯出檔案.csv";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("下載匯出檔案失敗：", err);
+      alert("下載失敗，請稍後再試。");
+    }
+  };
 
   if (!isLoggedIn) {
     return (
@@ -129,10 +242,10 @@ export default function CollectionPage() {
     return {
       folders: folderNames.size,
       chats: chatSessions.size,
-      exports: 0,
+      exports: exportsList.length,
       deleted: deletedItems.length,
     };
-  }, [workspaceSessions, folders, deletedItems.length]);
+  }, [workspaceSessions, folders, deletedItems.length, exportsList.length]);
 
   const toggleFolder = (id) => {
     setOpenFolders((prev) => {
@@ -537,6 +650,55 @@ export default function CollectionPage() {
     setDraggingId(null);
   };
 
+  const createAnalysis = async () => {
+    if (isCreatingAnalysis) return;
+    setIsCreatingAnalysis(true);
+
+    try {
+      const authUser = JSON.parse(localStorage.getItem("dataanalysis_auth"));
+      const token = authUser?.token;
+      const title = "新增分析";
+      const res = await fetch(apiUrl("/api/workspace"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ project_name: title }),
+      });
+
+      if (!res.ok) throw new Error(`新增分析失敗：${res.status}`);
+
+      const data = await res.json();
+      if (!data?.project_id) throw new Error("新增分析失敗：未取得 Chat ID");
+
+      const sessionId = String(data.project_id);
+      const newSession = {
+        id: sessionId,
+        project_id: data.project_id,
+        title: data.project_name || title,
+        name: data.project_name || title,
+        folder_name: data.folder_name ?? null,
+        date: data.created_at ? data.created_at.slice(0, 10) : "",
+        pendingSync: true,
+      };
+
+      setWorkspaceSessions((currentSessions) => [
+        newSession,
+        ...(Array.isArray(currentSessions)
+          ? currentSessions.filter((session) => String(session.id) !== sessionId)
+          : []),
+      ]);
+      localStorage.setItem(ACTIVE_WORKSPACE_KEY, sessionId);
+      navigate("/workspace", { state: { openSession: { sessionId } } });
+    } catch (err) {
+      console.error("新增分析失敗", err);
+      alert(err.message || "新增分析失敗，請稍後再試");
+    } finally {
+      setIsCreatingAnalysis(false);
+    }
+  };
+
   return (
     <>
       <Navbar />
@@ -551,15 +713,20 @@ export default function CollectionPage() {
                 <p className="collection-banner-stats">{stats.folders} 個資料夾 · {stats.chats} 個 Chat</p>
               </div>
               <div className="d-flex gap-2 align-items-center">
-                <button className="btn btn-banner" onClick={() => navigate("/workspace")}>
-                  <i className="ri-add-line me-1"></i>新增分析
+                <button
+                  className="btn btn-banner"
+                  onClick={createAnalysis}
+                  disabled={isCreatingAnalysis}
+                >
+                  <i className={`${isCreatingAnalysis ? "ri-loader-4-line" : "ri-add-line"} me-1`}></i>
+                  {isCreatingAnalysis ? "建立中..." : "新增分析"}
                 </button>
               </div>
             </div>
             <div className="row g-3 mt-4">
               {[
                 { key: "folders", icon: "ri-chat-3-line", cls: "stat-folder", val: stats.chats, label: "歷史專案", unit: "個 Chat" },
-                { key: "exports", icon: "ri-download-cloud-2-line", cls: "stat-export", val: stats.exports, label: "匯出檔案", unit: "個檔案" },
+                { key: "exports", icon: "ri-download-cloud-2-line", cls: "stat-export", val: exportsLoading ? "…" : exportsError ? "—" : stats.exports, label: "匯出檔案", unit: "個檔案" },
                 { key: "deleted", icon: "ri-delete-bin-line", cls: "stat-deleted", val: stats.deleted, label: "最近刪除", unit: "個項目" },
               ].map((item) => (
                 <div className="col-12 col-md-4" key={item.label}>
@@ -571,7 +738,7 @@ export default function CollectionPage() {
                     <div className={`stat-icon ${item.cls}`}><i className={item.icon}></i></div>
                     <div className="stat-value">{item.val}</div>
                     <div className="stat-label">{item.label}</div>
-                    <div className="stat-hint">{item.val} {item.unit}</div>
+                    <div className="stat-hint">{item.key === "exports" && exportsLoading ? "檔案數量載入中..." : item.key === "exports" && exportsError ? "數量載入失敗，請重新整理" : `${item.val} ${item.unit}`}</div>
                   </button>
                 </div>
               ))}
@@ -800,15 +967,52 @@ export default function CollectionPage() {
 
           {activeView === "exports" && (
             <section>
+              <div className="exports-toolbar">
               <h2 className="section-heading">
                 <span className="section-icon export-icon"><i className="ri-download-cloud-2-line"></i></span>
                 匯出檔案
-                <span className="loose-count">{stats.exports} 個</span>
+                <span className="loose-count" role="status">{exportSearchTerm ? `${filteredExports.length} / ${stats.exports} 個` : `${stats.exports} 個`}</span>
               </h2>
-              <div className="empty-loose">
-                <i className="ri-download-cloud-2-line"></i>
-                <p>目前沒有匯出檔案。</p>
+              <div className="export-search" role="search" aria-label="搜尋匯出檔案">
+                <i className="ri-search-line" aria-hidden="true" />
+                <input
+                  type="search"
+                  aria-label="搜尋匯出檔案名稱"
+                  placeholder="搜尋匯出檔案名稱..."
+                  value={exportSearch}
+                  onChange={(event) => setExportSearch(event.target.value)}
+                />
+                {exportSearch && <button type="button" onClick={() => setExportSearch("")} aria-label="清除搜尋" title="清除搜尋"><i className="ri-close-line" aria-hidden="true" /></button>}
               </div>
+              </div>
+              {exportNotice && <p className="export-notice" role="status">{exportNotice}</p>}
+              {exportsLoading ? (
+                <div className="empty-loose">
+                  <i className="ri-loader-4-line"></i>
+                  <p>載入中…</p>
+                </div>
+              ) : exportsError ? (
+                <div className="empty-loose">
+                  <i className="ri-error-warning-line"></i>
+                  <p>載入失敗：{exportsError}</p>
+                </div>
+              ) : exportsList.length === 0 ? (
+                <div className="empty-loose">
+                  <i className="ri-download-cloud-2-line"></i>
+                  <p>目前沒有匯出檔案。</p>
+                </div>
+              ) : filteredExports.length === 0 ? (
+                <div className="empty-loose" role="status">
+                  <i className="ri-search-line" aria-hidden="true" />
+                  <p>找不到符合「{exportSearch.trim()}」的檔案，請試試其他關鍵字。</p>
+                </div>
+              ) : (
+                <div className="exports-list">
+                  {filteredExports.map((item) => (
+                    <ExportFileRow key={item.export_id} item={item} onDownload={handleDownloadExport} onRename={handleRenameExport} onOpenChat={handleOpenExportChat} />
+                  ))}
+                </div>
+              )}
             </section>
           )}
 
