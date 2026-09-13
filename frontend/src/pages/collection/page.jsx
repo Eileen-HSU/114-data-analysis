@@ -58,9 +58,7 @@ export default function CollectionPage() {
   const [exportNotice, setExportNotice] = useState("");
   const exportSearchTerm = exportSearch.trim().toLocaleLowerCase();
   const filteredExports = useMemo(() => exportsList.filter((item) =>
-    [item.export_name, item.source_path].some((value) =>
-      String(value ?? "").toLocaleLowerCase().includes(exportSearchTerm)
-    )
+    String(item.export_name ?? "").toLocaleLowerCase().includes(exportSearchTerm)
   ), [exportsList, exportSearchTerm]);
   const [exportsLoading, setExportsLoading] = useState(false);
   const [exportsError, setExportsError] = useState(null);
@@ -112,6 +110,30 @@ export default function CollectionPage() {
       });
     return () => { cancelled = true; };
   }, [activeView, isLoggedIn]);
+
+  const handleOpenExportChat = async (item) => {
+    if (!item.project_id) throw new Error("找不到這個檔案的來源對話。");
+    const response = await fetch(apiUrl(`/api/workspace/${item.project_id}`), { headers: getAuthHeader() });
+    if (!response.ok) throw new Error(response.status === 404
+      ? "來源對話已刪除或無法存取。" : "無法開啟來源對話，請稍後再試。");
+    const workspace = await response.json();
+    if (!workspace.project_id || String(workspace.project_id) !== String(item.project_id)) {
+      throw new Error("無法確認來源對話，請重新整理後再試。");
+    }
+    const existing = workspaceSessions.find((session) => String(session.project_id ?? session.id) === String(workspace.project_id));
+    const sessionId = existing?.id || String(workspace.project_id);
+    const session = {
+      ...existing, id: sessionId, project_id: workspace.project_id,
+      title: workspace.project_name, name: workspace.project_name,
+      folder_name: workspace.folder_name ?? null,
+      date: workspace.created_at ? workspace.created_at.slice(0, 10) : "",
+    };
+    setWorkspaceSessions((current) => [session, ...current.filter((entry) =>
+      String(entry.project_id ?? entry.id) !== String(workspace.project_id)
+    )]);
+    localStorage.setItem(ACTIVE_WORKSPACE_KEY, String(sessionId));
+    navigate("/workspace", { state: { openSession: { sessionId } } });
+  };
 
   const handleRenameExport = async (item, filename) => {
     setExportNotice("");
@@ -956,8 +978,8 @@ export default function CollectionPage() {
                 <i className="ri-search-line" aria-hidden="true" />
                 <input
                   type="search"
-                  aria-label="搜尋檔名或來源專案"
-                  placeholder="搜尋檔名或來源專案..."
+                  aria-label="搜尋匯出檔案名稱"
+                  placeholder="搜尋匯出檔案名稱..."
                   value={exportSearch}
                   onChange={(event) => setExportSearch(event.target.value)}
                 />
@@ -988,7 +1010,7 @@ export default function CollectionPage() {
               ) : (
                 <div className="exports-list">
                   {filteredExports.map((item) => (
-                    <ExportFileRow key={item.export_id} item={item} onDownload={handleDownloadExport} onRename={handleRenameExport} />
+                    <ExportFileRow key={item.export_id} item={item} onDownload={handleDownloadExport} onRename={handleRenameExport} onOpenChat={handleOpenExportChat} />
                   ))}
                 </div>
               )}
