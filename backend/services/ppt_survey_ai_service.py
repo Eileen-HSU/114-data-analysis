@@ -1,10 +1,14 @@
 import json
+import logging
 import mimetypes
 import os
 import re
 import zipfile
 from io import BytesIO
 from xml.etree import ElementTree
+
+
+logger = logging.getLogger(__name__)
 
 
 class PptSurveyAiError(Exception):
@@ -23,6 +27,7 @@ MAX_EXTRACTED_CHARS = 18000
 def _get_api_key():
     api_key = os.getenv("PPT_SURVEY_AI_API_KEY", "").strip()
     if not api_key:
+        logger.error("PPT_SURVEY_AI_API_KEY is missing")
         raise PptSurveyAiError("PPT/PDF 問卷 AI API key 尚未設定。", 503)
     return api_key
 
@@ -32,7 +37,8 @@ def _load_genai_client():
         from google import genai
         from google.genai import types
     except Exception as exc:
-        raise PptSurveyAiError("後端缺少 google-genai 套件，請先安裝 requirements。", 503) from exc
+        logger.exception("google-genai import failed")
+        raise PptSurveyAiError("後端缺少 google-genai 套件，請確認 requirements.txt。", 503) from exc
 
     return genai.Client(api_key=_get_api_key()), types
 
@@ -66,6 +72,12 @@ def validate_upload(file_storage):
     if len(file_bytes) > MAX_UPLOAD_BYTES:
         raise PptSurveyAiError("檔案太大，請上傳 25MB 以下的 PPT/PDF。", 413)
 
+    logger.info(
+        "PPT survey upload accepted: filename=%s ext=%s size=%s",
+        file_storage.filename,
+        ext,
+        len(file_bytes),
+    )
     return file_storage.filename, file_bytes
 
 
@@ -83,14 +95,19 @@ def _extract_pptx_text(file_bytes):
                     if node.tag.endswith("}t") and node.text:
                         texts.append(node.text.strip())
     except Exception:
+        logger.exception("PPTX text extraction failed")
         return ""
-    return "\n".join(text for text in texts if text)[:MAX_EXTRACTED_CHARS]
+
+    text = "\n".join(text for text in texts if text)[:MAX_EXTRACTED_CHARS]
+    logger.info("PPTX text extracted: chars=%s", len(text))
+    return text
 
 
 def _extract_pdf_text(file_bytes):
     try:
         from pypdf import PdfReader
     except Exception:
+        logger.exception("pypdf import failed")
         return ""
 
     try:
@@ -100,8 +117,11 @@ def _extract_pdf_text(file_bytes):
             text = page.extract_text() or ""
             if text.strip():
                 pages.append(text.strip())
-        return "\n\n".join(pages)[:MAX_EXTRACTED_CHARS]
+        extracted = "\n\n".join(pages)[:MAX_EXTRACTED_CHARS]
+        logger.info("PDF text extracted: pages=%s chars=%s", len(reader.pages), len(extracted))
+        return extracted
     except Exception:
+        logger.exception("PDF text extraction failed")
         return ""
 
 
@@ -111,6 +131,7 @@ def extract_document_text(filename, file_bytes):
         return _extract_pptx_text(file_bytes)
     if ext == ".pdf":
         return _extract_pdf_text(file_bytes)
+    logger.warning("Text extraction is not available for extension: %s", ext)
     return ""
 
 
@@ -151,7 +172,8 @@ def _parse_json_response(text):
     except json.JSONDecodeError:
         match = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
         if not match:
-            raise
+            logger.error("AI response is not JSON: %s", cleaned[:1000])
+            raise PptSurveyAiError("AI 回傳格式不是 JSON，請重新生成。", 502)
         return json.loads(match.group(0))
 
 
@@ -216,6 +238,7 @@ options 必須維持空陣列，才能相容系統原本問卷資料結構。
 def _handle_ai_exception(exc):
     message = str(exc)
     lower_message = message.lower()
+    logger.exception("Gemini API call failed: %s", message)
     if "quota" in lower_message or "429" in message:
         raise PptSurveyAiError("AI API 額度或頻率限制已達上限，請稍後再試。", 429) from exc
     if "deadline" in lower_message or "timeout" in lower_message:
@@ -228,6 +251,7 @@ def _handle_ai_exception(exc):
 def _call_gemini(contents):
     client, types = _load_genai_client()
     model = os.getenv("PPT_SURVEY_AI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    logger.info("Calling Gemini model=%s", model)
     try:
         response = client.models.generate_content(
             model=model,
@@ -241,6 +265,7 @@ def _call_gemini(contents):
         _handle_ai_exception(exc)
 
     text = getattr(response, "text", "") or ""
+    logger.info("Gemini response received: chars=%s", len(text))
     if not text.strip():
         raise PptSurveyAiError("AI 沒有回傳內容，請稍後再試。", 502)
     return _parse_json_response(text)
@@ -252,9 +277,16 @@ def generate_survey_from_material(filename, file_bytes, config):
     direction = str(config.get("direction") or "").strip()
     focus = str(config.get("focus") or "").strip()
     extracted_text = extract_document_text(filename, file_bytes)
-    mime_type = _guess_mime(filename)
-    client, types = _load_genai_client()
-    model = os.getenv("PPT_SURVEY_AI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+
+    logger.info(
+        "Generating PPT survey: filename=%s question_count=%s allowed_types=%s direction=%s focus=%s extracted_chars=%s",
+        filename,
+        question_count,
+        allowed_types,
+        direction,
+        focus,
+        len(extracted_text),
+    )
 
     prompt = f"""
 你是教學問卷設計助理。請根據上傳的 PPT/PDF 內容產生一份可直接儲存的問卷草稿。
@@ -263,32 +295,21 @@ def generate_survey_from_material(filename, file_bytes, config):
 生成重點：{focus or "課程內容"}
 {_survey_json_instruction(allowed_types, question_count)}
 """
+
     if extracted_text:
         prompt += f"\n以下是從檔案擷取出的文字內容：\n{extracted_text}"
-
-    contents = [
-        types.Part.from_bytes(data=file_bytes, mime_type=mime_type),
-        prompt,
-    ]
-
-    try:
-        response = client.models.generate_content(
-            model=model,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                temperature=0.25,
-                response_mime_type="application/json",
-            ),
-        )
-        raw = _parse_json_response(getattr(response, "text", "") or "")
-    except PptSurveyAiError:
-        raise
-    except Exception as exc:
-        # Some AI providers reject PPT binary input. Retry with extracted text when possible.
-        if extracted_text:
-            raw = _call_gemini([prompt])
+        raw = _call_gemini([prompt])
+    else:
+        ext = _extension(filename)
+        if ext in {".ppt", ".pptx", ".pdf"}:
+            logger.warning("No text extracted; falling back to binary upload for filename=%s", filename)
+            _, types = _load_genai_client()
+            raw = _call_gemini([
+                types.Part.from_bytes(data=file_bytes, mime_type=_guess_mime(filename)),
+                prompt,
+            ])
         else:
-            _handle_ai_exception(exc)
+            raise PptSurveyAiError("無法讀取檔案文字，請改用 .pptx 或可選取文字的 .pdf。", 400)
 
     fallback_title = f"{os.path.splitext(filename)[0]} 問卷"
     return normalize_survey_draft(raw, fallback_title=fallback_title)
