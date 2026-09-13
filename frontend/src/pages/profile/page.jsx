@@ -770,23 +770,6 @@ export default function ProfilePage() {
                     )}
                   </div>
                 ))}
-                <div className="col-md-6">
-                  <label className="auth-label">{t("profile.language")}</label>
-                  {isEditing ? (
-                    <select className="form-select form-control-custom" value={editProfile.language} onChange={(event) => setEditProfile((prev) => ({ ...prev, language: event.target.value }))}>
-                      <option value="zh-TW">{t("profile.chinese")}</option>
-                      <option value="en">{t("profile.english")}</option>
-                    </select>
-                  ) : (
-                    <div className="profile-field">
-                      <div className="field-icon bg-violet-50"><i className="ri-global-line text-violet"></i></div>
-                      <div>
-                        <span className="field-value d-block">{profile.language === "en" ? t("profile.english") : t("profile.chinese")}</span>
-                        <small className="text-muted">{t("profile.languageHelp")}</small>
-                      </div>
-                    </div>
-                  )}
-                </div>
                 <div className="col-12">
                   <label className="auth-label">自我介紹</label>
                   {isEditing ? (

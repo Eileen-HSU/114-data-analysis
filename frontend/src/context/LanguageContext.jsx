@@ -82,6 +82,12 @@ Object.assign(legacyEnglish, {
   "表格式結果呈現": "Structured results", "分析結果以表格式呈現，方便使用者查看分類結果、回饋重點與分析紀錄。": "Review categorized results, key feedback, and analysis history in a clear table.",
   "問卷建立與回饋蒐集": "Create surveys and collect feedback", "支援建立問卷、蒐集填答內容，並可將回饋資料提供給 AI 分析助理進行整理。": "Create surveys, collect responses, and send feedback to the AI Analysis Assistant for organization.",
   "四個簡單步驟，完成培訓回饋整理與分析。": "Four simple steps to organize and analyze training feedback.",
+  "近期活動": "Recent activity", "追蹤日期：由近到遠": "Sort by date: newest first", "追蹤日期：由遠到近": "Sort by date: oldest first", "公司 / 組織": "Company / organization", "公司／組織": "Company / organization",
+  "安全設定": "Security settings", "建議定期更新密碼，提升帳號安全。": "Update your password regularly to keep your account secure.", "透過第二層驗證保護登入流程。": "Protect your sign-in with an additional verification step.", "登入時會要求輸入驗證碼。": "A verification code will be required when signing in.", "變更密碼": "Change password", "未開啟": "Not enabled",
+  "分享的對話": "Shared conversation", "僅供瀏覽": "View only", "檢視連結": "View link", "複製檢視連結": "Copy view link", "已複製連結": "Link copied", "完成": "Done", "訪客檢視": "Guest view", "讓其他人一起查看這段分析對話": "Let others view this analysis conversation", "取得連結即可免登入查看。": "Anyone with the link can view without signing in.", "訪客無法傳送指令或修改這段對話。": "Guests cannot send commands or modify this conversation.", "產生連結中...": "Creating link…",
+  "近期活動": "Recent activity", "查看詳情": "View details", "邀請碼": "Invite code", "截止": "Deadline", "未設定截止時間": "No deadline set", "截止日期與時間": "Deadline date and time", "選擇截止日期與時間": "Choose deadline date and time", "截止時間必須晚於現在。": "The deadline must be later than now.",
+  "伺服器回應時間較長，建立問卷尚未確認完成。請先到個人頁面的問卷列表確認，再決定是否重試。": "The server is taking longer than expected. Check your profile's survey list before retrying.", "儲存中...": "Saving…", "完成問卷建立": "Finish creating survey", "請完成所有必填題目。": "Please complete all required questions.", "輸入邀請碼開啟問卷，完成填答並提交回饋內容。": "Enter an invite code to open the survey, complete it, and submit your feedback.",
+  "正在生成": "Generating", "請稍候，完成後會自動前往匯出檔案。": "Please wait. You will be taken to exported files when it is ready.", "這則訊息尚未同步完成，請稍後再試一次匯出。": "This message has not finished syncing. Please try exporting again later.",
 });
 function translateLegacyInterface(language) {
   if (!document.body) return;
