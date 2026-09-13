@@ -34,7 +34,7 @@ function getAuthHeader() {
 export default function CollectionPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, user } = useAuth();
   const { recordActivity } = useActivity();
   const {
     folders,
@@ -50,9 +50,8 @@ export default function CollectionPage() {
     workspaceSessions,
   } = useCollection();
 
-  const [activeView, setActiveView] = useState("folders");
-  // 【新增｜串接匯出清單】真正的匯出紀錄，取代原本寫死 stats.exports = 0
-  // 的假資料。進到「exports」這個檢視畫面時才去抓，不用一開頁就打 API。
+  const [activeView, setActiveView] = useState(() => location.state?.activeView || "folders");
+  // 進入專案管理即載入匯出紀錄，讓統計卡片同步顯示實際數量。
   const [exportsList, setExportsList] = useState([]);
   const [exportSearch, setExportSearch] = useState("");
   const [exportNotice, setExportNotice] = useState("");
@@ -60,7 +59,7 @@ export default function CollectionPage() {
   const filteredExports = useMemo(() => exportsList.filter((item) =>
     String(item.export_name ?? "").toLocaleLowerCase().includes(exportSearchTerm)
   ), [exportsList, exportSearchTerm]);
-  const [exportsLoading, setExportsLoading] = useState(false);
+  const [exportsLoading, setExportsLoading] = useState(isLoggedIn);
   const [exportsError, setExportsError] = useState(null);
   const [openFolders, setOpenFolders] = useState(new Set(["f1"]));
   const [draggingId, setDraggingId] = useState(null);
@@ -81,16 +80,16 @@ export default function CollectionPage() {
   const [isCreatingAnalysis, setIsCreatingAnalysis] = useState(false);
 
   useEffect(() => {
+    if (location.state?.exportCreated) setExportNotice(`「${location.state.exportCreated}」已生成完成，可點擊檔案下載。`);
     if (location.state?.activeView) {
       setActiveView(location.state.activeView);
       window.history.replaceState({}, "");
     }
   }, [location.state]);
 
-  // 【新增｜串接匯出清單】切到「exports」這個檢視畫面時才抓，
-  // 不用一開這個頁面就打 API，減少不必要的請求。
+  // 登入後立即載入總數及清單，不必先點選匯出檔案。
   useEffect(() => {
-    if (activeView !== "exports" || !isLoggedIn) return;
+    if (!isLoggedIn) { setExportsList([]); setExportsLoading(false); return; }
     let cancelled = false;
     setExportsLoading(true);
     setExportsError(null);
@@ -109,7 +108,7 @@ export default function CollectionPage() {
         if (!cancelled) setExportsLoading(false);
       });
     return () => { cancelled = true; };
-  }, [activeView, isLoggedIn]);
+  }, [isLoggedIn, user?.token]);
 
   const handleOpenExportChat = async (item) => {
     if (!item.project_id) throw new Error("找不到這個檔案的來源對話。");
@@ -132,7 +131,7 @@ export default function CollectionPage() {
       String(entry.project_id ?? entry.id) !== String(workspace.project_id)
     )]);
     localStorage.setItem(ACTIVE_WORKSPACE_KEY, String(sessionId));
-    navigate("/workspace", { state: { openSession: { sessionId } } });
+    navigate("/workspace", { state: { openSession: { sessionId, scrollToBottom: true } } });
   };
 
   const handleRenameExport = async (item, filename) => {
@@ -727,7 +726,7 @@ export default function CollectionPage() {
             <div className="row g-3 mt-4">
               {[
                 { key: "folders", icon: "ri-chat-3-line", cls: "stat-folder", val: stats.chats, label: "歷史專案", unit: "個 Chat" },
-                { key: "exports", icon: "ri-download-cloud-2-line", cls: "stat-export", val: stats.exports, label: "匯出檔案", unit: "個檔案" },
+                { key: "exports", icon: "ri-download-cloud-2-line", cls: "stat-export", val: exportsLoading ? "…" : exportsError ? "—" : stats.exports, label: "匯出檔案", unit: "個檔案" },
                 { key: "deleted", icon: "ri-delete-bin-line", cls: "stat-deleted", val: stats.deleted, label: "最近刪除", unit: "個項目" },
               ].map((item) => (
                 <div className="col-12 col-md-4" key={item.label}>
@@ -739,7 +738,7 @@ export default function CollectionPage() {
                     <div className={`stat-icon ${item.cls}`}><i className={item.icon}></i></div>
                     <div className="stat-value">{item.val}</div>
                     <div className="stat-label">{item.label}</div>
-                    <div className="stat-hint">{item.val} {item.unit}</div>
+                    <div className="stat-hint">{item.key === "exports" && exportsLoading ? "檔案數量載入中..." : item.key === "exports" && exportsError ? "數量載入失敗，請重新整理" : `${item.val} ${item.unit}`}</div>
                   </button>
                 </div>
               ))}

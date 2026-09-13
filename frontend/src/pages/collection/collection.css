@@ -775,7 +775,7 @@
   .export-rename-btn { padding: 8px; }
   .export-rename-btn span { display: none; }
 }
-.export-list-item { display: grid; grid-template-columns: minmax(150px, .7fr) minmax(0, 1.4fr) auto; gap: 22px; }
+.export-list-item { display: grid; grid-template-columns: minmax(130px, 190px) minmax(0, 1fr) auto; gap: 22px; }
 .export-source-column { min-width: 0; padding-right: 18px; border-right: 1px solid #f1e6eb; }
 .export-column-label { display: block; margin-bottom: 5px; font-size: 11px; font-weight: 500; color: #94a3b8; }
 .export-source-link { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 0; border: 0; background: transparent; color: #db809b; text-align: left; cursor: pointer; font-size: 13px; }
@@ -790,3 +790,6 @@
   .export-source-column { grid-column: 1 / -1; padding: 0 0 12px; border-right: 0; border-bottom: 1px solid #f1e6eb; }
   .export-list-item.is-renaming .export-rename-form { grid-column: 1 / -1; }
 }
+.export-source-link { padding: 8px 10px; background: #fcf6f9; border: 1px solid #f4e6ec; border-radius: 10px; gap: 8px; }
+.export-chat-emoji { flex-shrink: 0; font-size: 18px; line-height: 1; }
+.export-source-link:hover:not(:disabled) { background: #f9edf3; text-decoration: none; }

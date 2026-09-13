@@ -47,12 +47,10 @@ export default function ExportFileRow({ item, onDownload, onRename, onOpenChat }
   return (
     <div className={`export-list-item${editing ? " is-renaming" : ""}`}>
       <div className="export-source-column">
-        <span className="export-column-label">來源 Chat</span>
         <button type="button" className="export-source-link" onClick={openSourceChat}
-          disabled={opening || !item.project_id} title="前往分析助理查看此對話">
-          <i className={opening ? "ri-loader-4-line ri-spin" : "ri-chat-3-line"} />
+          disabled={opening || !item.project_id} title={`點擊回到「${item.source_path || "來源對話"}」的最新訊息`}>
+          {opening ? <i className="ri-loader-4-line ri-spin" /> : <span className="export-chat-emoji" aria-hidden="true">💬</span>}
           <span>{item.source_path || "來源對話"}</span>
-          {item.project_id && <i className="ri-arrow-right-up-line" />}
         </button>
         {sourceError && <p className="export-source-error" role="alert">{sourceError}</p>}
       </div>
