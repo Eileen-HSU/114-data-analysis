@@ -82,6 +82,9 @@ Object.assign(legacyEnglish, {
   "表格式結果呈現": "Structured results", "分析結果以表格式呈現，方便使用者查看分類結果、回饋重點與分析紀錄。": "Review categorized results, key feedback, and analysis history in a clear table.",
   "問卷建立與回饋蒐集": "Create surveys and collect feedback", "支援建立問卷、蒐集填答內容，並可將回饋資料提供給 AI 分析助理進行整理。": "Create surveys, collect responses, and send feedback to the AI Analysis Assistant for organization.",
   "四個簡單步驟，完成培訓回饋整理與分析。": "Four simple steps to organize and analyze training feedback.",
+  "個資料夾": "folders", "個 Chat": "chats", "個檔案": "files", "個項目": "items", "份回覆": "responses", "筆回答": "answers", "筆": "responses", "人回覆": "responses", "人回答": "responses",
+  "歷史專案": "Project history", "近期活動": "Recent activity", "沒有未分類檔案。": "No unfiled files.", "未分類": "Unfiled", "資料夾": "Folder", "資料夾內": "In folder", "檔案名稱": "File name", "名稱": "Name",
+  "開始分析": "Start analysis", "新增分析": "New analysis", "新增對話": "New conversation", "產生連結中...": "Creating link…", "已生成完成，可點擊檔案下載。": "is ready. Click the file to download.", "尚未完成": "Not finished", "處理中": "Processing", "成功": "Success", "失敗": "Failed",
   "近期活動": "Recent activity", "追蹤日期：由近到遠": "Sort by date: newest first", "追蹤日期：由遠到近": "Sort by date: oldest first", "公司 / 組織": "Company / organization", "公司／組織": "Company / organization",
   "安全設定": "Security settings", "建議定期更新密碼，提升帳號安全。": "Update your password regularly to keep your account secure.", "透過第二層驗證保護登入流程。": "Protect your sign-in with an additional verification step.", "登入時會要求輸入驗證碼。": "A verification code will be required when signing in.", "變更密碼": "Change password", "未開啟": "Not enabled",
   "分享的對話": "Shared conversation", "僅供瀏覽": "View only", "檢視連結": "View link", "複製檢視連結": "Copy view link", "已複製連結": "Link copied", "完成": "Done", "訪客檢視": "Guest view", "讓其他人一起查看這段分析對話": "Let others view this analysis conversation", "取得連結即可免登入查看。": "Anyone with the link can view without signing in.", "訪客無法傳送指令或修改這段對話。": "Guests cannot send commands or modify this conversation.", "產生連結中...": "Creating link…",
@@ -91,26 +94,30 @@ Object.assign(legacyEnglish, {
 });
 function translateLegacyInterface(language) {
   if (!document.body) return;
-  const target = language === "en" ? legacyEnglish : Object.fromEntries(Object.entries(legacyEnglish).map(([zh, en]) => [en, zh]));
-  const translate = (value) => target[value] || value;
+  const target = language === "en"
+    ? legacyEnglish
+    : Object.fromEntries(Object.entries(legacyEnglish).map(([zh, en]) => [en, zh]));
+  const phrases = Object.keys(target).filter(Boolean).sort((a, b) => b.length - a.length);
+  const translate = (value) => phrases.reduce((result, phrase) => result.split(phrase).join(target[phrase]), value);
   const isProtected = (element) => element?.closest?.(PROTECTED_OUTPUT_SELECTOR);
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
-      return isProtected(node.parentElement) || !target[node.nodeValue.trim()] ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+      const value = node.nodeValue.trim();
+      return isProtected(node.parentElement) || !value || !phrases.some((phrase) => value.includes(phrase))
+        ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
     },
   });
   const nodes = [];
   while (walker.nextNode()) nodes.push(walker.currentNode);
   nodes.forEach((node) => {
-    const whitespace = node.nodeValue.match(/^(\s*)|(?:\s*)$/g) || ["", ""];
-    node.nodeValue = `${whitespace[0]}${translate(node.nodeValue.trim())}${whitespace[1] || ""}`;
+    node.nodeValue = translate(node.nodeValue);
   });
 
   document.querySelectorAll("[placeholder], [title], [aria-label]").forEach((element) => {
     if (isProtected(element)) return;
     ["placeholder", "title", "aria-label"].forEach((attribute) => {
       const value = element.getAttribute(attribute);
-      if (value && target[value]) element.setAttribute(attribute, translate(value));
+      if (value && phrases.some((phrase) => value.includes(phrase))) element.setAttribute(attribute, translate(value));
     });
   });
 }
