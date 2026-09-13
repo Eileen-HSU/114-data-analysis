@@ -10,6 +10,7 @@ import { apiUrl } from "../../lib/api";
 // 訊息內容，改成簡短一行，拿掉未使用的 import。
 import "./workspace.css";
 import ShareWorkspaceDialog from "./ShareWorkspaceDialog";
+import ExportActions from "./ExportActions";
 
 export const WELCOME_MSG = {
   id: "welcome",
@@ -358,103 +359,6 @@ function AssistantTableContent({ content, readOnly = false }) {
   );
 }
 
-// 【新增｜匯出功能】把分類結果存成 EXCEL/WORD，存到後端（Export_File），
-// 使用者之後在「專案管理 → 匯出檔案」下載，不是點下去馬上跳瀏覽器下載。
-// 純前端實作，不用等後端支援：資料本來就已經在畫面上了。
-// 開頭加 UTF-8 BOM，不然中文在 Excel 打開會變亂碼。
-// 【新增｜串接匯出清單後端】把匯出內容存到後端（POST /api/exports），
-// 這樣才會出現在「專案管理 → 匯出檔案」那頁的清單裡，不是只下載到本機。
-// 存後端失敗也不影響本機下載照常進行——使用者當下最在意的是能不能
-// 拿到檔案，清單只是附加價值，不該因為清單存不進去就讓下載跟著失敗。
-async function downloadClassificationFile(
-  rows,
-  chatId,
-  showToast,
-  sourceFilename,
-  exportFormat
-) {
-  const FORMAT_LABELS = {
-    xlsx: "Excel",
-    docx: "Word",
-  };
-
-  const FORMAT_EXT = {
-    xlsx: "xlsx",
-    docx: "docx",
-  };
-
-  if (!["xlsx", "docx"].includes(exportFormat)) {
-    showToast?.("不支援的匯出格式");
-    return;
-  }
-
-  if (!chatId) {
-    showToast?.("這則訊息還沒同步完成，請稍後再試一次匯出");
-    return;
-  }
-
-  let baseFilename;
-
-  if (sourceFilename) {
-    baseFilename = sourceFilename.replace(/\.[^.]+$/, "");
-  } else {
-    const taiwanTime = new Date(Date.now() + 8 * 60 * 60 * 1000);
-
-    const timestamp = taiwanTime
-      .toISOString()
-      .slice(0, 19)
-      .replace(/[:T]/g, "-");
-
-    baseFilename = `分類結果_${timestamp}`;
-  }
-
-  const filename =
-    `${baseFilename}_分類結果.${FORMAT_EXT[exportFormat]}`;
-
-  const requestBody = {
-    chat_id: chatId,
-    filename,
-    export_type: exportFormat,
-    row_count: rows.length,
-    rows,
-    title: baseFilename,
-  };
-
-  showToast?.(
-    `製作中（${FORMAT_LABELS[exportFormat]}）…`
-  );
-
-  await new Promise((resolve) =>
-    setTimeout(resolve, 600)
-  );
-
-  try {
-    const res = await fetch(apiUrl("/api/exports"), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...getAuthHeader(),
-      },
-      body: JSON.stringify(requestBody),
-    });
-
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      showToast?.(
-        data?.error || "匯出失敗，請稍後再試一次"
-      );
-      return;
-    }
-
-    showToast?.(
-      "已完成，請至「專案管理→匯出檔案」查看"
-    );
-  } catch (err) {
-    console.error("匯出檔案失敗：", err);
-    showToast?.("匯出失敗，請稍後再試一次");
-  }
-}
-
 /* 【串backend】渲染真實分類結果的表格元件。
  * 5 欄對照使用者要的格式：大類別／子類別／問卷回覆內容／判斷原因與說明／受試者建議摘要。
  * 資料來源：parseClassificationMessageContent() 從訊息內容還原出來的 rows。 */
@@ -587,42 +491,7 @@ function ClassificationTable({ rows, meta, chatId, showToast, readOnly = false }
         </table>
       </div>
 
-      {/* Excel / Word 匯出 */}
-      {!readOnly && <div className="assistant-output-actions assistant-output-actions--multi">
-        <button
-          className="assistant-export-btn"
-          type="button"
-          onClick={() =>
-            downloadClassificationFile(
-              rows,
-              chatId,
-              showToast,
-              meta?.source_filename,
-              "xlsx"
-            )
-          }
-        >
-          <i className="ri-file-excel-2-line"></i>
-          匯出成 Excel
-        </button>
-
-        <button
-          className="assistant-export-btn"
-          type="button"
-          onClick={() =>
-            downloadClassificationFile(
-              rows,
-              chatId,
-              showToast,
-              meta?.source_filename,
-              "docx"
-            )
-          }
-        >
-          <i className="ri-file-word-2-line"></i>
-          匯出成 Word
-        </button>
-      </div>}
+      {!readOnly && <ExportActions rows={rows} chatId={chatId} sourceFilename={meta?.source_filename} />}
     </div>
   );
 }
@@ -714,6 +583,7 @@ export default function WorkspacePage() {
   const toastTimerRef = useRef(null);
 
   const messagesEndRef = useRef(null);
+  const scrollToBottomSessionRef = useRef(location.state?.openSession?.scrollToBottom ? location.state.openSession.sessionId : null);
   const fileInputRef = useRef(null);
   const textareaRef = useRef(null);
   const surveyImportHandled = useRef(false);
@@ -980,8 +850,15 @@ export default function WorkspacePage() {
   }, [activeSessionId]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isTyping]);
+    const forceBottom = scrollToBottomSessionRef.current === activeSessionId;
+    if (forceBottom && (historyLoadingSessionId || isEntryLoading)) return;
+    const frame = requestAnimationFrame(() => {
+      const messageArea = messagesEndRef.current?.closest(".messages-area");
+      messageArea?.scrollTo({ top: messageArea.scrollHeight, behavior: forceBottom ? "instant" : "smooth" });
+      if (forceBottom && messagesEndRef.current) scrollToBottomSessionRef.current = null;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [messages, isTyping, activeSessionId, historyLoadingSessionId, isEntryLoading]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -998,6 +875,7 @@ export default function WorkspacePage() {
     const state = location.state;
     if (!state?.openSession) return;
     const { sessionId } = state.openSession;
+    scrollToBottomSessionRef.current = state.openSession.scrollToBottom ? sessionId : null;
     setHistoryLoadingSessionId(sessionId);
     setActiveSessionId(sessionId);
     window.history.replaceState({}, "");

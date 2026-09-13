@@ -1047,3 +1047,7 @@
   .workspace-alert-modal { padding: 34px 24px 26px; }
   .workspace-alert-actions { flex-direction: column; }
 }
+.export-generation-status, .export-generation-error { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; padding: 12px 14px; border-radius: 10px; font-size: 14px; line-height: 1.7; }
+.export-generation-status { color: #7a668b; background: #f7f0fb; border: 1px solid #e9ddf0; }
+.export-generation-error { color: #bd536b; background: #fff2f4; border: 1px solid #f4d5dd; }
+.export-generation .assistant-export-btn:disabled { opacity: .6; cursor: wait; }
