@@ -130,6 +130,35 @@ Object.assign(legacyEnglish, {
 // person-supplied name or answer. Counts are handled by their UI-only classes.
 delete legacyEnglish["個"];
 
+// Survey creation, completion, and PPT/PDF generation use several compact
+// helper labels that are rendered after state updates. Keep their translations
+// explicit so language switching covers placeholders and small grey guidance.
+Object.assign(legacyEnglish, {
+  "問卷資訊": "Survey information", "例如：產品滿意度調查": "Example: Product satisfaction survey",
+  "補充填答說明、用途或注意事項": "Add response instructions, purpose, or notes",
+  "填答者身分": "Respondent identity", "匿名": "Anonymous", "非匿名": "Identified",
+  "填答者不需要留下身分。": "Respondents do not need to provide their identity.",
+  "填答者送出前需填寫身分。": "Respondents must provide their identity before submitting.",
+  "問卷截止日": "Survey deadline", "填答者只能在截止日前送出問卷。": "Respondents can submit only before the deadline.",
+  "問答題": "Open-ended question", "評分題 0-5": "Rating question (0–5)", "必填": "Required",
+  "複製題目": "Duplicate question", "題目": "Question", "儲存中...": "Saving…",
+  "輸入邀請碼即可開始作答。": "Enter an invite code to start responding.",
+  "輸入邀請碼": "Enter invite code", "請輸入問卷建立後產生的邀請碼": "Enter the invite code generated when the survey was created.",
+  "輸入 INVITE CODE": "Enter invite code", "進入": "Enter", "送出問卷": "Submit survey", "送出中": "Submitting…",
+  "上傳 PPT/PDF 生成問卷": "Generate a survey from PPT/PDF",
+  "依簡報或 PDF 重點產生相容草稿，講師可先編修、再 Save 成正式問卷。": "Create an editable draft from a presentation or PDF, then review it before saving it as a survey.",
+  "依簡報或 PDF 重點產生相容草稿": "Create an editable draft from a presentation or PDF",
+  "講師可先編修、再 Save 成正式問卷。": "Review and edit it before saving it as a survey.",
+  "問卷紀錄": "Survey history", "顯示近期 Create 的問卷與回覆狀態。": "Shows recently created surveys and their response status.",
+  "AI 生成": "AI generation", "AI 問卷草稿": "AI survey draft", "從 PPT/PDF 建立問卷": "Create a survey from PPT/PDF",
+  "上傳 PPT 或 PDF 檔案": "Upload a PPT or PDF file", "支援 .ppt、.pptx、.pdf": "Supports .ppt, .pptx, and .pdf",
+  "問卷主題": "Survey topic", "重點方向": "Focus", "題目數量": "Number of questions",
+  "允許題型": "Allowed question types", "開始生成": "Generate", "生成中...": "Generating…",
+  "AI 正在生成問卷草稿": "AI is generating a survey draft", "請稍候，完成後可直接編輯。": "Please wait. You can edit it when it is ready.",
+  "新增簡答題": "Add short-answer question", "新增評分題": "Add rating question", "分析中...": "Analyzing…",
+  "送出": "Send", "儲存成正式問卷": "Save as survey", "儲存成功": "Saved successfully",
+});
+
 function translateLegacyInterface(language) {
   if (!document.body) return;
   const target = language === "en"
