@@ -11,7 +11,3 @@ backend/.venv/
 backend/venv/
 backend/*.pem__pycache__/
 *.pyc
-
-# Local browser regression artifacts
-test-results/
-playwright-report/
