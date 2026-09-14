@@ -350,7 +350,7 @@ def submit_survey_response():
     answers = (data.get("answer_json") or {}).get("answers", {})
 
     if not template_id or not answers:
-        return jsonify({"error": "Missing template ID or answers"}), 400
+        return jsonify({"error": "缺少 template_id 或 answers"}), 400
 
     survey = Survey_Response(template_id=template_id, answer_json=data.get("answer_json"))
     db.session.add(survey)
@@ -419,7 +419,7 @@ def upload_excel_for_classification():
 
     file = request.files.get("file")
     if not file:
-        return jsonify({"error": "Please provide a file"}), 400
+        return jsonify({"error": "請提供檔案"}), 400
 
     df = pd.read_excel(file)
     text_column_param = request.form.get("text_column")
@@ -448,7 +448,7 @@ def upload_excel_for_classification():
         auto_detected = True
 
     if not text_columns:
-        return jsonify({"error": "Unable to detect a text column. Check that your Excel file contains open-ended responses."}), 400
+        return jsonify({"error": "無法自動判斷文字欄位，請確認 Excel 內容是否包含開放式文字回答"}), 400
 
     upload_batch_id = str(uuid.uuid4())
 
@@ -611,15 +611,15 @@ def analyze_survey(access_code):
 
     survey = find_survey_by_access_or_short_code(access_code)
     if not survey:
-        return jsonify({"error": "Survey not found"}), 404
+        return jsonify({"error": "找不到這份問卷"}), 404
     if survey.user_id != auth_user_id:
-        return jsonify({"error": "Access denied"}), 403
+        return jsonify({"error": "無權限"}), 403
 
     template_id = survey.template_id
     question_json = survey.question_json or {}
     items = question_json.get("items", [])
 
-
+    
     question_type_map = {
         item.get("id"): (item.get("question_type") or QUESTION_OTHER)
         for item in items
@@ -627,7 +627,7 @@ def analyze_survey(access_code):
     }
 
     if not question_type_map:
-
+        
         short_type_items = [item for item in items if item.get("type") == "short"]
         return jsonify({
             "template_id": template_id,
@@ -641,8 +641,9 @@ def analyze_survey(access_code):
                     [item for item in short_type_items if item.get("question_type")]
                 ),
                 "message": (
-                    "This survey has no open-ended questions with a classification route. "
-                    "Classification results cannot be generated, regardless of the number of responses."
+                    "這份問卷沒有任何一題符合「開放式文字題（type=short）且有分類"
+                    "路由結果（question_type）」的條件，所以完全不會產生分類結果，"
+                    "不管有幾個人回答都一樣。"
                 ),
             },
         }), 200
@@ -651,7 +652,7 @@ def analyze_survey(access_code):
         Survey_Response.response_id.asc()
     ).all()
 
-
+    
     response_id_to_number = {
         response.response_id: idx for idx, response in enumerate(responses)
     }
@@ -662,7 +663,7 @@ def analyze_survey(access_code):
     per_question_diagnostic = {}
 
     for question_id, question_type in question_type_map.items():
-
+    
         if question_type == QUESTION_OTHER:
             prompt_content_for_batch = DYNAMIC_GENERAL_PROMPT
         else:
@@ -695,11 +696,11 @@ def analyze_survey(access_code):
             ).first()
 
             if existing_status is not None and existing_status.segmentation_status == "completed":
-
+                
                 existing_rows = Response_Classification.query.filter_by(
                     response_id=response.response_id, question_id=question_id
                 ).all()
-
+                
                 rows_by_question_type.setdefault(question_type, []).extend(existing_rows)
                 existing_references.append({
                     "identifier": response.response_id,

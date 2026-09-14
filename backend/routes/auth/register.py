@@ -57,13 +57,13 @@ def is_valid_password(password: str) -> bool:
 def register():
     data = request.get_json(silent=True)
     if not data:
-        return jsonify({"error": "No data received"}), 400
+        return jsonify({"error": "未接收到資料"}), 400
 
     # 1. 必填欄位檢查
     required = ['user_name', 'email', 'phone_number', 'gender', 'password']
     missing = [f for f in required if not data.get(f)]
     if missing:
-        return jsonify({"error": "Please complete all required fields"}), 400
+        return jsonify({"error": "請填寫所有必填欄位"}), 400
 
     email = data.get('email', '').strip().lower()
     password = data.get('password', '')
@@ -71,18 +71,18 @@ def register():
 
     # 2. email 格式驗證
     if not EMAIL_REGEX.match(email):
-        return jsonify({"error": "Invalid email address"}), 400
+        return jsonify({"error": "電子郵件格式不正確"}), 400
 
     # 3. email 是否已註冊
     if db.session.query(exists().where(User.email == email)).scalar():
-        return jsonify({"error": "This email address is already registered"}), 409
+        return jsonify({"error": "此電子郵件已被註冊"}), 409
 
     # 4. 密碼強度驗證
     if not is_valid_password(password):
-        return jsonify({"error": "Password must contain at least 8 characters, including letters and numbers."}), 400
+        return jsonify({"error": "密碼至少需要 8 個字元，並包含英文字母和數字"}), 400
 
     try:
-        now = taiwan_now()
+        now = taiwan_now()  
         new_user = User(
             user_name=user_name,
             email=email,
@@ -103,7 +103,7 @@ def register():
 
         token = build_token(new_user.user_id, now=now)
         return jsonify({
-            "message": f"Account created successfully for {new_user.user_name}!",
+            "message": f"使用者 {new_user.user_name} 註冊成功！",
             "user_id": new_user.user_id,
             "user_name": new_user.user_name,
             "email": new_user.email,
@@ -113,4 +113,4 @@ def register():
     except Exception as e:
         db.session.rollback()
         logging.error(f"Registration error: {e}", exc_info=True)
-        return jsonify({"error": "Registration failed. Please try again later."}), 500
+        return jsonify({"error": "註冊失敗，請稍後再試"}), 500

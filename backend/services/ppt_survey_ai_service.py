@@ -28,7 +28,7 @@ def _get_api_key():
     api_key = os.getenv("PPT_SURVEY_AI_API_KEY", "").strip()
     if not api_key:
         logger.error("PPT_SURVEY_AI_API_KEY is missing")
-        raise PptSurveyAiError("The AI survey API key is not configured.", 503)
+        raise PptSurveyAiError("PPT/PDF 問卷 AI API key 尚未設定。", 503)
     return api_key
 
 
@@ -38,7 +38,7 @@ def _load_genai_client():
         from google.genai import types
     except Exception as exc:
         logger.exception("google-genai import failed")
-        raise PptSurveyAiError("The AI service is unavailable. Please contact the administrator.", 503) from exc
+        raise PptSurveyAiError("後端缺少 google-genai 套件，請確認 requirements.txt。", 503) from exc
 
     return genai.Client(api_key=_get_api_key()), types
 
@@ -60,17 +60,17 @@ def _guess_mime(filename):
 
 def validate_upload(file_storage):
     if not file_storage or not file_storage.filename:
-        raise PptSurveyAiError("Please upload a PPT or PDF file.", 400)
+        raise PptSurveyAiError("請上傳 PPT 或 PDF 檔案。", 400)
 
     ext = _extension(file_storage.filename)
     if ext not in ALLOWED_EXTENSIONS:
-        raise PptSurveyAiError("Unsupported file format. Upload a .ppt, .pptx, or .pdf file.", 400)
+        raise PptSurveyAiError("檔案格式不支援，請上傳 .ppt、.pptx 或 .pdf。", 400)
 
     file_bytes = file_storage.read()
     if not file_bytes:
-        raise PptSurveyAiError("The file is empty. Please upload another file.", 400)
+        raise PptSurveyAiError("檔案內容是空的，請重新上傳。", 400)
     if len(file_bytes) > MAX_UPLOAD_BYTES:
-        raise PptSurveyAiError("The file is too large. Upload a PPT or PDF no larger than 25 MB.", 413)
+        raise PptSurveyAiError("檔案太大，請上傳 25MB 以下的 PPT/PDF。", 413)
 
     logger.info(
         "PPT survey upload accepted: filename=%s ext=%s size=%s",
@@ -173,13 +173,13 @@ def _parse_json_response(text):
         match = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
         if not match:
             logger.error("AI response is not JSON: %s", cleaned[:1000])
-            raise PptSurveyAiError("The AI response was not valid JSON. Please generate again.", 502)
+            raise PptSurveyAiError("AI 回傳格式不是 JSON，請重新生成。", 502)
         return json.loads(match.group(0))
 
 
-def normalize_survey_draft(raw, fallback_title="AI-generated survey"):
+def normalize_survey_draft(raw, fallback_title="AI 生成問卷"):
     if not isinstance(raw, dict):
-        raise PptSurveyAiError("The AI response format was invalid. Unable to create a survey draft.", 502)
+        raise PptSurveyAiError("AI 回傳格式不正確，無法建立問卷草稿。", 502)
 
     questions = raw.get("questions") or raw.get("items") or []
     normalized_questions = []
@@ -189,7 +189,7 @@ def normalize_survey_draft(raw, fallback_title="AI-generated survey"):
         q_type = question.get("type") if question.get("type") in ALLOWED_TYPES else "short"
         title = str(question.get("title") or question.get("question") or "").strip()
         if not title:
-            title = f"Question {index + 1}"
+            title = f"第 {index + 1} 題"
         normalized_questions.append({
             "id": str(question.get("id") or f"ai-q-{index + 1}"),
             "type": q_type,
@@ -199,7 +199,7 @@ def normalize_survey_draft(raw, fallback_title="AI-generated survey"):
         })
 
     if not normalized_questions:
-        raise PptSurveyAiError("No valid questions were generated. Adjust your priorities and try again.", 502)
+        raise PptSurveyAiError("AI 沒有產生有效題目，請調整生成重點後再試。", 502)
 
     return {
         "title": str(raw.get("title") or fallback_title).strip()[:100],
@@ -213,25 +213,25 @@ def normalize_survey_draft(raw, fallback_title="AI-generated survey"):
 def _survey_json_instruction(allowed_types, question_count):
     type_text = ", ".join(allowed_types)
     return f"""
-Return only JSON, without Markdown or explanation. Write the survey title, description, and all questions in English. Use this exact structure:
+請只回傳 JSON，不要加 Markdown 或說明文字。格式必須完全符合：
 {{
-  "title": "Survey title",
-  "description": "Survey description",
+  "title": "問卷標題",
+  "description": "問卷說明",
   "identity_mode": "anonymous",
   "deadline_at": "",
   "questions": [
     {{
       "id": "q1",
-      "type": "short or rating",
-      "title": "Question text",
+      "type": "short 或 rating",
+      "title": "題目文字",
       "required": true,
       "options": []
     }}
   ]
 }}
-Generate {question_count} questions. Allowed types: {type_text}.
-short means an open-ended question; rating means a rating from 0 to 5.
-Keep options as an empty array for compatibility with the survey schema.
+請產生 {question_count} 題。題型只能使用：{type_text}。
+short 代表問答題，rating 代表 0 到 5 評分題。
+options 必須維持空陣列，才能相容系統原本問卷資料結構。
 """
 
 
@@ -240,12 +240,12 @@ def _handle_ai_exception(exc):
     lower_message = message.lower()
     logger.exception("Gemini API call failed: %s", message)
     if "quota" in lower_message or "429" in message:
-        raise PptSurveyAiError("The AI usage or rate limit has been reached. Please try again later.", 429) from exc
+        raise PptSurveyAiError("AI API 額度或頻率限制已達上限，請稍後再試。", 429) from exc
     if "deadline" in lower_message or "timeout" in lower_message:
-        raise PptSurveyAiError("AI analysis timed out. Try again later or use a smaller file.", 504) from exc
+        raise PptSurveyAiError("AI 分析逾時，請稍後再試或改用較小的檔案。", 504) from exc
     if "unauthenticated" in lower_message or "api key" in lower_message or "401" in message:
-        raise PptSurveyAiError("AI authentication failed. Please contact the administrator.", 401) from exc
-    raise PptSurveyAiError("The AI service cannot complete the analysis right now. Please try again later.", 502) from exc
+        raise PptSurveyAiError("AI API key 驗證失敗，請確認 PPT_SURVEY_AI_API_KEY。", 401) from exc
+    raise PptSurveyAiError("AI 服務暫時無法完成分析，請稍後再試。", 502) from exc
 
 
 def _call_gemini(contents):
@@ -267,7 +267,7 @@ def _call_gemini(contents):
     text = getattr(response, "text", "") or ""
     logger.info("Gemini response received: chars=%s", len(text))
     if not text.strip():
-        raise PptSurveyAiError("The AI returned no content. Please try again later.", 502)
+        raise PptSurveyAiError("AI 沒有回傳內容，請稍後再試。", 502)
     return _parse_json_response(text)
 
 
@@ -309,17 +309,17 @@ def generate_survey_from_material(filename, file_bytes, config):
                 prompt,
             ])
         else:
-            raise PptSurveyAiError("Unable to read the file text. Use a .pptx or a PDF with selectable text.", 400)
+            raise PptSurveyAiError("無法讀取檔案文字，請改用 .pptx 或可選取文字的 .pdf。", 400)
 
-    fallback_title = f"{os.path.splitext(filename)[0]} survey"
+    fallback_title = f"{os.path.splitext(filename)[0]} 問卷"
     return normalize_survey_draft(raw, fallback_title=fallback_title)
 
 
 def revise_survey_with_ai(draft, message):
     if not isinstance(draft, dict):
-        raise PptSurveyAiError("No survey draft is available to edit.", 400)
+        raise PptSurveyAiError("缺少目前問卷草稿，無法修改。", 400)
     if not str(message or "").strip():
-        raise PptSurveyAiError("Please enter editing instructions.", 400)
+        raise PptSurveyAiError("請輸入修改指令。", 400)
 
     current_draft = normalize_survey_draft(draft)
     question_count = len(current_draft["questions"])

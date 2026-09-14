@@ -39,13 +39,13 @@ def _parse_source(source_type, identifier):
         try:
             template_id = int(identifier)
         except (TypeError, ValueError):
-            return None, None, (jsonify({"error": "The survey identifier must be an integer template ID"}), 400)
+            return None, None, (jsonify({"error": "survey 的 identifier 必須是 template_id（整數）"}), 400)
         return template_id, None, None
 
     if source_type == SOURCE_TYPE_USER_UPLOAD:
         return None, identifier, None
 
-    return None, None, (jsonify({"error": "source_type must be survey or user_upload"}), 400)
+    return None, None, (jsonify({"error": "source_type 只能是 survey 或 user_upload"}), 400)
 
 
 @report_bp.route("/api/reports/<source_type>/<identifier>/readiness", methods=["GET"])
