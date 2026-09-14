@@ -37,7 +37,7 @@ def restore_workspace(project_id):
     ).first()
 
     if not workspace:
-        return jsonify({"error": "找不到已刪除的專案"}), 404
+        return jsonify({"error": "Deleted project not found"}), 404
 
     data = request.get_json(silent=True) or {}
 
@@ -46,7 +46,7 @@ def restore_workspace(project_id):
         workspace.deleted_at  = None
         workspace.folder_name = data.get("folder_name")
         db.session.commit()
-        return jsonify({"message": "專案已還原"}), 200
+        return jsonify({"message": "Project restored"}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
@@ -64,7 +64,7 @@ def permanent_delete_workspace(project_id):
     ).first()
 
     if not target:
-        return jsonify({"error": "找不到該項目"}), 404
+        return jsonify({"error": "Item not found"}), 404
 
     try:
         is_folder_request = request.args.get("is_folder", "false").lower() == "true"
@@ -76,13 +76,13 @@ def permanent_delete_workspace(project_id):
                 is_deleted  = True,
             ).update({"folder_name": None}, synchronize_session=False)
             db.session.commit()
-            return jsonify({"message": "資料夾外殼已永久刪除，專案已釋放"}), 200
+            return jsonify({"message": "Folder permanently deleted. Its projects are now unfiled."}), 200
 
         else:
             Chat_History.query.filter_by(project_id=project_id).delete(synchronize_session=False)
             db.session.delete(target)
             db.session.commit()
-            return jsonify({"message": "專案已永久刪除"}), 200
+            return jsonify({"message": "Project permanently deleted"}), 200
 
     except Exception as e:
         db.session.rollback()

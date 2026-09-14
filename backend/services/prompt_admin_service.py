@@ -34,11 +34,11 @@ def test_draft_prompt(prompt_key: str) -> dict:
     """
     row = Prompt_Template.query.get(prompt_key)
     if row is None:
-        raise ValueError(f"找不到 prompt_key='{prompt_key}'")
+        raise ValueError(f"Prompt key '{prompt_key}' not found")
 
     golden_items = GOLDEN_TEST_SET.get(prompt_key, [])
     if not golden_items:
-        raise ValueError(f"prompt_key='{prompt_key}' 沒有對應的黃金測試組")
+        raise ValueError(f"No golden test set exists for prompt key '{prompt_key}'")
 
     details = []
     format_valid_count = 0
@@ -101,7 +101,7 @@ def publish_prompt(prompt_key: str) -> dict:
     """
     row = Prompt_Template.query.get(prompt_key)
     if row is None:
-        raise ValueError(f"找不到 prompt_key='{prompt_key}'")
+        raise ValueError(f"Prompt key '{prompt_key}' not found")
 
     if not row.draft_validated:
         raise PermissionError(
@@ -122,7 +122,7 @@ def update_draft(prompt_key: str, new_draft_content: str) -> dict:
     """
     row = Prompt_Template.query.get(prompt_key)
     if row is None:
-        raise ValueError(f"找不到 prompt_key='{prompt_key}'")
+        raise ValueError(f"Prompt key '{prompt_key}' not found")
 
     row.draft_content = new_draft_content
     row.draft_validated = False

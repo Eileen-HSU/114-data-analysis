@@ -20,7 +20,7 @@ def _require_auth():
     user_id, auth_error = verify_token(request)
     if auth_error:
         logger.warning("PPT survey AI request rejected: missing or invalid auth token")
-        return None, (jsonify({"error": "請先登入後再使用 AI 生成問卷。"}), 401)
+        return None, (jsonify({"error": "Please log in to generate surveys with AI."}), 401)
     return user_id, None
 
 
@@ -65,7 +65,7 @@ def generate_ppt_survey():
         return jsonify({"error": str(exc)}), exc.status_code
     except Exception as exc:
         logger.exception("PPT survey generation unexpected failure: user_id=%s", user_id)
-        return jsonify({"error": "AI 生成問卷失敗，請稍後再試。"}), 500
+        return jsonify({"error": "AI survey generation failed. Please try again later."}), 500
 
 
 @ppt_survey_ai_bp.route("/api/ai/ppt-survey/chat", methods=["POST"])
@@ -98,4 +98,4 @@ def revise_ppt_survey():
         return jsonify({"error": str(exc)}), exc.status_code
     except Exception as exc:
         logger.exception("PPT survey revision unexpected failure: user_id=%s", user_id)
-        return jsonify({"error": "AI 修改問卷失敗，請稍後再試。"}), 500
+        return jsonify({"error": "AI survey editing failed. Please try again later."}), 500

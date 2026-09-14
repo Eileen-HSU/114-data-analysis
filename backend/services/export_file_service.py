@@ -24,7 +24,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_ALIGN_VERTICAL
 from docx.enum.section import WD_ORIENT
 
-COLUMN_HEADERS = ["大類別", "子類別", "問卷回覆內容", "判斷原因與說明", "受試者建議摘要"]
+COLUMN_HEADERS = ["Main category", "Subcategory", "Survey response", "Reasoning and explanation", "Summary of respondent suggestions"]
 
 
 def _row_values(row: dict) -> list:
@@ -37,13 +37,13 @@ def _row_values(row: dict) -> list:
     ]
 
 
-def build_xlsx(rows: list, title: str = "分類結果") -> bytes:
+def build_xlsx(rows: list, title: str = "Classification results") -> bytes:
     """把 rows 產生成 .xlsx 檔案，回傳檔案的原始 bytes。"""
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = title[:31] if title else "分類結果"  # Excel 分頁名稱上限 31 字元
+    ws.title = title[:31] if title else "Classification results"  # Excel 分頁名稱上限 31 字元
 
-    
+
     header_font = Font(name="微軟正黑體", bold=True, color="FFFFFFFF")
     header_fill = PatternFill(start_color="FFF43F5E", end_color="FFF43F5E", fill_type="solid")
     body_font = Font(name="微軟正黑體")
@@ -93,7 +93,7 @@ def build_xlsx(rows: list, title: str = "分類結果") -> bytes:
     return buf.getvalue()
 
 
-def build_docx(rows: list, title: str = "分類結果") -> bytes:
+def build_docx(rows: list, title: str = "Classification results") -> bytes:
     """把 rows 產生成 .docx 檔案，回傳檔案的原始 bytes。"""
     doc = Document()
 
@@ -104,7 +104,7 @@ def build_docx(rows: list, title: str = "分類結果") -> bytes:
     section.left_margin = Cm(1.5)
     section.right_margin = Cm(1.5)
 
-    heading = doc.add_heading(title or "分類結果", level=1)
+    heading = doc.add_heading(title or "Classification results", level=1)
     heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     table = doc.add_table(rows=1, cols=5)
