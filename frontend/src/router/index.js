@@ -34,6 +34,7 @@ export function AppRoutes() {
       "/profile": "查看個人資料",
       "/survey": "進入問卷調查",
       "/survey/create": "建立問卷頁面",
+      "/survey/ppt": "PPT 問卷生成頁面",
       "/survey/fill": "填寫問卷頁面",
     };
 

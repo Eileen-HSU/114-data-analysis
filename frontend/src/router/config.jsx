@@ -31,6 +31,7 @@ const routes = [
   { path: "/collection", element: <CollectionPage /> },
   { path: "/profile", element: <ProfilePage /> },
   { path: "/survey", element: <SurveyPage /> },
+  { path: "/survey/ppt", element: <SurveyPage pptOnly /> },
   { path: "/survey/create", element: <CreateSurveyPage /> },
   { path: "/survey/fill", element: <FillSurveyPage /> },
   { path: "/survey/fill/:code", element: <FillSurveyPage /> },
