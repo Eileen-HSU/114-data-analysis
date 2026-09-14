@@ -1251,6 +1251,7 @@ export default function WorkspacePage() {
   const sendMessage = async () => {
     if (!input.trim() && !attachedFile) return;
     if (!activeSessionId) return;
+    if (isTyping || isClassifying) return;
 
     /* 【串backend】
      * 附加的是 Excel → 走真的分類流程，不走假分析，不需要使用者輸入欄位名稱
@@ -1324,13 +1325,61 @@ export default function WorkspacePage() {
       });
     }
 
-    setTimeout(() => {
+    const isTempSession =
+      !projectId ||
+      String(projectId).startsWith("temp-") ||
+      String(projectId).startsWith("survey-");
+
+    if (isGreetingInput(content)) {
       const reply = buildAssistantReply(content);
       const aiMsg = { id: Date.now().toString(), role: "assistant", content: reply };
       appendMessage(sid, aiMsg);
       setIsTyping(false);
       saveChatMessage(projectId, "assistant", reply);
-    }, 1500);
+      return;
+    }
+
+    if (isTempSession) {
+      setTimeout(() => {
+        const reply = buildAssistantReply(content);
+        const aiMsg = { id: Date.now().toString(), role: "assistant", content: reply };
+        appendMessage(sid, aiMsg);
+        setIsTyping(false);
+        saveChatMessage(projectId, "assistant", reply);
+      }, 1500);
+      return;
+    }
+
+    try {
+      const askRes = await fetch(apiUrl(`/api/chat/${projectId}/ask`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeader() },
+        body: JSON.stringify({ message: content }),
+      });
+      const askData = await askRes.json().catch(() => null);
+
+      if (!askRes.ok) {
+        const errMsg = askData?.error || `AI 回覆失敗（HTTP ${askRes.status}）`;
+        const aiMsg = { id: Date.now().toString(), role: "assistant", content: errMsg };
+        appendMessage(sid, aiMsg);
+        showToast(errMsg);
+        saveChatMessage(projectId, "assistant", errMsg);
+        return;
+      }
+
+      const reply = askData?.answer || "AI 沒有回傳內容，請稍後再試。";
+      const aiMsg = { id: Date.now().toString(), role: "assistant", content: reply };
+      appendMessage(sid, aiMsg);
+      saveChatMessage(projectId, "assistant", reply);
+    } catch (err) {
+      const errMsg = `AI 回覆失敗：${err?.message || "網路錯誤"}`;
+      const aiMsg = { id: Date.now().toString(), role: "assistant", content: errMsg };
+      appendMessage(sid, aiMsg);
+      showToast(errMsg);
+      saveChatMessage(projectId, "assistant", errMsg);
+    } finally {
+      setIsTyping(false);
+    }
   };
 
   const handleKeyDown = (e) => {
@@ -1821,7 +1870,7 @@ export default function WorkspacePage() {
                     <button
                       className="send-btn"
                       onClick={sendMessage}
-                      disabled={!input.trim() && !attachedFile}
+                      disabled={(!input.trim() && !attachedFile) || isTyping || isClassifying}
                     >
                       <i className="ri-send-plane-line"></i>
                     </button>

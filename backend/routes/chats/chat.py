@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request
 from extensions import db
 from models import Chat_History, Workspace, UploadedFile
 from routes.workspaces.workspace import authorize_request
+from services.chat_ask_service import answer_chat_question, ChatAskError
 import os
 
 chat_bp = Blueprint("chat", __name__)
@@ -155,6 +156,43 @@ def _get_chat_with_auth(chat_id, user_id):
         )
         .first()
     )
+
+
+@chat_bp.route("/api/chat/<int:project_id>/ask", methods=["POST"])
+def ask_chat(project_id):
+    current_user_id, auth_error = authorize_request()
+    if auth_error:
+        return auth_error
+
+    data = request.get_json(silent=True) or {}
+    message = (data.get("message") or "").strip()
+    if not message:
+        return jsonify({"error": "缺少 message"}), 400
+
+    # 先查「這個 project 存不存在」，再查「是不是你的」，兩種情況回
+    # 不同的 status code（404 / 403），呼叫端可以明確分辨。
+    workspace = (
+        Workspace.query
+        .filter_by(project_id=project_id)
+        .options(db.load_only(Workspace.project_id, Workspace.user_id, Workspace.is_deleted))
+        .first()
+    )
+    if not workspace or workspace.is_deleted:
+        return jsonify({"error": "找不到這個對話"}), 404
+    if workspace.user_id != current_user_id:
+        return jsonify({"error": "無權限操作這個對話"}), 403
+
+    try:
+        answer = answer_chat_question(project_id, message)
+    except ChatAskError as e:
+        return jsonify({"error": str(e)}), e.status_code
+    except Exception as e:
+        db.session.rollback()
+        print("[CHAT_ASK][UNEXPECTED_ERROR]", repr(e))
+        return jsonify({"error": "AI 服務暫時無法完成回覆，請稍後再試。"}), 502
+
+    return jsonify({"answer": answer}), 200
+
 
 # 上傳檔案並關聯到 chat_id，支援 csv、xlsx、txt 格式，並且儲存在 uploads/{project_id} 目錄底下
 @chat_bp.route("/api/chat/<int:chat_id>/files", methods=["POST"])
