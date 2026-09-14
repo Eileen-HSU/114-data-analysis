@@ -71,13 +71,13 @@ class ReportError(Exception):
 
 def _check_ownership(source_type, template_id, upload_batch_id, auth_user_id):
     if source_type not in (SOURCE_TYPE_SURVEY, SOURCE_TYPE_USER_UPLOAD):
-        raise ReportError("source_type 只能是 survey 或 user_upload", 400)
+        raise ReportError("source_type must be survey or user_upload", 400)
 
     owner_user_id = get_source_owner(source_type, template_id=template_id, upload_batch_id=upload_batch_id)
     if owner_user_id is None:
-        raise ReportError("找不到這個分析單位，或這個分析單位沒有已知的 owner", 404)
+        raise ReportError("Analysis source not found or its owner is unknown", 404)
     if owner_user_id != auth_user_id:
-        raise ReportError("無權限存取這個分析單位的報告", 403)
+        raise ReportError("Access denied for this analysis report", 403)
 
 
 def get_readiness_for(source_type, auth_user_id, template_id=None, upload_batch_id=None):
@@ -211,7 +211,7 @@ def get_report_detail(report_id, auth_user_id):
     """
     report = Report.query.get(report_id)
     if report is None:
-        raise ReportError("找不到這份報告", 404)
+        raise ReportError("Report not found", 404)
 
     _check_ownership(report.source_type, report.template_id, report.upload_batch_id, auth_user_id)
 

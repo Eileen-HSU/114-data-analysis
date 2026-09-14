@@ -67,11 +67,11 @@ def _load_owned_classification(classification_id, auth_user_id):
     """
     classification = Response_Classification.query.get(classification_id)
     if classification is None:
-        raise ReviewError("找不到這筆分類結果", 404)
+        raise ReviewError("Classification result not found", 404)
 
     owner_user_id = _get_owner_user_id(classification)
     if owner_user_id is None or owner_user_id != auth_user_id:
-        raise ReviewError("無權限存取這筆分類結果", 403)
+        raise ReviewError("Access denied for this classification result", 403)
 
     return classification
 
@@ -134,7 +134,7 @@ def start_review(classification_id, auth_user_id):
     classification = _load_owned_classification(classification_id, auth_user_id)
 
     if classification.review_status in _LOCKED_REVIEW_STATUSES:
-        raise ReviewError("這筆分類已經確認或排除，無法再開始新的 review", 409)
+        raise ReviewError("This classification has been confirmed or excluded. A new review cannot be started.", 409)
 
     existing = _get_active_review(classification_id, auth_user_id)
     if existing is not None:
@@ -151,17 +151,17 @@ def start_review(classification_id, auth_user_id):
 def send_message(classification_id, auth_user_id, message_text):
     """需求文件 API 第 3 點：User 傳送 Review message。"""
     if not message_text or not message_text.strip():
-        raise ReviewError("訊息內容不可為空", 400)
+        raise ReviewError("Message content cannot be empty", 400)
 
     classification = _load_owned_classification(classification_id, auth_user_id)
 
     review = _get_active_review(classification_id, auth_user_id)
     if review is None:
-        raise ReviewError("尚未開始 review conversation，請先呼叫 start", 400)
+        raise ReviewError("Start a review conversation first", 400)
 
     question_type = _resolve_question_type(classification)
     if question_type is None:
-        raise ReviewError("這筆分類找不到對應的題目分類架構（question_type），無法進行 review", 422)
+        raise ReviewError("No question classification schema was found. Unable to review this classification.", 422)
 
     # 目前候選：取這個 session 裡最新一則、有實際提出 candidate 的
     # assistant 訊息；沒有的話 fallback 成 AI original，讓 Gemini
@@ -231,7 +231,7 @@ def confirm_original(classification_id, auth_user_id):
     classification = _load_owned_classification(classification_id, auth_user_id)
 
     if classification.review_status in _LOCKED_REVIEW_STATUSES:
-        raise ReviewError("這筆分類已經確認或排除過了", 409)
+        raise ReviewError("This classification has already been confirmed or excluded", 409)
 
     if _has_ever_entered_conversation(classification_id):
         raise ReviewError(
@@ -254,7 +254,7 @@ def confirm_candidate(classification_id, auth_user_id):
     classification = _load_owned_classification(classification_id, auth_user_id)
 
     if classification.review_status in _LOCKED_REVIEW_STATUSES:
-        raise ReviewError("這筆分類已經確認或排除過了", 409)
+        raise ReviewError("This classification has already been confirmed or excluded", 409)
 
     if not _has_ever_entered_conversation(classification_id):
         raise ReviewError(
@@ -265,7 +265,7 @@ def confirm_candidate(classification_id, auth_user_id):
 
     review = _get_active_review(classification_id, auth_user_id)
     if review is None:
-        raise ReviewError("找不到進行中的 review session", 404)
+        raise ReviewError("No active review session found", 404)
 
     latest_candidate_msg = (
         Classification_Review_Message.query
@@ -318,7 +318,7 @@ def exclude(classification_id, auth_user_id):
     classification = _load_owned_classification(classification_id, auth_user_id)
 
     if classification.review_status in _LOCKED_REVIEW_STATUSES:
-        raise ReviewError("這筆分類已經確認或排除過了", 409)
+        raise ReviewError("This classification has already been confirmed or excluded", 409)
 
     classification.review_status = REVIEW_STATUS_EXCLUDED
 

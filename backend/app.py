@@ -252,7 +252,7 @@ start_scheduler(app)
 @app.route("/api/2fa/disable", methods=["OPTIONS"])
 def options_2fa_disable():
 
-    
+
     res = make_response()
     res.headers["Access-Control-Allow-Origin"] = "*"
     res.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
@@ -276,7 +276,7 @@ def health():
 @app.errorhandler(Exception)
 def handle_exception(e):
     from werkzeug.exceptions import HTTPException
-    
+
     if isinstance(e, HTTPException):
         response = jsonify({
             "error": e.description,
@@ -289,7 +289,7 @@ def handle_exception(e):
     response = jsonify({
         "error": str(e),
         "type": str(type(e)),
-        "message": "伺服器發生錯誤，請稍後再試",
+        "message": "A server error occurred. Please try again later.",
     })
     return response, 500
 
@@ -302,7 +302,7 @@ def handle_options():
         res.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
         res.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
         return res
-    
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))

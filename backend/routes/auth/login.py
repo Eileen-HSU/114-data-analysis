@@ -24,7 +24,7 @@ def get_jwt_secret() -> str:
     if _JWT_SECRET is None:
         _JWT_SECRET = os.getenv("JWT_SECRET_KEY")
         if not _JWT_SECRET:
-            raise RuntimeError("JWT_SECRET_KEY 環境變數未設定")
+            raise RuntimeError("JWT_SECRET_KEY is not configured")
     return _JWT_SECRET
 
 
@@ -45,7 +45,7 @@ def _invalidate_old_codes(email: str, otp_type: str):
         target_email=email,
         type=otp_type,
         is_used=False,
-    ).update({"is_used": True}, synchronize_session=False)  
+    ).update({"is_used": True}, synchronize_session=False)
 
 
 @login_bp.route("/api/login", methods=["POST"])
@@ -55,12 +55,12 @@ def login():
     password = data.get("password")
 
     if not email or not password:
-        return jsonify({"error": "請輸入電子郵件和密碼"}), 400
+        return jsonify({"error": "Please enter your email and password"}), 400
 
     attempts = _login_attempts.get(email, 0)
     if attempts >= MAX_LOGIN_ATTEMPTS:
         return jsonify({
-            "error": "登入失敗次數過多，請重設密碼後再試",
+            "error": "Too many failed login attempts. Please reset your password and try again.",
             "require_password_reset": True,
             "email": email,
         }), 429
@@ -72,9 +72,9 @@ def login():
             _login_attempts[email] = attempts + 1
             remaining = MAX_LOGIN_ATTEMPTS - _login_attempts[email]
             if remaining > 0:
-                return jsonify({"error": f"帳號或密碼錯誤，剩餘 {remaining} 次機會"}), 401
+                return jsonify({"error": f"Incorrect email or password. {remaining} attempts remaining."}), 401
             else:
-                return jsonify({"error": "登入失敗次數過多，請稍後再試"}), 429
+                return jsonify({"error": "Too many failed login attempts. Please try again later."}), 429
 
         _login_attempts.pop(email, None)
 
@@ -87,7 +87,7 @@ def login():
         }
 
         if user.email_2fa_enabled:
-            now = taiwan_now()  
+            now = taiwan_now()
             otp = str(secrets.randbelow(900000) + 100000)
 
             _invalidate_old_codes(user.email, "2FA")
@@ -101,7 +101,7 @@ def login():
                 attempts=0,
             )
             db.session.add(verification)
-            db.session.commit()  
+            db.session.commit()
 
             try:
                 send_password_email_via_resend(
@@ -118,7 +118,7 @@ def login():
                 return jsonify({
                     "token": token,
                     **user_info,
-                    "warning": "雙因子驗證信寄送失敗，已暫時關閉雙因子驗證。請登入後重新設定。",
+                    "warning": "The verification email could not be sent. Two-factor authentication was temporarily disabled. Please configure it again after logging in.",
                 }), 200
 
             pre_auth_exp = (now + timedelta(minutes=10)).replace(tzinfo=None)
@@ -135,4 +135,4 @@ def login():
     except Exception as e:
         db.session.rollback()
         logging.error(f"Login error: {e}", exc_info=True)
-        return jsonify({"error": "登入失敗，請稍後再試"}), 500
+        return jsonify({"error": "Login failed. Please try again later."}), 500

@@ -26,15 +26,15 @@ def save_chat_history():
     try:
         project_id = int(raw_project_id) if raw_project_id is not None else None
     except (ValueError, TypeError):
-        return jsonify({"error": "不合法的 project_id 格式"}), 400
+        return jsonify({"error": "Invalid project ID format"}), 400
 
     # 4. 驗證必要欄位
     if project_id is None or not sender_type or not message_content:
-        return jsonify({"error": "缺少必要欄位：project_id, sender_type 或 message_content"}), 400
+        return jsonify({"error": "Missing required fields: project_id, sender_type, or message_content"}), 400
 
     # 5. 驗證 sender_type 合法值
     if sender_type not in ("user", "ai"):
-        return jsonify({"error": "sender_type 必須為 'user' 或 'ai'"}), 400
+        return jsonify({"error": "sender_type must be 'user' or 'ai'"}), 400
 
     # 6. 權限防禦
     workspace = Workspace.query.filter_by(
@@ -44,8 +44,8 @@ def save_chat_history():
     ).options(db.load_only(Workspace.project_id)).first()
 
     if not workspace:
-        return jsonify({"error": "找不到該專案或您無權限操作"}), 404
-    
+        return jsonify({"error": "Project not found or access denied"}), 404
+
     # 7. 寫入 DB
     chat = Chat_History(
         project_id      = project_id,
@@ -58,7 +58,7 @@ def save_chat_history():
         db.session.add(chat)
         db.session.commit()
         return jsonify({
-            "message": "對話紀錄已成功同步至資料庫",
+            "message": "Conversation history synced successfully",
             "chat_history": {
                 "chat_id":         chat.chat_id,
                 "project_id":      chat.project_id,
@@ -90,8 +90,8 @@ def get_chat_history(project_id):
         ).options(db.load_only(Workspace.project_id)).first()
 
         if not workspace:
-            return jsonify({"error": "找不到該專案或您無權限操作"}), 404
-        
+            return jsonify({"error": "Project not found or access denied"}), 404
+
         # 撈對話紀錄
         histories = (
             Chat_History.query
@@ -166,17 +166,17 @@ def upload_file(chat_id):
 
     chat = _get_chat_with_auth(chat_id, current_user_id)
     if not chat:
-        return jsonify({"error": "找不到該對話或無權限操作"}), 404
+        return jsonify({"error": "Conversation not found or access denied"}), 404
 
     # 3. 取得檔案
     file = request.files.get("file")
     if not file:
-        return jsonify({"error": "請提供檔案"}), 400
+        return jsonify({"error": "Please provide a file"}), 400
 
     file_name = file.filename
     ext = os.path.splitext(file_name)[-1].lower().lstrip(".")
     if ext not in ("csv", "xlsx", "txt"):
-        return jsonify({"error": "不支援的檔案格式"}), 400
+        return jsonify({"error": "Unsupported file format"}), 400
 
     # 4. 儲存檔案
     upload_dir = os.path.join("uploads", str(chat.project_id))
@@ -195,7 +195,7 @@ def upload_file(chat_id):
         db.session.add(uploaded)
         db.session.commit()
         return jsonify({
-            "message": "檔案上傳成功",
+            "message": "File uploaded successfully",
             "file": {
                 "file_id":     uploaded.file_id,
                 "chat_id":     uploaded.chat_id,
@@ -220,8 +220,8 @@ def get_chat_files(chat_id):
 
     chat = _get_chat_with_auth(chat_id, current_user_id)
     if not chat:
-        return jsonify({"error": "找不到該對話或無權限操作"}), 404
-    
+        return jsonify({"error": "Conversation not found or access denied"}), 404
+
     # 撈檔案
     files = UploadedFile.query.filter_by(chat_id=chat_id).all()
     return jsonify({

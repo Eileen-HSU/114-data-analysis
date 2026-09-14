@@ -24,7 +24,7 @@ def get_jwt_secret() -> str:
     if _JWT_SECRET is None:
         _JWT_SECRET = os.getenv("JWT_SECRET_KEY")
         if not _JWT_SECRET:
-            raise RuntimeError("JWT_SECRET_KEY 環境變數未設定")
+            raise RuntimeError("JWT_SECRET_KEY is not configured")
     return _JWT_SECRET
 
 

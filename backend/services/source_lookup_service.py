@@ -107,7 +107,7 @@ def fetch_classifications_in_scope(source_type, template_id=None, upload_batch_i
 
     if source_type == SOURCE_TYPE_SURVEY:
         if template_id is None:
-            raise ValueError("source_type=survey 時必須提供 template_id")
+            raise ValueError("A template ID is required for a survey source")
         response_ids = [
             r.response_id for r in Survey_Response.query.filter_by(template_id=template_id).all()
         ]
@@ -116,10 +116,10 @@ def fetch_classifications_in_scope(source_type, template_id=None, upload_batch_i
         query = query.filter(Response_Classification.response_id.in_(response_ids))
     elif source_type == SOURCE_TYPE_USER_UPLOAD:
         if upload_batch_id is None:
-            raise ValueError("source_type=user_upload 時必須提供 upload_batch_id")
+            raise ValueError("An upload batch ID is required for a user upload source")
         query = query.filter(Response_Classification.upload_batch_id == upload_batch_id)
     else:
-        raise ValueError(f"source_type 只能是 {SOURCE_TYPE_SURVEY!r} 或 {SOURCE_TYPE_USER_UPLOAD!r}")
+        raise ValueError(f"source_type must be {SOURCE_TYPE_SURVEY!r} or {SOURCE_TYPE_USER_UPLOAD!r}")
 
     if review_statuses is not None:
         query = query.filter(Response_Classification.review_status.in_(review_statuses))
