@@ -322,7 +322,7 @@ export default function SurveyPage({ pptOnly = false }) {
   return (
     <>
       <Navbar />
-      {!pptOnly && <main className="survey-page">
+      <main className="survey-page">
         <section className="survey-workspace">
           <div className="survey-intro">
             <div className="survey-hero-badge">
@@ -435,7 +435,7 @@ export default function SurveyPage({ pptOnly = false }) {
             </aside>
           </div>
         </section>
-      </main>}
+      </main>
 
       {isPptModalOpen && (
         <div className={`ppt-modal-backdrop ${pptOnly ? "ppt-page-backdrop" : ""}`} onClick={pptOnly ? undefined : closePptModal}>
