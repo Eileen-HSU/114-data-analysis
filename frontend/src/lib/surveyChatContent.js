@@ -3,7 +3,7 @@ function normalizeSurveyDetail(survey = {}, questions, responses) {
   return {
     ...survey,
     id: survey.id || survey.template_id || code,
-    title: survey.title || survey.survey_name || "未命名問卷",
+    title: survey.title || survey.survey_name || "Untitled survey",
     code,
     createdAt: survey.createdAt || survey.created_at || "",
     questions: Array.isArray(questions)
@@ -35,15 +35,15 @@ export function buildSurveyChatContent(survey, questions, responses) {
   const textQuestions = detail.questions.filter((q) => (q.type || q.question_type) !== "rating");
   const lines = [];
 
-  lines.push(`📋 問卷名稱：${detail.title}`);
-  lines.push(`🔑 問卷代碼：${detail.code}`);
-  lines.push(`🗓 建立日期：${detail.createdAt}`);
-  lines.push(`👥 回覆人數：${detail.responses.length} 人`);
-  lines.push(`❓ 題目數量：${detail.questions.length} 道`);
+  lines.push(`📋 Survey title: ${detail.title}`);
+  lines.push(`🔑 Survey code: ${detail.code}`);
+  lines.push(`🗓 Created: ${detail.createdAt}`);
+  lines.push(`👥 Responses: ${detail.responses.length}  respondents`);
+  lines.push(`❓ Questions: ${detail.questions.length}  questions`);
   lines.push("");
 
   if (ratingQuestions.length > 0) {
-    lines.push("── 評分題統計 ──");
+    lines.push("── Rating summary ──");
     ratingQuestions.forEach((question) => {
       const qId = question.id !== undefined ? question.id : question.question_id;
       let total = 0;
@@ -58,15 +58,15 @@ export function buildSurveyChatContent(survey, questions, responses) {
         }
       });
 
-      const average = count > 0 ? (total / count).toFixed(1) : "無資料";
-      lines.push(`Q${detail.questions.indexOf(question) + 1}. ${question.title || question.question_title || "未命名題目"}`);
-      lines.push(`平均分：${average} / 5（${count} 人作答）`);
+      const average = count > 0 ? (total / count).toFixed(1) : "No data";
+      lines.push(`Q${detail.questions.indexOf(question) + 1}. ${question.title || question.question_title || "Untitled question"}`);
+      lines.push(`Average score: ${average} / 5（${count}  respondents)`);
     });
     lines.push("");
   }
 
   if (textQuestions.length > 0) {
-    lines.push("── 問答題回覆 ──");
+    lines.push("── Open-ended responses ──");
     textQuestions.forEach((question) => {
       const qId = question.id !== undefined ? question.id : question.question_id;
       const answers = detail.responses
@@ -76,8 +76,8 @@ export function buildSurveyChatContent(survey, questions, responses) {
         }))
         .filter(({ answer }) => hasAnswerValue(answer));
 
-      lines.push(`Q${detail.questions.indexOf(question) + 1}. ${question.title || question.question_title || "未命名題目"}`);
-      lines.push(`（${answers.length} 人回答）`);
+      lines.push(`Q${detail.questions.indexOf(question) + 1}. ${question.title || question.question_title || "Untitled question"}`);
+      lines.push(`（${answers.length}  responses)`);
       answers.forEach(({ answer, respondentIdentity }, index) => {
         const identityLabel = respondentIdentity ? `${respondentIdentity}：` : "";
         lines.push(`${index + 1}. ${identityLabel}${displayAnswer(answer)}`);
@@ -86,6 +86,6 @@ export function buildSurveyChatContent(survey, questions, responses) {
     });
   }
 
-  lines.push("請協助我分析這份問卷的回答趨勢、可能洞察與後續建議。");
+  lines.push("Please analyze response trends, potential insights, and recommended next steps for this survey.");
   return lines.join("\n");
 }

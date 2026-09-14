@@ -35,7 +35,7 @@ export default function TrashPage() {
               <button
                 onClick={() => navigate("/collection")}
                 style={{ background: "none", border: "none", cursor: "pointer", color: "#b08080", fontSize: 20, padding: "6px 8px", borderRadius: 8 }}
-                title="返回收藏"
+                title="Back to projects"
               >
                 <i className="ri-arrow-left-line"></i>
               </button>
@@ -43,9 +43,9 @@ export default function TrashPage() {
                 <i className="ri-delete-bin-line"></i>
               </div>
               <div>
-                <h1 style={{ fontSize: 22, fontWeight: 800, color: "#3d2c2c", margin: 0 }}>垃圾桶</h1>
+                <h1 style={{ fontSize: 22, fontWeight: 800, color: "#3d2c2c", margin: 0 }}>Trash</h1>
                 <p style={{ fontSize: 13, color: "#b08080", margin: 0 }}>
-                  {deletedItems.length > 0 ? `${deletedItems.length} 個項目可還原或永久刪除` : "目前沒有已刪除的項目"}
+                  {deletedItems.length > 0 ? `${deletedItems.length}  items can be restored or permanently deleted` : "No deleted items"}
                 </p>
               </div>
               {deletedItems.length > 0 && (
@@ -63,17 +63,17 @@ export default function TrashPage() {
               <div style={{ width: 80, height: 80, background: "#f5e8e6", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36, margin: "0 auto 20px" }}>
                 <i className="ri-delete-bin-line"></i>
               </div>
-              <h3 style={{ fontSize: 18, fontWeight: 700, color: "#b08080", marginBottom: 8 }}>垃圾桶是空的</h3>
-              <p style={{ fontSize: 14, color: "#c9a0a0", marginBottom: 24 }}>刪除的資料夾或檔案會暫時放在這裡。</p>
+              <h3 style={{ fontSize: 18, fontWeight: 700, color: "#b08080", marginBottom: 8 }}>Trash is empty</h3>
+              <p style={{ fontSize: 14, color: "#c9a0a0", marginBottom: 24 }}>Deleted folders and files are temporarily stored here.</p>
               <button onClick={() => navigate("/collection")} style={{ background: "#c9a0a0", color: "white", border: "none", borderRadius: 10, padding: "10px 24px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
-                <i className="ri-arrow-left-line me-2"></i>返回收藏
+                <i className="ri-arrow-left-line me-2"></i>Back to projects
               </button>
             </div>
           ) : (
             <>
               <div style={{ background: "#fdf5f3", border: "1px solid #f0e0dc", borderRadius: 12, padding: "12px 18px", marginBottom: 24, display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#b08080" }}>
                 <i className="ri-information-line" style={{ fontSize: 16 }}></i>
-                <span>還原項目會回到收藏；永久刪除後將無法復原。</span>
+                <span>Restored items return to your projects. Permanently deleted items cannot be recovered.</span>
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -91,24 +91,24 @@ export default function TrashPage() {
                         </p>
                         <p style={{ fontSize: 12, color: "#b08080", margin: "3px 0 0" }}>
                           <span style={{ display: "inline-block", padding: "1px 8px", background: item.type === "folder" ? "#f5e8e6" : "#edf2f7", borderRadius: 6, fontSize: 11, fontWeight: 700, color: item.type === "folder" ? "#c9a0a0" : "#8fa3b8", marginRight: 8 }}>
-                            {item.type === "folder" ? "資料夾" : "檔案"}
+                            {item.type === "folder" ? "Folder" : "File"}
                           </span>
-                          刪除時間：{item.deletedAt}
-                          {item.type === "folder" && item.relatedFiles?.length > 0 && <span style={{ marginLeft: 6 }}>包含 {item.relatedFiles.length} 個檔案</span>}
+                          Deleted on: {item.deletedAt}
+                          {item.type === "folder" && item.relatedFiles?.length > 0 && <span style={{ marginLeft: 6 }}>Contains  {item.relatedFiles.length} files</span>}
                         </p>
                       </div>
 
                       {isRestored ? (
                         <span style={{ fontSize: 13, color: "#6aa86a", fontWeight: 700 }}>
-                          <i className="ri-check-line me-1"></i>已還原
+                          <i className="ri-check-line me-1"></i>Restored
                         </span>
                       ) : (
                         <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
                           <button onClick={() => handleRestore(item)} style={{ padding: "8px 16px", background: "#f5f0f0", color: "#c9a0a0", border: "1.5px solid #e8d8d8", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                            <i className="ri-arrow-go-back-line me-1"></i>還原
+                            <i className="ri-arrow-go-back-line me-1"></i>Restore
                           </button>
                           <button onClick={() => setPermDeleteTarget(item)} style={{ padding: "8px 16px", background: "none", color: "#c9a0a0", border: "1.5px solid #e2e8f0", borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
-                            <i className="ri-delete-bin-line me-1"></i>永久刪除
+                            <i className="ri-delete-bin-line me-1"></i>Delete permanently
                           </button>
                         </div>
                       )}
@@ -127,14 +127,14 @@ export default function TrashPage() {
             <div style={{ width: 56, height: 56, background: "#fde8e8", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, color: "#e57373", margin: "0 auto 16px" }}>
               <i className="ri-delete-bin-2-line"></i>
             </div>
-            <h5 style={{ fontWeight: 800, marginBottom: 8, color: "#3d2c2c" }}>永久刪除</h5>
-            <p style={{ color: "#888", marginBottom: 24, fontSize: 14 }}>確定要永久刪除「{permDeleteTarget.name}」嗎？此操作無法復原。</p>
+            <h5 style={{ fontWeight: 800, marginBottom: 8, color: "#3d2c2c" }}>Delete permanently</h5>
+            <p style={{ color: "#888", marginBottom: 24, fontSize: 14 }}>Permanently delete {permDeleteTarget.name}? This action cannot be undone.</p>
             <div style={{ display: "flex", gap: 10 }}>
               <button style={{ flex: 1, padding: "10px 0", background: "#e57373", color: "white", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: "pointer" }} onClick={() => handlePermanentDelete(permDeleteTarget)}>
-                永久刪除
+                Delete permanently
               </button>
               <button style={{ flex: 1, padding: "10px 0", background: "none", color: "#888", border: "1.5px solid #e2e8f0", borderRadius: 10, fontWeight: 600, fontSize: 14, cursor: "pointer" }} onClick={() => setPermDeleteTarget(null)}>
-                取消
+                Cancel
               </button>
             </div>
           </div>

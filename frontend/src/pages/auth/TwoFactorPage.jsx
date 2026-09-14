@@ -41,11 +41,11 @@ export default function TwoFactorPage() {
     e.preventDefault();
     const email = emailRef.current?.value.trim() ?? "";
     if (!email) {
-      showError("請輸入電子郵件");
+      showError("Please enter your email");
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      showError("請輸入正確的電子郵件格式");
+      showError("Please enter a valid email address");
       return;
     }
     clearError();
@@ -53,7 +53,7 @@ export default function TwoFactorPage() {
     const btn = submitBtnRef.current;
     if (btn) {
       btn.disabled = true;
-      btn.innerHTML = `<i class="ri-loader-4-line" style="animation:spin 1s linear infinite"></i> 寄送中...`;
+      btn.innerHTML = `<i class="ri-loader-4-line" style="animation:spin 1s linear infinite"></i> Sending...`;
     }
 
     try {
@@ -67,17 +67,17 @@ export default function TwoFactorPage() {
         setSentEmail(email);
         setStep("otp");
       } else {
-        showError(data.error || "寄送失敗，請稍後再試");
+        showError(data.error || "Unable to send. Please try again.");
         if (btn) {
           btn.disabled = false;
-          btn.innerHTML = "寄送驗證碼";
+          btn.innerHTML = "Send verification code";
         }
       }
     } catch {
-      showError("連線失敗，請稍後再試");
+      showError("Connection failed. Please try again later.");
       if (btn) {
         btn.disabled = false;
-        btn.innerHTML = "寄送驗證碼";
+        btn.innerHTML = "Send verification code";
       }
     }
   };
@@ -85,7 +85,7 @@ export default function TwoFactorPage() {
   const verifyCode = async () => {
     const otp = otpRef.current?.value.trim() ?? "";
     if (!/^\d{6}$/.test(otp)) {
-      showError("請輸入 6 位數驗證碼");
+      showError("Enter the 6-digit verification code");
       return;
     }
     clearError();
@@ -101,11 +101,11 @@ export default function TwoFactorPage() {
       if (res.ok) {
         navigate("/profile?two_factor=enabled");
       } else {
-        showError(data.error || "驗證失敗，請重新輸入");
+        showError(data.error || "Verification failed. Please try again.");
         setIsVerifying(false);
       }
     } catch {
-      showError("連線失敗，請稍後再試");
+      showError("Connection failed. Please try again later.");
       setIsVerifying(false);
     }
   };
@@ -123,16 +123,16 @@ export default function TwoFactorPage() {
                 className="auth-logo-img"
               />
             </div>
-            <h2 className="auth-visual-title">啟用雙因子驗證</h2>
+            <h2 className="auth-visual-title">Enable two-factor authentication</h2>
             <p className="auth-visual-desc">
-              <span>為帳號多加一道保護</span>
-              <span>登入時使用信箱驗證碼確認身份</span>
+              <span>Add another layer of account protection</span>
+              <span>Verify your identity with an email code when logging in</span>
             </p>
             <div className="auth-features">
               {[
-                { icon: "ri-shield-check-line", text: "降低未授權登入風險" },
-                { icon: "ri-mail-send-line", text: "驗證碼寄送至信箱" },
-                { icon: "ri-lock-2-line", text: "可在個人資料停用" },
+                { icon: "ri-shield-check-line", text: "Reduce unauthorized access risk" },
+                { icon: "ri-mail-send-line", text: "Verification codes are sent to your email" },
+                { icon: "ri-lock-2-line", text: "Disable this in your profile at any time" },
               ].map((f, i) => (
                 <div className="auth-feature-item" key={i}>
                   <div className="auth-feature-icon">
@@ -150,20 +150,20 @@ export default function TwoFactorPage() {
             <div className="back-home-icon">
               <i className="ri-arrow-left-line"></i>
             </div>
-            <span>返回個人資料</span>
+            <span>Back to profile</span>
           </button>
 
           <div className="auth-form-wrapper two-factor-form-wrapper">
             {step === "send" && (
               <>
-                <h1 className="auth-title">啟用雙因子驗證</h1>
+                <h1 className="auth-title">Enable two-factor authentication</h1>
                 <p className="auth-subtitle" style={{ marginBottom: 28 }}>
-                  輸入您的電子郵件，我們會寄送驗證碼確認身分。
+                  Enter your email address to receive a code to verify your identity.
                 </p>
 
                 <form onSubmit={sendCode} noValidate autoComplete="off">
                   <div className="mb-4">
-                    <label className="auth-label">電子郵件</label>
+                    <label className="auth-label">Email</label>
                     <div className="position-relative">
                       <i className="ri-mail-line form-icon"></i>
                       <input
@@ -202,14 +202,14 @@ export default function TwoFactorPage() {
                   }}>
                     <i className="ri-information-line" style={{ color: "#e11d48", fontSize: 16, marginTop: 2, flexShrink: 0 }}></i>
                     <p style={{ fontSize: 13, color: "#be123c", margin: 0, lineHeight: 1.6, fontWeight: 600 }}>
-                      啟用後，下次登入時需輸入信箱驗證碼才能進入帳號。
+                      Once enabled, you will need an email verification code the next time you log in.
                       <br />
-                      寄出的郵件可能存在垃圾郵件中
+                      The email may be in your spam folder
                     </p>
                   </div>
 
                   <button ref={submitBtnRef} type="submit" className="btn btn-auth-submit w-100 mb-3">
-                    寄送驗證碼
+                    Send verification code
                   </button>
 
                   <button
@@ -229,7 +229,7 @@ export default function TwoFactorPage() {
                     }}
                     onClick={() => navigate("/profile")}
                   >
-                    取消
+                    Cancel
                   </button>
                 </form>
               </>
@@ -237,16 +237,16 @@ export default function TwoFactorPage() {
 
             {step === "otp" && (
               <div>
-                <h1 className="auth-title" style={{ textAlign: "center" }}>輸入驗證碼</h1>
+                <h1 className="auth-title" style={{ textAlign: "center" }}>Enter verification code</h1>
                 <p style={{ color: "var(--slate-500)", fontSize: 15, lineHeight: 1.7, marginBottom: 8, textAlign: "center" }}>
-                  我們已將驗證碼寄送至
+                  We have sent a verification code to
                 </p>
                 <p style={{ fontWeight: 700, color: "var(--slate-800)", fontSize: 16, marginBottom: 28, textAlign: "center" }}>
                   {sentEmail}
                 </p>
 
                 <div className="mb-3">
-                  <label className="auth-label">驗證碼</label>
+                  <label className="auth-label">Verification code</label>
                   <div className="position-relative">
                     <i className="ri-key-2-line form-icon"></i>
                     <input
@@ -257,7 +257,7 @@ export default function TwoFactorPage() {
                       autoComplete="off"
                       maxLength={6}
                       className="form-control form-control-custom"
-                      placeholder="請輸入 6 位數驗證碼"
+                      placeholder="Enter the 6-digit verification code"
                       onInput={clearError}
                     />
                   </div>
@@ -276,7 +276,7 @@ export default function TwoFactorPage() {
 
                 <button className="btn btn-auth-submit w-100 mb-3" onClick={verifyCode} disabled={isVerifying}>
                   <i className="ri-checkbox-circle-line" style={{ marginRight: 6 }}></i>
-                  {isVerifying ? "驗證中..." : "完成啟用"}
+                  {isVerifying ? "Verifying…" : "Finish setup"}
                 </button>
 
                 <button
@@ -298,13 +298,13 @@ export default function TwoFactorPage() {
                     setIsVerifying(false);
                     if (submitBtnRef.current) {
                       submitBtnRef.current.disabled = false;
-                      submitBtnRef.current.innerHTML = "寄送驗證碼";
+                      submitBtnRef.current.innerHTML = "Send verification code";
                     }
                     if (emailRef.current) emailRef.current.value = "";
                   }}
                 >
                   <i className="ri-refresh-line" style={{ marginRight: 6 }}></i>
-                  重新寄送
+                  Resend code
                 </button>
               </div>
             )}

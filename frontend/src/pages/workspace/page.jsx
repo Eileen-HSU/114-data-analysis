@@ -16,7 +16,7 @@ export const WELCOME_MSG = {
   id: "welcome",
   role: "assistant",
   content:
-    "您好！我是 DataAnalysis AI 助手。請上傳您的資料檔案（CSV、Excel 或 TXT），或直接輸入您的分析問題，我將為您提供深度洞察。",
+    "Hello! I am the DataAnalysis AI assistant. Upload a CSV, Excel, or TXT file, or ask a question to explore your data.",
 };
 const ACTIVE_WORKSPACE_KEY = "dataanalysis_active_workspace";
 const EMPTY_SURVEY_TABLE_MARKER = "[[EMPTY_SURVEY_TABLE]]";
@@ -80,7 +80,7 @@ function normalizeSurveyDetail(survey) {
   return {
     ...survey,
     id: survey?.id || survey?.template_id || code,
-    title: survey?.title || survey?.survey_name || "未命名問卷",
+    title: survey?.title || survey?.survey_name || "Untitled survey",
     code,
     createdAt: survey?.createdAt || survey?.created_at || "",
     questions: Array.isArray(survey?.questions) ? survey.questions : [],
@@ -155,10 +155,10 @@ function isSurveyContentTooSmall(stats) {
   return stats.questions.length === 0 || stats.responses.length < 2 || stats.answeredValues.length < 2;
 }
 
-function buildSurveyAnalysisReplyFromSurvey(survey, fallbackTitle = "問卷") {
+function buildSurveyAnalysisReplyFromSurvey(survey, fallbackTitle = "Survey") {
   const stats = getSurveyStats(survey);
   const title = survey?.title || survey?.survey_name || fallbackTitle;
-  const intro = `我已收到「${title}」的問卷資料，以下是初步分析結果：`;
+  const intro = `I have received the survey data for ${title}. Here is the preliminary analysis:`;
 
   if (isSurveyContentTooSmall(stats)) {
     return `${EMPTY_SURVEY_TABLE_MARKER}\n${intro}`;
@@ -166,43 +166,43 @@ function buildSurveyAnalysisReplyFromSurvey(survey, fallbackTitle = "問卷") {
 
   const rows = [];
   if (stats.ratingQuestions.length > 0) {
-    rows.push(`評分題洞察：共 ${stats.ratingQuestions.length} 題評分題，平均分為 ${stats.ratingAverage ?? "無資料"} / 5，可優先觀察低於平均的題目。`);
+    rows.push(`Rating insights:  ${stats.ratingQuestions.length}  rating questions with an average of  ${stats.ratingAverage ?? "No data"} / 5. Start by reviewing questions with below-average scores.`);
   }
   if (stats.textQuestions.length > 0) {
     const sampleTitle = stats.textQuestions[0]?.title || stats.textQuestions[0]?.question_title;
-    const sampleQuestion = sampleTitle ? `「${sampleTitle}」` : "開放題";
-    rows.push(`問答題主題分析：共收集 ${stats.textAnswers.length} 筆文字回覆，可先從 ${sampleQuestion} 的常見關鍵字整理主要意見。`);
+    const sampleQuestion = sampleTitle ? `「${sampleTitle}」` : "Open-ended question";
+    rows.push(`Open-ended themes:  ${stats.textAnswers.length}  text responses collected. Start with  ${sampleQuestion}  and its recurring keywords to organize the main themes.`);
   }
-  rows.push(`回覆概況：目前共有 ${stats.responses.length} 位填答者、${stats.questions.length} 道題目，已累積 ${stats.answeredValues.length} 筆可分析答案。`);
-  rows.push("改善建議：建議後續比較不同題型或族群的差異，並針對低分題與高頻文字回覆安排追問。");
+  rows.push(`Response overview:  ${stats.responses.length}  respondents, ${stats.questions.length}  questions, and  ${stats.answeredValues.length}  answers available for analysis.`);
+  rows.push("Recommendations: Compare question types or respondent groups, and follow up on low scores and recurring comments.");
 
   return `${intro}\n\n${rows.join("\n")}`;
 }
 
 function parseBuiltInSurveyText(content) {
-  const isEmojiSurvey = content.includes("📋 問卷名稱：") && content.includes("🔑 問卷代碼：");
-  const isProfileSurvey = content.includes("問卷：") && content.includes("邀請碼：") && content.includes("回覆數：");
+  const isEmojiSurvey = (/📋 (?:Survey title:|問卷名稱：)/.test(content) && /🔑 (?:Survey code:|問卷代碼：)/.test(content));
+  const isProfileSurvey = (/(?:Survey:|問卷：)/.test(content) && /(?:Invite code:|邀請碼：)/.test(content) && /(?:Responses:|回覆數：)/.test(content));
   if (!isEmojiSurvey && !isProfileSurvey) return null;
 
   const title = (isEmojiSurvey
-    ? content.match(/📋 問卷名稱：(.+)/)?.[1]
-    : content.match(/問卷：(.+)/)?.[1])?.trim() || "問卷";
+    ? content.match(/📋 (?:Survey title:|問卷名稱：)\s*(.+)/)?.[1]
+    : content.match(/(?:Survey:|問卷：)\s*(.+)/)?.[1])?.trim() || "Survey";
   const responseCount = Number((isEmojiSurvey
-    ? content.match(/👥 回覆人數：(\d+)/)?.[1]
-    : content.match(/回覆數：(\d+)/)?.[1]) || 0);
+    ? content.match(/👥 (?:Responses:|回覆人數：)\s*(\d+)/)?.[1]
+    : content.match(/(?:Responses:|回覆數：)\s*(\d+)/)?.[1]) || 0);
   const questionCount = Number((isEmojiSurvey
-    ? content.match(/❓ 題目數量：(\d+)/)?.[1]
+    ? content.match(/❓ (?:Questions:|題目數量：)\s*(\d+)/)?.[1]
     : (content.match(/^Q\d+\./gm) || []).length) || 0);
   const answerCount = (content.match(/^\s+\d+\.\s+/gm) || []).length;
-  const hasRating = content.includes("── 評分題統計 ──") || /^\s+\d+\.\s*[0-5](?:\.0)?\s*$/m.test(content);
-  const hasText = content.includes("── 問答題回覆 ──") || answerCount > 0;
+  const hasRating = /(?:── Rating summary ──|── 評分題統計 ──)/.test(content) || /^\s+\d+\.\s*[0-5](?:\.0)?\s*$/m.test(content);
+  const hasText = /(?:── Open-ended responses ──|── 問答題回覆 ──)/.test(content) || answerCount > 0;
   return { title, responseCount, questionCount, answerCount, hasRating, hasText };
 }
 
 function buildSurveyAnalysisReplyFromText(content) {
   const survey = parseBuiltInSurveyText(content);
   if (!survey) return null;
-  const intro = `我已收到「${survey.title}」的問卷資料，以下是初步分析結果：`;
+  const intro = `I have received the survey data for ${survey.title}. Here is the preliminary analysis:`;
 
   if (survey.questionCount === 0 || survey.answerCount < 2) {
     return `${EMPTY_SURVEY_TABLE_MARKER}\n${intro}`;
@@ -210,13 +210,13 @@ function buildSurveyAnalysisReplyFromText(content) {
 
   const rows = [];
   if (survey.hasRating) {
-    rows.push("評分題洞察：已偵測到評分題資料，可依各題平均分比較滿意度與落差。");
+    rows.push("Rating insights: Compare average scores across questions to identify satisfaction levels and gaps.");
   }
   if (survey.hasText) {
-    rows.push(`問答題主題分析：已偵測到 ${survey.answerCount} 筆文字回覆，可整理高頻主題與正負向意見。`);
+    rows.push(`Open-ended themes:  ${survey.answerCount}  text responses found. Review recurring themes and positive and negative feedback.`);
   }
-  rows.push(`回覆概況：目前共有 ${survey.responseCount} 位填答者、${survey.questionCount} 道題目，可進行初步趨勢判讀。`);
-  rows.push("改善建議：建議補充分群欄位或提高回覆數，以提升分析可信度。");
+  rows.push(`Response overview:  ${survey.responseCount}  respondents, ${survey.questionCount}  questions available for preliminary trend analysis.`);
+  rows.push("Recommendations: Add respondent group fields or collect more responses to improve confidence in the analysis.");
 
   return `${intro}\n\n${rows.join("\n")}`;
 }
@@ -226,12 +226,12 @@ function isGreetingInput(text) {
   return ["hi", "hello", "hey", "你好", "哈囉", "嗨", "您好"].includes(normalized);
 }
 
-function buildAssistantReply(content, surveyDetail = null, surveyTitle = "問卷") {
+function buildAssistantReply(content, surveyDetail = null, surveyTitle = "Survey") {
   if (surveyDetail) return buildSurveyAnalysisReplyFromSurvey(surveyDetail, surveyTitle);
-  if (isGreetingInput(content)) return "您好！很高興見到您，請提供要分析的資料或選擇系統內建問卷，我會協助您整理重點。";
+  if (isGreetingInput(content)) return "Hello! Provide data or choose a survey, and I will help you identify the key points.";
   const surveyReply = buildSurveyAnalysisReplyFromText(content);
   if (surveyReply) return surveyReply;
-  return "資料不足，無法進行有效分析。請提供系統內建問卷、完整資料檔案，或更明確的分析問題。";
+  return "There is not enough data to analyze. Please choose a survey, upload a complete data file, or ask a more specific question.";
 }
 
 function cleanMessageText(text) {
@@ -248,13 +248,13 @@ function parseAssistantTableRows(content) {
   let isSuggestionSection = false;
   const visibleContent = content.replace(EMPTY_SURVEY_TABLE_MARKER, "");
 
-  const isSuggestionLabel = (value) => ["建議", "可進一步詢問"].includes(value.replace(/[💡]/g, "").trim());
+  const isSuggestionLabel = (value) => ["Recommendations", "Suggestions", "Suggested questions", "建議", "可進一步詢問"].includes(value.replace(/[💡]/g, "").trim());
 
   visibleContent.split("\n").forEach((rawLine) => {
     const line = cleanMessageText(rawLine);
     if (!line) return;
 
-    if (line.startsWith("我已收到")) {
+    if (/^(?:I have received|我已收到)/.test(line)) {
       introLines.push(line);
       return;
     }
@@ -263,7 +263,7 @@ function parseAssistantTableRows(content) {
 
     const numbered = line.match(/^(\d+)\.\s*(.+)$/);
     const bullet = line.match(/^[-]\s*(.+)$/);
-    const colonIndex = line.indexOf("：");
+    const colonIndex = line.search(/[:：]/);
 
     if (colonIndex > 0) {
       const label = line.slice(0, colonIndex).trim();
@@ -273,21 +273,21 @@ function parseAssistantTableRows(content) {
         currentSection = "";
         return;
       }
-      const item = isSuggestionSection ? "建議" : numbered ? numbered[2].split("：")[0].trim() : label.replace(/[💡]/g, "").trim();
-      const description = numbered ? numbered[2].slice(numbered[2].indexOf("：") + 1).trim() : value;
+      const item = isSuggestionSection ? "Recommendations" : numbered ? numbered[2].split(/[:：]/)[0].trim() : label.replace(/[💡]/g, "").trim();
+      const description = numbered ? numbered[2].slice(numbered[2].search(/[:：]/) + 1).trim() : value;
       rows.push({ item, description });
       return;
     }
 
     if (numbered || bullet) {
-      const item = isSuggestionSection ? "建議" : numbered ? `項目 ${numbered[1]}` : currentSection || "重點";
+      const item = isSuggestionSection ? "Recommendations" : numbered ? `Item  ${numbered[1]}` : currentSection || "Key points";
       const description = numbered ? numbered[2] : bullet[1];
       rows.push({ item, description });
       return;
     }
 
     if (line.length <= 18) {
-      isSuggestionSection = line.includes("建議");
+      isSuggestionSection = /recommendations|suggestions|建議/i.test(line);
       currentSection = isSuggestionSection ? "" : line;
       return;
     }
@@ -297,7 +297,7 @@ function parseAssistantTableRows(content) {
       return;
     }
 
-    const item = isSuggestionSection ? "建議" : currentSection || "摘要";
+    const item = isSuggestionSection ? "Recommendations" : currentSection || "Summary";
     rows.push({ item, description: line });
   });
 
@@ -314,10 +314,10 @@ function PlainMessageContent({ content }) {
 function AssistantTableContent({ content, readOnly = false }) {
   const navigate = useNavigate();
   const { intro, rows } = parseAssistantTableRows(content);
-  const isSurveyAnalysisReply = intro.includes("問卷資料") && intro.includes("初步分析結果");
+  const isSurveyAnalysisReply = (/survey data|問卷資料/.test(intro) && /preliminary analysis|初步分析結果/.test(intro));
   const shouldFillEmptySurveyRow = rows.length === 0 && (content.includes(EMPTY_SURVEY_TABLE_MARKER) || isSurveyAnalysisReply);
   const displayRows = shouldFillEmptySurveyRow
-    ? [{ item: "資料不足", description: "目前問卷內容過少，暫無足夠資料可進行分析。" }]
+    ? [{ item: "Insufficient data", description: "This survey does not yet contain enough data for analysis." }]
     : rows;
 
   if (displayRows.length < 2 && !shouldFillEmptySurveyRow) {
@@ -331,8 +331,8 @@ function AssistantTableContent({ content, readOnly = false }) {
         <table className="assistant-output-table">
           <thead>
             <tr>
-              <th>分類</th>
-              <th>分析內容</th>
+              <th>Category</th>
+              <th>Analysis</th>
             </tr>
           </thead>
           <tbody>
@@ -352,7 +352,7 @@ function AssistantTableContent({ content, readOnly = false }) {
           onClick={() => navigate("/collection", { state: { activeView: "exports" } })}
         >
           <i className="ri-download-cloud-2-line"></i>
-          匯出檔案
+          Exported files
         </button>
       </div>}
     </div>
@@ -394,7 +394,7 @@ function ClassificationTable({ rows, meta, chatId, showToast, readOnly = false }
     return (
       <div className="assistant-output-panel">
         <div className="assistant-output-intro">
-          這批資料沒有產生任何分類結果。
+          No classification results were generated for this data.
         </div>
 
         {meta?.diagnostic_message && (
@@ -409,18 +409,18 @@ function ClassificationTable({ rows, meta, chatId, showToast, readOnly = false }
   return (
     <div className="assistant-output-panel assistant-output-panel--wide">
       <div className="assistant-output-intro">
-        分類完成，共 {rows.length} 個類別。
+        Classification complete:  {rows.length}  categories.
       </div>
 
       <div className="assistant-output-table-wrap">
         <table className="assistant-output-table classification-table">
           <thead>
             <tr>
-              <th>大類別</th>
-              <th>子類別</th>
-              <th>問卷回覆內容</th>
-              <th>判斷原因與說明</th>
-              <th>受試者建議摘要</th>
+              <th>Main category</th>
+              <th>Subcategory</th>
+              <th>Survey response</th>
+              <th>Reasoning and explanation</th>
+              <th>Summary of respondent suggestions</th>
             </tr>
           </thead>
 
@@ -474,11 +474,11 @@ function ClassificationTable({ rows, meta, chatId, showToast, readOnly = false }
 
                     {row.synthesis_status === "fallback" && (
                       <div className="synthesis-fallback-note">
-                        （彙整摘要暫時失敗，以下為個別意見簡易拼接，非完整統整）
+                        (The combined summary is temporarily unavailable. Individual comments are shown below.)
 
                         {row.synthesis_error && (
                           <div className="synthesis-error-detail">
-                            錯誤原因：{row.synthesis_error}
+                            Error: {row.synthesis_error}
                           </div>
                         )}
                       </div>
@@ -527,7 +527,7 @@ export function MessageContent({ message, showToast, readOnly = false }) {
 function buildAutoSessionTitle(text, file) {
   if (file?.name) {
     const baseName = file.name.replace(/\.[^/.]+$/, "");
-    return `分析：${baseName}`.slice(0, 28);
+    return `Analysis: ${baseName}`.slice(0, 28);
   }
 
   const cleaned = text
@@ -535,7 +535,7 @@ function buildAutoSessionTitle(text, file) {
     .replace(/[，。！？、,.!?]/g, " ")
     .trim();
 
-  if (!cleaned) return "新工作區";
+  if (!cleaned) return "New workspace";
   return cleaned.length > 18 ? `${cleaned.slice(0, 18)}...` : cleaned;
 }
 
@@ -604,12 +604,12 @@ export default function WorkspacePage() {
   const handleInviteView = async () => {
     if (isSharing) return;
     if (!activeSession) {
-      showToast?.("請先開啟一個工作區");
+      showToast?.("Please open a workspace first");
       return;
     }
     const projectId = activeSession.project_id;
     if (!projectId || String(projectId).startsWith("temp-") || String(projectId).startsWith("survey-")) {
-      showToast?.("這個工作區還沒同步完成，請先傳送一則訊息後再邀請檢視");
+      showToast?.("This workspace has not finished syncing. Send a message before inviting viewers.");
       return;
     }
     setIsSharing(true);
@@ -620,15 +620,15 @@ export default function WorkspacePage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        showToast?.(data?.error || "產生邀請連結失敗");
+        showToast?.(data?.error || "Failed to create invite link");
         return;
       }
       const shareLink = `${window.location.origin}/shared/${data.share_code}`;
       if (!data.share_code) throw new Error("Missing share code");
-      setShareInvite({ link: shareLink, title: activeSession.title || "分析對話" });
+      setShareInvite({ link: shareLink, title: activeSession.title || "Analysis conversation" });
     } catch (err) {
-      console.error("產生邀請連結失敗：", err);
-      showToast?.("產生邀請連結失敗，請稍後再試");
+      console.error("Failed to create invite link: ", err);
+      showToast?.("Failed to create invite link. Please try again later.");
     } finally {
       setIsSharing(false);
     }
@@ -675,7 +675,7 @@ export default function WorkspacePage() {
         );
         if (!cancelled) setApiSurveys(detailed);
       } catch (err) {
-        console.error("載入問卷清單失敗", err);
+        console.error("Failed to load survey list", err);
       } finally {
         if (!cancelled) setIsSurveyPickerLoading(false);   // 載入完成，隱藏 loading 狀態
       }
@@ -704,7 +704,7 @@ export default function WorkspacePage() {
         });
 
         if (!res.ok) {
-          console.error("載入 workspace API 失敗：", res.status);
+          console.error("Failed to load workspace API: ", res.status);
           return;
         }
 
@@ -734,10 +734,10 @@ export default function WorkspacePage() {
             return {
               id: existing?.id || String(workspace.project_id),
               project_id: workspace.project_id,
-              title: workspace.project_name || "未命名工作區",
+              title: workspace.project_name || "Untitled workspace",
               folder_name: workspace.folder_name ?? null,
               date: workspace.created_at
-                ? new Date(workspace.created_at).toLocaleDateString()
+                ? new Date(workspace.created_at).toLocaleDateString("en-US")
                 : "",
               messages: existing?.messages || [WELCOME_MSG],
             };
@@ -746,7 +746,7 @@ export default function WorkspacePage() {
           return [...localOnly, ...fromBackend];
         });
       } catch (err) {
-        console.error("載入 workspace 失敗", err);
+        console.error("Failed to load workspace", err);
       } finally {
         if (!cancelled) {
           setIsEntryLoading(false);
@@ -770,7 +770,7 @@ export default function WorkspacePage() {
         (s) => String(s.id) === String(activeSessionId)
       );
       if (!currentSession?.project_id) return;
-      
+
       // 已經載入過就跳過
       if (loadedProjectIds.current.has(currentSession.project_id)) {
         setHistoryLoadingSessionId((current) => current === activeSessionId ? null : current);
@@ -828,7 +828,7 @@ export default function WorkspacePage() {
             );
           }
         } catch (err) {
-          console.error("動態載入歷史對話失敗：", err);
+          console.error("Failed to load conversation history: ", err);
         } finally {
           setHistoryLoadingSessionId((current) => current === activeSessionId ? null : current);
         }
@@ -893,7 +893,7 @@ export default function WorkspacePage() {
     const newSession = {
       id: newId,
       title: sessionTitle,
-      date: new Date().toLocaleDateString(),
+      date: new Date().toLocaleDateString("en-US"),
       messages: [WELCOME_MSG, userMsg],
     };
     setSessions((currentList) => [
@@ -910,7 +910,7 @@ export default function WorkspacePage() {
     .then((res) => res.ok ? res.json() : null)
     .then((data) => {
       if (!data?.project_id) return;
-      
+
       const surveyCode =
         surveyDetail?.code ||
         surveyDetail?.access_code ||
@@ -921,7 +921,7 @@ export default function WorkspacePage() {
           method: "PATCH",
           headers: { "Content-Type": "application/json", ...getAuthHeader() },
           body: JSON.stringify({ project_id: data.project_id }),
-        }).catch((err) => console.error("問卷綁定失敗", err));
+        }).catch((err) => console.error("Failed to link survey", err));
       }
 
       const templateId = surveyDetail?.template_id || null;
@@ -947,7 +947,7 @@ export default function WorkspacePage() {
         const assistantMsgId = `a-${Date.now()}`;
         try {
           if (!surveyCode) {
-            throw new Error("找不到問卷代碼，無法觸發分析");
+            throw new Error("Survey code not found. Unable to start analysis.");
           }
           const analyzeRes = await fetch(
             apiUrl(`/api/surveys/${encodeURIComponent(surveyCode)}/analyze`),
@@ -962,7 +962,7 @@ export default function WorkspacePage() {
             analyzeData.aggregated_groups,
             {
               classified_count: analyzeData.newly_classified_count,
-              source_filename: `${surveyTitle}（問卷）`,
+              source_filename: `${surveyTitle} (survey)`,
               // 【新增｜診斷訊息】沒有結果時，把後端算出來的原因帶過去，
               // 不要只顯示「沒有結果」讓使用者猜。
               diagnostic_message: analyzeData.diagnostic?.message,
@@ -984,7 +984,7 @@ export default function WorkspacePage() {
           const savedChatId = await saveChatMessage(data.project_id, "assistant", assistantContent, templateId);
           updateMessageChatId(String(data.project_id), assistantMsgId, savedChatId);
         } catch (err) {
-          const errMsg = `分析失敗：${err?.message || "網路錯誤"}`;
+          const errMsg = `Analysis failed: ${err?.message || "Network error"}`;
           setSessions((currentList) =>
             (Array.isArray(currentList) ? currentList : []).map((session) =>
               session.id === String(data.project_id)
@@ -1004,7 +1004,7 @@ export default function WorkspacePage() {
         }
       })();
     })
-    .catch((err) => console.error("問卷匯入建立 workspace 失敗", err));
+    .catch((err) => console.error("Failed to create workspace for survey import", err));
 
     window.history.replaceState({}, "");
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1045,13 +1045,13 @@ export default function WorkspacePage() {
       String(projectId).startsWith("temp-") ||
       String(projectId).startsWith("survey-")
     ) {
-      console.log("[SaveChat] 偵測到臨時工作區，暫緩同步至後端：", projectId);
+      console.log("[SaveChat] Temporary workspace detected; postponing sync: ", projectId);
       return null;
     }
 
     const intProjectId = Number(projectId);
     if (!Number.isInteger(intProjectId)) {
-      console.error("[SaveChat] projectId 格式錯誤：", projectId);
+      console.error("[SaveChat] Invalid projectId: ", projectId);
       return null;
     }
 
@@ -1068,13 +1068,13 @@ export default function WorkspacePage() {
       });
 
       if (!res.ok) {
-        console.error("訊息同步至資料庫失敗：", res.status);
+        console.error("Failed to sync message to database: ", res.status);
         return null;
       }
       const data = await res.json();
       return data?.chat_history?.chat_id ?? null;
     } catch (err) {
-      console.error("訊息同步至資料庫失敗", err);
+      console.error("Failed to sync message to database", err);
       return null;
     }
   }, []);
@@ -1084,7 +1084,7 @@ export default function WorkspacePage() {
     if (!detail || !activeSessionId) return;
     // 【修正｜改成簡短一行】原本會把整份問卷回覆逐字列出來，跟 SurveyDetailPage.jsx
     // 的 handleImportToChat 是同一個問題，一起改成一行簡短說明。
-    const content = `[問卷：${detail.title}] 觸發自動分析`;
+    const content = `[Survey: ${detail.title}] Start automatic analysis`;
     const userMsg = { id: `u-${Date.now()}`, role: "user", content };
 
     const selectedSession = sessions.find((session) => session.id === activeSessionId);
@@ -1111,7 +1111,7 @@ export default function WorkspacePage() {
       const assistantMsgId = `a-${Date.now()}`;
       try {
         if (!detail.code) {
-          throw new Error("找不到問卷代碼，無法觸發分析");
+          throw new Error("Survey code not found. Unable to start analysis.");
         }
         const analyzeRes = await fetch(
           apiUrl(`/api/surveys/${encodeURIComponent(detail.code)}/analyze`),
@@ -1126,7 +1126,7 @@ export default function WorkspacePage() {
           analyzeData.aggregated_groups,
           {
             classified_count: analyzeData.newly_classified_count,
-            source_filename: `${detail.title}（問卷）`,
+            source_filename: `${detail.title} (survey)`,
             diagnostic_message: analyzeData.diagnostic?.message,
           }
         );
@@ -1146,7 +1146,7 @@ export default function WorkspacePage() {
         const savedChatId = await saveChatMessage(projectId, "assistant", assistantContent, detail.id);
         updateMessageChatId(sid, assistantMsgId, savedChatId);
       } catch (err) {
-        const errMsg = `分析失敗：${err?.message || "網路錯誤"}`;
+        const errMsg = `Analysis failed: ${err?.message || "Network error"}`;
         setSessions((currentList) =>
           (Array.isArray(currentList) ? currentList : []).map((session) =>
             session.id === sid
@@ -1187,7 +1187,7 @@ export default function WorkspacePage() {
    * 回傳的 text_column / text_column_auto_detected 讓畫面上可以顯示判斷結果。
    * debug 時先看這支 API 的 Network 回應，data.error 會直接顯示在聊天室裡。 */
   const runExcelClassification = async (file, sid, projectId) => {
-    const userContent = `[檔案：${file.name}] 上傳並自動分類`;
+    const userContent = `[File: ${file.name}] Upload and classify automatically`;
     const userMsg = { id: Date.now().toString(), role: "user", content: userContent };
     appendMessage(sid, userMsg);
     setIsClassifying(true);
@@ -1212,7 +1212,7 @@ export default function WorkspacePage() {
       const data = await res.json();
 
       if (!res.ok) {
-        const errMsg = `分類失敗：${data?.error || res.status}`;
+        const errMsg = `Classification failed: ${data?.error || res.status}`;
         appendMessage(sid, { id: `a-${Date.now()}`, role: "assistant", content: errMsg });
         showToast(errMsg);
         return;
@@ -1239,7 +1239,7 @@ export default function WorkspacePage() {
         updateMessageChatId(sid, assistantMsgId, savedChatId);
       }
     } catch (err) {
-      const errMsg = `分類失敗：${err?.message || "網路錯誤"}`;
+      const errMsg = `Classification failed: ${err?.message || "Network error"}`;
       appendMessage(sid, { id: `a-${Date.now()}`, role: "assistant", content: errMsg });
       showToast(errMsg);
     } finally {
@@ -1279,14 +1279,14 @@ export default function WorkspacePage() {
       textareaRef.current.style.height = "auto";
     }
 
-    const content = draftFile ? `[檔案：${draftFile.name}] ${draftInput}` : draftInput;
+    const content = draftFile ? `[File: ${draftFile.name}] ${draftInput}` : draftInput;
     const autoTitle = buildAutoSessionTitle(draftInput, draftFile);
     const userMsg = { id: Date.now().toString(), role: "user", content };
 
     setSessions((currentList) =>
       (Array.isArray(currentList) ? currentList : []).map((session) => {
         if (session.id !== sid) return session;
-        const shouldAutoTitle = session.title === "新工作區";
+        const shouldAutoTitle = session.title === "New workspace";
         return {
           ...session,
           title: shouldAutoTitle ? autoTitle : session.title,
@@ -1296,7 +1296,7 @@ export default function WorkspacePage() {
     );
 
     const session = sessions.find((s) => s.id === sid);
-    if (session?.title === "新工作區") syncChatTitle(sid, autoTitle);
+    if (session?.title === "New workspace") syncChatTitle(sid, autoTitle);
 
     const projectId = session?.project_id;
 
@@ -1381,7 +1381,7 @@ export default function WorkspacePage() {
             body: JSON.stringify({ project_name: trimmed }),
           });
         } catch (err) {
-          console.error("重新命名失敗", err);
+          console.error("Rename failed", err);
         }
       }
     }
@@ -1426,10 +1426,10 @@ export default function WorkspacePage() {
         }
       }
 
-      showToast("已刪除工作區，並移至最近刪除");
+      showToast("Workspace moved to Recently deleted");
     } catch (err) {
-      console.error("刪除工作區失敗", err);
-      showToast("刪除失敗，請稍後再試");
+      console.error("Failed to delete workspace", err);
+      showToast("Deletion failed. Please try again later.");
     } finally {
       isDeletingRef.current = false;
       setIsDeletingSession(false);
@@ -1438,13 +1438,13 @@ export default function WorkspacePage() {
 
   // ── 建立新工作區 ─────────────
   const createNewSession = async () => {
-    const title = "新工作區";
+    const title = "New workspace";
     const tempId = `temp-${Date.now()}`;
 
     const tempSession = {
       id: tempId,
       title,
-      date: new Date().toLocaleDateString(),
+      date: new Date().toLocaleDateString("en-US"),
       messages: [WELCOME_MSG],
     };
     setSessions((currentList) => [
@@ -1465,13 +1465,13 @@ export default function WorkspacePage() {
       });
 
       if (!res.ok) {
-        console.error("新增工作區 API 失敗：", res.status);
+        console.error("Failed to create workspace via API: ", res.status);
         return;
       }
 
       const data = await res.json();
       if (!data?.project_id) {
-        console.error("新增工作區失敗：後端未回傳 project_id");
+        console.error("Failed to create workspace: no project ID returned");
         return;
       }
 
@@ -1486,7 +1486,7 @@ export default function WorkspacePage() {
       updateSessionId(tempId, newId);
       setActiveSessionId(newId);
     } catch (err) {
-      console.error("新增工作區失敗", err);
+      console.error("Failed to create workspace", err);
     }
   };
 
@@ -1496,7 +1496,7 @@ export default function WorkspacePage() {
         <Navbar />
         <div className="workspace-page" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
           <LoginRequiredModal
-            message="新增工作區需要登入帳號才能使用，登入後即可開始分析資料。"
+            message="Please log in to create a workspace and start analyzing data."
             onLogin={() => navigate("/login")}
             onCancel={() => navigate("/")}
           />
@@ -1514,8 +1514,8 @@ export default function WorkspacePage() {
             <div className="workspace-entry-loading-icon">
               <i className="ri-loader-4-line"></i>
             </div>
-            <h1>{isEntryLoading ? "正在載入工作區..." : "正在載入歷史對話..."}</h1>
-            <p>{isEntryLoading ? "正在整理您的專案管理、歷史對話紀錄與分析資料，請稍候。" : "正在取得這個 Chat 的歷史資料，完成後會自動顯示。"}</p>
+            <h1>{isEntryLoading ? "Loading workspace…" : "Loading conversation history…"}</h1>
+            <p>{isEntryLoading ? "Preparing your projects, conversation history, and analysis data. Please wait." : "Retrieving this chat's history. It will appear automatically when ready."}</p>
           </div>
         </main>
       </>
@@ -1543,13 +1543,13 @@ export default function WorkspacePage() {
           <aside className="workspace-sidebar">
             <div className="sidebar-header">
               <div className="d-flex align-items-center mb-3">
-                <span className="sidebar-title">歷史對話紀錄</span>
+                <span className="sidebar-title">Conversation history</span>
               </div>
               <div className="sidebar-search">
                 <i className="ri-search-line"></i>
                 <input
                   type="text"
-                  placeholder="搜尋歷史對話紀錄..."
+                  placeholder="Search conversation history…"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
@@ -1564,7 +1564,7 @@ export default function WorkspacePage() {
               {sessions.length === 0 ? (
                 <div className="sidebar-empty">
                   <i className="ri-chat-ai-line"></i>
-                  <p>尚無工作區紀錄</p>
+                  <p>No workspace history</p>
                   <button
                     onClick={createNewSession}
                     style={{
@@ -1573,13 +1573,13 @@ export default function WorkspacePage() {
                       fontSize: 12, fontWeight: 700, cursor: "pointer",
                     }}
                   >
-                    新增工作區
+                    New workspace
                   </button>
                 </div>
               ) : filteredSessions.length === 0 ? (
                 <div className="sidebar-empty">
                   <i className="ri-search-line"></i>
-                  <p>找不到相關紀錄</p>
+                  <p>No matching records</p>
                 </div>
               ) : (
                 filteredSessions.map((s) => (
@@ -1613,14 +1613,14 @@ export default function WorkspacePage() {
                     <button
                       className="session-edit"
                       onClick={(e) => { e.stopPropagation(); startRename(s); }}
-                      title="重新命名"
+                      title="Rename"
                     >
                       <i className="ri-pencil-line"></i>
                     </button>
                     <button
                       className="session-delete"
                       onClick={(e) => { e.stopPropagation(); requestDeleteSession(s.id); }}
-                      title="刪除工作區"
+                      title="Delete workspace"
                     >
                       <i className="ri-delete-bin-line"></i>
                     </button>
@@ -1629,7 +1629,7 @@ export default function WorkspacePage() {
               )}
             </div>
             <div className="sidebar-footer">
-              <button className="btn-new-session sidebar-bottom-add" onClick={createNewSession} title="新增工作區">
+              <button className="btn-new-session sidebar-bottom-add" onClick={createNewSession} title="New workspace">
                 <i className="ri-add-line"></i>
               </button>
             </div>
@@ -1640,7 +1640,7 @@ export default function WorkspacePage() {
             <div className="workspace-share-float">
               <button className="workspace-share-btn" type="button" onClick={handleInviteView} disabled={isSharing}>
                 <i className="ri-eye-line"></i>
-                <span>{isSharing ? "產生連結中..." : "邀請檢視"}</span>
+                <span>{isSharing ? "Creating link…" : "Invite viewers"}</span>
               </button>
             </div>
             {activeSession === null ? (
@@ -1656,7 +1656,7 @@ export default function WorkspacePage() {
                 }}>
                   <i className="ri-chat-ai-line"></i>
                 </div>
-                <p style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>選擇或新增一個工作區開始分析</p>
+                <p style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>Select or create a workspace to start analyzing</p>
                 <button
                   onClick={createNewSession}
                   style={{
@@ -1665,7 +1665,7 @@ export default function WorkspacePage() {
                     fontWeight: 700, cursor: "pointer",
                   }}
                 >
-                  <i className="ri-add-line" style={{ marginRight: 6 }}></i>新增工作區
+                  <i className="ri-add-line" style={{ marginRight: 6 }}></i>New workspace
                 </button>
               </div>
             ) : (
@@ -1687,7 +1687,7 @@ export default function WorkspacePage() {
                         <i className="ri-robot-line"></i>
                       </div>
                       <div className="message-bubble assistant-bubble typing-bubble">
-                        <span className="typing-label">AI 思考中</span>
+                        <span className="typing-label">AI is thinking</span>
                         <div className="typing-dots">
                           <span></span><span></span><span></span>
                         </div>
@@ -1704,7 +1704,7 @@ export default function WorkspacePage() {
                       <i className="ri-attachment-line"></i>
                       <span>{attachedFile.name}</span>
                       {isExcelFile(attachedFile) && (
-                        <span className="classification-hint">（送出後將自動分類）</span>
+                        <span className="classification-hint">(Automatically classified after sending)</span>
                       )}
                       <button onClick={() => setAttachedFile(null)} disabled={isClassifying}>
                         <i className="ri-close-line"></i>
@@ -1719,7 +1719,7 @@ export default function WorkspacePage() {
                       <button
                         className={`attach-btn survey-pick-btn${showSurveyPicker ? " active" : ""}`}
                         onClick={() => setShowSurveyPicker((v) => !v)}
-                        title="選擇問卷分析"
+                        title="Choose a survey to analyze"
                       >
                         <i className="ri-survey-line"></i>
                       </button>
@@ -1728,7 +1728,7 @@ export default function WorkspacePage() {
                           <div className="survey-picker-header">
                             <span className="survey-picker-title">
                               <i className="ri-survey-line"></i>
-                              選擇問卷進行分析
+                              Choose a survey to analyze
                             </span>
                             <button className="survey-picker-close" onClick={() => setShowSurveyPicker(false)}>
                               <i className="ri-close-line"></i>
@@ -1738,7 +1738,7 @@ export default function WorkspacePage() {
                             <i className="ri-search-line"></i>
                             <input
                               type="text"
-                              placeholder="搜尋問卷名稱或代碼..."
+                              placeholder="Search survey title or code…"
                               value={surveyPickerSearch}
                               onChange={(e) => setSurveyPickerSearch(e.target.value)}
                               autoFocus
@@ -1753,12 +1753,12 @@ export default function WorkspacePage() {
                             {isSurveyPickerLoading ? (
                               <div className="survey-picker-loading" role="status" aria-live="polite">
                                 <i className="ri-loader-4-line ri-spin"></i>
-                                <span>問卷載入中...</span>
+                                <span>Loading surveys…</span>
                               </div>
                             ) : filteredSurveyPicker.length === 0 ? (
                               <div className="survey-picker-empty">
                                 <i className="ri-search-line"></i>
-                                <p>找不到相關問卷</p>
+                                <p>No matching surveys</p>
                               </div>
                             ) : (
                               filteredSurveyPicker.map((s) => (
@@ -1774,12 +1774,12 @@ export default function WorkspacePage() {
                                     <span className="survey-picker-name">{s.title}</span>
                                     <div className="survey-picker-meta">
                                       <span><i className="ri-key-2-line"></i>{s.code}</span>
-                                      <span><i className="ri-user-line"></i>{s.responseCount} 人回覆</span>
+                                      <span><i className="ri-user-line"></i>{s.responseCount} responses</span>
                                       <span><i className="ri-calendar-line"></i>{s.createdAt}</span>
                                     </div>
                                   </div>
                                   <span className={`survey-picker-status${s.status === "active" ? " active" : ""}`}>
-                                    {s.status === "active" ? "進行中" : "已結束"}
+                                    {s.status === "active" ? "Active" : "Closed"}
                                   </span>
                                 </button>
                               ))
@@ -1792,7 +1792,7 @@ export default function WorkspacePage() {
                     <button
                       className="attach-btn"
                       onClick={() => fileInputRef.current?.click()}
-                      title="附加檔案"
+                      title="Attach file"
                     >
                       <i className="ri-attachment-line"></i>
                     </button>
@@ -1805,14 +1805,14 @@ export default function WorkspacePage() {
                         const f = e.target.files?.[0];
                         if (!f) return;
                         setAttachedFile(f);
-                        showToast(`「${f.name}」已附加，發送後將上傳`);
+                        showToast(`「${f.name} attached. It will be uploaded when you send the message.`);
                         e.target.value = "";
                       }}
                     />
                     <textarea
                       ref={textareaRef}
                       rows={1}
-                      placeholder="輸入您的問題或上傳檔案進行分析..."
+                      placeholder="Ask a question or upload a file for analysis…"
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
                       onInput={handleTextareaInput}
@@ -1828,7 +1828,7 @@ export default function WorkspacePage() {
                   </div>
                   <p className="input-hint">
                     <i className="ri-survey-line" style={{ marginRight: 4 }}></i>
-                    點擊問卷圖示可直接選擇問卷分析 · 支援 CSV、Excel、TXT · Enter 發送
+                    Click the survey icon to analyze a survey · Supports CSV, Excel, and TXT · Press Enter to send
                   </p>
                 </div>
               </>
@@ -1843,14 +1843,14 @@ export default function WorkspacePage() {
             <div className="workspace-alert-icon">
               <i className="ri-error-warning-line"></i>
             </div>
-            <h3>刪除工作區</h3>
-            <p>確定要刪除「{deleteTarget.title}」嗎？刪除後可在專案管理的最近刪除中還原。</p>
+            <h3>Delete workspace</h3>
+            <p>Delete {deleteTarget.title}? You can restore it from Recently deleted in Project Management.</p>
             <div className="workspace-alert-actions">
               <button className="workspace-alert-primary" onClick={confirmDeleteSession} type="button" disabled={isDeletingSession}>
-                {isDeletingSession ? "刪除中..." : "確定"}
+                {isDeletingSession ? "Deleting…" : "OK"}
               </button>
               <button className="workspace-alert-secondary" onClick={() => setDeleteTarget(null)} type="button" disabled={isDeletingSession}>
-                取消
+                Cancel
               </button>
             </div>
           </div>

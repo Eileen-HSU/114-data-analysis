@@ -29,7 +29,7 @@ function formatDeadline(deadlineAt) {
   if (!deadlineAt) return "";
   const date = new Date(deadlineAt);
   if (Number.isNaN(date.getTime())) return deadlineAt;
-  return date.toLocaleString("zh-TW", {
+  return date.toLocaleString("en-US", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -75,7 +75,7 @@ export default function FillSurveyPage() {
   const loadSurveyByCode = async (rawCode) => {
     const normalized = rawCode.trim().toUpperCase();
     if (!normalized) {
-      setError("請輸入邀請碼。");
+      setError("Please enter an invite code.");
       return;
     }
 
@@ -92,7 +92,7 @@ export default function FillSurveyPage() {
         const expiredData = await response.json().catch(() => ({}));
         setSurvey(null);
         setExpiredSurvey({
-          title: expiredData.title || "此問卷",
+          title: expiredData.title || "This survey",
           code: expiredData.access_code || normalized,
           shortCode: expiredData.short_code || "",
           deadlineAt: expiredData.deadline_at || "",
@@ -101,7 +101,7 @@ export default function FillSurveyPage() {
         return;
       }
       if (!response.ok) {
-        setError("找不到這組邀請碼，請確認後再試一次。");
+        setError("Invite code not found. Please check it and try again.");
         return;
       }
 
@@ -128,8 +128,8 @@ export default function FillSurveyPage() {
         openSurvey(localSurvey, normalized);
         return;
       }
-      console.error("讀取問卷失敗:", error);
-      setError("伺服器連線失敗，請稍後再試。");
+      console.error("Failed to load survey:", error);
+      setError("Unable to connect to the server. Please try again later.");
     } finally {
       setLoadingSurvey(false);
     }
@@ -189,7 +189,7 @@ export default function FillSurveyPage() {
 
   // 修正點 2：合併後的唯一 handleSubmit
   const handleSubmit = async (e) => {
-    if (e) e.preventDefault(); 
+    if (e) e.preventDefault();
     if (isSubmitting) return;
 
     if (isSurveyExpired(survey.deadlineAt)) {
@@ -201,7 +201,7 @@ export default function FillSurveyPage() {
 
     // 檢查必填項目
     if (survey.identityMode === "identified" && !respondentIdentity.trim()) {
-      setError("請填寫身分後再送出問卷。");
+      setError("Please provide your identity before submitting the survey.");
       return;
     }
 
@@ -211,7 +211,7 @@ export default function FillSurveyPage() {
     });
 
     if (missing) {
-      setError("請完成所有必填題目。");
+      setError("Please complete all required questions.");
       return;
     }
 
@@ -251,7 +251,7 @@ export default function FillSurveyPage() {
         };
         localStorage.setItem("surveys", JSON.stringify(storedSurveys));
         recordActivity({
-          text: `提交問卷回覆「${survey.title}」`,
+          text: `Submitted response to survey: ${survey.title}`,
           icon: "ri-send-plane-line",
           iconBg: "bg-stat-teal",
           iconColor: "text-stat-teal",
@@ -268,11 +268,11 @@ export default function FillSurveyPage() {
         });
         setError("");
       } else {
-        setError("伺服器儲存失敗，請檢查後端連線。");
+        setError("The server could not save your response. Please try again.");
       }
     } catch (error) {
-      console.error("提交失敗:", error);
-      setError("伺服器連線失敗，請確認後端 Python 是否已啟動。");
+      console.error("Submission failed:", error);
+      setError("Unable to connect to the server. Please try again later.");
     } finally {
       setIsSubmitting(false);
     }
@@ -318,10 +318,10 @@ export default function FillSurveyPage() {
     }
 
     if (question.type === "long") {
-      return <textarea className="answer-text-input" style={{ minHeight: 120 }} value={answers[question.id] || ""} onChange={(e) => setAnswer(question.id, e.target.value)} placeholder="請輸入回答" />;
+      return <textarea className="answer-text-input" style={{ minHeight: 120 }} value={answers[question.id] || ""} onChange={(e) => setAnswer(question.id, e.target.value)} placeholder="Enter your answer" />;
     }
 
-    return <input className="answer-text-input" value={answers[question.id] || ""} onChange={(e) => setAnswer(question.id, e.target.value)} placeholder="請輸入回答" />;
+    return <input className="answer-text-input" value={answers[question.id] || ""} onChange={(e) => setAnswer(question.id, e.target.value)} placeholder="Enter your answer" />;
   };
 
   return (
@@ -330,8 +330,8 @@ export default function FillSurveyPage() {
       <main className="fill-survey-page">
         <section className="fill-survey-hero">
           <div className="container">
-            <h1 className="fill-survey-title">填寫問卷</h1>
-            <p className="fill-survey-subtitle">輸入邀請碼即可開始作答。</p>
+            <h1 className="fill-survey-title">Complete survey</h1>
+            <p className="fill-survey-subtitle">Enter an invite code to begin.</p>
           </div>
         </section>
 
@@ -339,12 +339,12 @@ export default function FillSurveyPage() {
           {!survey && !expiredSurvey && !submitted && (
             <section className="code-entry-card">
               <div className="code-entry-icon"><i className="ri-key-2-line"></i></div>
-              <h2 style={{ textAlign: "center", fontSize: 18, fontWeight: 800 }}>輸入邀請碼</h2>
-              <p style={{ textAlign: "center", color: "var(--slate-500)" }}>請輸入問卷建立後產生的邀請碼</p>
+              <h2 style={{ textAlign: "center", fontSize: 18, fontWeight: 800 }}>Enter invite code</h2>
+              <p style={{ textAlign: "center", color: "var(--slate-500)" }}>Enter the invite code generated for the survey</p>
               <div className="code-input-wrapper">
-                <input className={`code-input ${error ? "error" : ""}`} value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === "Enter" && handleEnterCode()} maxLength={12} placeholder="輸入邀請碼" />
+                <input className={`code-input ${error ? "error" : ""}`} value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === "Enter" && handleEnterCode()} maxLength={12} placeholder="Enter invite code" />
                 <button className="btn-enter-code" onClick={handleEnterCode} disabled={loadingSurvey}>
-                  <i className={loadingSurvey ? "ri-loader-4-line" : "ri-arrow-right-line"}></i>{loadingSurvey ? "讀取中" : "進入"}
+                  <i className={loadingSurvey ? "ri-loader-4-line" : "ri-arrow-right-line"}></i>{loadingSurvey ? "Loading" : "Open survey"}
                 </button>
               </div>
               {error && <p className="code-error-msg" style={{ display: "flex" }}>{error}</p>}
@@ -354,13 +354,13 @@ export default function FillSurveyPage() {
           {expiredSurvey && !survey && (
             <section className="survey-expired-card">
               <div className="survey-expired-icon"><i className="ri-time-line"></i></div>
-              <h2 className="survey-expired-title">問卷已截止</h2>
+              <h2 className="survey-expired-title">Survey closed</h2>
               <p className="survey-expired-desc">
-                {expiredSurvey.title ? `「${expiredSurvey.title}」` : "這份問卷"}已超過填答期限，無法再送出回覆。
+                {expiredSurvey.title ? `「${expiredSurvey.title}」` : "This survey"}has passed its deadline and no longer accepts responses.
               </p>
               {expiredSurvey.deadlineAt && (
                 <div className="survey-expired-time">
-                  截止時間：{formatDeadline(expiredSurvey.deadlineAt)}
+                  Deadline: {formatDeadline(expiredSurvey.deadlineAt)}
                 </div>
               )}
               <button
@@ -371,7 +371,7 @@ export default function FillSurveyPage() {
                   setCode("");
                 }}
               >
-                <i className="ri-arrow-left-line"></i>輸入其他邀請碼
+                <i className="ri-arrow-left-line"></i>Enter another invite code
               </button>
             </section>
           )}
@@ -379,8 +379,8 @@ export default function FillSurveyPage() {
           {survey && isSubmitting && !submitted && (
             <section className="submit-loading-card" role="status" aria-live="polite">
               <div className="submit-loading-icon"><i className="ri-loader-4-line"></i></div>
-              <h2 className="submit-loading-title">送出中</h2>
-              <p className="submit-loading-desc">正在送出你的問卷回覆，請稍候。</p>
+              <h2 className="submit-loading-title">Submitting</h2>
+              <p className="submit-loading-desc">Submitting your survey response. Please wait.</p>
             </section>
           )}
 
@@ -390,16 +390,16 @@ export default function FillSurveyPage() {
                 <h2 className="survey-form-title">{survey.title}</h2>
                 {survey.description && <p className="survey-form-desc">{survey.description}</p>}
                 <div className="survey-form-meta">
-                  <div className="survey-form-meta-item"><i className="ri-question-line"></i><span>{questionCount} 題</span></div>
-                  <div className="survey-form-meta-item"><i className="ri-check-line"></i><span>{answeredCount} 題已填</span></div>
+                  <div className="survey-form-meta-item"><i className="ri-question-line"></i><span>{questionCount}  questions</span></div>
+                  <div className="survey-form-meta-item"><i className="ri-check-line"></i><span>{answeredCount}  answered</span></div>
                   <div className="survey-form-meta-item">
                     <i className={survey.identityMode === "identified" ? "ri-user-line" : "ri-shield-user-line"}></i>
-                    <span>{survey.identityMode === "identified" ? "非匿名" : "匿名"}</span>
+                    <span>{survey.identityMode === "identified" ? "Identified" : "Anonymous"}</span>
                   </div>
                   {survey.deadlineAt && (
                     <div className="survey-form-meta-item">
                       <i className="ri-time-line"></i>
-                      <span>截止 {formatDeadline(survey.deadlineAt)}</span>
+                      <span>Deadline {formatDeadline(survey.deadlineAt)}</span>
                     </div>
                   )}
                 </div>
@@ -409,14 +409,14 @@ export default function FillSurveyPage() {
                 <div className="respondent-identity-card">
                   <label className="answer-question-label">
                     <i className="ri-user-line"></i>
-                    填答人身分
+                    Respondent identity
                     <span className="required-star">*</span>
                   </label>
                   <input
                     className="answer-text-input"
                     value={respondentIdentity}
                     onChange={(e) => setRespondentIdentity(e.target.value)}
-                    placeholder="請輸入姓名、學號、員工編號或可辨識身分"
+                    placeholder="Enter your name, student ID, employee ID, or another identifier"
                   />
                 </div>
               )}
@@ -434,7 +434,7 @@ export default function FillSurveyPage() {
 
               {error && <p className="code-error-msg" style={{ display: "flex" }}>{error}</p>}
               <button className="btn-submit-survey" onClick={handleSubmit} disabled={isSubmitting}>
-                <i className={isSubmitting ? "ri-loader-4-line ri-spin" : "ri-send-plane-line"}></i>{isSubmitting ? "送出中" : "送出問卷"}
+                <i className={isSubmitting ? "ri-loader-4-line ri-spin" : "ri-send-plane-line"}></i>{isSubmitting ? "Submitting" : "Submit survey"}
               </button>
             </section>
           )}
@@ -442,11 +442,11 @@ export default function FillSurveyPage() {
           {submitted && (
             <section className="thankyou-card">
               <div className="thankyou-icon"><i className="ri-checkbox-circle-line"></i></div>
-              <h2 className="thankyou-title">謝謝你的回覆</h2>
-              <p className="thankyou-desc">你的問卷回覆已送出。</p>
+              <h2 className="thankyou-title">Thank you for your response</h2>
+              <p className="thankyou-desc">Your survey response has been submitted.</p>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <button className="btn-submit-survey" onClick={resetForAnotherSurvey}>填寫另一份</button>
-                <a href="/survey" style={{ textAlign: "center", color: "var(--slate-500)", fontWeight: 700, textDecoration: "none" }}>返回問卷中心</a>
+                <button className="btn-submit-survey" onClick={resetForAnotherSurvey}>Complete another survey</button>
+                <a href="/survey" style={{ textAlign: "center", color: "var(--slate-500)", fontWeight: 700, textDecoration: "none" }}>Back to surveys</a>
               </div>
             </section>
           )}

@@ -23,13 +23,13 @@ export default function SignUpPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const genderOptions = [
-    { value: "男", label: "男", emoji: "👨" },
-    { value: "女", label: "女", emoji: "👩" },
-    { value: "其他", label: "其他", emoji: "✨" },
-    { value: "不願透露", label: "不願透露", emoji: "🤍" },
+    { value: "男", label: "Male", emoji: "👨" },
+    { value: "女", label: "Female", emoji: "👩" },
+    { value: "其他", label: "Other", emoji: "✨" },
+    { value: "不願透露", label: "Prefer not to say", emoji: "🤍" },
   ];
   const selectedGenderLabel =
-    genderOptions.find((option) => option.value === gender)?.label || "請選擇性別";
+    genderOptions.find((option) => option.value === gender)?.label || "Select your gender";
 
   const isTwoFactorRequired = (data) =>
     Boolean(
@@ -63,12 +63,12 @@ const handleSubmit = async (e) => {
     if (!gender) {
       setAlertModal({
         type: "error",
-        title: "請選擇性別",
-        message: "請先選擇性別後再建立帳號。",
+        title: "Select your gender",
+        message: "Please select your gender before creating an account.",
       });
       return;
     }
-    
+
     try {
       setIsSubmitting(true);
       // 將所有數據包裹在一個物件中作為 axios.post 的第二個參數
@@ -76,12 +76,12 @@ const handleSubmit = async (e) => {
         user_name: name,      // 對標後端 User 模型的名稱欄位
         email: email,         // 對標 Email 欄位
         password: password,   // 對標密碼欄位（後端會再加密）
-        phone_number: phone,  
-        gender: gender,       
-        company_name: company 
+        phone_number: phone,
+        gender: gender,
+        company_name: company
       });
 
-      console.log("註冊成功:", response.data);
+      console.log("Registration succeeded:", response.data);
       sessionStorage.setItem("dataanalysis_login_loading", "1");
       await new Promise((resolve) => requestAnimationFrame(resolve));
 
@@ -114,11 +114,11 @@ const handleSubmit = async (e) => {
     } catch (error) {
       setIsSubmitting(false);
       sessionStorage.removeItem("dataanalysis_login_loading");
-      console.error("註冊失敗:", error);
+      console.error("Registration failed:", error);
       setAlertModal({
         type: "error",
-        title: "註冊失敗",
-        message: error.response?.data?.error || "註冊失敗，請檢查資料",
+        title: "Registration failed",
+        message: error.response?.data?.error || "Registration failed. Please check your information.",
       });
     }
   }; // <--- 你之前漏掉的這個括號，就是紅屏報錯的元兇
@@ -143,16 +143,16 @@ const handleSubmit = async (e) => {
                 className="auth-logo-img"
               />
             </div>
-            <h2 className="auth-visual-title">開始您的分析旅程</h2>
+            <h2 className="auth-visual-title">Start your analysis journey</h2>
             <p className="auth-visual-desc">
-              <span>建立帳號</span>
-              <span>立即體驗 AI 驅動的資料分析</span>
+              <span>Create account</span>
+              <span>Experience AI-powered data analysis</span>
             </p>
             <div className="auth-features">
               {[
-                { icon: "ri-rocket-line", text: "快速上手" },
-                { icon: "ri-brain-line", text: "自然語言提問" },
-                { icon: "ri-shield-check-line", text: "安全保護您的資料" },
+                { icon: "ri-rocket-line", text: "Get started quickly" },
+                { icon: "ri-brain-line", text: "Ask questions in natural language" },
+                { icon: "ri-shield-check-line", text: "Keep your data secure" },
               ].map((f, i) => (
                 <div className="auth-feature-item" key={i}>
                   <div className="auth-feature-icon">
@@ -171,7 +171,7 @@ const handleSubmit = async (e) => {
             <div className="back-home-icon">
               <i className="ri-arrow-left-line"></i>
             </div>
-            <span>返回首頁</span>
+            <span>Back to home</span>
           </button>
 
           <div className="auth-form-wrapper">
@@ -182,25 +182,25 @@ const handleSubmit = async (e) => {
               <span className="mobile-logo-text">DataAnalysis</span>
             </div>
 
-            <h1 className="auth-title">建立帳號</h1>
+            <h1 className="auth-title">Create account</h1>
             <p className="auth-subtitle">
-              已有帳號？{" "}
+              Already have an account?{" "}
               <a className="auth-link" onClick={() => navigate("/login")} style={{ cursor: "pointer" }}>
-                立即登入
+                Log in now
               </a>
             </p>
 
             <form onSubmit={handleSubmit} autoComplete="off">
               <div className="row g-3 mb-3">
                 <div className="col-md-6">
-                  <label className="auth-label">姓名<span className="required-mark">*</span></label>
+                  <label className="auth-label">Name<span className="required-mark">*</span></label>
                   <div className="position-relative">
                     <i className="ri-user-line form-icon"></i>
-                    <input type="text" name="signup_name" autoComplete="off" required className="form-control form-control-custom" placeholder="您的姓名" value={name} onChange={(e) => setName(e.target.value)} />
+                    <input type="text" name="signup_name" autoComplete="off" required className="form-control form-control-custom" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
                   </div>
                 </div>
                 <div className="col-md-6">
-                  <label className="auth-label">手機號碼<span className="required-mark">*</span></label>
+                  <label className="auth-label">Mobile number<span className="required-mark">*</span></label>
                   <div className="position-relative">
                     <i className="ri-smartphone-line form-icon"></i>
                     <input type="tel" name="signup_phone" autoComplete="off" required className="form-control form-control-custom" placeholder="+886 912 345 678" value={phone} onChange={(e) => setPhone(e.target.value)} />
@@ -210,14 +210,14 @@ const handleSubmit = async (e) => {
 
               <div className="row g-3 mb-3">
                 <div className="col-md-6">
-                  <label className="auth-label">公司 / 機構<span className="required-mark">*</span></label>
+                  <label className="auth-label">Company / organization<span className="required-mark">*</span></label>
                   <div className="position-relative">
                     <i className="ri-building-line form-icon"></i>
-                    <input type="text" name="signup_company" autoComplete="off" required className="form-control form-control-custom" placeholder="您的公司名稱" value={company} onChange={(e) => setCompany(e.target.value)} />
+                    <input type="text" name="signup_company" autoComplete="off" required className="form-control form-control-custom" placeholder="Company name" value={company} onChange={(e) => setCompany(e.target.value)} />
                   </div>
                 </div>
                 <div className="col-md-6">
-                  <label className="auth-label">性別<span className="required-mark">*</span></label>
+                  <label className="auth-label">Gender<span className="required-mark">*</span></label>
                   <div className="position-relative">
                     <i className="ri-user-heart-line form-icon"></i>
                     <div className={`auth-select ${isGenderOpen ? "open" : ""}`}>
@@ -263,7 +263,7 @@ const handleSubmit = async (e) => {
               </div>
 
               <div className="mb-3">
-                <label className="auth-label">電子郵件<span className="required-mark">*</span></label>
+                <label className="auth-label">Email<span className="required-mark">*</span></label>
                 <div className="position-relative">
                   <i className="ri-mail-line form-icon"></i>
                   <input type="email" name="signup_email" autoComplete="off" required className="form-control form-control-custom" placeholder="your@email.com" value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -271,7 +271,7 @@ const handleSubmit = async (e) => {
               </div>
 
               <div className="mb-3">
-                <label className="auth-label">密碼<span className="required-mark">*</span></label>
+                <label className="auth-label">Password<span className="required-mark">*</span></label>
                 <div className="position-relative">
                   <i className="ri-lock-line form-icon"></i>
                   <input
@@ -280,7 +280,7 @@ const handleSubmit = async (e) => {
                     autoComplete="new-password"
                     required
                     className="form-control form-control-custom pe-5"
-                    placeholder="至少 8 個字元"
+                    placeholder="At least 8 characters"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
@@ -288,11 +288,11 @@ const handleSubmit = async (e) => {
                     <i className={showPassword ? "ri-eye-off-line" : "ri-eye-line"}></i>
                   </button>
                 </div>
-                <p className="password-requirement-note">!密碼需有一個字元為大寫，要英文及數字總共8位元!</p>
+                <p className="password-requirement-note">Password must contain at least 8 characters, including letters and numbers.</p>
               </div>
 
               <div className="mb-4">
-                <label className="auth-label">確認密碼<span className="required-mark">*</span></label>
+                <label className="auth-label">Confirm password<span className="required-mark">*</span></label>
                 <div className="position-relative">
                   <i className="ri-lock-2-line form-icon"></i>
                   <input
@@ -301,7 +301,7 @@ const handleSubmit = async (e) => {
                     autoComplete="new-password"
                     required
                     className="form-control form-control-custom pe-5"
-                    placeholder="再次輸入密碼"
+                    placeholder="Enter your password again"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                   />
@@ -312,14 +312,14 @@ const handleSubmit = async (e) => {
               </div>
 
               <button type="submit" className="btn btn-auth-submit w-100" disabled={isSubmitting}>
-                {isSubmitting ? "建立並登入中..." : "建立帳號"}
+                {isSubmitting ? "Creating account and signing in…" : "Create account"}
               </button>
             </form>
 
             <p className="auth-terms text-center mt-4">
-              註冊即表示您同意我們的{" "}
-              <a href="#" rel="nofollow">服務條款</a> 與{" "}
-              <a href="#" rel="nofollow">隱私政策</a>
+              By signing up, you agree to our{" "}
+              <a href="#" rel="nofollow">Terms of Service</a> and{" "}
+              <a href="#" rel="nofollow">Privacy Policy</a>
             </p>
           </div>
         </div>
@@ -336,7 +336,7 @@ const handleSubmit = async (e) => {
               <p>{alertModal.message}</p>
             </div>
             <button className="auth-alert-primary" type="button" onClick={closeAlertModal}>
-              確定
+              OK
             </button>
           </div>
         </div>
@@ -347,8 +347,8 @@ const handleSubmit = async (e) => {
             <div className="auth-loading-icon">
               <i className="ri-loader-4-line"></i>
             </div>
-            <h2>正在建立帳號...</h2>
-            <p>註冊完成後會直接登入並進入系統，請稍候。</p>
+            <h2>Creating your account…</h2>
+            <p>You will be signed in after registration. Please wait.</p>
           </div>
         </div>
       )}

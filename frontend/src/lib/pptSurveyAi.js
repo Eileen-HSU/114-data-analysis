@@ -12,12 +12,12 @@ function withTimeout(timeoutMs) {
 
 function parseApiError(status, data) {
   if (data?.error) return data.error;
-  if (status === 401) return "請先登入後再使用 AI 生成問卷。";
-  if (status === 413) return "檔案太大，請上傳 25MB 以下的 PPT/PDF。";
-  if (status === 429) return "AI API 額度或頻率限制已達上限，請稍後再試。";
-  if (status === 503) return "AI 服務尚未完成設定，請確認後端環境變數。";
-  if (status >= 500) return "AI 服務暫時無法使用，請稍後再試。";
-  return "請求失敗，請確認檔案與參數後再試。";
+  if (status === 401) return "Please log in to generate surveys with AI.";
+  if (status === 413) return "The file is too large. Upload a PPT or PDF no larger than 25 MB.";
+  if (status === 429) return "The AI usage or rate limit has been reached. Please try again later.";
+  if (status === 503) return "The AI service is not configured. Please contact the administrator.";
+  if (status >= 500) return "The AI service is temporarily unavailable. Please try again later.";
+  return "Request failed. Check the file and settings, then try again.";
 }
 
 async function readJsonResponse(response) {
@@ -33,7 +33,7 @@ function normalizeQuestion(question, index) {
   return {
     id: question?.id || crypto.randomUUID(),
     type,
-    title: String(question?.title || question?.question || `第 ${index + 1} 題`).trim(),
+    title: String(question?.title || question?.question || `Question ${index + 1}`).trim(),
     required: question?.required !== false,
     options: Array.isArray(question?.options)
       ? question.options.map((option) => String(option || "").trim()).filter(Boolean)
@@ -53,8 +53,8 @@ export function toCompatibleSurveyPayload(draft) {
 }
 
 export async function generateSurveyFromPpt({ file, config, token }) {
-  if (!file) throw new Error("請先上傳 PPT 或 PDF 檔案。");
-  if (!token) throw new Error("請先登入後再使用 AI 生成問卷。");
+  if (!file) throw new Error("Please upload a PPT or PDF file first.");
+  if (!token) throw new Error("Please log in to generate surveys with AI.");
 
   const formData = new FormData();
   formData.append("file", file);
@@ -82,7 +82,7 @@ export async function generateSurveyFromPpt({ file, config, token }) {
     return toCompatibleSurveyPayload(data.draft);
   } catch (error) {
     if (error.name === "AbortError") {
-      throw new Error("AI 分析逾時，請稍後再試或改用較小的檔案。");
+      throw new Error("AI analysis timed out. Try again later or use a smaller file.");
     }
     throw error;
   } finally {
@@ -91,8 +91,8 @@ export async function generateSurveyFromPpt({ file, config, token }) {
 }
 
 export async function reviseSurveyWithAi({ draft, message, token }) {
-  if (!token) throw new Error("請先登入後再使用 AI 修改問卷。");
-  if (!message?.trim()) throw new Error("請輸入修改指令。");
+  if (!token) throw new Error("Please log in to edit surveys with AI.");
+  if (!message?.trim()) throw new Error("Please enter editing instructions.");
 
   const { controller, timeoutId } = withTimeout(CHAT_TIMEOUT_MS);
   try {
@@ -112,7 +112,7 @@ export async function reviseSurveyWithAi({ draft, message, token }) {
     return toCompatibleSurveyPayload(data.draft);
   } catch (error) {
     if (error.name === "AbortError") {
-      throw new Error("AI 修改問卷逾時，請稍後再試。");
+      throw new Error("AI editing timed out. Please try again later.");
     }
     throw error;
   } finally {
