@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import Navbar from "../../components/feature/Navbar";
 import { useActivity } from "../../hooks/ActivityContext";
@@ -359,9 +359,18 @@ export default function SurveyPage({ pptOnly = false }) {
             </a>
 
             <aside className="survey-side-stack">
-              <Link
+              <a
                 className="survey-entry-card ppt-generate"
-                to="/survey/ppt"
+                href="/survey/ppt"
+                onClick={(event) => {
+                  event.preventDefault();
+                  navigate("/survey/ppt");
+                  window.setTimeout(() => {
+                    if (window.location.pathname !== "/survey/ppt") {
+                      window.location.assign("/survey/ppt");
+                    }
+                  }, 0);
+                }}
                 aria-label="上傳 PPT/PDF 生成問卷"
               >
                 <div className="entry-card-icon ppt-icon">
@@ -375,7 +384,7 @@ export default function SurveyPage({ pptOnly = false }) {
                   </p>
                 </div>
                 <span className="entry-card-arrow"><i className="ri-sparkling-line"></i></span>
-              </Link>
+              </a>
 
               <a className="survey-entry-card fill" href="/survey/fill">
                 <div className="entry-card-icon fill-icon">
