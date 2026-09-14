@@ -10,7 +10,7 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
   const navigate = useNavigate();
   const location = useLocation();
   const { isLoggedIn, user, logout } = useAuth();
-  const { language, setLanguage, t } = useLanguage();
+  const { t } = useLanguage();
   const [scrolled, setScrolled] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
@@ -40,7 +40,7 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
           <a
             className={`nav-link-btn ${location.pathname === "/collection" ? "active" : ""}`}
             href="/collection"
-            onClick={(event) => { event.preventDefault(); if (readOnly && !isLoggedIn) onRequireLogin?.("專案管理"); else navigate("/collection"); }}
+            onClick={(event) => { event.preventDefault(); if (readOnly && !isLoggedIn) onRequireLogin?.("Project management"); else navigate("/collection"); }}
             style={{ cursor: "pointer" }}
           >
             <i className="ri-folder-chart-line"></i>
@@ -49,7 +49,7 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
           <a
             className={`nav-link-btn ${(readOnly || location.pathname === "/workspace") ? "active" : ""}`}
             href="/workspace"
-            onClick={(event) => { event.preventDefault(); if (readOnly && !isLoggedIn) onRequireLogin?.("新增對話"); else navigate("/workspace"); }}
+            onClick={(event) => { event.preventDefault(); if (readOnly && !isLoggedIn) onRequireLogin?.("New conversation"); else navigate("/workspace"); }}
             style={{ cursor: "pointer" }}
           >
             <i className="ri-add-circle-line"></i>
@@ -72,7 +72,7 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
               style={{ cursor: "pointer" }}
             >
               <i className="ri-shield-star-line"></i>
-              <span>AI 管理</span>
+              <span>AI Administration</span>
             </a>
           )}
         </div>
@@ -98,10 +98,6 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
 
         {/* Right */}
         <div className="d-flex align-items-center gap-2 ms-auto">
-          <div className="nav-language-switcher" role="group" aria-label={t("language")}>
-            <button type="button" className={language === "zh-TW" ? "active" : ""} onClick={() => setLanguage("zh-TW")}>中</button>
-            <button type="button" className={language === "en" ? "active" : ""} onClick={() => setLanguage("en")}>EN</button>
-          </div>
           {isLoggedIn ? (
             <div className="position-relative">
               <button
@@ -116,7 +112,7 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
                     style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }}
                   />
                 </div>
-                <span className="nav-user-name">{user?.name || "使用者"}</span>
+                <span className="nav-user-name">{user?.name || "User"}</span>
                 <i className="ri-arrow-down-s-line" style={{ fontSize: 14 }}></i>
               </button>
               {showUserMenu && (

@@ -47,14 +47,14 @@ export default function ForgotPasswordPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const val = emailRef.current?.value.trim() ?? "";
-    if (!val) { showError("請輸入電子郵件地址"); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) { showError("請輸入有效的電子郵件格式"); return; }
+    if (!val) { showError("Please enter your email address"); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) { showError("Please enter a valid email address"); return; }
     clearError();
 
     const btn = submitBtnRef.current;
-    if (btn) { 
-      btn.disabled = true; 
-      btn.innerHTML = `<i class="ri-loader-4-line" style="animation:spin 1s linear infinite"></i> 發送中...`; 
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<i class="ri-loader-4-line" style="animation:spin 1s linear infinite"></i> Sending...`;
     }
 
     try {
@@ -73,11 +73,11 @@ export default function ForgotPasswordPage() {
       }
     } catch (error) {
       // 4. 錯誤處理 (例如：Email 沒註冊過)
-      const errorMsg = error.response?.data?.error || "發送失敗，請稍後再試";
+      const errorMsg = error.response?.data?.error || "Unable to send. Please try again.";
       showError(errorMsg);
       if (btn) {
         btn.disabled = false;
-        btn.innerHTML = "發送重設連結";
+        btn.innerHTML = "Send reset link";
       }
     }
   };
@@ -96,16 +96,16 @@ export default function ForgotPasswordPage() {
                 className="auth-logo-img"
               />
             </div>
-            <h2 className="auth-visual-title">重設您的密碼</h2>
+            <h2 className="auth-visual-title">Reset your password</h2>
             <p className="auth-visual-desc">
-              <span>輸入您的電子郵件</span>
-              <span>我們會寄送安全重設連結</span>
+              <span>Enter your email</span>
+              <span>We will send a secure reset link</span>
             </p>
             <div className="auth-features">
               {[
-                { icon: "ri-mail-send-line", text: "重設連結寄送至信箱" },
-                { icon: "ri-time-line", text: "連結 30 分鐘內有效" },
-                { icon: "ri-shield-check-line", text: "全程保護帳號安全" },
+                { icon: "ri-mail-send-line", text: "Reset link sent by email" },
+                { icon: "ri-time-line", text: "Link valid for 10 minutes" },
+                { icon: "ri-shield-check-line", text: "Your account is protected throughout" },
               ].map((f, i) => (
                 <div className="auth-feature-item" key={i}>
                   <div className="auth-feature-icon">
@@ -124,7 +124,7 @@ export default function ForgotPasswordPage() {
             <div className="back-home-icon">
               <i className="ri-arrow-left-line"></i>
             </div>
-            <span>返回登入</span>
+            <span>Back to login</span>
           </button>
 
           <div className="auth-form-wrapper">
@@ -141,14 +141,14 @@ export default function ForgotPasswordPage() {
               <div className="forgot-icon-wrap">
                 <i className="ri-lock-password-line"></i>
               </div>
-              <h1 className="auth-title">忘記密碼？</h1>
+              <h1 className="auth-title">Forgot password?</h1>
               <p className="auth-subtitle" style={{ marginBottom: 28 }}>
-                輸入您的帳號電子郵件，我們將發送密碼重設連結。
+                Enter your account email and we will send a password-reset link.
               </p>
 
               <form onSubmit={handleSubmit} noValidate autoComplete="off">
                 <div className="mb-4">
-                  <label className="auth-label">電子郵件</label>
+                  <label className="auth-label">Email</label>
                   <div className="position-relative">
                     <i className="ri-mail-line form-icon"></i>
                     <input
@@ -176,7 +176,7 @@ export default function ForgotPasswordPage() {
                 </div>
 
                 <button ref={submitBtnRef} type="submit" className="btn btn-auth-submit w-100 mb-3">
-                  發送重設連結
+                  Send reset link
                 </button>
 
                 <button
@@ -196,14 +196,14 @@ export default function ForgotPasswordPage() {
                   }}
                   onClick={() => navigate("/login")}
                 >
-                  返回登入
+                  Back to login
                 </button>
               </form>
 
               <p className="auth-terms text-center mt-4">
-                還沒有帳號？{" "}
+                Don't have an account?{" "}
                 <a className="auth-link" onClick={() => navigate("/signup")} style={{ cursor: "pointer" }}>
-                  免費註冊
+                  Sign up for free
                 </a>
               </p>
             </div>
@@ -213,15 +213,15 @@ export default function ForgotPasswordPage() {
               <div className="forgot-success-icon">
                 <i className="ri-mail-check-line"></i>
               </div>
-              <h1 className="auth-title" style={{ textAlign: "center" }}>郵件已發送！</h1>
+              <h1 className="auth-title" style={{ textAlign: "center" }}>Email sent!</h1>
               <p style={{ color: "var(--slate-500)", fontSize: 15, lineHeight: 1.7, marginBottom: 8 }}>
-                我們已將密碼重設連結發送至
+                We have sent a password reset link to
               </p>
               <p style={{ fontWeight: 700, color: "var(--slate-800)", fontSize: 16, marginBottom: 28 }}>
                 <span ref={sentEmailRef}></span>
               </p>
               <p style={{ color: "var(--slate-400)", fontSize: 13, lineHeight: 1.7, marginBottom: 32 }}>
-                請檢查您的收件匣（包含垃圾郵件資料夾）。連結將在 <strong>30 分鐘</strong>內有效。
+                Check your inbox (including spam). The link will be valid for <strong>10 minutes</strong>.
               </p>
 
               <button
@@ -229,7 +229,7 @@ export default function ForgotPasswordPage() {
                 onClick={() => navigate("/login")}
               >
                 <i className="ri-arrow-left-line" style={{ marginRight: 6 }}></i>
-                返回登入頁面
+                Back to login
               </button>
 
               <button
@@ -251,13 +251,13 @@ export default function ForgotPasswordPage() {
                   if (stepDoneRef.current) stepDoneRef.current.style.display = "none";
                   if (submitBtnRef.current) {
                     submitBtnRef.current.disabled = false;
-                    submitBtnRef.current.innerHTML = "發送重設連結";
+                    submitBtnRef.current.innerHTML = "Send reset link";
                   }
                   if (emailRef.current) emailRef.current.value = "";
                 }}
               >
                 <i className="ri-refresh-line" style={{ marginRight: 6 }}></i>
-                重新發送
+                Resend
               </button>
             </div>
           </div>

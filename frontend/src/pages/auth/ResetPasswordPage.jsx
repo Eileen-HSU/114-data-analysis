@@ -8,7 +8,7 @@ import "./auth.css";
 export default function ResetPasswordPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  
+
   // 1. 從 URL 獲取資訊：email 與來源標記 (from)
   const email = useMemo(() => searchParams.get("email") || "", [searchParams]);
   const from = useMemo(() => searchParams.get("from") || "change", [searchParams]);
@@ -39,19 +39,19 @@ export default function ResetPasswordPage() {
 
     // 基礎前端驗證
     if (!email) {
-      setError("缺少電子郵件資訊，請重新從信箱連結進入。");
+      setError("Email information is missing. Please reopen the link in your email.");
       return;
     }
     if (!/^\d{6}$/.test(trimmedOtp)) {
-      setError("請輸入正確的 6 位數驗證碼。");
+      setError("Please enter a valid 6-digit verification code.");
       return;
     }
     if (newPassword.length < 8) {
-      setError("新密碼至少需要 8 個字元，並包含英文字母和數字");
+      setError("Your new password must contain at least 8 characters, including letters and numbers.");
       return;
     }
     if (newPassword !== confirmPassword) {
-      setError("兩次輸入的新密碼不一致。");
+      setError("The new passwords do not match.");
       return;
     }
 
@@ -75,10 +75,10 @@ export default function ResetPasswordPage() {
         // 情況 B：從「修改密碼」進來 (或是預設情況) -> 回到個人資料並顯示通知
         navigate("/profile?password_changed=1", { replace: true });
       }
-      
+
     } catch (err) {
       // 處理後端回傳的錯誤 (如：驗證碼錯誤、過期等)
-      setError(err.response?.data?.error || "密碼重設失敗，請檢查驗證碼或稍後再試。");
+      setError(err.response?.data?.error || "Password reset failed. Check your verification code or try again later.");
     } finally {
       setIsSubmitting(false);
     }
@@ -99,17 +99,17 @@ export default function ResetPasswordPage() {
               />
             </div>
             <h2 className="auth-visual-title">
-              {isForgotFlow ? "重設您的密碼" : "設定新密碼"}
+              {isForgotFlow ? "Reset your password" : "Set new password"}
             </h2>
             <p className="auth-visual-desc">
-              <span>{isForgotFlow ? "輸入驗證碼" : "確認您的身份"}</span>
-              <span>{isForgotFlow ? "重新設定安全密碼" : "完成後返回個人資料"}</span>
+              <span>{isForgotFlow ? "Enter verification code" : "Verify your identity"}</span>
+              <span>{isForgotFlow ? "Set a secure new password" : "Return to your profile when finished"}</span>
             </p>
             <div className="auth-features">
               {[
-                { icon: "ri-key-2-line", text: "驗證碼 10 分鐘內有效" },
-                { icon: "ri-lock-star-line", text: "新密碼至少 8 個字元" },
-                { icon: "ri-shield-check-line", text: isForgotFlow ? "完成後請重新登入" : "完成後不會登出帳號" },
+                { icon: "ri-key-2-line", text: "Code valid for 10 minutes" },
+                { icon: "ri-lock-star-line", text: "Use at least 8 characters" },
+                { icon: "ri-shield-check-line", text: isForgotFlow ? "Log in again when finished" : "You will remain signed in" },
               ].map((f, i) => (
                 <div className="auth-feature-item" key={i}>
                   <div className="auth-feature-icon">
@@ -128,7 +128,7 @@ export default function ResetPasswordPage() {
             <div className="back-home-icon">
               <i className="ri-arrow-left-line"></i>
             </div>
-            <span>重新發送</span>
+            <span>Resend</span>
           </button>
 
           <div className="auth-form-wrapper">
@@ -136,15 +136,15 @@ export default function ResetPasswordPage() {
               <i className="ri-lock-unlock-line"></i>
             </div>
             <h1 className="auth-title">
-              {isForgotFlow ? "重新設定密碼" : "變更您的密碼"}
+              {isForgotFlow ? "Reset password" : "Change your password"}
             </h1>
             <p className="auth-subtitle" style={{ marginBottom: 28 }}>
-              {isForgotFlow ? "正在重設" : "正在變更"} <strong>{email || "您的電子郵件"}</strong> 的密碼
+              {isForgotFlow ? "Resetting the password for " : "Changing the password for "} <strong>{email || "Your email"}</strong>
             </p>
 
             <form onSubmit={handleSubmit} noValidate autoComplete="off">
               <div className="mb-3">
-                <label className="auth-label">驗證碼</label>
+                <label className="auth-label">Verification code</label>
                 <div className="position-relative">
                   <i className="ri-shield-keyhole-line form-icon"></i>
                   <input
@@ -154,7 +154,7 @@ export default function ResetPasswordPage() {
                     autoComplete="off"
                     maxLength={6}
                     className="form-control form-control-custom"
-                    placeholder="請輸入 6 位數驗證碼"
+                    placeholder="Enter the 6-digit verification code"
                     value={otp}
                     onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
                   />
@@ -162,7 +162,7 @@ export default function ResetPasswordPage() {
               </div>
 
               <div className="mb-3">
-                <label className="auth-label">設定新密碼</label>
+                <label className="auth-label">Set new password</label>
                 <div className="position-relative">
                   <i className="ri-lock-line form-icon"></i>
                   <input
@@ -170,7 +170,7 @@ export default function ResetPasswordPage() {
                     name="reset_new_password"
                     autoComplete="new-password"
                     className="form-control form-control-custom pe-5"
-                    placeholder="請輸入新密碼"
+                    placeholder="Enter your new password"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                   />
@@ -185,7 +185,7 @@ export default function ResetPasswordPage() {
               </div>
 
               <div className="mb-4">
-                <label className="auth-label">再次確認新密碼</label>
+                <label className="auth-label">Confirm new password</label>
                 <div className="position-relative">
                   <i className="ri-lock-line form-icon"></i>
                   <input
@@ -193,7 +193,7 @@ export default function ResetPasswordPage() {
                     name="reset_confirm_password"
                     autoComplete="new-password"
                     className="form-control form-control-custom"
-                    placeholder="請再次輸入新密碼"
+                    placeholder="Enter your new password again"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                   />
@@ -208,10 +208,10 @@ export default function ResetPasswordPage() {
 
               <button type="submit" className="btn btn-auth-submit w-100 mt-2" disabled={isSubmitting}>
                 {isSubmitting
-                  ? "設定中..."
+                  ? "Saving..."
                   : isForgotFlow
-                    ? "確定重設並返回登入"
-                    : "確定修改並回個人資料"}
+                    ? "Reset password and return to login"
+                    : "Change password and return to profile"}
               </button>
             </form>
           </div>
@@ -232,10 +232,10 @@ export default function ResetPasswordPage() {
             <div className="auth-success-icon">
               <i className="ri-checkbox-circle-line"></i>
             </div>
-            <h3>密碼重設成功</h3>
-            <p>請使用新密碼重新登入您的帳號。</p>
+            <h3>Password reset successful</h3>
+            <p>Please log in again with your new password.</p>
             <button type="button" className="auth-success-action" onClick={() => navigate("/login", { replace: true })}>
-              回到登入頁
+              Back to login
             </button>
           </div>
         </div>

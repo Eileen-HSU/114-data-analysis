@@ -6,16 +6,16 @@ import { buildExternalSurveyShortUrl, buildSurveyFillUrl } from "../../../lib/su
 // 【修正】原本這裡有 import buildSurveyChatContent，用來組出使用者訊息的完整文字內容，現在改成簡短一行不再需要這個函式，拿掉未使用的 import。
 
 const TYPE_LABELS = {
-  rating: "評分",
-  short: "短答",
-  long: "詳答",
-  single: "單選",
-  multiple: "複選",
+  rating: "Rating",
+  short: "Short answer",
+  long: "Long answer",
+  single: "Single choice",
+  multiple: "Multiple choice",
 };
 
 function displayAnswer(value) {
   if (Array.isArray(value)) return value.join("、");
-  return value || "未填";
+  return value || "Not answered";
 }
 
 function toDateTimeLocalValue(value) {
@@ -33,10 +33,10 @@ function getNextDeadlineMin() {
 }
 
 function formatDeadline(value) {
-  if (!value) return "未設定";
+  if (!value) return "Not set";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("zh-TW", {
+  return new Intl.DateTimeFormat("en-US", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -72,7 +72,7 @@ function RatingStats({ question, responses, qNum }) {
     <div className="sdp-rating-card">
       <div className="sdp-rating-card-header">
         <span className="sdp-q-badge">Q{qNum}</span>
-        <span className="sdp-rating-card-title">{question.title || question.question_title || "未命名題目"}</span>
+        <span className="sdp-rating-card-title">{question.title || question.question_title || "Untitled question"}</span>
       </div>
       <div className="sdp-rating-stats">
         <div className="sdp-avg-block">
@@ -81,8 +81,8 @@ function RatingStats({ question, responses, qNum }) {
             <span className="sdp-avg-sub">/ 5</span>
           </div>
           <div className="sdp-avg-info">
-            <div className="sdp-avg-label">平均分數</div>
-            <div className="sdp-avg-count">{answered} 份回答</div>
+            <div className="sdp-avg-label">Average score</div>
+            <div className="sdp-avg-count">{answered}  responses</div>
           </div>
         </div>
         <div className="sdp-bars">
@@ -92,7 +92,7 @@ function RatingStats({ question, responses, qNum }) {
               <div className="sdp-bar-track">
                 <div className="sdp-bar-fill" style={{ width: `${(counts[score] / max) * 100}%` }} />
               </div>
-              <div className="sdp-bar-count">{counts[score]} 人</div>
+              <div className="sdp-bar-count">{counts[score]}  respondents</div>
             </div>
           ))}
         </div>
@@ -112,14 +112,14 @@ function ResponseTable({ questions, responses }) {
           <thead>
             <tr>
               <th className="sdp-th sdp-th-idx">#</th>
-              <th className="sdp-th sdp-th-identity">填答人</th>
-              <th className="sdp-th sdp-th-time">提交時間</th>
+              <th className="sdp-th sdp-th-identity">Respondent</th>
+              <th className="sdp-th sdp-th-time">Submitted</th>
               {safeQuestions.map((question, index) => (
                 <th key={question.id || question.question_id || index} className="sdp-th sdp-th-q">
                   <div className="sdp-th-q-num">Q{index + 1}</div>
-                  <div className="sdp-th-q-title">{question.title || question.question_title || "未命名題目"}</div>
+                  <div className="sdp-th-q-title">{question.title || question.question_title || "Untitled question"}</div>
                   <div className="sdp-th-q-type">
-                    {TYPE_LABELS[question.type || question.question_type] || question.type || question.question_type || "問答"}
+                    {TYPE_LABELS[question.type || question.question_type] || question.type || question.question_type || "Open-ended"}
                   </div>
                 </th>
               ))}
@@ -130,7 +130,7 @@ function ResponseTable({ questions, responses }) {
               <tr key={response.respondentId || response.respondent_id || index} className={index % 2 === 0 ? "sdp-tr-even" : "sdp-tr-odd"}>
                 <td className="sdp-td sdp-td-idx">{index + 1}</td>
                 <td className="sdp-td sdp-td-identity">
-                  {response.respondentIdentity || response.respondent_identity || "匿名"}
+                  {response.respondentIdentity || response.respondent_identity || "Anonymous"}
                 </td>
                 <td className="sdp-td sdp-td-time">{response.submittedAt || response.submitted_at || "—"}</td>
                 {safeQuestions.map((question, qIdx) => {
@@ -153,21 +153,21 @@ function ResponseTable({ questions, responses }) {
 
 function buildSurveyChatContent(survey, questions, responses) {
   const lines = [
-    `問卷：${survey.title || survey.survey_name || "未命名問卷"}`,
-    `邀請碼：${survey.code}`,
-    `建立日期：${survey.createdAt || survey.created_at || "—"}`,
-    `回覆數：${responses.length}`,
+    `Survey: ${survey.title || survey.survey_name || "Untitled survey"}`,
+    `Invite code: ${survey.code}`,
+    `Created: ${survey.createdAt || survey.created_at || "—"}`,
+    `Responses: ${responses.length}`,
     "",
-    "請協助我分析這份問卷的回答趨勢、可能洞察與後續建議。",
+    "Please analyze response trends, potential insights, and recommended next steps for this survey.",
   ];
-  
+
   questions.forEach((question, index) => {
     const qId = question.id !== undefined ? question.id : question.question_id;
     lines.push(`Q${index + 1}. ${question.title || question.question_title}`);
     responses.slice(0, 8).forEach((response, responseIndex) => {
       if (!response || !response.answers) return;
       const identity = response.respondentIdentity || response.respondent_identity;
-      const identityLabel = identity ? `填答人：${identity}，` : "";
+      const identityLabel = identity ? `Respondent: ${identity}，` : "";
       lines.push(`  ${responseIndex + 1}. ${identityLabel}${displayAnswer(response.answers[qId])}`);
     });
   });
@@ -182,7 +182,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
   const [copyLinkSuccess, setCopyLinkSuccess] = useState(false);
   const [externalSurveyLink, setExternalSurveyLink] = useState("");
   const [isShorteningLink, setIsShorteningLink] = useState(false);
-  
+
   // 避免 survey 為空時引發閃退白屏
   const currentSurvey = survey || {};
   const questions = Array.isArray(currentSurvey.questions) ? currentSurvey.questions : [];
@@ -243,7 +243,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
       setTimeout(() => setCopyCodeSuccess(false), 1600);
     } catch {
       setCopyCodeSuccess(false);
-      alert("複製失敗，請手動複製邀請碼");
+      alert("Copy failed. Please copy the invite code manually.");
     }
   };
 
@@ -255,45 +255,45 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
       setTimeout(() => setCopyLinkSuccess(false), 1600);
     } catch {
       setCopyLinkSuccess(false);
-      alert("無法複製連結，請手動選取填寫連結。");
+      alert("Unable to copy the link. Please select and copy it manually.");
     }
   };
 
   const handleImportToChat = () => {
     setImportSuccess(true);
     setTimeout(() => {
-      const surveyTitle = currentSurvey.title || currentSurvey.survey_name || "未命名問卷";
+      const surveyTitle = currentSurvey.title || currentSurvey.survey_name || "Untitled survey";
       onImportToChat?.({
         survey: currentSurvey,
         questions,
         responses,
-        sessionTitle: `問卷分析：${surveyTitle}`,
+        sessionTitle: `Survey analysis: ${surveyTitle}`,
         // 【改成簡短一行，不要把整份問卷回覆逐字列出來】原本
         // 這裡用 buildSharedSurveyChatContent(...) 會把每一題、每個人
         // 的回答全部列成一大段文字塞進使用者訊息，跟真正的分析邏輯
         // 完全無關（分析是後端直接讀資料庫），純粹是顯示太冗長，
         // 比照 Excel 上傳那條路改成一行簡短說明。
-        message: `[問卷：${surveyTitle}] 觸發自動分析`,
+        message: `[Survey: ${surveyTitle}] Start automatic analysis`,
       });
     }, 450);
   };
 
   const handleSaveDeadline = async () => {
     if (!deadlineValue) {
-      setDeadlineStatus("請選擇截止日期與時間。");
+      setDeadlineStatus("Please choose a deadline date and time.");
       return;
     }
     if (new Date(deadlineValue).getTime() <= Date.now()) {
-      setDeadlineStatus("截止時間必須晚於現在。");
+      setDeadlineStatus("The deadline must be later than now.");
       return;
     }
     setIsSavingDeadline(true);
     setDeadlineStatus("");
     try {
       await onUpdateDeadline?.(currentSurvey, deadlineValue);
-      setDeadlineStatus("截止時間已更新。");
+      setDeadlineStatus("Deadline updated.");
     } catch (error) {
-      setDeadlineStatus(error.message || "截止時間更新失敗。");
+      setDeadlineStatus(error.message || "Failed to update deadline.");
     } finally {
       setIsSavingDeadline(false);
     }
@@ -306,33 +306,33 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
         <div className="sdp-header-fixed">
           <div className="sdp-topbar">
             <button className="sdp-back-btn" onClick={onBack}>
-              <i className="ri-arrow-left-line"></i>返回問卷
+              <i className="ri-arrow-left-line"></i>Back to survey
             </button>
             <div className="sdp-topbar-center">
-              <h1 className="sdp-topbar-title">{currentSurvey.title || currentSurvey.survey_name || "未命名問卷"}</h1>
+              <h1 className="sdp-topbar-title">{currentSurvey.title || currentSurvey.survey_name || "Untitled survey"}</h1>
               <div className="sdp-topbar-meta">
                 <span><i className="ri-calendar-line"></i>{currentSurvey.createdAt || currentSurvey.created_at || "—"}</span>
-                <span><i className="ri-time-line"></i>截止 {formatDeadline(currentSurvey.deadlineAt || currentSurvey.deadline_at)}</span>
-                <span><i className="ri-user-line"></i>{responses.length} 份回覆</span>
-                <span><i className="ri-question-line"></i>{questions.length} 題</span>
+                <span><i className="ri-time-line"></i>Deadline {formatDeadline(currentSurvey.deadlineAt || currentSurvey.deadline_at)}</span>
+                <span><i className="ri-user-line"></i>{responses.length} responses</span>
+                <span><i className="ri-question-line"></i>{questions.length}  questions</span>
               </div>
             </div>
             <div className="sdp-topbar-right">
               <div className="sdp-code-card">
                 <div className="sdp-code-label">
-                  <i className="ri-key-2-line"></i>問卷代碼
+                  <i className="ri-key-2-line"></i>Survey code
                 </div>
                 <div className="sdp-code-row">
                   <span className="sdp-code-value">{currentSurvey.code}</span>
                   <button className="sdp-copy-code-btn" onClick={handleCopyCode} type="button">
                     <i className={copyCodeSuccess ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
-                    {copyCodeSuccess ? "已複製" : "複製代碼"}
+                    {copyCodeSuccess ? "Copied" : "Copy code"}
                   </button>
                 </div>
               </div>
               <div className="sdp-deadline-card sdp-deadline-card-top">
                 <label className="sdp-code-label" htmlFor="survey-deadline-input">
-                  <i className="ri-time-line"></i>截止時間
+                  <i className="ri-time-line"></i>Deadline
                 </label>
                 <div className="sdp-deadline-row">
                   <DeadlineDateTimePicker
@@ -345,24 +345,24 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
                   />
                   <button className="sdp-deadline-save-btn" onClick={handleSaveDeadline} disabled={isSavingDeadline} type="button">
                     <i className={isSavingDeadline ? "ri-loader-4-line" : "ri-save-line"}></i>
-                    {isSavingDeadline ? "儲存中" : "儲存"}
+                    {isSavingDeadline ? "Saving" : "Save"}
                   </button>
                 </div>
                 {deadlineStatus && <div className="sdp-deadline-status">{deadlineStatus}</div>}
               </div>
               <button className={`sdp-import-btn ${importSuccess ? "sdp-import-btn-success" : ""}`} onClick={handleImportToChat} disabled={importSuccess}>
                 <i className={importSuccess ? "ri-checkbox-circle-line" : "ri-chat-upload-line"}></i>
-                {importSuccess ? "匯入中..." : "匯入 Chat 分析"}
+                {importSuccess ? "Importing..." : "Import into chat for analysis"}
               </button>
             </div>
           </div>
           <div className="sdp-tabbar">
             <div className="sdp-tab-group">
               <button className={`sdp-tab ${activeTab === "overview" ? "active" : ""}`} onClick={() => setActiveTab("overview")}>
-                <i className="ri-bar-chart-line"></i>總覽
+                <i className="ri-bar-chart-line"></i>Overview
               </button>
               <button className={`sdp-tab ${activeTab === "responses" ? "active" : ""}`} onClick={() => setActiveTab("responses")}>
-                <i className="ri-table-line"></i>回覆資料
+                <i className="ri-table-line"></i>Response data
               </button>
             </div>
             <div className="sdp-stat-pill sdp-stat-pill-compact">
@@ -371,13 +371,13 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
             </div>
             <div className="sdp-link-card">
               <div className="sdp-code-label">
-                <i className="ri-link"></i>填寫連結
+                <i className="ri-link"></i>Survey link
               </div>
               <div className="sdp-link-row">
-                <span className="sdp-link-value" title={surveyLink}>{isShorteningLink ? "短連結產生中..." : surveyLink}</span>
+                <span className="sdp-link-value" title={surveyLink}>{isShorteningLink ? "Creating short link..." : surveyLink}</span>
                 <button className="sdp-copy-code-btn sdp-copy-link-btn" onClick={handleCopySurveyLink} disabled={isShorteningLink || !surveyLink} type="button">
                   <i className={isShorteningLink ? "ri-loader-4-line" : copyLinkSuccess ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
-                  {isShorteningLink ? "產生中" : copyLinkSuccess ? "已複製" : "複製連結"}
+                  {isShorteningLink ? "Generating" : copyLinkSuccess ? "Copied" : "Copy link"}
                 </button>
               </div>
             </div>
@@ -391,17 +391,17 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
                 <div className="sdp-section-header">
                   <div className="sdp-section-icon"><i className="ri-star-line"></i></div>
                   <div>
-                    <h2 className="sdp-section-title">評分統計</h2>
-                    <p className="sdp-section-sub">{ratingQuestions.length} 題評分題</p>
+                    <h2 className="sdp-section-title">Rating summary</h2>
+                    <p className="sdp-section-sub">{ratingQuestions.length}  rating questions</p>
                   </div>
                 </div>
                 <div className="sdp-rating-grid">
                   {ratingQuestions.map((question) => (
-                    <RatingStats 
-                      key={question.id || question.question_id} 
-                      question={question} 
-                      responses={responses} 
-                      qNum={questions.indexOf(question) + 1} 
+                    <RatingStats
+                      key={question.id || question.question_id}
+                      question={question}
+                      responses={responses}
+                      qNum={questions.indexOf(question) + 1}
                     />
                   ))}
                 </div>
@@ -411,8 +411,8 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
                 <div className="sdp-section-header">
                   <div className="sdp-section-icon sdp-section-icon-cyan"><i className="ri-file-text-line"></i></div>
                   <div>
-                    <h2 className="sdp-section-title">文字與選擇題摘要</h2>
-                    <p className="sdp-section-sub">{textQuestions.length} 題非評分題</p>
+                    <h2 className="sdp-section-title">Text and choice response summary</h2>
+                    <p className="sdp-section-sub">{textQuestions.length}  non-rating questions</p>
                   </div>
                 </div>
                 <div className="sdp-text-q-list">
@@ -424,7 +424,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
                         <div className="sdp-text-q-header">
                           <span className="sdp-q-badge sdp-q-badge-cyan">Q{questions.indexOf(question) + 1}</span>
                           <span className="sdp-text-q-title">{question.title || question.question_title}</span>
-                          <span className="sdp-text-q-count">{answers.length} 筆</span>
+                          <span className="sdp-text-q-count">{answers.length} responses</span>
                         </div>
                         <div className="sdp-text-q-answers">
                           {answers.slice(0, 4).map((answer, index) => (
@@ -433,7 +433,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
                               <span>{displayAnswer(answer)}</span>
                             </div>
                           ))}
-                          {answers.length > 4 && <button className="sdp-see-more" onClick={() => setActiveTab("responses")}>查看全部 {answers.length} 筆</button>}
+                          {answers.length > 4 && <button className="sdp-see-more" onClick={() => setActiveTab("responses")}>View all  {answers.length} responses</button>}
                         </div>
                       </div>
                     );
@@ -447,8 +447,8 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
             <div className="sdp-responses">
               <div className="sdp-table-section">
                 <div className="sdp-table-section-header">
-                  <span className="sdp-table-count">共 {responses.length} 份回覆</span>
-                  <span className="sdp-table-hint">可橫向捲動查看所有題目</span>
+                  <span className="sdp-table-count">Total:  {responses.length} responses</span>
+                  <span className="sdp-table-hint">Scroll horizontally to view all questions</span>
                 </div>
                 <ResponseTable questions={questions} responses={responses} />
               </div>
