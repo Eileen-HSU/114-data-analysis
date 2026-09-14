@@ -67,7 +67,7 @@ Object.assign(legacyEnglish, {
   "雙因子驗證": "Two-factor authentication", "請輸入信箱中的驗證碼": "Enter the verification code from your email", "完成後即可安全登入": "Sign in securely after verification", "降低未授權登入風險": "Reduce unauthorized access risk", "驗證碼已寄送到信箱": "Verification code sent by email", "驗證碼 10 分鐘內有效": "Code valid for 10 minutes", "輸入驗證碼": "Enter verification code", "驗證碼": "Verification code", "請輸入 6 位數驗證碼": "Enter the 6-digit verification code", "驗證中...": "Verifying…", "完成啟用": "Finish setup", "啟用雙因子驗證": "Enable two-factor authentication", "寄送驗證碼": "Send verification code", "寄送中...": "Sending…", "寄送失敗，請稍後再試": "Unable to send. Please try again.", "驗證碼錯誤，請重新輸入": "Incorrect code. Please try again.", "驗證失敗，請重新輸入": "Verification failed. Please try again.",
 
 });
-const PROTECTED_OUTPUT_SELECTOR = ".messages-area, .message-bubble, .assistant-bubble, .user-bubble, .classification-table, [data-ai-output]";
+const PROTECTED_OUTPUT_SELECTOR = ".messages-area, .message-bubble, .assistant-bubble, .user-bubble, .classification-table, .response-table, .responses-table, .sdp-response-table, .sdp-text-answers, [data-ai-output], [data-user-content]";
 Object.assign(legacyEnglish, {
   "資料匯入": "Data import", "資料上傳與匯入": "Upload and import data", "資料分析": "Data analysis", "分析助理": "Analysis Assistant", "新增對話": "New conversation", "問卷管理": "Survey management", "問卷蒐集": "Survey collection",
   "問卷建立與回饋蒐集": "Create surveys and collect feedback", "歷史紀錄保存": "Save history", "結果呈現": "Results", "專案保存": "Save projects", "歷程追蹤": "Track history", "AI 輔助": "AI assistance",
@@ -93,6 +93,43 @@ Object.assign(legacyEnglish, {
   "伺服器回應時間較長，建立問卷尚未確認完成。請先到個人頁面的問卷列表確認，再決定是否重試。": "The server is taking longer than expected. Check your profile's survey list before retrying.", "儲存中...": "Saving…", "完成問卷建立": "Finish creating survey", "請完成所有必填題目。": "Please complete all required questions.", "輸入邀請碼開啟問卷，完成填答並提交回饋內容。": "Enter an invite code to open the survey, complete it, and submit your feedback.",
   "正在生成": "Generating", "請稍候，完成後會自動前往匯出檔案。": "Please wait. You will be taken to exported files when it is ready.", "這則訊息尚未同步完成，請稍後再試一次匯出。": "This message has not finished syncing. Please try exporting again later.",
 });
+
+// Supplemental interface copy found by a full JSX scan.  These are fixed UI
+// labels, helper text, placeholders, and validation notices only.  Do not add
+// user-entered values (folder names, survey titles, answers, or chat content)
+// to this table.
+Object.assign(legacyEnglish, {
+  "男": "Male", "女": "Female", "其他": "Other", "不願透露": "Prefer not to say",
+  "請選擇性別": "Select your gender",
+  "!密碼需有一個字元為大寫，要英文及數字總共8位元!": "Password must be at least 8 characters and include an uppercase letter, a lowercase letter, and a number.",
+  "檔案數量載入中...": "Loading file count…", "數量載入失敗，請重新整理": "Could not load the count. Please refresh.",
+  "搜尋問卷名稱或邀請碼": "Search by survey name or invite code", "找不到符合搜尋條件的問卷。": "No surveys match your search.",
+  "邀請碼": "Invite code", "份回覆": "responses", "截止時間": "Deadline", "截止": "Deadline",
+  "建立問卷與蒐集回饋": "Create surveys and collect feedback",
+  "建立評分題與問答題，分享邀請碼給填答者，回收後可交由分析助理整理。": "Create rating and open-ended questions, share an invite code, then send collected feedback to the Analysis Assistant.",
+  "自訂題目、設定填答規則，產生邀請碼與專屬連結後即可開始收集回覆。": "Customize questions and response rules, then create an invite code and unique link to start collecting responses.",
+  "前往建立": "Start creating", "評分題 · 問答題 · 邀請碼": "Ratings · Open-ended questions · Invite code",
+  "填答入口": "Response entry", "輸入邀請碼即可開啟問卷並提交回饋內容。": "Enter an invite code to open a survey and submit feedback.",
+  "從 PPT/PDF 產生問卷": "Generate a survey from PPT/PDF", "上傳 PPT 或 PDF，讓 AI 協助產生可再編輯的問卷草稿。": "Upload a PPT or PDF and let AI create an editable survey draft.",
+  "最近建立": "Recently created", "尚未建立問卷": "No surveys created yet", "建立後會顯示在這裡。": "Your created surveys will appear here.",
+  "上傳 PPT 或 PDF": "Upload a PPT or PDF", "支援 .ppt、.pptx 與 .pdf": "Supports .ppt, .pptx, and .pdf",
+  "問卷方向": "Survey direction", "例如：課後滿意度、學習成效": "Example: post-course satisfaction, learning outcomes",
+  "特別著重": "Focus areas", "例如：聚焦課程內容、講師表達、實務應用": "Example: course content, instructor delivery, practical application",
+  "題目數量": "Question count", "題型限制": "Question-type limits", "簡答題": "Short answer", "評分題": "Rating question",
+  "開始產生": "Generate", "產生中...": "Generating…", "AI 問卷草稿": "AI survey draft", "可直接編輯，再儲存成正式問卷。": "Edit it directly, then save it as a published survey.",
+  "題目類型": "Question type", "新增題目": "Add question", "刪除題目": "Delete question", "輸入題目": "Enter a question",
+  "選項": "Options", "新增選項": "Add option", "正在修改...": "Updating…", "輸入修改指令，例如：增加一題評分題、題目更精簡": "Describe changes, e.g. add a rating question or make questions shorter",
+  "儲存問卷草稿": "Save survey draft", "草稿儲存成功": "Draft saved successfully", "測試填答": "Test response",
+  "儲存後會走原本問卷 API，自動取得邀請碼與專屬連結。": "After saving, the existing survey API will generate an invite code and unique link automatically.",
+  "匯出檔案": "Exported files", "搜尋匯出檔案": "Search exported files", "搜尋匯出檔案名稱": "Search exported file names", "清除搜尋": "Clear search",
+  "目前沒有匯出檔案。": "No exported files yet.", "載入匯出檔案中...": "Loading exported files…", "找不到符合搜尋條件的匯出檔案。": "No exported files match your search.",
+  "資料夾內": "In folder", "拖曳檔案到這裡": "Drag files here", "此資料夾尚無內容": "This folder is empty", "未分類檔案": "Unfiled items",
+  "個": "items", "個資料夾": "folders", "個 Chat": "chats", "個檔案": "files", "個項目": "items",
+});
+// Never translate a general character such as "個": it could appear inside a
+// person-supplied name or answer. Counts are handled by their UI-only classes.
+delete legacyEnglish["個"];
+
 function translateLegacyInterface(language) {
   if (!document.body) return;
   const target = language === "en"
@@ -119,6 +156,16 @@ function translateLegacyInterface(language) {
     ["placeholder", "title", "aria-label"].forEach((attribute) => {
       const value = element.getAttribute(attribute);
       if (value && phrases.some((phrase) => value.includes(phrase))) element.setAttribute(attribute, translate(value));
+    });
+  });
+
+  document.querySelectorAll(".folder-count, .loose-count, .stat-hint, .collection-banner-stats").forEach((element) => {
+    if (isProtected(element)) return;
+    element.childNodes.forEach((node) => {
+      if (node.nodeType !== Node.TEXT_NODE) return;
+      node.nodeValue = language === "en"
+        ? node.nodeValue.replace(/(\d+)\s*個/g, "$1 items")
+        : node.nodeValue.replace(/(\d+)\s*(?:items|folders|files)/g, "$1 個");
     });
   });
 }
