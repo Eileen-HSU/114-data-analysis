@@ -66,15 +66,14 @@ import json
 import os
 import re
 
-from models import Chat_History, Response_Classification, Survey_Response, Uploaded_Answer
+from models import Chat_History, Response_Classification, Survey_Response, Survey_Template, Uploaded_Answer
 from response_classification import (
     SOURCE_TYPE_SURVEY,
     SOURCE_TYPE_USER_UPLOAD,
     REVIEW_STATUS_EXCLUDED,
-    REVIEW_STATUS_MODIFIED,
 )
 from services.source_lookup_service import fetch_classifications_in_scope
-from services.effective_classification_service import get_effective_classification
+from services.subcategory_methodology import QUESTION_OTHER, compute_display_sub_categories
 from services.privacy_service import mask_pii, PiiMaskingError
 
 # 跟 frontend/src/pages/workspace/page.jsx 的 CLASSIFICATION_TABLE_MARKER
@@ -210,31 +209,32 @@ def _resolve_chat_analysis_source(project_id: int):
 
 
 def _row_effective_view(row):
-    """回傳這筆 classification 目前該用的完整分類欄位（main_category /
-    sub_category / reasoning / methodology / citation / secondary_*），
-    尊重 Human Review 的結果，規則比照
-    effective_classification_service.get_effective_classification()。
-    review_status = excluded 代表人工決定不採用這筆，回傳 None，呼叫端
-    要整筆跳過，不納入追問的上下文；pending_review 目前還沒有人工複核
-    過，跟 confirmed 一樣直接用 AI original 結果——「還沒有人確認」
-    不代表這個分類結果不存在，使用者當然可以針對它追問。"""
+    """判斷這筆 classification 該不該出現在 /ask 的 context 裡，以及
+    要用哪個版本的分類原因/方法論/文獻。
+
+    【修正】這裡刻意跟畫面上的分類結果表格保持一致：
+    routes/classifications/classification.py 的 _build_aggregated_groups()
+    本身就是直接讀 AI 原始分類欄位（main_category / sub_category /
+    reasoning / summary / methodology / citation），完全不會因為
+    review_status 是 modified 就改用 final_* 欄位。/ask 功能的定位是
+    「解釋畫面上這張表格為什麼長這樣」，因此這裡也統一用 AI 原始
+    欄位，不要讓 Human Review 的修改結果，跟畫面上顯示的內容對不上，
+    反而讓使用者更困惑（例如畫面顯示 A2，這裡卻拿 human 改過的 A9
+    方法論來解釋，兩邊完全兜不起來）。
+
+    唯一的例外是 review_status = excluded：代表人工決定這筆不該再
+    納入任何後續分析（軟刪除語意），這裡回傳 None，呼叫端要整筆跳過，
+    不納入追問的 context。
+    """
     if row.review_status == REVIEW_STATUS_EXCLUDED:
         return None
 
-    if row.review_status == REVIEW_STATUS_MODIFIED:
-        return get_effective_classification(row)
-
-    # pending_review / confirmed 都还没有被 Human Review 覆寫過，直接用
-    # AI original 欄位，欄位形狀跟 get_effective_classification() 的
-    # 回傳值刻意保持一致，呼叫端不用分兩種情況處理。
     return {
-        "main_category": row.main_category,
-        "sub_category": row.sub_category,
-        "secondary_main_category": row.secondary_main_category,
-        "secondary_sub_category": row.secondary_sub_category,
         "reasoning": row.reasoning,
         "methodology": row.methodology,
         "citation": row.citation,
+        "secondary_main_category": row.secondary_main_category,
+        "secondary_sub_category": row.secondary_sub_category,
         "secondary_methodology": row.secondary_methodology,
         "secondary_citation": row.secondary_citation,
     }
@@ -272,8 +272,29 @@ def _build_aggregated_lookup(aggregated_rows):
 def _collect_items(source):
     """依 source 撈出所有 Response_Classification，組成純 Python dict
     清單（respondent_number / main_category / sub_category / status /
-    excerpt / reasoning / summary / methodology / citation / secondary_*，
-    全部已視需要遮罩），不呼叫任何 Gemini。"""
+    excerpt / reasoning / summary / methodology / citation / secondary_*）。
+
+    【重要】這裡回傳的 main_category / sub_category 是「畫面上實際
+    顯示的版本」，不是 SUBCATEGORY_METHODOLOGY 固定清單裡登記的原始
+    代碼。原因：
+        - 固定清單只是兩個內建問卷題目（主管領導/工作表現）的團隊
+          定案「參考答案」，未來上傳的資料（尤其是動態分類
+          QUESTION_OTHER）類別名稱完全是 Gemini 依內容自由產生，
+          跟固定清單無關，用固定清單比對代碼在未來根本比對不到。
+        - 就算是這兩個內建題目，畫面上的 A1/A2/A3... 也不是固定清單
+          裡的原始編號，而是 routes/classifications/classification.py
+          的 _build_aggregated_groups() 依「這批資料實際出現的子類別」
+          重新編號過的結果（固定清單裡的 A5，這批資料只出現 A2/A5/A8
+          時，畫面上會重新編成 A1/A2/A3）。使用者記得、會拿來問的，
+          是「畫面上」的代碼，不是固定清單代碼，兩者對不上是預期
+          內、不是 bug。
+        - 這裡呼叫跟畫面渲染共用的
+          services/subcategory_methodology.compute_display_sub_categories()，
+          用完全相同的分組（問卷依 question_id、Excel 依
+          source_column 各自獨立編號）、完全相同的排序與重新編號規則，
+          重建出「使用者現在應該在畫面上看到」的代碼，兩邊算出來的
+          編號才會一致。
+    """
     if source["source_type"] == SOURCE_TYPE_SURVEY:
         template_id = source["template_id"]
         rows = fetch_classifications_in_scope(SOURCE_TYPE_SURVEY, template_id=template_id)
@@ -287,19 +308,89 @@ def _collect_items(source):
 
         def get_respondent_number(row):
             return respondent_number_by_key.get(row.response_id)
+
+        def get_group_key(row):
+            # 每個 question_id 是問卷裡的一道題，畫面上是「一題一組」
+            # 各自獨立編號（analyze_survey() 也是依 question_id 分組
+            # 各自呼叫一次 _build_aggregated_groups()），這裡的分組
+            # 必須跟它一致。
+            return row.question_id
+
+        def get_sort_key(row):
+            # 重建「這批資料實際出現的順序」：問卷是依受試者遞增順序
+            # 逐筆處理（analyze_survey() 依 response_id 升冪排序），
+            # 同一位受試者裡的多個 segment 再依原文位置排序。
+            return (respondent_number_by_key.get(row.response_id) or 0, row.segment_start or 0)
+
+        question_type_by_group = {}
+        template = Survey_Template.query.get(template_id)
+        if template and template.question_json:
+            for q in template.question_json.get("items", []):
+                # 跟 analyze_survey() 完全一致的 fallback：routing 沒有
+                # 結果（None）一律視為 QUESTION_OTHER 動態分類。
+                question_type_by_group[q.get("id")] = q.get("question_type") or QUESTION_OTHER
     else:
         upload_batch_id = source["upload_batch_id"]
         rows = fetch_classifications_in_scope(SOURCE_TYPE_USER_UPLOAD, upload_batch_id=upload_batch_id)
         uploaded_answers = Uploaded_Answer.query.filter_by(upload_batch_id=upload_batch_id).all()
         row_index_by_id = {ua.id: ua.row_index for ua in uploaded_answers}
+        source_column_by_id = {ua.id: ua.source_column for ua in uploaded_answers}
 
         def get_respondent_number(row):
             row_index = row_index_by_id.get(row.uploaded_answer_id)
             return row_index + 1 if row_index is not None else None
 
+        def get_group_key(row):
+            # 每個 source_column 是 Excel 裡的一個文字欄位，畫面上是
+            # 「一欄一組」各自獨立編號（upload_excel_for_classification()
+            # 也是依 text_column 各自呼叫一次 _build_aggregated_groups()）。
+            return source_column_by_id.get(row.uploaded_answer_id)
+
+        def get_sort_key(row):
+            # 重建「這批資料實際出現的順序」：Excel 是依原始列號遞增
+            # 順序逐列處理（df.iterrows()），同一列的多個 segment 再依
+            # 原文位置排序。
+            return (row_index_by_id.get(row.uploaded_answer_id) or 0, row.segment_start or 0)
+
+        question_type_by_group = {}
+        for ua in uploaded_answers:
+            question_type_by_group.setdefault(ua.source_column, ua.question_type or QUESTION_OTHER)
+
+    # 【第一步】跟 _build_aggregated_groups() 一樣先排除「無具體建議」
+    # ——這種萬用分類不會出現在畫面的分類表格裡，也就沒有對應的畫面
+    # 代碼，這裡用跟畫面完全一致的排除規則（用 AI 原始 main/sub_category
+    # 判斷，不看 Human Review 覆寫後的版本，因為畫面表格本來就是顯示
+    # AI 原始分類，不受 Human Review 影響——見
+    # routes/classifications/classification.py 的 _build_aggregated_groups()
+    # 本身也是直接用 r.sub_category，沒有走 effective classification）。
+    eligible_rows = [r for r in rows if not (r.sub_category and "無具體建議" in r.sub_category)]
+
+    # 【第二步】依畫面分組規則分組，每組各自重建畫面代碼
+    grouped_rows = {}
+    for row in eligible_rows:
+        grouped_rows.setdefault(get_group_key(row), []).append(row)
+
+    display_sub_category_by_row_id = {}
+    for group_key, group_rows in grouped_rows.items():
+        question_type = question_type_by_group.get(group_key) or QUESTION_OTHER
+        ordered_rows = sorted(group_rows, key=get_sort_key)
+
+        order = []
+        seen = set()
+        for row in ordered_rows:
+            key = (row.main_category or "", row.sub_category or "")
+            if key not in seen:
+                seen.add(key)
+                order.append(key)
+
+        renumbered = compute_display_sub_categories(order, question_type)
+        for row in group_rows:
+            key = (row.main_category or "", row.sub_category or "")
+            display_sub_category_by_row_id[row.classification_id] = renumbered.get(key, row.sub_category)
+
     items = []
     skipped_pii = 0
-    for row in rows:
+    for row in eligible_rows:
         view = _row_effective_view(row)
         if view is None:
             continue
@@ -321,8 +412,12 @@ def _collect_items(source):
 
         items.append({
             "respondent_number": get_respondent_number(row),
-            "main_category": view.get("main_category") or "（無）",
-            "sub_category": view.get("sub_category") or "（無）",
+            "main_category": row.main_category or "（無）",
+            # 用畫面上重建出來的代碼，不是 view["sub_category"]（那是
+            # Human Review 之後可能已經改掉的最終分類，跟畫面表格顯示
+            # 的原始分類代碼是兩個不同語意，這裡要對齊的是「畫面上的
+            # 代碼」）。
+            "sub_category": display_sub_category_by_row_id.get(row.classification_id, row.sub_category or "（無）"),
             # methodology / citation 是固定文獻資訊、次要分類是查表結果，
             # 不是受訪者原文，不需要（也不應該）用 mask_pii() 處理。
             "methodology": view.get("methodology"),
@@ -344,8 +439,23 @@ def _collect_items(source):
 def _build_context_text(items, user_message: str, aggregated_lookup: dict) -> str:
     """把 _collect_items() 撈到的資料，依使用者這次問題（有沒有提到
     A9/B2 這種代碼、有沒有提到「受試者N」）篩出最相關的片段，組成純
-    文字 context。沒有比對到任何代碼/受試者編號時，回傳全部（受
-    _MAX_CONTEXT_ITEMS 上限保護）。"""
+    文字 context。
+
+    【修正｜strict code mode】使用者的訊息只要明確出現分類代碼
+    （例如 A2、B2）或「受試者N」，就視為「指定查詢」：
+        - matched > 0：context 只放這個代碼/受試者比對到的列，絕對
+          不混入其他不相關的分類——避免 Gemini 因為看到其他語意相近
+          的分類（例如使用者問「A2 教育訓練」，代碼比對不到，但
+          context 裡混進了「A5 教育訓練」），自己聯想成別的代碼回答，
+          讓使用者誤以為自己講的代碼是對的。
+        - matched == 0：直接拋出 ChatAskError，呼叫端會回傳明確錯誤，
+          整個函式提早結束，後面的 _call_gemini() 完全不會被呼叫，
+          不會把「一批跟使用者問題完全對不上」的 context 送給 Gemini
+          去猜。
+    沒有比對到任何代碼/受試者編號時（一般問題，例如「整體有哪些
+    發現」），維持原本行為：帶入全部片段（受 _MAX_CONTEXT_ITEMS
+    上限保護）。
+    """
     seen_keys = set()
     category_index_lines = []
     for it in items:
@@ -375,15 +485,22 @@ def _build_context_text(items, user_message: str, aggregated_lookup: dict) -> st
 
     if mentioned_codes or mentioned_respondents:
         focused_items = [it for it in items if matches(it)]
-        print(
-            f"[CHAT_ASK_FILTER] query_code={sorted(mentioned_codes) or None} "
-            f"query_respondent={sorted(mentioned_respondents) or None} matched={len(focused_items)}"
+
+        query_code_str = ",".join(sorted(mentioned_codes)) if mentioned_codes else None
+        query_respondent_str = (
+            ",".join(str(n) for n in sorted(mentioned_respondents)) if mentioned_respondents else None
         )
-        # 使用者明確提到代碼/受試者編號、卻完全比對不到時，退回顯示
-        # 全部片段——讓 Gemini 自己依規則 6 明確告知「找不到」，而不是
-        # 完全沒有任何 context 可以判斷。
+        print(
+            f"[CHAT_ASK_FILTER] query_code={query_code_str} "
+            f"query_respondent={query_respondent_str} matched={len(focused_items)}"
+        )
+
         if not focused_items:
-            focused_items = items
+            if mentioned_codes:
+                missing = "、".join(sorted(mentioned_codes))
+                raise ChatAskError(f"目前這個對話裡沒有「{missing}」這個分類代碼，請確認代碼是否正確", 422)
+            missing_resp = "、".join(str(n) for n in sorted(mentioned_respondents))
+            raise ChatAskError(f"目前這個對話裡找不到受試者{missing_resp}", 422)
     else:
         focused_items = items
 

@@ -17,22 +17,14 @@ subcategory_methodology.py
     QUESTION_CAREER：工作表現的回饋及職涯發展協助
 """
 
+import re
+
 QUESTION_LEADERSHIP = "leadership_and_dept"
 QUESTION_CAREER = "career_and_feedback"
 
-# 【動態分類】給「內容跟前兩個固定主題都對不上」的問卷/題目用。
-# 這個 type 故意不出現在下面 SUBCATEGORY_METHODOLOGY 裡——沒有固定
-# 子類別清單，也沒有對應的方法論／文獻，這是設計上刻意的：這條路徑
-# 讓 Gemini 依實際內容自己產生合適的大類別、子類別，get_methodology()
-# 對這個 type 永遠查不到、回傳 None，分類結果一樣會被保存，只是
-# methodology/citation 保持空白，前端表格本來就不顯示這兩欄，不受影響。
+
 QUESTION_OTHER = "other"
 
-
-# key 為完整子類別字串（含編號，如 "A1 工作與生活邊界"），
-# 因為不同題目底下可能有相同編號但不同意涵的子類別（如兩題各自都有一個
-# 「其他與建議」大類別底下的「正向回饋」/「無具體建議」），
-# 用完整字串當 key 才不會混淆。
 SUBCATEGORY_METHODOLOGY = {
     QUESTION_LEADERSHIP: {
         "A1 工作與生活邊界": {
@@ -166,3 +158,60 @@ def get_methodology(question_type: str, sub_category: str) -> dict:
 def all_subcategories(question_type: str) -> list[str]:
     """回傳該題目底下所有合法的子類別字串，用來組進 prompt 裡限制 Gemini 只能選這些。"""
     return list(SUBCATEGORY_METHODOLOGY.get(question_type, {}).keys())
+
+
+def compute_display_sub_categories(order: list, question_type: str) -> dict:
+    """
+    【共用】把「這一批資料裡實際出現過的 (main_category, sub_category)
+    組合」重新編號成畫面上實際顯示的樣子。
+
+    這裡的「畫面上顯示的代碼」跟 SUBCATEGORY_METHODOLOGY 裡固定登記的
+    代碼是兩回事：固定清單只是團隊定案文件（0727網站使用版本.md）裡
+    的原始編號，只有出現在「這一批資料」的子類別，才會依照它們在畫面
+    上實際出現的順序，重新從 1 開始編號（例如固定清單裡的 A5，如果
+    這批資料只出現 A2、A5、A8，畫面上會顯示成 A1、A2、A3，不是
+    A2、A5、A8——避免看起來像跳號）。使用者在畫面上看到的、記得的
+    代碼，永遠是這個函式算出來的版本，不是固定清單裡的版本。
+
+    這件事對 QUESTION_OTHER（動態分類）格外重要：動態分類的
+    sub_category 本身完全不在固定清單裡（Gemini 自由產生的類別名稱，
+    通常也沒有字母數字代碼前綴），這批資料以後只會越來越多，跟團隊
+    定案的固定清單完全無關——固定清單終究只是「兩個內建問卷題目」的
+    參考答案，不是所有分析結果的唯一真相來源。
+
+    原本這個邏輯寫在
+    routes/classifications/classification.py 的 _build_aggregated_groups()
+    內部，這裡抽出來給它跟 services/chat_ask_service.py（分析追問
+    功能，需要重建「使用者在畫面上看到的代碼」來比對使用者訊息裡提到
+    的代碼）共用，兩邊算出來的編號才能保證一致。
+
+    Args:
+        order: 這批資料裡出現過的 (main_category, sub_category) tuple
+            清單，依「第一次出現的順序」排列（呼叫端負責組好這個
+            順序，這個函式不做任何跟「排序資料列」有關的事）。
+        question_type: 用來查 SUBCATEGORY_METHODOLOGY 固定清單的
+            排序依據；QUESTION_OTHER 或任何查不到的 question_type，
+            固定清單視為空清單，直接維持傳入的原始順序。
+
+    Returns:
+        (main_category, sub_category) -> 重新編號後、畫面上實際顯示的
+        sub_category 字串。如果原始字串不是「{字母}{數字} {說明文字}」
+        這種格式（動態分類常見沒有代碼前綴），保留原字串，不硬套規則。
+    """
+    canonical_order = all_subcategories(question_type)
+    order_index = {sub: i for i, sub in enumerate(canonical_order)}
+    sorted_order = sorted(order, key=lambda key: order_index.get(key[1], len(canonical_order)))
+
+    display_sub_category = {}
+    counter_by_main = {}
+    for key in sorted_order:
+        main_category, sub_category = key
+        match = re.match(r"^([A-Za-z]+)\d+\s*(.*)$", sub_category)
+        if match:
+            letter, description = match.group(1), match.group(2)
+            counter_by_main[main_category] = counter_by_main.get(main_category, 0) + 1
+            display_sub_category[key] = f"{letter}{counter_by_main[main_category]} {description}"
+        else:
+            display_sub_category[key] = sub_category
+
+    return display_sub_category
