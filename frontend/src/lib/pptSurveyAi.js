@@ -6,6 +6,8 @@ const MAX_POLL_TIME_MS = 10 * 60 * 1000;
 const DEFAULT_POLL_INTERVAL_MS = 3000;
 const CHAT_TIMEOUT_MS = 60000;
 const ALLOWED_TYPES = new Set(["short", "rating"]);
+const ACTIVE_TASK_STATUSES = new Set(["queued", "processing", "pending", "running", "started"]);
+const FAILED_TASK_STATUSES = new Set(["failed", "error"]);
 
 function withTimeout(timeoutMs) {
   const controller = new AbortController();
@@ -53,6 +55,30 @@ function sleep(ms) {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
   });
+}
+
+function normalizeTaskStatus(task) {
+  return String(task?.status || "").trim().toLowerCase();
+}
+
+function isCompletedTask(task) {
+  return normalizeTaskStatus(task) === "completed";
+}
+
+function isFailedTask(task) {
+  return FAILED_TASK_STATUSES.has(normalizeTaskStatus(task));
+}
+
+function isActiveTask(task) {
+  const status = normalizeTaskStatus(task);
+  return Boolean(task?.task_id) && (ACTIVE_TASK_STATUSES.has(status) || !status);
+}
+
+function buildTaskStatusUrl(task) {
+  const statusUrl = task?.status_url || task?.statusUrl;
+  if (statusUrl) return apiUrl(statusUrl);
+  if (task?.task_id) return apiUrl(`/api/ai/ppt-survey/tasks/${encodeURIComponent(task.task_id)}`);
+  return "";
 }
 
 function normalizeQuestion(question, index) {
@@ -104,18 +130,24 @@ export async function startSurveyGenerationTask({ file, config, token }) {
   }, START_TASK_TIMEOUT_MS);
 
   const data = await readJsonResponse(response);
-  if (!data.task_id) {
-    if (data.draft) return { status: "completed", draft: toCompatibleSurveyPayload(data.draft) };
+  if (data?.draft) {
+    return { ...data, status: "completed", draft: toCompatibleSurveyPayload(data.draft) };
+  }
+  if (!data?.task_id) {
     throw new Error("後端沒有回傳 task_id，請查看 Server Log。");
   }
+
   return data;
 }
 
-export async function getSurveyGenerationTask({ taskId, token }) {
-  if (!taskId) throw new Error("缺少 AI 任務 ID。");
+export async function getSurveyGenerationTask({ task, taskId, statusUrl, token }) {
+  if (!task && !taskId && !statusUrl) throw new Error("缺少 AI 任務 ID。");
   if (!token) throw new Error("請先登入後再使用 AI 問卷功能。");
 
-  const response = await fetchWithTimeout(apiUrl(`/api/ai/ppt-survey/tasks/${encodeURIComponent(taskId)}`), {
+  const taskUrl = statusUrl ? apiUrl(statusUrl) : buildTaskStatusUrl(task || { task_id: taskId });
+  if (!taskUrl) throw new Error("缺少 AI 任務狀態查詢網址。");
+
+  const response = await fetchWithTimeout(taskUrl, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -130,28 +162,43 @@ export async function getSurveyGenerationTask({ taskId, token }) {
 }
 
 export async function generateSurveyFromPpt({ file, config, token, onProgress }) {
-  const task = await startSurveyGenerationTask({ file, config, token });
-  if (task.status === "completed" && task.draft) {
-    return toCompatibleSurveyPayload(task.draft);
+  const firstTask = await startSurveyGenerationTask({ file, config, token });
+
+  if (isCompletedTask(firstTask) && firstTask.draft) {
+    return toCompatibleSurveyPayload(firstTask.draft);
+  }
+  if (!isActiveTask(firstTask)) {
+    throw new Error(firstTask.error || `AI 任務狀態異常：${firstTask.status || "unknown"}`);
   }
 
   const startedAt = Date.now();
   const intervalMs = Math.max(
     1000,
-    Number(task.poll_interval_seconds || 0) * 1000 || DEFAULT_POLL_INTERVAL_MS,
+    Number(firstTask.poll_interval_seconds || 0) * 1000 || DEFAULT_POLL_INTERVAL_MS,
   );
+  const statusUrl = firstTask.status_url || buildTaskStatusUrl(firstTask);
 
-  onProgress?.(task);
+  onProgress?.(firstTask);
+
   while (Date.now() - startedAt < MAX_POLL_TIME_MS) {
     await sleep(intervalMs);
-    const latestTask = await getSurveyGenerationTask({ taskId: task.task_id, token });
+
+    const latestTask = await getSurveyGenerationTask({
+      task: firstTask,
+      statusUrl,
+      token,
+    });
     onProgress?.(latestTask);
 
-    if (latestTask.status === "completed") {
+    if (isCompletedTask(latestTask)) {
+      if (!latestTask.draft) throw new Error("AI 任務已完成，但後端沒有回傳問卷草稿。");
       return toCompatibleSurveyPayload(latestTask.draft);
     }
-    if (latestTask.status === "failed") {
+    if (isFailedTask(latestTask)) {
       throw new Error(latestTask.error || "AI 問卷產生失敗，請查看 Server Log。");
+    }
+    if (!isActiveTask(latestTask)) {
+      throw new Error(latestTask.error || `AI 任務狀態異常：${latestTask.status || "unknown"}`);
     }
   }
 
