@@ -465,22 +465,6 @@ export default function SurveyPage({ pptOnly = false }) {
 
                 <div className="ppt-field-grid">
                   <label className="ppt-field">
-                    <span>題目方向</span>
-                    <input
-                      value={pptConfig.direction}
-                      onChange={(event) => updatePptConfig({ direction: event.target.value })}
-                      placeholder="例如：課後滿意度、學習成效"
-                    />
-                  </label>
-                  <label className="ppt-field">
-                    <span>生成重點</span>
-                    <textarea
-                      value={pptConfig.focus}
-                      onChange={(event) => updatePptConfig({ focus: event.target.value })}
-                      placeholder="例如：聚焦課程內容、講師表達、實務應用"
-                    />
-                  </label>
-                  <label className="ppt-field">
                     <span>題目數量</span>
                     <input
                       type="number"
@@ -521,7 +505,8 @@ export default function SurveyPage({ pptOnly = false }) {
               </div>
 
               <div className="ppt-preview-panel">
-                {isGenerating ? (
+                <div className="ppt-preview-main">
+                  {isGenerating ? (
                   <div className="ppt-loading-state">
                     <i className="ri-loader-4-line"></i>
                     <strong>AI 正在整理教材重點</strong>
@@ -633,7 +618,34 @@ export default function SurveyPage({ pptOnly = false }) {
                     <strong>問卷草稿預覽</strong>
                     <span>上傳 PPT 或 PDF 並開始生成後，草稿會顯示在這裡。</span>
                   </div>
-                )}
+                  )}
+                </div>
+
+                <div className="ppt-preview-settings">
+                  <label className="ppt-field">
+                    <span>題目方向</span>
+                    <input
+                      value={pptConfig.direction}
+                      onChange={(event) => updatePptConfig({ direction: event.target.value })}
+                      placeholder="例如：課後滿意度、學習成效"
+                    />
+                  </label>
+                  <label className="ppt-field">
+                    <span>生成重點</span>
+                    <textarea
+                      value={pptConfig.focus}
+                      onChange={(event) => updatePptConfig({ focus: event.target.value })}
+                      placeholder="例如：聚焦課程內容、講師表達、實務應用"
+                    />
+                  </label>
+                </div>
+
+                <div className="ppt-preview-actions">
+                  <button className="ppt-secondary-btn" type="button">
+                    <i className="ri-download-2-line"></i>
+                    匯出
+                  </button>
+                </div>
               </div>
             </div>
 
