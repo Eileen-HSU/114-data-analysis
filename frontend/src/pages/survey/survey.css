@@ -869,14 +869,37 @@
   padding: 10px 12px;
   color: var(--slate-800);
   font: inherit;
+  line-height: 1.6;
   outline: none;
   background: #ffffff;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .ppt-field textarea,
 .ppt-chat-box textarea {
   min-height: 80px;
   resize: vertical;
+}
+
+.ppt-draft-title-input,
+.ppt-draft-description-input,
+.ppt-question-title {
+  padding: 12px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: pre-wrap;
+  resize: vertical;
+}
+
+.ppt-draft-title-input,
+.ppt-question-title {
+  min-height: calc(1.65em * 2 + 24px + 3px);
+}
+
+.ppt-draft-description-input {
+  min-height: calc(1.65em * 4 + 24px + 3px);
 }
 
 .ppt-field input:focus,

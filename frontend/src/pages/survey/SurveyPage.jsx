@@ -544,7 +544,9 @@ export default function SurveyPage({ pptOnly = false }) {
                       <div className="ppt-draft-meta">
                         <label className="ppt-field">
                           <span>問卷標題</span>
-                          <input
+                          <textarea
+                            className="ppt-draft-title-input w-full break-words whitespace-normal resize-y p-3 leading-relaxed"
+                            rows="2"
                             value={pptDraft.title}
                             onChange={(event) => updateDraft({ title: event.target.value })}
                           />
@@ -552,6 +554,8 @@ export default function SurveyPage({ pptOnly = false }) {
                         <label className="ppt-field">
                           <span>問卷說明</span>
                           <textarea
+                            className="ppt-draft-description-input w-full break-words whitespace-normal resize-y p-3 leading-relaxed"
+                            rows="4"
                             value={pptDraft.description}
                             onChange={(event) => updateDraft({ description: event.target.value })}
                           />
@@ -582,8 +586,9 @@ export default function SurveyPage({ pptOnly = false }) {
                                 <i className="ri-delete-bin-line"></i>
                               </button>
                             </div>
-                            <input
-                              className="ppt-question-title"
+                            <textarea
+                              className="ppt-question-title w-full break-words whitespace-normal resize-y p-3 leading-relaxed"
+                              rows="2"
                               value={question.title}
                               onChange={(event) => updateDraftQuestion(question.id, { title: event.target.value })}
                               placeholder="輸入題目"
