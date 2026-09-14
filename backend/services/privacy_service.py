@@ -552,16 +552,21 @@ def _build_analyzer() -> AnalyzerEngine:
     )
 
 
+import threading
+
 _analyzer: Optional[AnalyzerEngine] = None
 _anonymizer: Optional[AnonymizerEngine] = None
+_engines_lock = threading.Lock()
 
 
 def _get_engines():
     global _analyzer, _anonymizer
-    if _analyzer is None:
-        _analyzer = _build_analyzer()
-    if _anonymizer is None:
-        _anonymizer = AnonymizerEngine()
+    if _analyzer is None or _anonymizer is None:
+        with _engines_lock:
+            if _analyzer is None:
+                _analyzer = _build_analyzer()
+            if _anonymizer is None:
+                _anonymizer = AnonymizerEngine()
     return _analyzer, _anonymizer
 
 
