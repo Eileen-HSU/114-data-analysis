@@ -61,6 +61,7 @@ export default function SurveyPage({ pptOnly = false }) {
   const [pptConfig, setPptConfig] = useState(defaultPptConfig);
   const [pptDraft, setPptDraft] = useState(null);
   const [pptError, setPptError] = useState("");
+  const [pptTaskStatus, setPptTaskStatus] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isChatting, setIsChatting] = useState(false);
   const [aiMessage, setAiMessage] = useState("");
@@ -112,6 +113,7 @@ export default function SurveyPage({ pptOnly = false }) {
     setPptConfig(defaultPptConfig);
     setPptDraft(null);
     setPptError("");
+    setPptTaskStatus("");
     setIsGenerating(false);
     setIsChatting(false);
     setAiMessage("");
@@ -148,6 +150,7 @@ export default function SurveyPage({ pptOnly = false }) {
     }
 
     setPptError("");
+    setPptTaskStatus("正在建立背景任務...");
     setIsGenerating(true);
     setSavedResult(null);
     setShareLink("");
@@ -157,8 +160,12 @@ export default function SurveyPage({ pptOnly = false }) {
         file: pptFile,
         config: pptConfig,
         token: user?.token,
+        onProgress: (task) => {
+          setPptTaskStatus(task?.message || `任務狀態：${task?.status || "processing"}`);
+        },
       });
       setPptDraft(normalizeDraft(draft));
+      setPptTaskStatus("");
       setChatMessages([
         {
           role: "assistant",
@@ -168,6 +175,7 @@ export default function SurveyPage({ pptOnly = false }) {
     } catch (error) {
       console.error("Generate PPT survey failed:", error);
       const message = error?.message || "生成草稿失敗，請稍後再試。";
+      setPptTaskStatus("");
       setPptError(message);
       window.alert(message);
     } finally {
@@ -528,7 +536,7 @@ export default function SurveyPage({ pptOnly = false }) {
                   <div className="ppt-loading-state">
                     <i className="ri-loader-4-line"></i>
                     <strong>AI 正在整理教材重點</strong>
-                    <span>正在連接正式 API，請稍候。</span>
+                    <span>{pptTaskStatus || "背景任務處理中，系統會自動查詢結果。"}</span>
                   </div>
                 ) : pptDraft ? (
                   <div className="ppt-draft-layout">

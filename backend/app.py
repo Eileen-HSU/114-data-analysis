@@ -87,6 +87,9 @@ db_url = db_url or os.environ.get('SQLALCHEMY_DATABASE_URI')
 # 將最終決定的網址塞給 Flask
 app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY')
+app.config['MAX_CONTENT_LENGTH'] = int(
+    os.environ.get("MAX_CONTENT_LENGTH", 25 * 1024 * 1024)
+)
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
