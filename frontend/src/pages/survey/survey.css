@@ -791,15 +791,16 @@
 .ppt-modal-body {
   min-height: 0;
   display: grid;
-  grid-template-columns: 330px 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .ppt-config-panel {
-  overflow-y: auto;
+  min-width: 0;
   padding: 22px;
-  border-right: 1px solid #edf2f7;
+  border-right: none;
+  border-bottom: 1px solid #edf2f7;
   background: #fbfafb;
 }
 
@@ -1006,8 +1007,8 @@
 
 .ppt-preview-panel {
   min-width: 0;
-  min-height: 540px;
-  overflow: auto;
+  min-height: 0;
+  overflow: visible;
   padding: 22px;
   background: #ffffff;
   display: flex;
@@ -1018,7 +1019,8 @@
 .ppt-preview-main {
   min-width: 0;
   min-height: 0;
-  flex: 1;
+  width: 100%;
+  flex: 0 0 auto;
   display: flex;
   order: 2;
 }
@@ -1032,6 +1034,7 @@
 .ppt-preview-settings {
   display: grid;
   gap: 12px;
+  width: 100%;
   order: 1;
   padding-top: 16px;
   border-top: 1px solid #edf2f7;
@@ -1108,6 +1111,7 @@
 
 .ppt-draft-editor,
 .ppt-ai-chat {
+  width: 100%;
   min-width: 0;
 }
 
