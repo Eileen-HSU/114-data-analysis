@@ -744,7 +744,7 @@
 }
 
 .ppt-page-backdrop .ppt-modal {
-  width: min(1320px, 100%);
+  width: min(1160px, 100%);
   max-height: none;
   min-height: min(720px, calc(100vh - 176px));
   margin: 0 auto;
@@ -758,16 +758,18 @@
 }
 
 .ppt-page-backdrop .ppt-modal-body {
-  min-height: 620px;
+  min-height: 0;
+  grid-template-columns: minmax(340px, 390px) minmax(0, 1fr);
+  align-items: start;
 }
 
 .ppt-page-backdrop .ppt-preview-panel {
-  min-height: 620px;
+  min-height: 500px;
 }
 
 .ppt-page-backdrop .ppt-empty-state,
 .ppt-page-backdrop .ppt-loading-state {
-  min-height: 560px;
+  min-height: 460px;
 }
 
 .ppt-page-backdrop .ppt-modal-header,
@@ -781,6 +783,43 @@
   white-space: normal;
   text-align: center;
   line-height: 1.25;
+}
+
+/* Keep the first action within a typical laptop viewport.  The preview earns
+   more height only after a draft exists; before that it is intentionally a
+   compact, secondary empty state. */
+.ppt-page-backdrop .ppt-config-panel {
+  padding: 18px 20px 20px;
+}
+
+.ppt-page-backdrop .ppt-upload-zone {
+  min-height: 120px;
+}
+
+.ppt-page-backdrop .ppt-field-grid {
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.ppt-page-backdrop .ppt-field textarea {
+  min-height: 62px;
+}
+
+.ppt-page-backdrop .ppt-type-limits {
+  grid-template-columns: 1fr 1fr;
+  column-gap: 12px;
+  row-gap: 8px;
+  margin: 12px 0;
+}
+
+.ppt-page-backdrop .ppt-type-limits > span {
+  grid-column: 1 / -1;
+}
+
+.ppt-page-backdrop .ppt-config-panel > .ppt-primary-btn {
+  width: 100%;
+  min-height: 46px;
+  margin-top: 0;
 }
 
 .ppt-modal-header,
