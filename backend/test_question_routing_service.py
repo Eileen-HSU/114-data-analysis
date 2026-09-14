@@ -8,6 +8,7 @@
 
 import sys
 import os
+import time
 import types
 import json
 
@@ -36,7 +37,13 @@ class _FakeModel:
         pass
 
     def generate_content(self, prompt, **kwargs):
-        return _FakeResp(_queued_responses.pop(0))
+        # 佇列裡的元素除了「成功回應的文字」以外，也可以放一個
+        # Exception instance，代表這次呼叫要模擬失敗（例如 429），
+        # 讓下面可以測試重試機制，而不需要真的打 Gemini API。
+        item = _queued_responses.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return _FakeResp(item)
 
 
 _fake_genai = types.ModuleType("google.generativeai")
@@ -78,6 +85,35 @@ print("\n========== 情境 6：空字串/None 輸入，不呼叫 Gemini 直接�
 check("空字串輸入直接 None", route_question_type("") is None)
 check("None 輸入直接 None", route_question_type(None) is None)
 check("純空白字串直接 None", route_question_type("   ") is None)
+
+print("\n========== 情境 7：撞到限流（429），重試後成功判斷（不會永久變成 None）==========")
+# 用很短的 "retry in 0.01s" 讓測試不用真的等 20 秒；只是驗證重試邏輯
+# 本身有正確運作、有從錯誤訊息讀建議秒數，不是在測真正的等待時間。
+_queued_responses.append(
+    Exception("429 Resource has been exhausted (e.g. check quota). Please retry in 0.01s")
+)
+queue_json({"question_type": "career_and_feedback"})
+_start = time.time()
+_result = route_question_type("績效面談與職涯發展建議")
+_elapsed = time.time() - _start
+check("限流後重試成功，不會直接放棄變成 None", _result == "career_and_feedback")
+check("有讀到訊息裡建議的等待秒數，不是傻等固定 20 秒", _elapsed < 5)
+
+print("\n========== 情境 8：連續撞到限流，重試用盡後才 fallback 成 None ==========")
+for _ in range(3):  # 對應 _MAX_ATTEMPTS = 3，三次都失敗才會真的放棄
+    _queued_responses.append(
+        Exception("429 RESOURCE_EXHAUSTED. Please retry in 0.01s")
+    )
+check("重試用盡才 fallback 成 None（且不會無限重試）", route_question_type("測試連續限流") is None)
+
+print("\n========== 情境 9：非限流錯誤（例如回應不是合法 JSON）不重試，只呼叫一次 ==========")
+_queued_responses.append("not valid json")
+# 如果程式誤把這種錯誤也拿去重試，就會把下面這筆本來要留給「下一次
+# 呼叫」的資料誤吃掉，用佇列剩餘長度可以驗證「真的沒有重試」。
+queue_json({"question_type": "leadership_and_dept"})
+check("非限流錯誤 fail-safe 成 None，不重試", route_question_type("測試非限流錯誤") is None)
+check("非限流錯誤沒有誤觸發重試，佇列裡的下一筆資料還在", len(_queued_responses) == 1)
+_queued_responses.pop(0)  # 清掉，避免影響後面（如果之後又加測試）
 
 print("\n" + "=" * 50)
 if FAILED:
