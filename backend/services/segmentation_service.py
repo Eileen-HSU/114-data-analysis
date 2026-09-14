@@ -42,9 +42,6 @@ def _is_rate_limit_error(exc: Exception) -> bool:
     return "429" in text or "ResourceExhausted" in type(exc).__name__ or "RESOURCE_EXHAUSTED" in text
 
 
-_MAX_RETRY_DELAY_SECONDS = 10.0
-
-
 SEGMENTATION_PROMPT = """你是問卷回覆的語意拆分助手。判斷這則回覆是否包含多個可獨立分開的
 意義單元（不同主題、不同訴求）。可以乾淨拆開才拆，拆不開的內容
 （同一句話同時涉及兩個主題但無法切開）保留成一個片段就好，不要
@@ -70,20 +67,28 @@ class SegmentValidationError(ValueError):
 
 
 def _call_gemini_segmentation(masked_text: str) -> list:
-    try:
-        model = genai.GenerativeModel(
-            model_name="gemini-3.1-flash-lite",
-            system_instruction=SEGMENTATION_PROMPT,
-        )
-        response = model.generate_content(
-            f"問卷回覆內容:\n{masked_text}",
-            generation_config={"temperature": 0},
-        )
-        cleaned = re.sub(r"```json|```", "", response.text).strip()
-        parsed = json.loads(cleaned)
-        return parsed["segments"]
-    except Exception as e:
-        raise e
+    last_error = None
+    for attempt in range(3):
+        try:
+            model = genai.GenerativeModel(
+                model_name="gemini-3.1-flash-lite",
+                system_instruction=SEGMENTATION_PROMPT,
+            )
+            response = model.generate_content(
+                f"問卷回覆內容:\n{masked_text}",
+                generation_config={"temperature": 0},
+            )
+            cleaned = re.sub(r"```json|```", "", response.text).strip()
+            parsed = json.loads(cleaned)
+            return parsed["segments"]
+        except Exception as e:
+            last_error = e
+            if attempt < 2 and _is_rate_limit_error(e):
+                delay = _extract_retry_delay_seconds(e) or 20.0
+                time.sleep(delay + 1.0)
+                continue
+            raise last_error
+
 
 
 def _locate_and_validate(masked_text: str, segment_texts: list, position_map):

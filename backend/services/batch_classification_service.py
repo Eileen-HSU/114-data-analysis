@@ -27,25 +27,9 @@ TF-IDF 去重判斷，再決定每一筆是要完整跑一次分類，還是可�
 """
 
 from typing import Any, Dict, List, Optional
-import concurrent.futures
 
 from services.classify_v2 import classify_response_multi_segment
 from services.response_dedup_service import dedupe_by_similarity
-
-# 【新增｜加速】原本這裡是一個一個依序打 Gemini，26 個受試者 × 2 欄位
-# 只要沒有被 TF-IDF 判定為重複，通通要各自跑一次 classify_response_multi_segment
-# （內部又是 2 次 Gemini 呼叫），完全依序執行的話，即使每次都很順利、
-# 沒有撞到任何限流，光加總起來的時間也常常跑到一兩分鐘以上，使用者
-# 會覺得「AI 分析太慢」。
-#
-# 這些呼叫彼此互相獨立（各自處理自己的 answer_text，沒有共用可變狀態），
-# 而且瓶頸主要在等網路 I/O（等 Gemini 回應），不是本地運算，用執行緒池
-# 平行送出可以真正縮短總耗時，不用改任何分類邏輯本身。
-#
-# _MAX_CONCURRENT_GEMINI_CALLS 抓一個折衷值：太高會讓短時間內的請求數
-# 暴增，免費層的 RPM（每分鐘請求數）限制反而更容易被打到；太低就等於
-# 沒平行化。之後如果額度升級成付費層，這個數字可以再往上調。
-_MAX_CONCURRENT_GEMINI_CALLS = 4
 
 
 def _relocate_segments(
@@ -167,27 +151,17 @@ def run_batch_analysis(
     def _is_existing(combined_index: int) -> bool:
         return combined_index < n_existing
 
-    
-    fresh_local_indices = [
-        local_i for local_i, item in enumerate(pending_items)
-        if _combined_index(local_i) in keep_indices_set
-    ]
-
+    # ── 第一步：找出這批 pending_items 裡，哪些需要「全新處理」 ──
+    # （在 keep_indices 裡的，代表 TF-IDF 沒有幫它找到任何可沿用對象）
     fresh_results: Dict[int, Dict[str, Any]] = {}  # combined_index -> 分類結果
-    if fresh_local_indices:
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=min(_MAX_CONCURRENT_GEMINI_CALLS, len(fresh_local_indices))
-        ) as executor:
-            future_to_local_i = {
-                executor.submit(
-                    classify_response_multi_segment,
-                    pending_items[local_i]["answer_text"], prompt_content, question_type
-                ): local_i
-                for local_i in fresh_local_indices
-            }
-            for future in concurrent.futures.as_completed(future_to_local_i):
-                local_i = future_to_local_i[future]
-                fresh_results[_combined_index(local_i)] = future.result()
+
+    for local_i, item in enumerate(pending_items):
+        combined_i = _combined_index(local_i)
+        if combined_i in keep_indices_set:
+            result = classify_response_multi_segment(
+                item["answer_text"], prompt_content, question_type
+            )
+            fresh_results[combined_i] = result
 
     # ── 建立「combined_index -> 原文 + segments」的查詢表 ──
     # 代表項可能來自 existing_references（舊資料，segments 已知），
