@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import Navbar from "../../components/feature/Navbar";
 import { useActivity } from "../../hooks/ActivityContext";
@@ -45,13 +44,12 @@ function normalizeDraft(draft) {
   });
 }
 
-export default function SurveyPage({ pptOnly = false }) {
-  const navigate = useNavigate();
+export default function SurveyPage() {
   const { user } = useAuth();
   const { recordActivity } = useActivity();
   const [apiSurveys, setApiSurveys] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isPptModalOpen, setIsPptModalOpen] = useState(pptOnly);
+  const [isPptModalOpen, setIsPptModalOpen] = useState(false);
   const [pptFile, setPptFile] = useState(null);
   const [pptConfig, setPptConfig] = useState(defaultPptConfig);
   const [pptDraft, setPptDraft] = useState(null);
@@ -115,7 +113,6 @@ export default function SurveyPage({ pptOnly = false }) {
   const closePptModal = () => {
     setIsPptModalOpen(false);
     resetPptModal();
-    if (pptOnly) navigate("/survey");
   };
 
   const updatePptConfig = (patch) => {
@@ -361,7 +358,7 @@ export default function SurveyPage({ pptOnly = false }) {
             <aside className="survey-side-stack">
               <button
                 className="survey-entry-card ppt-generate"
-                onClick={() => navigate("/survey/ppt")}
+                onClick={() => setIsPptModalOpen(true)}
                 type="button"
               >
                 <div className="entry-card-icon ppt-icon">
@@ -438,7 +435,7 @@ export default function SurveyPage({ pptOnly = false }) {
       </main>
 
       {isPptModalOpen && (
-        <div className={`ppt-modal-backdrop ${pptOnly ? "ppt-page-backdrop" : ""}`} onClick={pptOnly ? undefined : closePptModal}>
+        <div className="ppt-modal-backdrop" onClick={closePptModal}>
           <section className="ppt-modal" onClick={(event) => event.stopPropagation()}>
             <header className="ppt-modal-header">
               <div>
@@ -464,6 +461,22 @@ export default function SurveyPage({ pptOnly = false }) {
                 </label>
 
                 <div className="ppt-field-grid">
+                  <label className="ppt-field">
+                    <span>題目方向</span>
+                    <input
+                      value={pptConfig.direction}
+                      onChange={(event) => updatePptConfig({ direction: event.target.value })}
+                      placeholder="例如：課後滿意度、學習成效"
+                    />
+                  </label>
+                  <label className="ppt-field">
+                    <span>生成重點</span>
+                    <textarea
+                      value={pptConfig.focus}
+                      onChange={(event) => updatePptConfig({ focus: event.target.value })}
+                      placeholder="例如：聚焦課程內容、講師表達、實務應用"
+                    />
+                  </label>
                   <label className="ppt-field">
                     <span>題目數量</span>
                     <input
@@ -505,8 +518,7 @@ export default function SurveyPage({ pptOnly = false }) {
               </div>
 
               <div className="ppt-preview-panel">
-                <div className="ppt-preview-main">
-                  {isGenerating ? (
+                {isGenerating ? (
                   <div className="ppt-loading-state">
                     <i className="ri-loader-4-line"></i>
                     <strong>AI 正在整理教材重點</strong>
@@ -618,34 +630,7 @@ export default function SurveyPage({ pptOnly = false }) {
                     <strong>問卷草稿預覽</strong>
                     <span>上傳 PPT 或 PDF 並開始生成後，草稿會顯示在這裡。</span>
                   </div>
-                  )}
-                </div>
-
-                <div className="ppt-preview-settings">
-                  <label className="ppt-field">
-                    <span>題目方向</span>
-                    <input
-                      value={pptConfig.direction}
-                      onChange={(event) => updatePptConfig({ direction: event.target.value })}
-                      placeholder="例如：課後滿意度、學習成效"
-                    />
-                  </label>
-                  <label className="ppt-field">
-                    <span>生成重點</span>
-                    <textarea
-                      value={pptConfig.focus}
-                      onChange={(event) => updatePptConfig({ focus: event.target.value })}
-                      placeholder="例如：聚焦課程內容、講師表達、實務應用"
-                    />
-                  </label>
-                </div>
-
-                <div className="ppt-preview-actions">
-                  <button className="ppt-secondary-btn" type="button">
-                    <i className="ri-download-2-line"></i>
-                    匯出
-                  </button>
-                </div>
+                )}
               </div>
             </div>
 

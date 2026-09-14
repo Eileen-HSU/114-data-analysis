@@ -731,97 +731,6 @@
   box-shadow: 0 30px 90px rgba(42, 64, 98, 0.22);
 }
 
-/* The PPT flow is also available as its own route.  Unlike the legacy modal,
-   this layout belongs to the document flow and therefore scrolls naturally on
-   every viewport height. */
-.ppt-page-backdrop {
-  position: static;
-  display: block;
-  min-height: 100vh;
-  padding: 112px 32px 64px;
-  overflow: visible;
-  background: #fbfafb;
-}
-
-.ppt-page-backdrop .ppt-modal {
-  width: min(1160px, 100%);
-  max-height: none;
-  min-height: min(720px, calc(100vh - 176px));
-  margin: 0 auto;
-  overflow: visible;
-}
-
-.ppt-page-backdrop .ppt-modal-body,
-.ppt-page-backdrop .ppt-config-panel,
-.ppt-page-backdrop .ppt-preview-panel {
-  overflow: visible;
-}
-
-.ppt-page-backdrop .ppt-modal-body {
-  min-height: 0;
-  grid-template-columns: minmax(340px, 390px) minmax(0, 1fr);
-  align-items: start;
-}
-
-.ppt-page-backdrop .ppt-preview-panel {
-  min-height: 500px;
-}
-
-.ppt-page-backdrop .ppt-empty-state,
-.ppt-page-backdrop .ppt-loading-state {
-  min-height: 460px;
-}
-
-.ppt-page-backdrop .ppt-modal-header,
-.ppt-page-backdrop .ppt-modal-footer {
-  flex-wrap: wrap;
-  gap: 14px;
-}
-
-.ppt-page-backdrop .ppt-primary-btn,
-.ppt-page-backdrop .ppt-secondary-btn {
-  white-space: normal;
-  text-align: center;
-  line-height: 1.25;
-}
-
-/* Keep the first action within a typical laptop viewport.  The preview earns
-   more height only after a draft exists; before that it is intentionally a
-   compact, secondary empty state. */
-.ppt-page-backdrop .ppt-config-panel {
-  padding: 18px 20px 20px;
-}
-
-.ppt-page-backdrop .ppt-upload-zone {
-  min-height: 120px;
-}
-
-.ppt-page-backdrop .ppt-field-grid {
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.ppt-page-backdrop .ppt-field textarea {
-  min-height: 62px;
-}
-
-.ppt-page-backdrop .ppt-type-limits {
-  grid-template-columns: 1fr 1fr;
-  column-gap: 12px;
-  row-gap: 8px;
-  margin: 12px 0;
-}
-
-.ppt-page-backdrop .ppt-type-limits > span {
-  grid-column: 1 / -1;
-}
-
-.ppt-page-backdrop .ppt-config-panel > .ppt-primary-btn {
-  width: 100%;
-  min-height: 46px;
-  margin-top: 0;
-}
-
 .ppt-modal-header,
 .ppt-modal-footer {
   display: flex;
@@ -1039,38 +948,6 @@
   overflow: auto;
   padding: 22px;
   background: #ffffff;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.ppt-preview-main {
-  min-width: 0;
-  min-height: 0;
-  flex: 1;
-  display: flex;
-}
-
-.ppt-preview-main > .ppt-empty-state,
-.ppt-preview-main > .ppt-loading-state {
-  width: 100%;
-  min-height: 300px;
-}
-
-.ppt-preview-settings {
-  display: grid;
-  gap: 12px;
-  padding-top: 16px;
-  border-top: 1px solid #edf2f7;
-}
-
-.ppt-preview-settings .ppt-field textarea {
-  min-height: 72px;
-}
-
-.ppt-preview-actions {
-  display: flex;
-  justify-content: flex-end;
 }
 
 .ppt-empty-state,
@@ -2339,32 +2216,6 @@
 /* ============================================
    Responsive
    ============================================ */
-@media (max-width: 980px) {
-  .ppt-page-backdrop {
-    padding: 104px 20px 48px;
-  }
-
-  .ppt-page-backdrop .ppt-modal-body,
-  .ppt-page-backdrop .ppt-draft-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .ppt-page-backdrop .ppt-config-panel {
-    border-right: none;
-    border-bottom: 1px solid #edf2f7;
-  }
-
-  .ppt-page-backdrop .ppt-preview-panel,
-  .ppt-page-backdrop .ppt-empty-state,
-  .ppt-page-backdrop .ppt-loading-state {
-    min-height: 400px;
-  }
-
-  .ppt-page-backdrop .ppt-ai-chat {
-    position: static;
-  }
-}
-
 @media (max-width: 640px) {
   .survey-workspace {
     width: min(100% - 32px, 1180px);
@@ -2398,8 +2249,6 @@
   .survey-form-card, .code-entry-card { padding: 28px 20px; }
   .survey-identity-options { grid-template-columns: 1fr; }
   .ppt-modal-backdrop { padding: 10px; }
-  .ppt-page-backdrop { padding: 92px 12px 36px; }
-  .ppt-page-backdrop .ppt-modal { min-height: 0; border-radius: 16px; }
   .ppt-modal { max-height: 94vh; }
   .ppt-modal-header,
   .ppt-modal-footer {
