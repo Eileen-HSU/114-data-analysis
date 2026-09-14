@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
 import Navbar from "../../components/feature/Navbar";
 import { useActivity } from "../../hooks/ActivityContext";
@@ -47,11 +47,16 @@ function normalizeDraft(draft) {
 
 export default function SurveyPage({ pptOnly = false }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  // React may reuse this component while changing from /survey to /survey/ppt.
+  // Derive the page mode from the current URL so the PPT workspace always
+  // renders, even when the previous survey-page state is retained.
+  const isPptPage = pptOnly || location.pathname === "/survey/ppt";
   const { user } = useAuth();
   const { recordActivity } = useActivity();
   const [apiSurveys, setApiSurveys] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isPptModalOpen, setIsPptModalOpen] = useState(pptOnly);
+  const [isPptModalOpen, setIsPptModalOpen] = useState(isPptPage);
   const [pptFile, setPptFile] = useState(null);
   const [pptConfig, setPptConfig] = useState(defaultPptConfig);
   const [pptDraft, setPptDraft] = useState(null);
@@ -63,6 +68,10 @@ export default function SurveyPage({ pptOnly = false }) {
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [savedResult, setSavedResult] = useState(null);
   const [shareLink, setShareLink] = useState("");
+
+  useEffect(() => {
+    if (isPptPage) setIsPptModalOpen(true);
+  }, [isPptPage]);
 
   useEffect(() => {
     if (!user?.token) return;
@@ -115,7 +124,7 @@ export default function SurveyPage({ pptOnly = false }) {
   const closePptModal = () => {
     setIsPptModalOpen(false);
     resetPptModal();
-    if (pptOnly) navigate("/survey");
+    if (isPptPage) navigate("/survey");
   };
 
   const updatePptConfig = (patch) => {
@@ -322,7 +331,7 @@ export default function SurveyPage({ pptOnly = false }) {
   return (
     <>
       <Navbar />
-      {(!pptOnly || !isPptModalOpen) && <main className="survey-page">
+      {(!isPptPage || !isPptModalOpen) && <main className="survey-page">
         <section className="survey-workspace">
           <div className="survey-intro">
             <div className="survey-hero-badge">
@@ -447,7 +456,7 @@ export default function SurveyPage({ pptOnly = false }) {
       </main>}
 
       {isPptModalOpen && (
-        <div className={`ppt-modal-backdrop ${pptOnly ? "ppt-page-backdrop" : ""}`} onClick={pptOnly ? undefined : closePptModal}>
+        <div className={`ppt-modal-backdrop ${isPptPage ? "ppt-page-backdrop" : ""}`} onClick={isPptPage ? undefined : closePptModal}>
           <section className="ppt-modal" onClick={(event) => event.stopPropagation()}>
             <header className="ppt-modal-header">
               <div>
