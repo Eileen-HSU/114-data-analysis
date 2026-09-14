@@ -41,17 +41,17 @@ export default function LoginPage() {
     if (isSubmitting) return;
 
     if (!email.trim()) {
-      setAlertModal({ title: "Login failed", message: "Please enter your email address." });
+      setAlertModal({ title: "登入失敗", message: "請輸入電子郵件。" });
       return;
     }
 
     if (!email.includes("@")) {
-      setAlertModal({ title: "Login failed", message: `Please include an @ in the email address. The address ${email} does not contain an @.` });
+      setAlertModal({ title: "登入失敗", message: `請在電子郵件地址中包含「@」。「${email}」未包含「@」。` });
       return;
     }
 
     if (!password) {
-      setAlertModal({ title: "Login failed", message: "Please enter your password." });
+      setAlertModal({ title: "登入失敗", message: "請輸入密碼。" });
       return;
     }
 
@@ -76,7 +76,7 @@ export default function LoginPage() {
           return;
         }
 
-        setLoginError(data.error || "Login failed. Please check your email and password.");
+        setLoginError(data.error || "登入失敗，請確認帳號或密碼是否正確。");
         return;
       }
 
@@ -103,7 +103,7 @@ export default function LoginPage() {
     } catch (err) {
       setIsSubmitting(false);
       sessionStorage.removeItem("dataanalysis_login_loading");
-      setLoginError("Connection failed. Please check that the server is available.");
+      setLoginError("連線失敗，請確認後端服務是否正常。");
       console.error(err);
     }
   };
@@ -121,16 +121,16 @@ export default function LoginPage() {
                 className="auth-logo-img"
               />
             </div>
-            <h2 className="auth-visual-title">Welcome back</h2>
+            <h2 className="auth-visual-title">歡迎回來</h2>
             <p className="auth-visual-desc">
-              <span>Return to your analysis workspace</span>
-              <span>Organize data and gain insights faster</span>
+              <span>回到您的分析工作區</span>
+              <span>快速整理資料並取得洞察</span>
             </p>
             <div className="auth-features">
               {[
-                { icon: "ri-upload-cloud-2-line", text: "Multiple data formats supported" },
-                { icon: "ri-brain-line", text: "Intelligent AI analysis" },
-                { icon: "ri-folder-chart-line", text: "Review projects anytime" },
+                { icon: "ri-upload-cloud-2-line", text: "支援多種資料格式" },
+                { icon: "ri-brain-line", text: "AI 智能分析" },
+                { icon: "ri-folder-chart-line", text: "專案管理隨時回顧" },
               ].map((f, i) => (
                 <div className="auth-feature-item" key={i}>
                   <div className="auth-feature-icon">
@@ -148,7 +148,7 @@ export default function LoginPage() {
             <div className="back-home-icon">
               <i className="ri-arrow-left-line"></i>
             </div>
-            <span>Back to home</span>
+            <span>返回首頁</span>
           </button>
 
           <div className="auth-form-wrapper">
@@ -159,17 +159,17 @@ export default function LoginPage() {
               <span className="mobile-logo-text">DataAnalysis</span>
             </div>
 
-            <h1 className="auth-title">Log in</h1>
+            <h1 className="auth-title">登入帳號</h1>
             <p className="auth-subtitle">
-              Don't have an account?{" "}
+              還沒有帳號？{" "}
               <a className="auth-link" onClick={() => navigate("/signup")} style={{ cursor: "pointer" }}>
-                Sign up now
+                立即註冊
               </a>
             </p>
 
             <form onSubmit={handleSubmit} className="auth-form" autoComplete="off" noValidate>
               <div className="mb-3">
-                <label className="auth-label">Email</label>
+                <label className="auth-label">電子郵件</label>
                 <div className="position-relative">
                   <i className="ri-mail-line form-icon"></i>
                   <input
@@ -189,7 +189,7 @@ export default function LoginPage() {
               </div>
 
               <div className="mb-3">
-                <label className="auth-label">Password</label>
+                <label className="auth-label">密碼</label>
                 <div className="position-relative">
                   <i className="ri-lock-line form-icon"></i>
                   <input
@@ -198,7 +198,7 @@ export default function LoginPage() {
                     autoComplete="new-password"
                     required
                     className="form-control form-control-custom pe-5"
-                    placeholder="Please enter your password"
+                    placeholder="請輸入密碼"
                     value={password}
                     onChange={(e) => {
                       setPassword(e.target.value);
@@ -217,7 +217,7 @@ export default function LoginPage() {
 
               <div className="d-flex justify-content-end mb-3">
                 <a className="forgot-link" onClick={() => navigate("/forgot-password")} style={{ cursor: "pointer" }}>
-                  Forgot password?
+                  忘記密碼？
                 </a>
               </div>
 
@@ -229,14 +229,14 @@ export default function LoginPage() {
               )}
 
               <button type="submit" className="btn btn-auth-submit w-100" disabled={isSubmitting}>
-                {isSubmitting ? "Logging in…" : "Log in"}
+                {isSubmitting ? "登入中..." : "登入"}
               </button>
             </form>
 
             <p className="auth-terms text-center mt-4">
-              By logging in, you agree to our{" "}
-              <a href="#" rel="nofollow">Terms of Service</a> and{" "}
-              <a href="#" rel="nofollow">Privacy Policy</a>
+              登入即表示您同意我們的{" "}
+              <a href="#" rel="nofollow">服務條款</a> 與{" "}
+              <a href="#" rel="nofollow">隱私政策</a>
             </p>
           </div>
         </div>
@@ -252,7 +252,7 @@ export default function LoginPage() {
               <p>{alertModal.message}</p>
             </div>
             <button className="auth-alert-primary" onClick={() => setAlertModal(null)} type="button">
-              OK
+              確定
             </button>
           </div>
         </div>
@@ -263,8 +263,8 @@ export default function LoginPage() {
             <div className="auth-loading-icon">
               <i className="ri-loader-4-line"></i>
             </div>
-            <h2>Signing you in…</h2>
-            <p>Verifying your account, please wait.</p>
+            <h2>正在登入帳號...</h2>
+            <p>正在確認您的帳號資料，請稍候。</p>
           </div>
         </div>
       )}

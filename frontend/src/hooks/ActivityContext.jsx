@@ -1,8 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useAuth } from "./AuthContext";
 
-import { englishActivityText } from "../lib/englishActivityText";
-
 const ACTIVITY_KEY_PREFIX = "dataanalysis_activity";
 const MAX_ACTIVITIES = 80;
 
@@ -20,7 +18,7 @@ function loadActivities(key) {
   try {
     const raw = localStorage.getItem(key);
     const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.map(activity => ({ ...activity, text: englishActivityText(activity.text) })) : [];
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }

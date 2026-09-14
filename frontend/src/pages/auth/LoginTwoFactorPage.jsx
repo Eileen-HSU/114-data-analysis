@@ -37,7 +37,7 @@ export default function LoginTwoFactorPage() {
     e.preventDefault();
     const trimmedCode = code.trim();
     if (!/^\d{6}$/.test(trimmedCode)) {
-      setError("Enter the 6-digit verification code");
+      setError("請輸入 6 位數驗證碼");
       return;
     }
 
@@ -57,11 +57,11 @@ export default function LoginTwoFactorPage() {
         sessionStorage.removeItem(PENDING_2FA_KEY);
         navigate("/workspace", { replace: true });
       } else {
-        setError(data.error || "Incorrect code. Please try again.");
+        setError(data.error || "驗證碼錯誤，請重新輸入");
         setIsSubmitting(false);
       }
     } catch (err) {
-      setError("Connection failed. Please try again later.");
+      setError("連線失敗，請稍後再試");
       setIsSubmitting(false);
     }
   };
@@ -81,16 +81,16 @@ export default function LoginTwoFactorPage() {
                 className="auth-logo-img"
               />
             </div>
-            <h2 className="auth-visual-title">Two-factor authentication</h2>
+            <h2 className="auth-visual-title">雙因子驗證</h2>
             <p className="auth-visual-desc">
-              <span>Enter the verification code from your email</span>
-              <span>Sign in securely after verification</span>
+              <span>請輸入信箱中的驗證碼</span>
+              <span>完成後即可安全登入</span>
             </p>
             <div className="auth-features">
               {[
-                { icon: "ri-shield-keyhole-line", text: "Protect your account" },
-                { icon: "ri-mail-send-line", text: "Verification code sent by email" },
-                { icon: "ri-lock-2-line", text: "Code valid for 10 minutes" },
+                { icon: "ri-shield-keyhole-line", text: "保護您的帳號安全" },
+                { icon: "ri-mail-send-line", text: "驗證碼已寄送到信箱" },
+                { icon: "ri-lock-2-line", text: "驗證碼 10 分鐘內有效" },
               ].map((f, i) => (
                 <div className="auth-feature-item" key={i}>
                   <div className="auth-feature-icon">
@@ -114,18 +114,18 @@ export default function LoginTwoFactorPage() {
             <div className="back-home-icon">
               <i className="ri-arrow-left-line"></i>
             </div>
-            <span>Back to login</span>
+            <span>返回登入</span>
           </button>
 
           <div className="auth-form-wrapper two-factor-form-wrapper">
-            <h1 className="auth-title">Enter verification code</h1>
+            <h1 className="auth-title">輸入驗證碼</h1>
             <p className="auth-subtitle" style={{ marginBottom: 28 }}>
-              Enter the code sent to  {pendingUser.email}  (6 digits)
+              請輸入寄送至 {pendingUser.email} 的 6 位數驗證碼
             </p>
 
             <form onSubmit={handleSubmit} noValidate autoComplete="off">
               <div className="mb-3">
-                <label className="auth-label">Verification code</label>
+                <label className="auth-label">驗證碼</label>
                 <div className="position-relative">
                   <i className="ri-key-2-line form-icon"></i>
                   <input
@@ -135,7 +135,7 @@ export default function LoginTwoFactorPage() {
                     autoComplete="off"
                     maxLength={6}
                     className="form-control form-control-custom"
-                    placeholder="Enter the 6-digit verification code"
+                    placeholder="請輸入 6 位數驗證碼"
                     value={code}
                     onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
                   />
@@ -149,7 +149,7 @@ export default function LoginTwoFactorPage() {
               )}
 
               <button type="submit" className="btn btn-auth-submit w-100 mt-2" disabled={isSubmitting}>
-                {isSubmitting ? "Verifying…" : "Verify"}
+                {isSubmitting ? "驗證中..." : "驗證"}
               </button>
             </form>
           </div>

@@ -39,11 +39,11 @@ function RatingStats({ question, responses }) {
       <div className="rating-stats-header">
         <div className="rating-avg-badge">
           <span className="rating-avg-num">{avg}</span>
-          <span className="rating-avg-label">Average score</span>
+          <span className="rating-avg-label">平均分</span>
         </div>
         <div className="rating-answered-info">
           <i className="ri-user-line"></i>
-          <span>{answered}  responses</span>
+          <span>{answered} 人作答</span>
         </div>
       </div>
       <div className="rating-bars">
@@ -65,7 +65,7 @@ function RatingStats({ question, responses }) {
                   style={{ width: `${pct}%`, background: col.bar }}
                 />
               </div>
-              <div className="rating-bar-count">{c}  respondents</div>
+              <div className="rating-bar-count">{c} 人</div>
             </div>
           );
         })}
@@ -87,13 +87,13 @@ function ResponseTable({ questions, responses }) {
           <thead>
             <tr>
               <th className="response-table-th response-table-th-idx">#</th>
-              <th className="response-table-th response-table-th-identity">Respondent</th>
-              <th className="response-table-th response-table-th-time">Submitted</th>
+              <th className="response-table-th response-table-th-identity">填答人</th>
+              <th className="response-table-th response-table-th-time">提交時間</th>
               {safeQuestions.map((q, i) => (
                 <th key={q.id || q.question_id || i} className="response-table-th response-table-th-q">
-                  <div className="response-table-q-title">{q.title || q.question_title || "Untitled question"}</div>
+                  <div className="response-table-q-title">{q.title || q.question_title || "未命名題目"}</div>
                   <div className="response-table-q-type">
-                    {{ short: "Short answer", long: "Long answer", single: "Single choice", multiple: "Multiple choice", rating: "Rating" }[q.type || q.question_type] || "Open-ended"}
+                    {{ short: "簡答", long: "詳答", single: "單選", multiple: "多選", rating: "評分" }[q.type || q.question_type] || "問答"}
                   </div>
                 </th>
               ))}
@@ -104,7 +104,7 @@ function ResponseTable({ questions, responses }) {
               <tr key={r.respondentId || r.respondent_id || idx} className={idx % 2 === 0 ? "response-table-row-even" : "response-table-row-odd"}>
                 <td className="response-table-td response-table-td-idx">{idx + 1}</td>
                 <td className="response-table-td response-table-td-identity">
-                  {r.respondentIdentity || r.respondent_identity || r.username || "Anonymous"}
+                  {r.respondentIdentity || r.respondent_identity || r.username || "匿名"}
                 </td>
                 <td className="response-table-td response-table-td-time">{r.submittedAt || r.submitted_at || "—"}</td>
                 {safeQuestions.map((q, i) => {
@@ -144,11 +144,11 @@ export default function SurveyDetailModal({ survey, onClose }) {
         {/* Header */}
         <div className="survey-detail-header">
           <div>
-            <h2 className="survey-detail-title">{survey.title || survey.survey_name || "Untitled survey"}</h2>
+            <h2 className="survey-detail-title">{survey.title || survey.survey_name || "未命名問卷"}</h2>
             <div className="survey-detail-meta">
               <span><i className="ri-key-2-line"></i> {survey.code}</span>
               <span><i className="ri-calendar-line"></i> {survey.createdAt || survey.created_at || "—"}</span>
-              <span><i className="ri-user-line"></i> {responses.length} responses</span>
+              <span><i className="ri-user-line"></i> {responses.length} 人回覆</span>
             </div>
           </div>
           <button className="survey-detail-close" onClick={onClose}>
@@ -163,14 +163,14 @@ export default function SurveyDetailModal({ survey, onClose }) {
             onClick={() => setActiveTab("overview")}
           >
             <i className="ri-bar-chart-line"></i>
-            Overview
+            統計總覽
           </button>
           <button
             className={`survey-detail-tab ${activeTab === "responses" ? "active" : ""}`}
             onClick={() => setActiveTab("responses")}
           >
             <i className="ri-table-line"></i>
-            Response details
+            回覆明細
           </button>
         </div>
 
@@ -183,7 +183,7 @@ export default function SurveyDetailModal({ survey, onClose }) {
                 <div className="survey-detail-section">
                   <div className="survey-detail-section-title">
                     <i className="ri-star-line"></i>
-                    Rating summary
+                    評分題統計
                   </div>
                   <div className="rating-questions-grid">
                     {ratingQuestions.map((q) => (
@@ -204,7 +204,7 @@ export default function SurveyDetailModal({ survey, onClose }) {
                 <div className="survey-detail-section">
                   <div className="survey-detail-section-title">
                     <i className="ri-file-text-line"></i>
-                    Open-ended response summary
+                    問答題摘要
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                     {textQuestions.map((q) => {
@@ -217,7 +217,7 @@ export default function SurveyDetailModal({ survey, onClose }) {
                           <div className="text-q-summary-header">
                             <span className="text-q-num">Q{questions.indexOf(q) + 1}</span>
                             <span className="text-q-title">{q.title || q.question_title}</span>
-                            <span className="text-q-count">{answers.length} responses</span>
+                            <span className="text-q-count">{answers.length} 人回答</span>
                           </div>
                           <div className="text-q-answers-preview">
                             {answers.slice(0, 3).map((ans, i) => (
@@ -231,7 +231,7 @@ export default function SurveyDetailModal({ survey, onClose }) {
                                 className="text-q-more"
                                 onClick={() => setActiveTab("responses")}
                               >
-                                View  {answers.length - 3}  more responses →
+                                還有 {answers.length - 3} 筆回答，點此查看全部 →
                               </div>
                             )}
                           </div>
@@ -249,7 +249,7 @@ export default function SurveyDetailModal({ survey, onClose }) {
               <div className="survey-detail-section">
                 <div className="survey-detail-section-title">
                   <i className="ri-table-line"></i>
-                  All responses ({responses.length}  responses)
+                  所有回覆（{responses.length} 筆）
                 </div>
 
                 {ratingQuestions.length > 0 && (
@@ -267,7 +267,7 @@ export default function SurveyDetailModal({ survey, onClose }) {
                         <div key={q.id || q.question_id} className="responses-rating-chip">
                           <span className="responses-rating-chip-q">Q{questions.indexOf(q) + 1}</span>
                           <span className="responses-rating-chip-title">{q.title || q.question_title}</span>
-                          <span className="responses-rating-chip-avg">Average {avg} points</span>
+                          <span className="responses-rating-chip-avg">平均 {avg} 分</span>
                         </div>
                       );
                     })}

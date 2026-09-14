@@ -57,10 +57,10 @@ export default function HomePage() {
             </button>
           </div>
           <div className="hero-tags">
-            <span className="hero-tag"><i className="ri-clipboard-line me-1"></i>Survey management</span>
-            <span className="hero-tag"><i className="ri-brain-line me-1"></i>AI-assisted analysis</span>
-            <span className="hero-tag"><i className="ri-folder-chart-line me-1"></i>Project management</span>
-            <span className="hero-tag"><i className="ri-table-line me-1"></i>Structured results</span>
+            <span className="hero-tag"><i className="ri-clipboard-line me-1"></i>問卷管理</span>
+            <span className="hero-tag"><i className="ri-brain-line me-1"></i>AI 輔助分析</span>
+            <span className="hero-tag"><i className="ri-folder-chart-line me-1"></i>專案管理</span>
+            <span className="hero-tag"><i className="ri-table-line me-1"></i>表格式結果呈現</span>
           </div>
         </div>
 
@@ -77,17 +77,17 @@ export default function HomePage() {
             <div className="section-badge mb-3"><span>{t("home.features")}</span></div>
             <h2 className="section-title">{t("home.featureTitle")}</h2>
             <p className="section-subtitle">
-              From survey creation and feedback collection to AI-assisted analysis, organize written feedback into clear categories and analysis records.
+              從問卷建立、回饋蒐集到 AI 輔助分析，系統協助顧問快速整理文字回饋，產生清楚的分類結果與分析紀錄。
             </p>
           </div>
           <div className="row g-4">
             {[
-              { icon: "ri-upload-cloud-2-line", iconBg: "bg-lavender-50", iconColor: "text-lavender", tag: "Data import", tagClass: "tag-lavender", title: "Upload and import data", desc: "Upload survey data or text files and bring external feedback into the analysis workspace." },
-              { icon: "ri-brain-line", iconBg: "bg-mauve-50", iconColor: "text-mauve", tag: "AI assistance", tagClass: "tag-mauve", title: "AI-assisted analysis", desc: "Combine TF-IDF and Gemini API to organize text feedback and produce categorized results." },
-              { icon: "ri-folder-chart-line", iconBg: "bg-periwinkle-50", iconColor: "text-periwinkle", tag: "Save projects", tagClass: "tag-periwinkle", title: "Project management", desc: "Keep survey data, analysis results, and history for each training project together for easy follow-up." },
-              { icon: "ri-history-line", iconBg: "bg-lavender-50", iconColor: "text-lavender", tag: "Track history", tagClass: "tag-lavender", title: "Save history", desc: "Review past analysis projects and activity history whenever you need to continue your work." },
-              { icon: "ri-table-line", iconBg: "bg-mauve-50", iconColor: "text-mauve", tag: "Results", tagClass: "tag-mauve", title: "Structured results", desc: "Review categorized results, key feedback, and analysis history in a clear table." },
-              { icon: "ri-survey-line", iconBg: "bg-periwinkle-50", iconColor: "text-periwinkle", tag: "Survey collection", tagClass: "tag-periwinkle", title: "Create surveys and collect feedback", desc: "Create surveys, collect responses, and send feedback to the AI Analysis Assistant for organization." },
+              { icon: "ri-upload-cloud-2-line", iconBg: "bg-lavender-50", iconColor: "text-lavender", tag: "資料匯入", tagClass: "tag-lavender", title: "資料上傳與匯入", desc: "支援上傳問卷資料或文字檔案，讓使用者可將外部回饋資料匯入系統進行分析。" },
+              { icon: "ri-brain-line", iconBg: "bg-mauve-50", iconColor: "text-mauve", tag: "AI 輔助", tagClass: "tag-mauve", title: "AI 輔助分析", desc: "結合 TF-IDF 與 Gemini API，協助整理文字回饋內容，產生分類結果與分析紀錄。" },
+              { icon: "ri-folder-chart-line", iconBg: "bg-periwinkle-50", iconColor: "text-periwinkle", tag: "專案保存", tagClass: "tag-periwinkle", title: "專案管理", desc: "將不同培訓專案的問卷資料、分析結果與歷史紀錄集中保存，方便後續查詢與追蹤。" },
+              { icon: "ri-history-line", iconBg: "bg-lavender-50", iconColor: "text-lavender", tag: "歷程追蹤", tagClass: "tag-lavender", title: "歷史紀錄保存", desc: "系統可保存過去的分析專案與操作紀錄，方便使用者回顧、查詢與延續分析流程。" },
+              { icon: "ri-table-line", iconBg: "bg-mauve-50", iconColor: "text-mauve", tag: "結果呈現", tagClass: "tag-mauve", title: "表格式結果呈現", desc: "分析結果以表格式呈現，方便使用者查看分類結果、回饋重點與分析紀錄。" },
+              { icon: "ri-survey-line", iconBg: "bg-periwinkle-50", iconColor: "text-periwinkle", tag: "問卷蒐集", tagClass: "tag-periwinkle", title: "問卷建立與回饋蒐集", desc: "支援建立問卷、蒐集填答內容，並可將回饋資料提供給 AI 分析助理進行整理。" },
             ].map((f, i) => (
               <div className="col-md-6 col-lg-4" key={i}>
                 <div className="feature-card">
@@ -110,16 +110,16 @@ export default function HomePage() {
       <section className="how-section">
         <div className="container">
           <div className="text-center mb-5">
-            <div className="section-badge mb-3"><span>How it works</span></div>
-            <h2 className="section-title">How it works</h2>
-            <p className="section-subtitle">Four simple steps to organize and analyze training feedback.</p>
+            <div className="section-badge mb-3"><span>使用流程</span></div>
+            <h2 className="section-title">如何使用</h2>
+            <p className="section-subtitle">四個簡單步驟，完成培訓回饋整理與分析。</p>
           </div>
           <div className="row g-4">
             {[
-              { num: "1", numBg: "bg-lavender-100", numColor: "text-lavender", iconBg: "bg-lavender-50", icon: "ri-user-add-line", iconColor: "text-lavender", title: "Create account", desc: "Sign up and log in to create surveys or manage analysis projects." },
-              { num: "2", numBg: "bg-mauve-100", numColor: "text-mauve", iconBg: "bg-mauve-50", icon: "ri-upload-2-line", iconColor: "text-mauve", title: "Create a survey or upload data", desc: "Create a survey to collect feedback, or upload existing surveys and text data." },
-              { num: "3", numBg: "bg-periwinkle-100", numColor: "text-periwinkle", iconBg: "bg-periwinkle-50", icon: "ri-chat-3-line", iconColor: "text-periwinkle", title: "Use the AI Analysis Assistant", desc: "Use the AI Analysis Assistant to organize written feedback into categories and analysis records." },
-              { num: "4", numBg: "bg-lavender-100", numColor: "text-lavender", iconBg: "bg-lavender-50", icon: "ri-save-line", iconColor: "text-lavender", title: "Save and review results", desc: "Save analysis results in a project for easy review, organization, and follow-up." },
+              { num: "1", numBg: "bg-lavender-100", numColor: "text-lavender", iconBg: "bg-lavender-50", icon: "ri-user-add-line", iconColor: "text-lavender", title: "建立帳號", desc: "註冊並登入系統，開始建立問卷或管理分析專案。" },
+              { num: "2", numBg: "bg-mauve-100", numColor: "text-mauve", iconBg: "bg-mauve-50", icon: "ri-upload-2-line", iconColor: "text-mauve", title: "建立問卷或上傳資料", desc: "建立問卷蒐集回饋，或上傳外部問卷與文字資料。" },
+              { num: "3", numBg: "bg-periwinkle-100", numColor: "text-periwinkle", iconBg: "bg-periwinkle-50", icon: "ri-chat-3-line", iconColor: "text-periwinkle", title: "使用 AI 分析助理", desc: "透過 AI 分析助理整理文字回饋，產生分類結果與分析紀錄。" },
+              { num: "4", numBg: "bg-lavender-100", numColor: "text-lavender", iconBg: "bg-lavender-50", icon: "ri-save-line", iconColor: "text-lavender", title: "保存與查看結果", desc: "將分析結果保存至專案中，方便後續查詢、整理與追蹤。" },
             ].map((s, i) => (
               <div className="col-md-6 col-lg-3" key={i}>
                 <div className="step-card">
@@ -147,16 +147,16 @@ export default function HomePage() {
             <div className="cta-icon">
               <i className="ri-bar-chart-box-line"></i>
             </div>
-            <h2 className="cta-title">Ready to organize your training feedback?</h2>
+            <h2 className="cta-title">準備好開始整理培訓回饋了嗎？</h2>
             <p className="cta-subtitle">
-              Create an account to organize written feedback and explore insights with survey management and the AI Analysis Assistant.
+              立即建立帳號，使用問卷管理與 AI 分析助理，快速整理文字回饋並查看分析結果。
             </p>
             <div className="cta-buttons">
               <button className="btn btn-cta-primary" onClick={() => navigate("/signup")}>
-                <i className="ri-rocket-line me-2"></i>Get started
+                <i className="ri-rocket-line me-2"></i>立即開始使用
               </button>
               <button className="btn btn-cta-secondary" onClick={() => navigate("/login")}>
-                Already have an account? Log in
+                已有帳號？登入
               </button>
             </div>
           </div>
