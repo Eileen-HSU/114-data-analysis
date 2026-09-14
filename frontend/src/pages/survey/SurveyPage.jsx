@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import Navbar from "../../components/feature/Navbar";
 import { useActivity } from "../../hooks/ActivityContext";
@@ -359,10 +359,10 @@ export default function SurveyPage({ pptOnly = false }) {
             </a>
 
             <aside className="survey-side-stack">
-              <button
+              <Link
                 className="survey-entry-card ppt-generate"
-                onClick={() => navigate("/survey/ppt")}
-                type="button"
+                to="/survey/ppt"
+                aria-label="上傳 PPT/PDF 生成問卷"
               >
                 <div className="entry-card-icon ppt-icon">
                   <i className="ri-slideshow-3-line"></i>
@@ -375,7 +375,7 @@ export default function SurveyPage({ pptOnly = false }) {
                   </p>
                 </div>
                 <span className="entry-card-arrow"><i className="ri-sparkling-line"></i></span>
-              </button>
+              </Link>
 
               <a className="survey-entry-card fill" href="/survey/fill">
                 <div className="entry-card-icon fill-icon">
