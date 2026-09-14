@@ -1004,8 +1004,15 @@
 .ppt-preview-settings {
   display: grid;
   gap: 12px;
+  margin-top: auto;
   padding-top: 16px;
   border-top: 1px solid #edf2f7;
+}
+
+/* Keep the draft guidance at the bottom of an empty preview.  Once a draft
+   exists, its editor can still expand naturally with the document. */
+.ppt-page-backdrop .ppt-preview-panel:has(.ppt-empty-state) {
+  height: max(620px, calc(100vh - 176px));
 }
 
 .ppt-preview-settings .ppt-field textarea {
