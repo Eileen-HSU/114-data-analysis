@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import Navbar from "../../components/feature/Navbar";
 import { useActivity } from "../../hooks/ActivityContext";
@@ -44,12 +45,13 @@ function normalizeDraft(draft) {
   });
 }
 
-export default function SurveyPage() {
+export default function SurveyPage({ pptOnly = false }) {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { recordActivity } = useActivity();
   const [apiSurveys, setApiSurveys] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isPptModalOpen, setIsPptModalOpen] = useState(false);
+  const [isPptModalOpen, setIsPptModalOpen] = useState(pptOnly);
   const [pptFile, setPptFile] = useState(null);
   const [pptConfig, setPptConfig] = useState(defaultPptConfig);
   const [pptDraft, setPptDraft] = useState(null);
@@ -113,6 +115,7 @@ export default function SurveyPage() {
   const closePptModal = () => {
     setIsPptModalOpen(false);
     resetPptModal();
+    if (pptOnly) navigate("/survey");
   };
 
   const updatePptConfig = (patch) => {
@@ -319,7 +322,7 @@ export default function SurveyPage() {
   return (
     <>
       <Navbar />
-      <main className="survey-page">
+      {!pptOnly && <main className="survey-page">
         <section className="survey-workspace">
           <div className="survey-intro">
             <div className="survey-hero-badge">
@@ -358,7 +361,7 @@ export default function SurveyPage() {
             <aside className="survey-side-stack">
               <button
                 className="survey-entry-card ppt-generate"
-                onClick={() => setIsPptModalOpen(true)}
+                onClick={() => navigate("/survey/ppt")}
                 type="button"
               >
                 <div className="entry-card-icon ppt-icon">
@@ -432,10 +435,10 @@ export default function SurveyPage() {
             </aside>
           </div>
         </section>
-      </main>
+      </main>}
 
       {isPptModalOpen && (
-        <div className="ppt-modal-backdrop" onClick={closePptModal}>
+        <div className={`ppt-modal-backdrop ${pptOnly ? "ppt-page-backdrop" : ""}`} onClick={pptOnly ? undefined : closePptModal}>
           <section className="ppt-modal" onClick={(event) => event.stopPropagation()}>
             <header className="ppt-modal-header">
               <div>
