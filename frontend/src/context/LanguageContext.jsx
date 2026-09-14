@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import axios from "axios";
 import { useAuth } from "../hooks/AuthContext";
-import { apiUrl } from "../lib/api";
+import { apiUrl, installLanguageAwareFetch } from "../lib/api";
 
 const STORAGE_KEY = "dataanalysis_language";
 const copy = {
@@ -132,6 +133,10 @@ export function LanguageProvider({ children }) {
   }, [user?.language]);
   useEffect(() => { document.documentElement.lang = language; }, [language]);
   useEffect(() => {
+    installLanguageAwareFetch();
+    axios.defaults.headers.common["Accept-Language"] = language;
+  }, [language]);
+  useEffect(() => {
     const applyTranslations = () => translateLegacyInterface(language);
     const frame = window.requestAnimationFrame(applyTranslations);
     const observer = new MutationObserver(() => window.requestAnimationFrame(applyTranslations));
@@ -145,7 +150,7 @@ export function LanguageProvider({ children }) {
     if (!["zh-TW", "en"].includes(next)) return;
     setLanguageState(next); localStorage.setItem(STORAGE_KEY, next); updateUser?.({ language: next });
     if (user?.token && user?.user_id) {
-      try { await fetch(apiUrl(`/api/profile/${user.user_id}`), { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${user.token}` }, body: JSON.stringify({ language: next }) }); } catch { /* local preference remains available offline */ }
+      try { await fetch(apiUrl(`/api/profile/${user.user_id}`), { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${user.token}`, "Accept-Language": next }, body: JSON.stringify({ language: next }) }); } catch { /* local preference remains available offline */ }
     }
   }, [user?.token, user?.user_id, updateUser]);
   const value = useMemo(() => ({ language, setLanguage, t: (key) => copy[language]?.[key] || copy["zh-TW"][key] || key }), [language, setLanguage]);
