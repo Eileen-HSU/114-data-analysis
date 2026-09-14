@@ -106,9 +106,9 @@ def _extract_pptx_text(file_bytes):
 def _extract_pdf_text(file_bytes):
     try:
         from pypdf import PdfReader
-    except Exception:
+    except Exception as exc:
         logger.exception("pypdf import failed")
-        return ""
+        raise PptSurveyAiError("後端缺少 pypdf 套件，請確認 requirements.txt 與新平台安裝流程。", 503) from exc
 
     try:
         reader = PdfReader(BytesIO(file_bytes))
