@@ -993,6 +993,7 @@
   min-height: 0;
   flex: 1;
   display: flex;
+  order: 2;
 }
 
 .ppt-preview-main > .ppt-empty-state,
@@ -1004,7 +1005,7 @@
 .ppt-preview-settings {
   display: grid;
   gap: 12px;
-  margin-top: auto;
+  order: 1;
   padding-top: 16px;
   border-top: 1px solid #edf2f7;
 }
@@ -1022,6 +1023,7 @@
 .ppt-preview-actions {
   display: flex;
   justify-content: flex-end;
+  order: 3;
 }
 
 .ppt-page-backdrop .ppt-modal-header > div,

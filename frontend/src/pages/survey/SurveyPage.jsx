@@ -70,7 +70,7 @@ export default function SurveyPage({ pptOnly = false }) {
   const [shareLink, setShareLink] = useState("");
 
   useEffect(() => {
-    if (isPptPage) setIsPptModalOpen(true);
+    setIsPptModalOpen(isPptPage);
   }, [isPptPage]);
 
   useEffect(() => {
