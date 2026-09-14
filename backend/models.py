@@ -120,7 +120,7 @@ class Chat_History(db.Model):
     template_id = db.Column(
         db.Integer, db.ForeignKey("Survey_Template.template_id"), nullable=True
     )
-    message_content = db.Column(db.Text, nullable=False)
+    message_content = db.Column(MEDIUMTEXT, nullable=False)
     sender_type = db.Column(db.String(10), nullable=False)  # user / ai
     status = db.Column(db.String(20), default="active")  # processing / completed / failed
     corrected_change = db.Column(db.Text)

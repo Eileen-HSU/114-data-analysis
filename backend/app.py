@@ -233,6 +233,18 @@ def ensure_runtime_schema():
                 "`status` VARCHAR(50) NOT NULL",
                 min_length=50,
             )
+            # 【修正｜分析追問撈到舊批次】Chat_History.message_content 原本
+            # 是 TEXT（上限 65,535 bytes），分類結果訊息（含所有大類別/
+            # 子類別底下受試者原文與彙整摘要）數量一多就會超過，STRICT
+            # 模式下 INSERT 直接失敗、訊息沒存進 DB，導致
+            # services/chat_ask_service.py 依 project_id 回頭找「目前
+            # 分析結果」時，看不到最新一批、改抓到更舊的 upload_batch_id
+            # /template_id。放寬成 MEDIUMTEXT（16MB），不影響既有資料。
+            ensure_column_length(
+                "Chat_History", "message_content",
+                "`message_content` MEDIUMTEXT NOT NULL",
+                min_length=16_777_215,
+            )
             db.session.commit()
 
             # review_status 舊值 migration："removed" -> "excluded"。

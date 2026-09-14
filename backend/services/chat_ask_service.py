@@ -30,13 +30,36 @@
     Chat_History.template_id（送出分析當下就已經存在這個欄位上）。
     這裡選擇「不新增欄位」的做法，改成從這個 project 底下的
     Chat_History 訊息本身回推：
-        - 有任何一則訊息的 template_id 不是 None -> survey 來源，
-          直接用那個 template_id。
-        - 否則找「內容是分類結果表格」的訊息（用跟前端
+        - 依訊息時間新到舊掃過去。
+        - 遇到 template_id 不是 None 的訊息 -> survey 來源，直接用
+          那個 template_id。
+        - 否則遇到「內容是分類結果表格」的訊息（用跟前端
           buildClassificationMessageContent() 完全相同的 marker 字串
-          判斷），從裡面存的 meta.upload_batch_id 拿到 Excel 上傳來源。
-    依訊息時間新到舊掃過去，第一個掃到的當作「目前」的分析上下文，
-    這樣同一個對話裡先後分析過多份資料時，永遠對應到最新一次。
+          判斷）-> Excel 上傳來源，從裡面存的 meta.upload_batch_id
+          拿到 upload_batch_id。
+    找到「最新一則分析結果訊息」之後就不再往更舊的訊息找——即使這則
+    訊息剛好解析失敗（JSON 壞掉、缺 upload_batch_id），也直接視為
+    「找不到可靠來源」回報明確錯誤，不會因此改用更舊、可能已經跟畫面
+    對不上的另一批資料（這是 2026-09-14 這次修正的重點：舊版邏輯在
+    最新訊息解析失敗時會誤用更舊的訊息，讓 /ask 抓到過期批次）。
+
+【已知會導致「抓到舊批次」的資料遺失成因，這次一併修掉】
+    Chat_History.message_content 原本是 MySQL TEXT（上限 65,535
+    bytes）。分類結果訊息在類別/受試者數量較多時，JSON 內容很容易
+    超過這個上限，STRICT 模式下 INSERT 會直接被拒絕，訊息完全沒有
+    存進 DB（前端是先更新畫面上的 React state 才呼叫存檔 API，所以
+    使用者看畫面完全看不出來存檔失敗了）。這裡把該欄位放寬成
+    MEDIUMTEXT（見 models.py / app.py 的 ensure_column_length()），
+    大幅降低這個問題再發生的機率。
+
+【debug log】
+    這裡印的 log 只記數量與識別資訊（project_id、template_id、
+    upload_batch_id、chat_id、筆數），不印任何原始回答內容或個資：
+        [CHAT_ASK_SCOPE]   每次呼叫進來時印一次，project_id=...
+        [CHAT_ASK_SOURCE]  找到（或找不到）分析來源時印一次
+        [CHAT_ASK_ROWS]    _collect_items() 撈到幾筆時印一次
+        [CHAT_ASK_FILTER]  依使用者訊息篩選 context 時印比對到的
+                           代碼/受試者編號與命中筆數
 """
 
 import json
@@ -86,7 +109,8 @@ SYSTEM_PROMPT = """你是「深度資料分析」平台裡，針對「已經產�
 1.【目前這個 chat 已出現過的所有子類別】：這是目前唯一合法的分類清單。
 2.【符合使用者問題的詳細分類與原始回答片段】：跟使用者這次問題最相關的
    實際分類結果，包含受試者編號、大類別、子類別、原始回答片段、分類
-   原因、建議摘要。
+   原因、建議摘要，部分片段還會附上對應的方法論、文獻依據、次要分類，
+   以及這個子類別彙整後的整體判斷原因/建議摘要（如果有的話）。
 
 嚴格規則，務必遵守：
 1. 只能根據上面兩段內容回答，不可以捏造清單裡沒有出現過的大類別、
@@ -126,9 +150,18 @@ def _parse_classification_message(content: str):
 
 
 def _resolve_chat_analysis_source(project_id: int):
-    """依 project_id 找目前這個對話最新一次分析對應的來源。
-    回傳 {"source_type": ..., "template_id": ...} 或
-    {"source_type": ..., "upload_batch_id": ...}；找不到回傳 None。"""
+    """依 project_id 找目前這個對話「最新一次分析」對應的來源。
+    回傳 {"source_type": ..., "template_id"/"upload_batch_id": ...,
+    "aggregated_rows": [...]}；找不到回傳 None。
+
+    【重要】只看「依時間排序後第一個看起來像分析結果的訊息」，不會
+    在那則訊息解析失敗時繼續往更舊的訊息找——往下找雖然有機會撈到
+    「看起來可以用」的資料，但那批資料很可能已經跟畫面上顯示的內容
+    不一致（過期批次），寧可明確回報「找不到」，也不要送一個看似
+    正常、實則對不上的 context 給 Gemini。
+    """
+    print(f"[CHAT_ASK_SCOPE] project_id={project_id}")
+
     history_rows = (
         Chat_History.query
         .filter_by(project_id=project_id)
@@ -137,45 +170,73 @@ def _resolve_chat_analysis_source(project_id: int):
     )
 
     for h in history_rows:
-        if h.template_id:
-            return {"source_type": SOURCE_TYPE_SURVEY, "template_id": h.template_id}
-
         content = h.message_content or ""
-        if content.startswith(CLASSIFICATION_TABLE_MARKER):
-            parsed = _parse_classification_message(content)
+        has_marker = content.startswith(CLASSIFICATION_TABLE_MARKER)
+        parsed = _parse_classification_message(content) if has_marker else None
+        aggregated_rows = (parsed or {}).get("rows") or [] if parsed else []
+
+        if h.template_id:
+            print(
+                f"[CHAT_ASK_SOURCE] source_type=survey template_id={h.template_id} "
+                f"chat_id={h.chat_id} aggregated_rows={len(aggregated_rows)}"
+            )
+            return {
+                "source_type": SOURCE_TYPE_SURVEY,
+                "template_id": h.template_id,
+                "aggregated_rows": aggregated_rows,
+            }
+
+        if has_marker:
             upload_batch_id = ((parsed or {}).get("meta") or {}).get("upload_batch_id")
             if upload_batch_id:
-                return {"source_type": SOURCE_TYPE_USER_UPLOAD, "upload_batch_id": upload_batch_id}
+                print(
+                    f"[CHAT_ASK_SOURCE] source_type=user_upload upload_batch_id={upload_batch_id} "
+                    f"chat_id={h.chat_id} aggregated_rows={len(aggregated_rows)}"
+                )
+                return {
+                    "source_type": SOURCE_TYPE_USER_UPLOAD,
+                    "upload_batch_id": upload_batch_id,
+                    "aggregated_rows": aggregated_rows,
+                }
+            # 【修正】這是目前掃到最新的一則「看起來是分析結果」的訊息，
+            # 但解析不出 upload_batch_id（JSON 壞掉、被截斷，或就是舊
+            # 格式沒存這個欄位）。這裡直接判定「找不到可靠來源」並停止，
+            # 不再往更舊的訊息找，避免撈到過期批次卻沒有任何警訊。
+            print(f"[CHAT_ASK_SOURCE] found classification message but upload_batch_id missing/corrupt chat_id={h.chat_id}")
+            return None
 
+    print(f"[CHAT_ASK_SOURCE] no analysis message found project_id={project_id}")
     return None
 
 
 def _row_effective_view(row):
-    """回傳這筆 classification 目前該用的 main_category / sub_category /
-    reasoning（尊重 Human Review 的結果，比照
-    effective_classification_service.get_effective_classification() 的
-    判斷規則）。review_status = excluded 代表人工決定不採用這筆，回傳
-    None，呼叫端要整筆跳過，不納入追問的上下文；pending_review 目前
-    還沒有人工複核過，跟 confirmed 一樣直接用 AI original 結果——
-    「還沒有人確認」不代表這個分類結果不存在，使用者當然可以針對它
-    追問。secondary_* 這裡不需要，追問不需要用到次要分類。"""
+    """回傳這筆 classification 目前該用的完整分類欄位（main_category /
+    sub_category / reasoning / methodology / citation / secondary_*），
+    尊重 Human Review 的結果，規則比照
+    effective_classification_service.get_effective_classification()。
+    review_status = excluded 代表人工決定不採用這筆，回傳 None，呼叫端
+    要整筆跳過，不納入追問的上下文；pending_review 目前還沒有人工複核
+    過，跟 confirmed 一樣直接用 AI original 結果——「還沒有人確認」
+    不代表這個分類結果不存在，使用者當然可以針對它追問。"""
     if row.review_status == REVIEW_STATUS_EXCLUDED:
         return None
 
     if row.review_status == REVIEW_STATUS_MODIFIED:
-        effective = get_effective_classification(row)
-        return {
-            "main_category": effective["main_category"],
-            "sub_category": effective["sub_category"],
-            "reasoning": effective["reasoning"],
-        }
+        return get_effective_classification(row)
 
     # pending_review / confirmed 都还没有被 Human Review 覆寫過，直接用
-    # AI original 欄位。
+    # AI original 欄位，欄位形狀跟 get_effective_classification() 的
+    # 回傳值刻意保持一致，呼叫端不用分兩種情況處理。
     return {
         "main_category": row.main_category,
         "sub_category": row.sub_category,
+        "secondary_main_category": row.secondary_main_category,
+        "secondary_sub_category": row.secondary_sub_category,
         "reasoning": row.reasoning,
+        "methodology": row.methodology,
+        "citation": row.citation,
+        "secondary_methodology": row.secondary_methodology,
+        "secondary_citation": row.secondary_citation,
     }
 
 
@@ -190,10 +251,29 @@ def _safe_mask(text):
         return None
 
 
+def _build_aggregated_lookup(aggregated_rows):
+    """把 _resolve_chat_analysis_source() 已經解析好的 aggregated_rows
+    （前端 buildClassificationMessageContent() 存進 Chat_History 的
+    彙整結果，本來就是後端之前算好、只是存起來給畫面顯示用）轉成
+    (main_category, sub_category) -> {aggregated_reasoning,
+    aggregated_summary} 的查詢表，供 context 額外附上「彙整後」的
+    判斷原因與建議摘要。這裡完全是讀取已經算好、已經持久化的文字，
+    不會因此多打任何一次 Gemini。"""
+    lookup = {}
+    for g in aggregated_rows or []:
+        key = (g.get("main_category") or "", g.get("sub_category") or "")
+        lookup[key] = {
+            "aggregated_reasoning": g.get("aggregated_reasoning") or "",
+            "aggregated_summary": g.get("aggregated_summary") or "",
+        }
+    return lookup
+
+
 def _collect_items(source):
     """依 source 撈出所有 Response_Classification，組成純 Python dict
     清單（respondent_number / main_category / sub_category / status /
-    excerpt / reasoning / summary，全部已遮罩），不呼叫任何 Gemini。"""
+    excerpt / reasoning / summary / methodology / citation / secondary_*，
+    全部已視需要遮罩），不呼叫任何 Gemini。"""
     if source["source_type"] == SOURCE_TYPE_SURVEY:
         template_id = source["template_id"]
         rows = fetch_classifications_in_scope(SOURCE_TYPE_SURVEY, template_id=template_id)
@@ -218,6 +298,7 @@ def _collect_items(source):
             return row_index + 1 if row_index is not None else None
 
     items = []
+    skipped_pii = 0
     for row in rows:
         view = _row_effective_view(row)
         if view is None:
@@ -235,23 +316,32 @@ def _collect_items(source):
         masked_reasoning = _safe_mask(view.get("reasoning"))
         masked_summary = _safe_mask(row.summary)
         if masked_excerpt is None or masked_reasoning is None or masked_summary is None:
-            print("[CHAT_ASK][PII_MASKING_FAILED]", f"classification_id={row.classification_id}")
+            skipped_pii += 1
             continue
 
         items.append({
             "respondent_number": get_respondent_number(row),
             "main_category": view.get("main_category") or "（無）",
             "sub_category": view.get("sub_category") or "（無）",
+            # methodology / citation 是固定文獻資訊、次要分類是查表結果，
+            # 不是受訪者原文，不需要（也不應該）用 mask_pii() 處理。
+            "methodology": view.get("methodology"),
+            "citation": view.get("citation"),
+            "secondary_main_category": view.get("secondary_main_category"),
+            "secondary_sub_category": view.get("secondary_sub_category"),
+            "secondary_methodology": view.get("secondary_methodology"),
+            "secondary_citation": view.get("secondary_citation"),
             "status": row.status,
             "excerpt": masked_excerpt,
             "reasoning": masked_reasoning,
             "summary": masked_summary,
         })
 
+    print(f"[CHAT_ASK_ROWS] total={len(items)} fetched={len(rows)} skipped_pii={skipped_pii}")
     return items
 
 
-def _build_context_text(items, user_message: str) -> str:
+def _build_context_text(items, user_message: str, aggregated_lookup: dict) -> str:
     """把 _collect_items() 撈到的資料，依使用者這次問題（有沒有提到
     A9/B2 這種代碼、有沒有提到「受試者N」）篩出最相關的片段，組成純
     文字 context。沒有比對到任何代碼/受試者編號時，回傳全部（受
@@ -268,8 +358,14 @@ def _build_context_text(items, user_message: str) -> str:
     mentioned_respondents = _extract_mentioned_respondents(user_message)
 
     def matches(it):
+        # 【精確比對代碼前綴】sub_category 固定格式是「{代碼}{說明文字}」
+        # （例如「A9 客觀與具體回饋」），用代碼加一個空白字元或字串結尾
+        # 來比對，避免 "A1" 誤比對到 "A10"、"A11" 這種代碼前綴重疊的
+        # 情況。
         code_match = bool(mentioned_codes) and any(
-            it["sub_category"].upper().startswith(code) for code in mentioned_codes
+            it["sub_category"].upper() == code
+            or it["sub_category"].upper().startswith(code + " ")
+            for code in mentioned_codes
         )
         respondent_match = (
             it["respondent_number"] is not None
@@ -279,6 +375,10 @@ def _build_context_text(items, user_message: str) -> str:
 
     if mentioned_codes or mentioned_respondents:
         focused_items = [it for it in items if matches(it)]
+        print(
+            f"[CHAT_ASK_FILTER] query_code={sorted(mentioned_codes) or None} "
+            f"query_respondent={sorted(mentioned_respondents) or None} matched={len(focused_items)}"
+        )
         # 使用者明確提到代碼/受試者編號、卻完全比對不到時，退回顯示
         # 全部片段——讓 Gemini 自己依規則 6 明確告知「找不到」，而不是
         # 完全沒有任何 context 可以判斷。
@@ -298,12 +398,30 @@ def _build_context_text(items, user_message: str) -> str:
             "" if it["status"] == "completed"
             else f"（此片段分類狀態不是 completed，目前是「{it['status']}」，可能沒有完整的分類原因）"
         )
-        detail_lines.append(
-            f"[{respondent_label}] 大類別：{it['main_category']}／子類別：{it['sub_category']}{status_note}\n"
-            f"  原文片段：{it['excerpt'][:_MAX_EXCERPT_CHARS]}\n"
-            f"  分類原因：{it['reasoning'] or '（無）'}\n"
-            f"  建議摘要：{it['summary'] or '（無）'}"
-        )
+
+        lines = [
+            f"[{respondent_label}] 大類別：{it['main_category']}／子類別：{it['sub_category']}{status_note}",
+            f"  原文片段：{it['excerpt'][:_MAX_EXCERPT_CHARS]}",
+            f"  分類原因：{it['reasoning'] or '（無）'}",
+            f"  建議摘要：{it['summary'] or '（無）'}",
+        ]
+        if it.get("methodology"):
+            lines.append(f"  對應方法論：{it['methodology']}")
+        if it.get("citation"):
+            lines.append(f"  文獻依據：{it['citation']}")
+        if it.get("secondary_sub_category"):
+            lines.append(
+                f"  次要分類：{it.get('secondary_main_category') or ''}／{it['secondary_sub_category']}"
+            )
+            if it.get("secondary_methodology"):
+                lines.append(f"  次要分類對應方法論：{it['secondary_methodology']}")
+
+        agg = aggregated_lookup.get((it["main_category"], it["sub_category"]))
+        if agg and (agg.get("aggregated_reasoning") or agg.get("aggregated_summary")):
+            lines.append(f"  （此子類別彙整後的整體判斷原因：{agg.get('aggregated_reasoning') or '（無）'}）")
+            lines.append(f"  （此子類別彙整後的整體建議摘要：{agg.get('aggregated_summary') or '（無）'}）")
+
+        detail_lines.append("\n".join(lines))
 
     return (
         "【目前這個 chat 已出現過的所有子類別】\n"
@@ -365,11 +483,12 @@ def answer_chat_question(project_id: int, user_message: str) -> str:
     Gemini 一次、回傳答案」，不再做任何權限判斷。"""
     source = _resolve_chat_analysis_source(project_id)
     if source is None:
-        raise ChatAskError("目前沒有可供追問的分類結果", 422)
+        raise ChatAskError("找不到目前分析結果來源，請重新載入或重新執行分析", 422)
 
     items = _collect_items(source)
     if not items:
         raise ChatAskError("目前沒有可供追問的分類結果", 422)
 
-    context_text = _build_context_text(items, user_message)
+    aggregated_lookup = _build_aggregated_lookup(source.get("aggregated_rows"))
+    context_text = _build_context_text(items, user_message, aggregated_lookup)
     return _call_gemini(context_text, user_message)
