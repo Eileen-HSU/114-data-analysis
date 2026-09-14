@@ -42,21 +42,12 @@ def _is_rate_limit_error(exc: Exception) -> bool:
     return "429" in text or "ResourceExhausted" in type(exc).__name__ or "RESOURCE_EXHAUSTED" in text
 
 
+_MAX_RETRY_DELAY_SECONDS = 10.0
+
+
+
 def _generate_with_retry(model, user_message: str):
-    """對 model.generate_content() 的統一包裝：只有真的撞到免費層
-    429 限流時才等待重試，其他錯誤（prompt 有問題、解析失敗等）
-    維持原本行為，立刻讓例外往上拋，不做無意義的重試。"""
-    last_error = None
-    for attempt in range(3):
-        try:
-            return model.generate_content(user_message, generation_config={"temperature": 0})
-        except Exception as e:
-            last_error = e
-            if attempt < 2 and _is_rate_limit_error(e):
-                delay = _extract_retry_delay_seconds(e) or 20.0
-                time.sleep(delay + 1.0)
-                continue
-            raise last_error
+    return model.generate_content(user_message, generation_config={"temperature": 0})
 
 
 # Gemini #2（批次分類）專用：附加在 prompt_content 之後的輸出格式
