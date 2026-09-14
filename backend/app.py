@@ -1,4 +1,3 @@
-import json
 import os
 from dotenv import load_dotenv
 load_dotenv()
@@ -44,60 +43,10 @@ ALLOWED_CORS_ORIGINS = {
 CORS(app,
     resources={r"/api/*": {"origins": list(ALLOWED_CORS_ORIGINS)}},
     supports_credentials=False,
-    allow_headers=["Content-Type", "Authorization", "Accept-Language"],
+    allow_headers=["Content-Type", "Authorization"],
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     automatic_options=False
 )
-
-# API copy is kept in its original Traditional Chinese form in the route
-# handlers.  English is selected per request, rather than replacing the
-# default language.  Only known system messages in message/error fields are
-# translated: submitted values and response data are deliberately untouched.
-SYSTEM_MESSAGES_EN = {
-    "未授權": "Unauthorized",
-    "無效的 token": "Invalid token",
-    "Token 已過期": "Token has expired",
-    "請提供 project_name": "Please provide project_name",
-    "找不到專案": "Project not found",
-    "專案已在垃圾桶中": "The project is already in the trash",
-    "不合法的 PATCH 參數": "Invalid PATCH parameters",
-    "專案已移至垃圾桶，30 天後將永久刪除": "The project has been moved to the trash and will be permanently deleted after 30 days",
-    "找不到問卷": "Survey not found",
-    "找不到使用者": "User not found",
-    "請先登入": "Please log in first",
-    "沒有權限": "Permission denied",
-    "請提供電子郵件和密碼": "Please provide email and password",
-    "帳號或密碼錯誤": "Incorrect email or password",
-    "此電子郵件已被註冊": "This email address is already registered",
-    "註冊成功": "Account created successfully",
-    "登入成功": "Login successful",
-    "登出成功": "Logged out successfully",
-    "密碼已更新": "Password updated successfully",
-    "驗證碼錯誤": "Incorrect verification code",
-    "驗證碼已過期": "Verification code has expired",
-    "請提供必要欄位": "Please provide all required fields",
-    "請提供問卷名稱": "Please provide a survey title",
-    "問卷建立成功": "Survey created successfully",
-    "問卷已更新": "Survey updated successfully",
-    "問卷已刪除": "Survey deleted successfully",
-    "回覆已送出": "Response submitted successfully",
-    "檔案不存在": "File not found",
-}
-
-
-def _requested_language():
-    return "en" if request.headers.get("Accept-Language", "").lower().startswith("en") else "zh-TW"
-
-
-def _localize_system_messages(value):
-    if isinstance(value, dict):
-        # Restrict translation to explicitly named response-copy fields so
-        # user-provided names, survey answers, chat text, and AI output stay exact.
-        return {
-            key: (SYSTEM_MESSAGES_EN.get(item, item) if key in {"message", "error", "detail", "warning"} and isinstance(item, str) else item)
-            for key, item in value.items()
-        }
-    return value
 
 
 @app.after_request
@@ -106,20 +55,8 @@ def add_cors_headers(response):
     if origin in ALLOWED_CORS_ORIGINS:
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Vary"] = "Origin"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Accept-Language"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-    return response
-
-
-@app.after_request
-def localize_api_response(response):
-    if _requested_language() != "en" or not response.is_json:
-        return response
-    payload = response.get_json(silent=True)
-    localized = _localize_system_messages(payload)
-    if localized != payload:
-        response.set_data(json.dumps(localized, ensure_ascii=False))
-        response.content_length = len(response.get_data())
     return response
 
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -182,6 +119,39 @@ def ensure_column(table_name, column_name, column_definition):
     if not exists:
         db.session.execute(
             text(f"ALTER TABLE `{table_name}` ADD COLUMN {column_definition}")
+        )
+
+
+def ensure_column_length(table_name, column_name, column_definition, min_length):
+    """
+    確保某個 VARCHAR 欄位的長度至少是 min_length，長度已經足夠就完全
+    不執行任何 DDL（用 information_schema 查目前的
+    CHARACTER_MAXIMUM_LENGTH，只在小於 min_length 時才下
+    ALTER TABLE ... MODIFY COLUMN）。
+
+    只會「放寬」長度，不會縮短、不會改變欄位型別以外的其他屬性
+    以外的東西（nullable / default 由呼叫端在 column_definition 裡
+    自己完整寫清楚，這裡不額外推斷），也不會動到既有資料列本身。
+
+    這個專案目前沒有用 Alembic / Flask-Migrate，schema 變更一律走
+    這種「app 啟動時檢查、需要才補」的 runtime migration 風格
+    （比照上面的 ensure_column()），這裡沿用同一套風格，不另外引入
+    新的 migration 機制。
+    """
+    current_length = db.session.execute(
+        text("""
+            SELECT CHARACTER_MAXIMUM_LENGTH
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = :table_name
+              AND COLUMN_NAME = :column_name
+        """),
+        {"table_name": table_name, "column_name": column_name},
+    ).scalar()
+
+    if current_length is not None and current_length < min_length:
+        db.session.execute(
+            text(f"ALTER TABLE `{table_name}` MODIFY COLUMN {column_definition}")
         )
 
 
@@ -249,6 +219,19 @@ def ensure_runtime_schema():
             ensure_column(
                 "Uploaded_Answer", "user_id",
                 "`user_id` INT NULL",
+            )
+            db.session.commit()
+
+            # 【修正｜status 欄位長度不足】services/classify_v2.py 會寫入
+            # "methodology_not_found"（22 字元），超過原本 VARCHAR(20)，
+            # 造成 INSERT 直接丟出 "Data too long for column 'status'"、
+            # 整筆分類結果都存不進去。這裡放寬成 VARCHAR(50)，只在資料庫
+            # 現有長度不足時才會真的執行 ALTER TABLE，不會每次啟動都下
+            # 不必要的 DDL，也不影響既有資料。
+            ensure_column_length(
+                "Response_Classification", "status",
+                "`status` VARCHAR(50) NOT NULL",
+                min_length=50,
             )
             db.session.commit()
 

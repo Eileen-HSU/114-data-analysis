@@ -140,7 +140,14 @@ class Response_Classification(db.Model):
     final_reasoning = db.Column(db.Text)
 
     # ── 狀態與時間戳 ──────────────────────────────────────
-    status = db.Column(db.String(20), nullable=False, default=STATUS_PENDING)
+    # 【修正】原本是 String(20)，但 services/classify_v2.py 會寫入
+    # "methodology_not_found"（22 字元），超過 20 就會讓 INSERT 直接
+    # 撞到 MySQL 的 "Data too long for column 'status'" 炸掉整筆分類。
+    # 目前實際會寫入這個欄位的值只有 "pending" / "completed" /
+    # "methodology_not_found" / "failed"（見 classify_v2.py），
+    # 50 字元留了足夠餘裕，之後合理範圍內新增狀態值也不會再重演
+    # 同樣的問題。這裡只放寬長度、不縮短、不改變任何既有資料。
+    status = db.Column(db.String(50), nullable=False, default=STATUS_PENDING)
     review_status = db.Column(
         db.String(20), nullable=False, default=REVIEW_STATUS_PENDING
     )
