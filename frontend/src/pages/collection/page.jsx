@@ -80,7 +80,7 @@ export default function CollectionPage() {
   const [isCreatingAnalysis, setIsCreatingAnalysis] = useState(false);
 
   useEffect(() => {
-    if (location.state?.exportCreated) setExportNotice(`「${location.state.exportCreated} is ready. Click the file to download.`);
+    if (location.state?.exportCreated) setExportNotice(`「${location.state.exportCreated}」已生成完成，可點擊檔案下載。`);
     if (location.state?.activeView) {
       setActiveView(location.state.activeView);
       window.history.replaceState({}, "");
@@ -102,7 +102,7 @@ export default function CollectionPage() {
         if (!cancelled) setExportsList(Array.isArray(data) ? data : []);
       })
       .catch((err) => {
-        if (!cancelled) setExportsError(err?.message || "Loading failed");
+        if (!cancelled) setExportsError(err?.message || "載入失敗");
       })
       .finally(() => {
         if (!cancelled) setExportsLoading(false);
@@ -111,13 +111,13 @@ export default function CollectionPage() {
   }, [isLoggedIn, user?.token]);
 
   const handleOpenExportChat = async (item) => {
-    if (!item.project_id) throw new Error("The source conversation for this file was not found.");
+    if (!item.project_id) throw new Error("找不到這個檔案的來源對話。");
     const response = await fetch(apiUrl(`/api/workspace/${item.project_id}`), { headers: getAuthHeader() });
     if (!response.ok) throw new Error(response.status === 404
-      ? "The source conversation was deleted or is unavailable." : "Unable to open the source conversation. Please try again later.");
+      ? "來源對話已刪除或無法存取。" : "無法開啟來源對話，請稍後再試。");
     const workspace = await response.json();
     if (!workspace.project_id || String(workspace.project_id) !== String(item.project_id)) {
-      throw new Error("Unable to find the source conversation. Refresh and try again.");
+      throw new Error("無法確認來源對話，請重新整理後再試。");
     }
     const existing = workspaceSessions.find((session) => String(session.project_id ?? session.id) === String(workspace.project_id));
     const sessionId = existing?.id || String(workspace.project_id);
@@ -142,10 +142,10 @@ export default function CollectionPage() {
       body: JSON.stringify({ filename }),
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || "Rename failed. Please try again later.");
-    if (!data.export_name) throw new Error("The server did not return a file name. Please refresh to check.");
+    if (!response.ok) throw new Error(data.error || "重新命名失敗，請稍後再試。");
+    if (!data.export_name) throw new Error("伺服器未回傳檔案名稱，請重新整理確認。");
     setExportsList((items) => items.map((entry) => entry.export_id === item.export_id ? { ...entry, ...data } : entry));
-    setExportNotice(`Renamed the file to: ${data.export_name}」。`);
+    setExportNotice(`已將檔案重新命名為「${data.export_name}」。`);
   };
 
   const handleDownloadExport = async (exportItem) => {
@@ -156,21 +156,21 @@ export default function CollectionPage() {
       if (!res.ok) {
         // 【修正】之前失敗只印在 console 裡，使用者完全看不到、
         // 感覺就像「點了沒反應」。這裡照這個頁面既有的 alert() 慣例補上。
-        alert(`Download failed (HTTP  ${res.status}). Please try again later.`);
+        alert(`下載失敗（HTTP ${res.status}），請稍後再試。`);
         return;
       }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = exportItem.export_name || "export.csv";
+      a.download = exportItem.export_name || "匯出檔案.csv";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (err) {
-      console.error("Failed to download exported file: ", err);
-      alert("Download failed. Please try again later.");
+      console.error("下載匯出檔案失敗：", err);
+      alert("下載失敗，請稍後再試。");
     }
   };
 
@@ -180,7 +180,7 @@ export default function CollectionPage() {
         <Navbar />
         <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f9f7f7" }}>
           <LoginRequiredModal
-            message="Please log in to view Project Management."
+            message="請先登入後再查看專案管理。"
             onLogin={() => navigate("/login")}
             onCancel={() => navigate("/")}
           />
@@ -286,7 +286,7 @@ export default function CollectionPage() {
                   body: JSON.stringify({ folder_name: null }),
                 });
               } catch (err) {
-                console.error(`Update file  ${file.name}  database update failed:`, err);
+                console.error(`更新檔案 ${file.name} 資料庫失敗:`, err);
               }
             }
           }
@@ -348,7 +348,7 @@ export default function CollectionPage() {
     if (!newFolderName.trim()) return;
     setFolders((prev) => [...prev, { id: `folder-${Date.now()}`, name: newFolderName.trim(), fileIds: [] }]);
     recordActivity({
-      text: `Created folder: ${newFolderName.trim()}`,
+      text: `建立資料夾「${newFolderName.trim()}」`,
       icon: "ri-folder-add-line",
       iconBg: "bg-stat-sky",
       iconColor: "text-stat-sky",
@@ -371,7 +371,7 @@ export default function CollectionPage() {
     if (renameFolderValue.trim()) {
       setFolders((prev) => prev.map((folder) => (folder.id === folderId ? { ...folder, name: renameFolderValue.trim() } : folder)));
       recordActivity({
-        text: `Renamed folder to: ${renameFolderValue.trim()}`,
+        text: `重新命名資料夾為「${renameFolderValue.trim()}」`,
         icon: "ri-edit-line",
         iconBg: "bg-violet-50",
         iconColor: "text-violet",
@@ -384,7 +384,7 @@ export default function CollectionPage() {
     if (renameFileValue.trim()) {
       setFiles((prev) => prev.map((file) => (file.id === fileId ? { ...file, name: renameFileValue.trim() } : file)));
       recordActivity({
-        text: `Renamed file to: ${renameFileValue.trim()}`,
+        text: `重新命名檔案為「${renameFileValue.trim()}」`,
         icon: "ri-edit-line",
         iconBg: "bg-violet-50",
         iconColor: "text-violet",
@@ -405,7 +405,7 @@ export default function CollectionPage() {
         )
       );
       recordActivity({
-        text: `Renamed file to: ${newName}`,
+        text: `重新命名檔案為「${newName}」`,
         icon: "ri-edit-line",
         iconBg: "bg-violet-50",
         iconColor: "text-violet",
@@ -425,7 +425,7 @@ export default function CollectionPage() {
             body: JSON.stringify({ project_name: newName }),
           });
         } catch (err) {
-          console.error("Failed to rename chat", err);
+          console.error("重新命名 Chat 失敗", err);
         }
       }
     }
@@ -530,7 +530,7 @@ export default function CollectionPage() {
       }
 
       recordActivity({
-        text: `Rename${renameTarget.type === "folder" ? "Folder" : "File"} to: ${newName}」`,
+        text: `重新命名${renameTarget.type === "folder" ? "資料夾" : "檔案"}為「${newName}」`,
         icon: "ri-edit-line",
         iconBg: "bg-violet-50",
         iconColor: "text-violet",
@@ -538,8 +538,8 @@ export default function CollectionPage() {
       setRenameTarget(null);
       setRenameFileValue("");
     } catch (err) {
-      console.error("Rename failed", err);
-      alert("Rename failed. Please try again later.");
+      console.error("重新命名失敗", err);
+      alert("重新命名失敗，請稍後再試。");
     } finally {
       setIsSavingRename(false);
     }
@@ -614,7 +614,7 @@ export default function CollectionPage() {
               body: JSON.stringify({ folder_name: targetFolderName }),
             });
           } catch (err) {
-            console.error("Drag-and-drop database update failed:", err);
+            console.error("拖曳更新資料庫失敗:", err);
           }
         }
       }
@@ -642,7 +642,7 @@ export default function CollectionPage() {
             body: JSON.stringify({ folder_name: targetFolderName }),
           });
         } catch (err) {
-          console.error("Session drag-and-drop database update failed:", err);
+          console.error("Session 拖曳更新資料庫失敗:", err);
         }
       }
     }
@@ -657,7 +657,7 @@ export default function CollectionPage() {
     try {
       const authUser = JSON.parse(localStorage.getItem("dataanalysis_auth"));
       const token = authUser?.token;
-      const title = "New analysis";
+      const title = "新增分析";
       const res = await fetch(apiUrl("/api/workspace"), {
         method: "POST",
         headers: {
@@ -667,10 +667,10 @@ export default function CollectionPage() {
         body: JSON.stringify({ project_name: title }),
       });
 
-      if (!res.ok) throw new Error(`Failed to create analysis: ${res.status}`);
+      if (!res.ok) throw new Error(`新增分析失敗：${res.status}`);
 
       const data = await res.json();
-      if (!data?.project_id) throw new Error("Failed to create analysis: no chat ID returned");
+      if (!data?.project_id) throw new Error("新增分析失敗：未取得 Chat ID");
 
       const sessionId = String(data.project_id);
       const newSession = {
@@ -692,8 +692,8 @@ export default function CollectionPage() {
       localStorage.setItem(ACTIVE_WORKSPACE_KEY, sessionId);
       navigate("/workspace", { state: { openSession: { sessionId } } });
     } catch (err) {
-      console.error("Failed to create analysis", err);
-      alert(err.message || "Failed to create analysis. Please try again later.");
+      console.error("新增分析失敗", err);
+      alert(err.message || "新增分析失敗，請稍後再試");
     } finally {
       setIsCreatingAnalysis(false);
     }
@@ -709,8 +709,8 @@ export default function CollectionPage() {
             <div className="d-flex align-items-center justify-content-between flex-wrap gap-3">
               <div>
                 <p className="collection-banner-label">Project Management</p>
-                <h1 className="collection-banner-title">Project management</h1>
-                <p className="collection-banner-stats">{stats.folders} folders ·  {stats.chats} chats</p>
+                <h1 className="collection-banner-title">專案管理</h1>
+                <p className="collection-banner-stats">{stats.folders} 個資料夾 · {stats.chats} 個 Chat</p>
               </div>
               <div className="d-flex gap-2 align-items-center">
                 <button
@@ -719,15 +719,15 @@ export default function CollectionPage() {
                   disabled={isCreatingAnalysis}
                 >
                   <i className={`${isCreatingAnalysis ? "ri-loader-4-line" : "ri-add-line"} me-1`}></i>
-                  {isCreatingAnalysis ? "Creating..." : "New analysis"}
+                  {isCreatingAnalysis ? "建立中..." : "新增分析"}
                 </button>
               </div>
             </div>
             <div className="row g-3 mt-4">
               {[
-                { key: "folders", icon: "ri-chat-3-line", cls: "stat-folder", val: stats.chats, label: "Project history", unit: "chats" },
-                { key: "exports", icon: "ri-download-cloud-2-line", cls: "stat-export", val: exportsLoading ? "…" : exportsError ? "—" : stats.exports, label: "Exported files", unit: "files" },
-                { key: "deleted", icon: "ri-delete-bin-line", cls: "stat-deleted", val: stats.deleted, label: "Recently deleted", unit: "items" },
+                { key: "folders", icon: "ri-chat-3-line", cls: "stat-folder", val: stats.chats, label: "歷史專案", unit: "個 Chat" },
+                { key: "exports", icon: "ri-download-cloud-2-line", cls: "stat-export", val: exportsLoading ? "…" : exportsError ? "—" : stats.exports, label: "匯出檔案", unit: "個檔案" },
+                { key: "deleted", icon: "ri-delete-bin-line", cls: "stat-deleted", val: stats.deleted, label: "最近刪除", unit: "個項目" },
               ].map((item) => (
                 <div className="col-12 col-md-4" key={item.label}>
                   <button
@@ -738,7 +738,7 @@ export default function CollectionPage() {
                     <div className={`stat-icon ${item.cls}`}><i className={item.icon}></i></div>
                     <div className="stat-value">{item.val}</div>
                     <div className="stat-label">{item.label}</div>
-                    <div className="stat-hint">{item.key === "exports" && exportsLoading ? "Loading file count..." : item.key === "exports" && exportsError ? "Failed to load count. Please refresh." : `${item.val} ${item.unit}`}</div>
+                    <div className="stat-hint">{item.key === "exports" && exportsLoading ? "檔案數量載入中..." : item.key === "exports" && exportsError ? "數量載入失敗，請重新整理" : `${item.val} ${item.unit}`}</div>
                   </button>
                 </div>
               ))}
@@ -753,9 +753,9 @@ export default function CollectionPage() {
               <section className="mb-5">
                 <h2 className="section-heading">
                   <span className="section-icon folder-icon"><i className="ri-folder-2-line"></i></span>
-                  Folder
+                  資料夾
                   <button className="btn btn-add-folder ms-auto" onClick={() => setShowNewFolderModal(true)}>
-                    <i className="ri-folder-add-line me-1"></i>New folder
+                    <i className="ri-folder-add-line me-1"></i>新增資料夾
                   </button>
                 </h2>
                 <div className="row g-3">
@@ -774,7 +774,7 @@ export default function CollectionPage() {
                           onDragLeave={handleFolderDragLeave}
                           onDrop={(event) => handleDrop(folder.id, event)}
                         >
-                          {isDragOver && <div className="folder-drop-hint"><i className="ri-folder-received-line me-2"></i>Move to: {folder.name}」</div>}
+                          {isDragOver && <div className="folder-drop-hint"><i className="ri-folder-received-line me-2"></i>移到「{folder.name}」</div>}
                           <div
                             className="folder-header"
                             onClick={() => { if (!draggingId) toggleFolder(folder.id); }}
@@ -803,7 +803,7 @@ export default function CollectionPage() {
                                     {folder.name}
                                   </span>
                                 )}
-                                <span className="folder-count">{folderItemCount}  items</span>
+                                <span className="folder-count">{folderItemCount} 個</span>
                               </div>
                               <div className="folder-tags">
                                 {["csv", "xlsx", "json", "txt", "chat"].map((type) => {
@@ -819,11 +819,11 @@ export default function CollectionPage() {
                                   event.stopPropagation();
                                   openRenameModal({ type: "folder", id: folder.id, name: folder.name });
                                 }}
-                                title="Rename"
+                                title="重新命名"
                               >
                                 <i className="ri-edit-line"></i>
                               </button>
-                              <button className="action-btn" onClick={(event) => { event.stopPropagation(); setDeleteTarget({ type: "folder", id: folder.id, name: folder.name }); }} title="Delete">
+                              <button className="action-btn" onClick={(event) => { event.stopPropagation(); setDeleteTarget({ type: "folder", id: folder.id, name: folder.name }); }} title="刪除">
                                 <i className="ri-delete-bin-line"></i>
                               </button>
                               <i className="ri-arrow-down-s-line folder-arrow" style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0deg)" }}></i>
@@ -837,7 +837,7 @@ export default function CollectionPage() {
                               onDrop={(event) => handleDrop(folder.id, event)}
                             >
                               {folderItemCount === 0 ? (
-                                <div className="empty-folder"><i className="ri-drag-move-line"></i><p>Drag files here</p></div>
+                                <div className="empty-folder"><i className="ri-drag-move-line"></i><p>拖曳檔案到這裡</p></div>
                               ) : (
                                 <div
                                   className="folder-files"
@@ -900,9 +900,9 @@ export default function CollectionPage() {
               <section className="mb-5">
                 <h2 className="section-heading">
                   <span className="section-icon loose-icon"><i className="ri-file-list-3-line"></i></span>
-                  Unfiled items
+                  未分類檔案
                   {(looseFiles.length + looseSessions.length) > 0 && (
-                    <span className="loose-count">{looseFiles.length + looseSessions.length}  items</span>
+                    <span className="loose-count">{looseFiles.length + looseSessions.length} 個</span>
                   )}
                 </h2>
                 <div
@@ -912,10 +912,10 @@ export default function CollectionPage() {
                   onDrop={(event) => handleDrop(null, event)}
                 >
                   {dragOverTarget === "loose" && (
-                    <div className="loose-drop-hint"><i className="ri-file-transfer-line me-2"></i>Move to Unfiled</div>
+                    <div className="loose-drop-hint"><i className="ri-file-transfer-line me-2"></i>移到未分類</div>
                   )}
                   {looseFiles.length === 0 && looseSessions.length === 0 ? (
-                    <div className="empty-loose"><i className="ri-file-list-3-line"></i><p>No unfiled files.</p></div>
+                    <div className="empty-loose"><i className="ri-file-list-3-line"></i><p>目前沒有未分類檔案。</p></div>
                   ) : (
                     <div className="row g-3">
                       {looseFiles.map((file) => (
@@ -970,41 +970,41 @@ export default function CollectionPage() {
               <div className="exports-toolbar">
               <h2 className="section-heading">
                 <span className="section-icon export-icon"><i className="ri-download-cloud-2-line"></i></span>
-                Exported files
-                <span className="loose-count" role="status">{exportSearchTerm ? `${filteredExports.length} / ${stats.exports}  items` : `${stats.exports}  items`}</span>
+                匯出檔案
+                <span className="loose-count" role="status">{exportSearchTerm ? `${filteredExports.length} / ${stats.exports} 個` : `${stats.exports} 個`}</span>
               </h2>
-              <div className="export-search" role="search" aria-label="Search exported files">
+              <div className="export-search" role="search" aria-label="搜尋匯出檔案">
                 <i className="ri-search-line" aria-hidden="true" />
                 <input
                   type="search"
-                  aria-label="Search exported file names"
-                  placeholder="Search exported file names…"
+                  aria-label="搜尋匯出檔案名稱"
+                  placeholder="搜尋匯出檔案名稱..."
                   value={exportSearch}
                   onChange={(event) => setExportSearch(event.target.value)}
                 />
-                {exportSearch && <button type="button" onClick={() => setExportSearch("")} aria-label="Clear search" title="Clear search"><i className="ri-close-line" aria-hidden="true" /></button>}
+                {exportSearch && <button type="button" onClick={() => setExportSearch("")} aria-label="清除搜尋" title="清除搜尋"><i className="ri-close-line" aria-hidden="true" /></button>}
               </div>
               </div>
               {exportNotice && <p className="export-notice" role="status">{exportNotice}</p>}
               {exportsLoading ? (
                 <div className="empty-loose">
                   <i className="ri-loader-4-line"></i>
-                  <p>Loading...</p>
+                  <p>載入中…</p>
                 </div>
               ) : exportsError ? (
                 <div className="empty-loose">
                   <i className="ri-error-warning-line"></i>
-                  <p>Loading failed: {exportsError}</p>
+                  <p>載入失敗：{exportsError}</p>
                 </div>
               ) : exportsList.length === 0 ? (
                 <div className="empty-loose">
                   <i className="ri-download-cloud-2-line"></i>
-                  <p>No exported files yet.</p>
+                  <p>目前沒有匯出檔案。</p>
                 </div>
               ) : filteredExports.length === 0 ? (
                 <div className="empty-loose" role="status">
                   <i className="ri-search-line" aria-hidden="true" />
-                  <p>No files match {exportSearch.trim()}. Try another keyword.</p>
+                  <p>找不到符合「{exportSearch.trim()}」的檔案，請試試其他關鍵字。</p>
                 </div>
               ) : (
                 <div className="exports-list">
@@ -1020,13 +1020,13 @@ export default function CollectionPage() {
             <section>
               <h2 className="section-heading">
                 <span className="section-icon deleted-icon"><i className="ri-delete-bin-line"></i></span>
-                Recently deleted
-                <span className="loose-count">{deletedItems.length}  items</span>
+                最近刪除
+                <span className="loose-count">{deletedItems.length} 個</span>
               </h2>
               {deletedItems.length === 0 ? (
                 <div className="empty-loose">
                   <i className="ri-delete-bin-line"></i>
-                  <p>There are no recently deleted items.</p>
+                  <p>目前沒有最近刪除的項目。</p>
                 </div>
               ) : (
                 <div className="deleted-list">
@@ -1043,17 +1043,17 @@ export default function CollectionPage() {
                       <div className="deleted-info">
                         <div className="deleted-name">{item.name}</div>
                         <div className="deleted-meta">
-                          {item.type === "folder" ? "Folder" : "Chat"} · Deleted on  {item.deletedAt || "-"}
+                          {item.type === "folder" ? "資料夾" : "Chat"} · 刪除時間 {item.deletedAt || "-"}
                         </div>
                       </div>
                       <div className="deleted-actions">
                         <button className="btn-deleted-restore" onClick={() => handleRestoreItem(item)} disabled={isPermanentlyDeleting || isRestoring}>
                           <i className={isRestoring ? "ri-loader-4-line ri-spin" : "ri-arrow-go-back-line"}></i>
-                          {isRestoring ? "Restoring" : "Restore"}
+                          {isRestoring ? "還原中" : "還原"}
                         </button>
                         <button className="btn-deleted-remove" onClick={() => handlePermanentDelete(item)} disabled={isPermanentlyDeleting || isRestoring}>
                           <i className={isPermanentlyDeleting ? "ri-loader-4-line ri-spin" : "ri-delete-bin-2-line"}></i>
-                          {isPermanentlyDeleting ? "Deleting" : "Delete permanently"}
+                          {isPermanentlyDeleting ? "刪除中" : "永久刪除"}
                         </button>
                       </div>
                           </>
@@ -1073,13 +1073,13 @@ export default function CollectionPage() {
           <div className="modal-box" onClick={(event) => event.stopPropagation()}>
             <div className="d-flex align-items-center gap-3 mb-4">
               <div className="modal-folder-icon"><i className="ri-folder-add-line"></i></div>
-              <h5 className="fw-bold m-0">New folder</h5>
+              <h5 className="fw-bold m-0">新增資料夾</h5>
             </div>
-            <label className="auth-label">Folder name</label>
+            <label className="auth-label">資料夾名稱</label>
             <input className="form-control" value={newFolderName} onChange={(event) => setNewFolderName(event.target.value)} onKeyDown={(event) => event.key === "Enter" && createFolder()} autoFocus />
             <div className="d-flex gap-2 mt-4">
-              <button className="btn btn-add-folder flex-fill" onClick={createFolder}>Create</button>
-              <button className="btn btn-outline-secondary flex-fill" onClick={() => setShowNewFolderModal(false)}>Cancel</button>
+              <button className="btn btn-add-folder flex-fill" onClick={createFolder}>建立</button>
+              <button className="btn btn-outline-secondary flex-fill" onClick={() => setShowNewFolderModal(false)}>取消</button>
             </div>
           </div>
         </div>
@@ -1090,9 +1090,9 @@ export default function CollectionPage() {
           <div className="modal-box" onClick={(event) => event.stopPropagation()}>
             <div className="d-flex align-items-center gap-3 mb-4">
               <div className="modal-folder-icon"><i className="ri-edit-line"></i></div>
-              <h5 className="fw-bold m-0">Rename</h5>
+              <h5 className="fw-bold m-0">重新命名</h5>
             </div>
-            <label className="auth-label">Name</label>
+            <label className="auth-label">名稱</label>
             <input
               className="form-control"
               value={renameFileValue}
@@ -1108,13 +1108,13 @@ export default function CollectionPage() {
                 {isSavingRename ? (
                   <>
                     <i className="ri-loader-4-line ri-spin me-2"></i>
-                    Saving
+                    儲存中
                   </>
                 ) : (
-                  "Save"
+                  "儲存"
                 )}
               </button>
-              <button className="btn btn-outline-secondary flex-fill" onClick={closeRenameModal} disabled={isSavingRename}>Cancel</button>
+              <button className="btn btn-outline-secondary flex-fill" onClick={closeRenameModal} disabled={isSavingRename}>取消</button>
             </div>
           </div>
         </div>
@@ -1127,23 +1127,23 @@ export default function CollectionPage() {
               <i className={isDeleting ? "ri-loader-4-line ri-spin" : "ri-delete-bin-line"}></i>
             </div>
             <h5 className="fw-bold mb-2">
-              {isDeleting ? "Deleting..." : `Delete${deleteTarget.type === "folder" ? "Folder" : "Chat"}`}
+              {isDeleting ? "正在刪除..." : `刪除${deleteTarget.type === "folder" ? "資料夾" : "Chat"}`}
             </h5>
             <p className="text-muted mb-4">
-              {isDeleting ? "Moving to trash. Please wait." : `「${deleteTarget.name} will be moved to trash and can be restored later.`}
+              {isDeleting ? "正在移到垃圾桶，請稍候。" : `「${deleteTarget.name}」會移到垃圾桶，可稍後還原。`}
             </p>
             <div className="d-flex gap-2">
               <button className="btn btn-danger flex-fill" onClick={confirmDelete} disabled={isDeleting}>
                 {isDeleting ? (
                   <>
                     <i className="ri-loader-4-line ri-spin me-2"></i>
-                    Deleting
+                    刪除中
                   </>
                 ) : (
-                  "Delete"
+                  "確認刪除"
                 )}
               </button>
-              <button className="btn btn-outline-secondary flex-fill" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>Cancel</button>
+              <button className="btn btn-outline-secondary flex-fill" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>取消</button>
             </div>
           </div>
         </div>
@@ -1205,16 +1205,16 @@ function FileRow({ file, compact = false, renamingId, renameValue, menuOpen, onM
         </div>
       </div>
       <div className="file-actions">
-        <button className="action-btn-sm" onClick={(event) => { event.stopPropagation(); onMenuToggle(); }} title="More">
+        <button className="action-btn-sm" onClick={(event) => { event.stopPropagation(); onMenuToggle(); }} title="更多">
           <i className="ri-more-2-fill"></i>
         </button>
         {menuOpen && (
           <div className="file-menu" onClick={(event) => event.stopPropagation()}>
             <button className="file-menu-item" onClick={() => { onMenuClose(); onRenameStart(); }}>
-              <i className="ri-edit-line"></i>Rename
+              <i className="ri-edit-line"></i>重新命名
             </button>
             <button className="file-menu-item danger" onClick={() => { onMenuClose(); onDelete(); }}>
-              <i className="ri-delete-bin-line"></i>Delete
+              <i className="ri-delete-bin-line"></i>刪除
             </button>
           </div>
         )}

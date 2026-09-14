@@ -35,17 +35,17 @@ export default function ChangePasswordPage() {
     emailRef.current?.classList.remove("is-invalid");
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e) => { 
     e.preventDefault();
     const val = emailRef.current?.value.trim() ?? "";
-    if (!val) { showError("Please enter your email address"); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) { showError("Please enter a valid email address"); return; }
+    if (!val) { showError("請輸入電子郵件地址"); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) { showError("請輸入有效的電子郵件格式"); return; }
     clearError();
 
     const btn = submitBtnRef.current;
     if (btn) {
       btn.disabled = true;
-      btn.innerHTML = `<i class="ri-loader-4-line" style="animation:spin 1s linear infinite"></i> Sending...`;
+      btn.innerHTML = `<i class="ri-loader-4-line" style="animation:spin 1s linear infinite"></i> 發送中...`;
     }
 
     try {
@@ -60,11 +60,11 @@ export default function ChangePasswordPage() {
         navigate(`/reset-password?email=${encodeURIComponent(val)}&from=change`);
       }
     } catch (error) {
-      const errorMsg = error.response?.data?.error || "Unable to send. Please try again.";
+      const errorMsg = error.response?.data?.error || "發送失敗，請稍後再試";
       showError(errorMsg);
       if (btn) {
         btn.disabled = false;
-        btn.innerHTML = "Send password-change link";
+        btn.innerHTML = "發送修改連結";
       }
     }
   };
@@ -83,17 +83,17 @@ export default function ChangePasswordPage() {
                 className="auth-logo-img"
               />
             </div>
-            <h2 className="auth-visual-title">Change your password</h2>
+            <h2 className="auth-visual-title">修改您的密碼</h2>
             <p className="auth-visual-desc">
-              <span>Protect your account</span>
-              <span>A verification link will be sent by email</span>
-              <span>Set a new password after verification</span>
+              <span>保護您的帳號安全</span>
+              <span>驗證連結會寄到信箱</span>
+              <span>確認身份後即可設定新密碼</span>
             </p>
             <div className="auth-features">
               {[
-                { icon: "ri-mail-send-line", text: "Verification link sent by email" },
-                { icon: "ri-time-line", text: "Link valid for 10 minutes" },
-                { icon: "ri-shield-check-line", text: "Return to your profile when finished" },
+                { icon: "ri-mail-send-line", text: "驗證連結寄送至信箱" },
+                { icon: "ri-time-line", text: "連結 10 分鐘內有效" },
+                { icon: "ri-shield-check-line", text: "完成後回到個人資料" },
               ].map((f, i) => (
                 <div className="auth-feature-item" key={i}>
                   <div className="auth-feature-icon">
@@ -112,7 +112,7 @@ export default function ChangePasswordPage() {
             <div className="back-home-icon">
               <i className="ri-arrow-left-line"></i>
             </div>
-            <span>Back to profile</span>
+            <span>返回個人資料</span>
           </button>
 
           <div className="auth-form-wrapper">
@@ -128,14 +128,14 @@ export default function ChangePasswordPage() {
                 <div className="forgot-icon-wrap">
                   <i className="ri-lock-password-line"></i>
                 </div>
-                <h1 className="auth-title">Change password</h1>
+                <h1 className="auth-title">修改密碼</h1>
                 <p className="auth-subtitle" style={{ marginBottom: 28 }}>
-                  Enter your account email and we will send a password-change link.
+                  輸入您的帳號電子郵件，我們將發送密碼修改連結。
                 </p>
 
                 <form onSubmit={handleSubmit} noValidate autoComplete="off">
                   <div className="mb-4">
-                    <label className="auth-label">Email</label>
+                    <label className="auth-label">電子郵件</label>
                     <div className="position-relative">
                       <i className="ri-mail-line form-icon"></i>
                       <input
@@ -153,11 +153,11 @@ export default function ChangePasswordPage() {
 
                   <div className="auth-warning-note">
                     <i className="ri-information-line"></i>
-                    <p>The email may be in your spam folder</p>
+                    <p>寄出的郵件可能存在垃圾郵件中</p>
                   </div>
 
                   <button ref={submitBtnRef} type="submit" className="btn btn-auth-submit w-100 mb-3">
-                    Send password-change link
+                    發送修改連結
                   </button>
 
                   <button
@@ -170,7 +170,7 @@ export default function ChangePasswordPage() {
                     }}
                     onClick={() => navigate("/profile")}
                   >
-                    Cancel
+                    取消
                   </button>
                 </form>
               </>
@@ -181,19 +181,19 @@ export default function ChangePasswordPage() {
                 <div className="forgot-success-icon">
                   <i className="ri-mail-check-line"></i>
                 </div>
-                <h1 className="auth-title" style={{ textAlign: "center" }}>Email sent!</h1>
+                <h1 className="auth-title" style={{ textAlign: "center" }}>郵件已發送！</h1>
                 <p style={{ color: "var(--slate-500)", fontSize: 15, marginBottom: 8 }}>
-                  We sent the password-change link to
+                  我們已將密碼修改連結發送至
                 </p>
                 <p style={{ fontWeight: 700, color: "var(--slate-800)", fontSize: 16, marginBottom: 28 }}>
                   {sentEmail}
                 </p>
                 <p style={{ color: "var(--slate-400)", fontSize: 13, marginBottom: 32 }}>
-                  Check your inbox. Follow the link to set a new password and enter your workspace.
+                  請檢查您的收件匣。點擊連結後即可設定新密碼並直接進入工作區。
                 </p>
 
                 <button className="btn btn-auth-submit w-100 mb-3" onClick={() => navigate("/profile")}>
-                  Back to profile
+                  返回個人資料
                 </button>
 
                 <button
@@ -206,11 +206,11 @@ export default function ChangePasswordPage() {
                     setStep("send");
                     if (submitBtnRef.current) {
                       submitBtnRef.current.disabled = false;
-                      submitBtnRef.current.innerHTML = "Send password-change link";
+                      submitBtnRef.current.innerHTML = "發送修改連結";
                     }
                   }}
                 >
-                  Resend
+                  重新發送
                 </button>
               </div>
             )}

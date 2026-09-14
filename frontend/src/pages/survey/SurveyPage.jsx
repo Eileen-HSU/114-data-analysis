@@ -131,7 +131,7 @@ export default function SurveyPage() {
 
   const handleGenerateDraft = async () => {
     if (!pptFile) {
-      setPptError("Please upload a PPT or PDF file first.");
+      setPptError("請先上傳 PPT 或 PDF 檔案。");
       return;
     }
 
@@ -150,12 +150,12 @@ export default function SurveyPage() {
       setChatMessages([
         {
           role: "assistant",
-          text: "A survey draft has been created from your material. Edit the questions directly or use the chat on the right.",
+          text: "已依教材內容建立問卷草稿，可直接編輯題目或用右側對話協助修改。",
         },
       ]);
     } catch (error) {
       console.error("Generate PPT survey failed:", error);
-      const message = error?.message || "Failed to generate a draft. Please try again later.";
+      const message = error?.message || "生成草稿失敗，請稍後再試。";
       setPptError(message);
       window.alert(message);
     } finally {
@@ -209,13 +209,13 @@ export default function SurveyPage() {
       setPptDraft(normalizeDraft(revisedDraft));
       setChatMessages((prev) => [
         ...prev,
-        { role: "assistant", text: "The draft has been updated. Review the preview on the left." },
+        { role: "assistant", text: "已依指令更新問卷草稿，請確認左側預覽內容。" },
       ]);
     } catch (error) {
       console.error("Revise PPT survey failed:", error);
       setChatMessages((prev) => [
         ...prev,
-        { role: "assistant", text: error?.message || "The edit failed. Try rephrasing your instructions." },
+        { role: "assistant", text: error?.message || "這次修改沒有成功，請換個說法再試一次。" },
       ]);
     } finally {
       setIsChatting(false);
@@ -223,17 +223,17 @@ export default function SurveyPage() {
   };
 
   const validateDraft = () => {
-    if (!pptDraft?.title?.trim()) return "Please enter a survey title.";
-    if (!pptDraft.questions?.length) return "Please keep at least one question.";
+    if (!pptDraft?.title?.trim()) return "請輸入問卷標題。";
+    if (!pptDraft.questions?.length) return "請至少保留一題。";
     if (pptDraft.questions.some((question) => !question.title.trim())) {
-      return "Please enter text for every question.";
+      return "請確認每一題都有題目文字。";
     }
     return "";
   };
 
   const handleSaveDraft = async () => {
     if (!user?.token) {
-      setPptError("Please log in to save the survey.");
+      setPptError("請先登入後再儲存問卷。");
       return;
     }
 
@@ -282,7 +282,7 @@ export default function SurveyPage() {
       }
 
       recordActivity({
-        text: `Created AI-generated survey: ${payload.title}`,
+        text: `建立 AI 教材問卷「${payload.title}」`,
         icon: "ri-slideshow-3-line",
         iconBg: "bg-stat-coral",
         iconColor: "text-stat-coral",
@@ -310,7 +310,7 @@ export default function SurveyPage() {
         });
     } catch (error) {
       console.error("Save PPT survey failed:", error);
-      setPptError(error?.response?.data?.error || "Save failed. Please try again later.");
+      setPptError(error?.response?.data?.error || "儲存失敗，請稍後再試。");
     } finally {
       setIsSavingDraft(false);
     }
@@ -324,11 +324,11 @@ export default function SurveyPage() {
           <div className="survey-intro">
             <div className="survey-hero-badge">
               <i className="ri-survey-line"></i>
-              <span>Surveys</span>
+              <span>問卷調查</span>
             </div>
-            <h1 className="survey-hero-title">Create surveys and collect feedback</h1>
+            <h1 className="survey-hero-title">建立問卷與蒐集回饋</h1>
             <p className="survey-hero-subtitle">
-              Create rating and open-ended questions, share an invite code, and organize responses with the Analysis Assistant.
+              建立評分題與問答題，分享邀請碼給填答者，回收後可交由分析助理整理。
             </p>
           </div>
 
@@ -338,20 +338,20 @@ export default function SurveyPage() {
                 <div className="entry-card-icon create-icon">
                   <i className="ri-edit-box-line"></i>
                 </div>
-                <span className="entry-card-kicker">Create manually</span>
+                <span className="entry-card-kicker">手動建立</span>
               </div>
               <div className="entry-card-copy">
-                <h2 className="entry-card-title">Create survey</h2>
+                <h2 className="entry-card-title">建立問卷</h2>
                 <p className="entry-card-desc">
-                  Customize questions and response rules, then generate an invite code and survey link to start collecting responses.
+                  自訂題目、設定填答規則，產生邀請碼與專屬連結後即可開始收集回覆。
                 </p>
               </div>
               <div className="entry-card-footer">
                 <span className="entry-card-action">
-                  Create survey
+                  前往建立
                   <i className="ri-arrow-right-line"></i>
                 </span>
-                <span className="entry-card-note">Ratings · Open-ended questions · Invite codes</span>
+                <span className="entry-card-note">評分題 · 問答題 · 邀請碼</span>
               </div>
             </a>
 
@@ -365,10 +365,10 @@ export default function SurveyPage() {
                   <i className="ri-slideshow-3-line"></i>
                 </div>
                 <div className="entry-card-copy">
-                  <span className="entry-card-kicker">AI generation</span>
-                  <h2 className="entry-card-title">Generate a survey from PPT/PDF</h2>
+                  <span className="entry-card-kicker">AI 生成</span>
+                  <h2 className="entry-card-title">上傳 PPT/PDF 生成問卷</h2>
                   <p className="entry-card-desc">
-                    Generate a draft from presentation or PDF highlights, review and edit it, then save your survey.
+                    依簡報或 PDF 重點產生相容草稿，講師可先編修，再儲存成正式問卷。
                   </p>
                 </div>
                 <span className="entry-card-arrow"><i className="ri-sparkling-line"></i></span>
@@ -379,9 +379,9 @@ export default function SurveyPage() {
                   <i className="ri-file-list-3-line"></i>
                 </div>
                 <div className="entry-card-copy">
-                  <span className="entry-card-kicker">Respond to a survey</span>
-                  <h2 className="entry-card-title">Complete survey</h2>
-                  <p className="entry-card-desc">Enter an invite code to open a survey and submit feedback.</p>
+                  <span className="entry-card-kicker">填答入口</span>
+                  <h2 className="entry-card-title">填寫問卷</h2>
+                  <p className="entry-card-desc">輸入邀請碼即可開啟問卷並提交回饋內容。</p>
                 </div>
                 <span className="entry-card-arrow"><i className="ri-arrow-right-line"></i></span>
               </a>
@@ -389,21 +389,21 @@ export default function SurveyPage() {
               <section className="survey-activity-card">
                 <div className="survey-activity-head">
                   <div>
-                    <span className="entry-card-kicker">Recently created</span>
-                    <h2>Survey history</h2>
-                    <p className="survey-activity-note">View recently created surveys and their response status.</p>
+                    <span className="entry-card-kicker">最近建立</span>
+                    <h2>問卷紀錄</h2>
+                    <p className="survey-activity-note">顯示近期建立的問卷與回覆狀態。</p>
                   </div>
                 </div>
 
                 {!user ? (
                   <div className="survey-activity-empty">
                     <i className="ri-lock-line"></i>
-                    <span>Log in to view recent survey activity.</span>
+                    <span>登入後可查看近期問卷紀錄。</span>
                   </div>
                 ) : isLoading ? (
                   <div className="survey-activity-empty">
                     <i className="ri-loader-4-line ri-spin"></i>
-                    <span>Loading surveys...</span>
+                    <span>載入問卷中...</span>
                   </div>
                 ) : recentSurveys.length > 0 ? (
                   <div className="survey-activity-list">
@@ -413,9 +413,9 @@ export default function SurveyPage() {
                         <a className="survey-activity-item" href={`/profile?survey=${encodeURIComponent(code)}`} key={code}>
                           <span className="survey-activity-dot"></span>
                           <div>
-                            <strong>{survey.title || survey.survey_name || "Untitled survey"}</strong>
+                            <strong>{survey.title || survey.survey_name || "未命名問卷"}</strong>
                             <span>
-                              {survey.responses?.length || survey.response_count || 0} responses ·  {code}
+                              {survey.responses?.length || survey.response_count || 0} 份回覆 · {code}
                             </span>
                           </div>
                         </a>
@@ -425,7 +425,7 @@ export default function SurveyPage() {
                 ) : (
                   <div className="survey-activity-empty">
                     <i className="ri-time-line"></i>
-                    <span>Recent activity will appear here after you create a survey.</span>
+                    <span>建立問卷後，這裡會顯示近期狀態。</span>
                   </div>
                 )}
               </section>
@@ -439,10 +439,10 @@ export default function SurveyPage() {
           <section className="ppt-modal" onClick={(event) => event.stopPropagation()}>
             <header className="ppt-modal-header">
               <div>
-                <span className="entry-card-kicker">AI survey draft from learning material</span>
-                <h2>Generate a survey from PPT/PDF</h2>
+                <span className="entry-card-kicker">教材 AI 問卷草稿</span>
+                <h2>上傳 PPT/PDF 生成問卷</h2>
               </div>
-              <button className="ppt-icon-btn" onClick={closePptModal} type="button" aria-label="Close">
+              <button className="ppt-icon-btn" onClick={closePptModal} type="button" aria-label="關閉">
                 <i className="ri-close-line"></i>
               </button>
             </header>
@@ -456,29 +456,29 @@ export default function SurveyPage() {
                     onChange={(event) => setPptFile(event.target.files?.[0] || null)}
                   />
                   <i className="ri-upload-cloud-2-line"></i>
-                  <strong>{pptFile ? pptFile.name : "Choose a PPT or PDF file"}</strong>
-                  <span>Supports .ppt, .pptx, and .pdf</span>
+                  <strong>{pptFile ? pptFile.name : "選擇 PPT 或 PDF 檔案"}</strong>
+                  <span>支援 .ppt、.pptx 與 .pdf</span>
                 </label>
 
                 <div className="ppt-field-grid">
                   <label className="ppt-field">
-                    <span>Question focus</span>
+                    <span>題目方向</span>
                     <input
                       value={pptConfig.direction}
                       onChange={(event) => updatePptConfig({ direction: event.target.value })}
-                      placeholder="e.g. Course satisfaction, learning outcomes"
+                      placeholder="例如：課後滿意度、學習成效"
                     />
                   </label>
                   <label className="ppt-field">
-                    <span>Generation priorities</span>
+                    <span>生成重點</span>
                     <textarea
                       value={pptConfig.focus}
                       onChange={(event) => updatePptConfig({ focus: event.target.value })}
-                      placeholder="e.g. Focus on course content, delivery, and practical applications"
+                      placeholder="例如：聚焦課程內容、講師表達、實務應用"
                     />
                   </label>
                   <label className="ppt-field">
-                    <span>Questions</span>
+                    <span>題目數量</span>
                     <input
                       type="number"
                       min="1"
@@ -490,14 +490,14 @@ export default function SurveyPage() {
                 </div>
 
                 <div className="ppt-type-limits">
-                  <span>Question types</span>
+                  <span>題型限制</span>
                   <label>
                     <input
                       type="checkbox"
                       checked={pptConfig.typeLimits.short}
                       onChange={(event) => updateTypeLimit("short", event.target.checked)}
                     />
-                    Open-ended question
+                    問答題
                   </label>
                   <label>
                     <input
@@ -505,13 +505,13 @@ export default function SurveyPage() {
                       checked={pptConfig.typeLimits.rating}
                       onChange={(event) => updateTypeLimit("rating", event.target.checked)}
                     />
-                    Rating question
+                    評分題
                   </label>
                 </div>
 
                 <button className="ppt-primary-btn" onClick={handleGenerateDraft} disabled={isGenerating} type="button">
                   <i className={isGenerating ? "ri-loader-4-line" : "ri-sparkling-line"}></i>
-                  {isGenerating ? "Generating..." : "Generate draft"}
+                  {isGenerating ? "生成中..." : "開始生成"}
                 </button>
 
                 {pptError && <p className="ppt-error">{pptError}</p>}
@@ -521,22 +521,22 @@ export default function SurveyPage() {
                 {isGenerating ? (
                   <div className="ppt-loading-state">
                     <i className="ri-loader-4-line"></i>
-                    <strong>AI is reviewing your material</strong>
-                    <span>Preparing your survey draft. Please wait.</span>
+                    <strong>AI 正在整理教材重點</strong>
+                    <span>正在連接正式 API，請稍候。</span>
                   </div>
                 ) : pptDraft ? (
                   <div className="ppt-draft-layout">
                     <div className="ppt-draft-editor">
                       <div className="ppt-draft-meta">
                         <label className="ppt-field">
-                          <span>Survey title</span>
+                          <span>問卷標題</span>
                           <input
                             value={pptDraft.title}
                             onChange={(event) => updateDraft({ title: event.target.value })}
                           />
                         </label>
                         <label className="ppt-field">
-                          <span>Survey description</span>
+                          <span>問卷說明</span>
                           <textarea
                             value={pptDraft.description}
                             onChange={(event) => updateDraft({ description: event.target.value })}
@@ -553,8 +553,8 @@ export default function SurveyPage() {
                                 value={question.type}
                                 onChange={(event) => updateDraftQuestion(question.id, { type: event.target.value })}
                               >
-                                <option value="short">Open-ended question</option>
-                                <option value="rating">Rating question</option>
+                                <option value="short">問答題</option>
+                                <option value="rating">評分題</option>
                               </select>
                               <label>
                                 <input
@@ -562,9 +562,9 @@ export default function SurveyPage() {
                                   checked={question.required}
                                   onChange={(event) => updateDraftQuestion(question.id, { required: event.target.checked })}
                                 />
-                                Required
+                                必填
                               </label>
-                              <button className="ppt-icon-btn" onClick={() => removeDraftQuestion(question.id)} type="button" aria-label="Delete question">
+                              <button className="ppt-icon-btn" onClick={() => removeDraftQuestion(question.id)} type="button" aria-label="刪除題目">
                                 <i className="ri-delete-bin-line"></i>
                               </button>
                             </div>
@@ -572,7 +572,7 @@ export default function SurveyPage() {
                               className="ppt-question-title"
                               value={question.title}
                               onChange={(event) => updateDraftQuestion(question.id, { title: event.target.value })}
-                              placeholder="Enter question text"
+                              placeholder="輸入題目"
                             />
                             {question.type === "rating" && (
                               <div className="ppt-rating-preview">
@@ -588,11 +588,11 @@ export default function SurveyPage() {
                       <div className="ppt-draft-actions">
                         <button className="ppt-secondary-btn" onClick={() => addDraftQuestion("short")} type="button">
                           <i className="ri-add-line"></i>
-                          Add open-ended question
+                          新增問答題
                         </button>
                         <button className="ppt-secondary-btn" onClick={() => addDraftQuestion("rating")} type="button">
                           <i className="ri-star-line"></i>
-                          Add rating question
+                          新增評分題
                         </button>
                       </div>
                     </div>
@@ -607,7 +607,7 @@ export default function SurveyPage() {
                         {isChatting && (
                           <div className="ppt-chat-message assistant loading">
                             <i className="ri-loader-4-line"></i>
-                            Updating...
+                            調整中...
                           </div>
                         )}
                       </div>
@@ -615,11 +615,11 @@ export default function SurveyPage() {
                         <textarea
                           value={aiMessage}
                           onChange={(event) => setAiMessage(event.target.value)}
-                          placeholder="Enter editing instructions, e.g. add a rating question or shorten the questions"
+                          placeholder="輸入修改指令，例如：增加一題評分題、題目更精簡"
                         />
                         <button className="ppt-primary-btn" onClick={handleAiRevise} disabled={isChatting || !aiMessage.trim()} type="button">
                           <i className="ri-send-plane-line"></i>
-                          Send
+                          送出
                         </button>
                       </div>
                     </aside>
@@ -627,8 +627,8 @@ export default function SurveyPage() {
                 ) : (
                   <div className="ppt-empty-state">
                     <i className="ri-file-text-line"></i>
-                    <strong>Survey draft preview</strong>
-                    <span>Upload a PPT or PDF and generate a draft to preview it here.</span>
+                    <strong>問卷草稿預覽</strong>
+                    <span>上傳 PPT 或 PDF 並開始生成後，草稿會顯示在這裡。</span>
                   </div>
                 )}
               </div>
@@ -638,16 +638,16 @@ export default function SurveyPage() {
               <footer className="ppt-modal-footer">
                 {savedResult ? (
                   <div className="ppt-save-result">
-                    <strong>Survey created: {savedResult.accessCode}</strong>
-                    <span>{shareLink || "Creating survey link..."}</span>
-                    <a href={buildSurveyFillPath(savedResult.accessCode)}>Test survey</a>
+                    <strong>已建立問卷：{savedResult.accessCode}</strong>
+                    <span>{shareLink || "專屬連結產生中..."}</span>
+                    <a href={buildSurveyFillPath(savedResult.accessCode)}>測試填答</a>
                   </div>
                 ) : (
-                  <span>Save the survey to get an invite code and a shareable survey link.</span>
+                  <span>儲存後會走原本問卷 API，自動取得邀請碼與專屬連結。</span>
                 )}
                 <button className="ppt-primary-btn" onClick={handleSaveDraft} disabled={isSavingDraft || Boolean(savedResult)} type="button">
                   <i className={isSavingDraft ? "ri-loader-4-line" : "ri-save-3-line"}></i>
-                  {isSavingDraft ? "Saving…" : "Finish and save"}
+                  {isSavingDraft ? "儲存中..." : "完成並儲存"}
                 </button>
               </footer>
             )}

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./DeadlineDateTimePicker.css";
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
 
 function pad(value) {
   return String(value).padStart(2, "0");
@@ -29,7 +29,7 @@ function isSameDay(a, b) {
 
 function formatDisplay(value) {
   const date = parseLocalValue(value);
-  if (!date) return "Choose deadline date and time";
+  if (!date) return "選擇截止日期與時間";
   return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
@@ -100,7 +100,7 @@ export default function DeadlineDateTimePicker({ id, value, min, onChange, class
     emitDate(next);
   };
 
-  const monthLabel = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(viewDate);
+  const monthLabel = `${viewDate.getFullYear()}年${pad(viewDate.getMonth() + 1)}月`;
   const prevMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1);
   const prevMonthDisabled = new Date(prevMonth.getFullYear(), prevMonth.getMonth() + 1, 0) < startOfDay(minDate);
 
@@ -118,7 +118,7 @@ export default function DeadlineDateTimePicker({ id, value, min, onChange, class
       </button>
 
       {isOpen && (
-        <div className="deadline-picker-popover" role="dialog" aria-label="Choose deadline date and time">
+        <div className="deadline-picker-popover" role="dialog" aria-label="選擇截止日期與時間">
           <div className="deadline-picker-calendar">
             <div className="deadline-picker-header">
               <button type="button" className="deadline-picker-icon-btn" disabled={prevMonthDisabled} onClick={() => setViewDate(prevMonth)}>
@@ -160,8 +160,8 @@ export default function DeadlineDateTimePicker({ id, value, min, onChange, class
             </div>
             <div className="deadline-picker-time-columns">
               <div className="deadline-picker-time-group">
-                <div className="deadline-picker-time-label">Hour</div>
-                <div className="deadline-picker-time-column" aria-label="Choose hour">
+                <div className="deadline-picker-time-label">時</div>
+                <div className="deadline-picker-time-column" aria-label="選擇小時">
                   {Array.from({ length: 24 }, (_, hour) => {
                     const candidate = new Date(activeDate);
                     candidate.setHours(hour, activeMinute, 0, 0);
@@ -174,8 +174,8 @@ export default function DeadlineDateTimePicker({ id, value, min, onChange, class
                 </div>
               </div>
               <div className="deadline-picker-time-group">
-                <div className="deadline-picker-time-label">Minute</div>
-                <div className="deadline-picker-time-column" aria-label="Choose minute">
+                <div className="deadline-picker-time-label">分</div>
+                <div className="deadline-picker-time-column" aria-label="選擇分鐘">
                   {Array.from({ length: 60 }, (_, minute) => {
                     const candidate = new Date(activeDate);
                     candidate.setMinutes(minute, 0, 0);

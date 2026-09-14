@@ -12,8 +12,8 @@ import "./survey.css";
 
 
 const QUESTION_TYPES = [
-  { value: "short", label: "Open-ended question", icon: "ri-question-answer-line" },
-  { value: "rating", label: "Rating (0–5)", icon: "ri-star-line" },
+  { value: "short", label: "問答題", icon: "ri-question-answer-line" },
+  { value: "rating", label: "評分題 0-5", icon: "ri-star-line" },
 ];
 
 function newQuestion(type = "short") {
@@ -97,7 +97,7 @@ export default function CreateSurveyPage() {
         <Navbar />
         <div className="survey-page" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
           <LoginRequiredModal
-            message="Please log in to create a survey."
+            message="請先登入後再建立問卷。"
             onLogin={() => navigate("/login")}
             onCancel={() => navigate("/survey")}
           />
@@ -118,15 +118,15 @@ export default function CreateSurveyPage() {
   const duplicateQuestion = (question) => {
     setQuestions((prev) => {
       const index = prev.findIndex((q) => q.id === question.id);
-      const clone = { ...question, id: crypto.randomUUID(), title: `${question.title} (copy)` };
+      const clone = { ...question, id: crypto.randomUUID(), title: `${question.title}（複本）` };
       return [...prev.slice(0, index + 1), clone, ...prev.slice(index + 1)];
     });
   };
 
   const validate = () => {
-    if (!title.trim()) return "Please enter a survey title.";
-    if (deadlineAt && new Date(deadlineAt).getTime() <= Date.now()) return "The survey deadline must be later than now.";
-    if (questions.some((q) => !q.title.trim())) return "Please enter text for every question.";
+    if (!title.trim()) return "請輸入問卷標題。";
+    if (deadlineAt && new Date(deadlineAt).getTime() <= Date.now()) return "問卷截止時間必須晚於現在。";
+    if (questions.some((q) => !q.title.trim())) return "每個題目都需要填寫題目文字。";
     return "";
   };
 
@@ -158,7 +158,7 @@ export default function CreateSurveyPage() {
         user_id: user?.user_id
       };
 
-      console.log("[FRONTEND] Sending data to database", payload);
+      console.log("[FRONTEND] 準備發送數據至資料庫", payload);
 
       const response = await axios.post(apiUrl("/api/surveys"), payload, {
         headers: {
@@ -168,7 +168,7 @@ export default function CreateSurveyPage() {
       });
 
       if (response.status === 201 || response.status === 200) {
-        console.log("[FRONTEND] Saved to database:", response.data);
+        console.log("[FRONTEND] ✓ 成功存入資料庫:", response.data);
 
         const accessCode = response.data.access_code;
         const shortCode = response.data.short_code || accessCode;
@@ -203,7 +203,7 @@ export default function CreateSurveyPage() {
           console.warn("[FRONTEND] localStorage survey cache failed:", storageError);
         }
         recordActivity({
-          text: `Created survey: ${payload.title}`,
+          text: `建立問卷「${payload.title}」`,
           icon: "ri-survey-line",
           iconBg: "bg-stat-coral",
           iconColor: "text-stat-coral",
@@ -215,23 +215,23 @@ export default function CreateSurveyPage() {
         });
       }
     } catch (error) {
-      console.error("[FRONTEND] Save failed:", error);
+      console.error("[FRONTEND] ✗ 存入失敗:", error);
       const status = error?.response?.status;
       if (status === 401) {
-        alert("Your session has expired or is invalid. Please log in again. Redirecting to login.");
+        alert("授權已過期或無效，請重新登入。\n即將導向登入頁面。");
         localStorage.removeItem("dataanalysis_auth");
         navigate('/login');
         return;
       }
       if (error?.code === "ECONNABORTED") {
-        setError("The server is taking longer than expected. Check your profile's survey list before retrying.");
+        setError("伺服器回應時間較長，建立問卷尚未確認完成。請先到個人頁面的問卷列表確認，再決定是否重試。");
         return;
       }
       if (error?.response?.data?.error) {
         setError(error.response.data.error);
         return;
       }
-      alert("Unable to save the survey. Please try again later.");
+      alert("資料庫寫入失敗！請確認後端已開啟並連線至 Aiven。");
     } finally {
       setIsSaving(false);
     }
@@ -245,10 +245,10 @@ export default function CreateSurveyPage() {
           <div className="container">
             <div className="d-flex align-items-center gap-3">
               <a href="/survey" style={{ color: "var(--slate-500)", fontWeight: 700, textDecoration: "none" }}>
-                <i className="ri-arrow-left-line"></i> Back to surveys
+                <i className="ri-arrow-left-line"></i> 返回問卷中心
               </a>
               <span style={{ color: "var(--slate-300)" }}>|</span>
-              <span style={{ fontWeight: 800, color: "var(--slate-800)" }}>Create survey</span>
+              <span style={{ fontWeight: 800, color: "var(--slate-800)" }}>建立問卷</span>
             </div>
           </div>
         </div>
@@ -257,19 +257,19 @@ export default function CreateSurveyPage() {
           <section className="survey-meta-card">
             <div className="survey-meta-title">
               <div className="survey-meta-icon"><i className="ri-file-text-line"></i></div>
-              Survey information
+              問卷資訊
             </div>
             <div className="mb-3">
-              <label className="auth-label">Survey title <span style={{ color: "#ef4444" }}>*</span></label>
-              <input className="survey-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Product satisfaction survey" />
+              <label className="auth-label">問卷標題 <span style={{ color: "#ef4444" }}>*</span></label>
+              <input className="survey-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例如：產品滿意度調查" />
             </div>
             <div>
-              <label className="auth-label">Survey description</label>
-              <textarea className="survey-input survey-textarea" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Add instructions, purpose, or notes for respondents" maxLength={500} />
+              <label className="auth-label">問卷說明</label>
+              <textarea className="survey-input survey-textarea" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="補充填答說明、用途或注意事項" maxLength={500} />
             </div>
             <div className="survey-identity-setting">
-              <label className="auth-label">Respondent identity <span style={{ color: "#ef4444" }}>*</span></label>
-              <div className="survey-identity-options" role="radiogroup" aria-label="Respondent identity settings">
+              <label className="auth-label">填答身分 <span style={{ color: "#ef4444" }}>*</span></label>
+              <div className="survey-identity-options" role="radiogroup" aria-label="填答身分設定">
                 <label className={`survey-identity-option ${identityMode === "anonymous" ? "active" : ""}`}>
                   <input
                     type="radio"
@@ -278,8 +278,8 @@ export default function CreateSurveyPage() {
                     checked={identityMode === "anonymous"}
                     onChange={() => setIdentityMode("anonymous")}
                   />
-                  <span className="identity-option-title">Anonymous</span>
-                  <span className="identity-option-desc">Respondents do not need to provide their identity.</span>
+                  <span className="identity-option-title">匿名</span>
+                  <span className="identity-option-desc">填答者不需要留下身分。</span>
                 </label>
                 <label className={`survey-identity-option ${identityMode === "identified" ? "active" : ""}`}>
                   <input
@@ -289,15 +289,15 @@ export default function CreateSurveyPage() {
                     checked={identityMode === "identified"}
                     onChange={() => setIdentityMode("identified")}
                   />
-                  <span className="identity-option-title">Identified</span>
-                  <span className="identity-option-desc">Respondents must provide their identity before submitting.</span>
+                  <span className="identity-option-title">非匿名</span>
+                  <span className="identity-option-desc">填答者送出前需填寫身分。</span>
                 </label>
               </div>
             </div>
             <div className="survey-deadline-setting">
-              <label className="auth-label">Survey deadline</label>
+              <label className="auth-label">問卷截止日</label>
               <DeadlineDateTimePicker value={deadlineAt} min={minDeadlineAt} onChange={setDeadlineAt} />
-              <p className="survey-field-hint">Responses can only be submitted before the deadline.</p>
+              <p className="survey-field-hint">填答者只能在截止時間前送出問卷。</p>
             </div>
           </section>
 
@@ -315,17 +315,17 @@ export default function CreateSurveyPage() {
                 </select>
                 <label className="question-required-toggle ms-auto me-2" style={{ cursor: "pointer" }}>
                   <input type="checkbox" checked={question.required} onChange={(e) => updateQuestion(question.id, { required: e.target.checked })} />
-                  <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 700, color: "var(--slate-500)" }}>Required</span>
+                  <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 700, color: "var(--slate-500)" }}>必填</span>
                 </label>
-                <button className="question-delete-btn" onClick={() => duplicateQuestion(question)} title="Duplicate question" type="button">
+                <button className="question-delete-btn" onClick={() => duplicateQuestion(question)} title="複製題目" type="button">
                   <i className="ri-file-copy-line"></i>
                 </button>
-                <button className="question-delete-btn" onClick={() => setQuestions((prev) => (prev.length === 1 ? prev : prev.filter((q) => q.id !== question.id)))} title="Delete question" type="button">
+                <button className="question-delete-btn" onClick={() => setQuestions((prev) => (prev.length === 1 ? prev : prev.filter((q) => q.id !== question.id)))} title="刪除題目" type="button">
                   <i className="ri-delete-bin-line"></i>
                 </button>
               </div>
 
-              <input className="survey-input" value={question.title} onChange={(e) => updateQuestion(question.id, { title: e.target.value })} placeholder={`Question  ${index + 1}`} />
+              <input className="survey-input" value={question.title} onChange={(e) => updateQuestion(question.id, { title: e.target.value })} placeholder={`題目 ${index + 1}`} />
 
               <div className="q-preview" style={{ marginTop: 14 }}>
                 <i className={`${questionType.icon} me-1`}></i>
@@ -337,13 +337,13 @@ export default function CreateSurveyPage() {
 
           <button className="add-question-area" onClick={() => setQuestions((prev) => [...prev, newQuestion()])} type="button">
             <i className="ri-add-circle-line"></i>
-            <p>Add question</p>
+            <p>新增題目</p>
           </button>
 
           {error && <p style={{ color: "#ef4444", fontWeight: 800 }}>{error}</p>}
           <button className="btn-generate" onClick={handleSaveSurvey} disabled={isSaving}>
             <i className={isSaving ? "ri-loader-4-line" : "ri-magic-line"}></i>
-            {isSaving ? "Saving…" : "Finish creating survey"}
+            {isSaving ? "儲存中..." : "完成問卷建立"}
           </button>
         </div>
       </main>
@@ -352,10 +352,10 @@ export default function CreateSurveyPage() {
         <div className="success-modal-backdrop" onClick={() => setGeneratedCode("")}>
           <div className="success-modal" onClick={(e) => e.stopPropagation()}>
             <div className="success-icon"><i className="ri-checkbox-circle-line"></i></div>
-            <h2 className="success-title">Survey created</h2>
-            <p className="success-desc">Share the invite code with respondents to start collecting responses.</p>
+            <h2 className="success-title">問卷已建立</h2>
+            <p className="success-desc">把邀請碼分享給填答者，就可以開始收集回覆。</p>
             <div className="invite-code-box">
-              <div className="invite-code-label">Invite code</div>
+              <div className="invite-code-label">邀請碼</div>
               <div className="invite-code-value">{generatedCode}</div>
             </div>
             <button
@@ -366,11 +366,11 @@ export default function CreateSurveyPage() {
               }}
             >
               <i className={copiedCode ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
-              {copiedCode ? "Copied" : "Copy invite code"}
+              {copiedCode ? "已複製" : "複製邀請碼"}
             </button>
             <div className="invite-link-box">
-              <div className="invite-code-label">Survey link</div>
-              <div className="invite-link-value">{shareLink || "Creating short link..."}</div>
+              <div className="invite-code-label">填寫連結</div>
+              <div className="invite-link-value">{shareLink || "短連結產生中..."}</div>
             </div>
             <button
               className={`copy-code-btn ${copiedLink ? "copied" : ""}`}
@@ -382,14 +382,14 @@ export default function CreateSurveyPage() {
               }}
             >
               <i className={copiedLink ? "ri-checkbox-circle-line" : "ri-link"}></i>
-              {copiedLink ? "Link copied" : "Copy survey link"}
+              {copiedLink ? "已複製連結" : "複製填寫連結"}
             </button>
             <div className="d-flex gap-3">
               <a href={buildSurveyFillPath(generatedCode)} className="btn-generate" style={{ flex: 1, padding: "14px", textDecoration: "none", justifyContent: "center" }}>
-                <i className="ri-pencil-line"></i> Test survey
+                <i className="ri-pencil-line"></i> 測試填答
               </a>
               <a href="/profile" className="btn-generate" style={{ flex: 1, padding: "14px", background: "var(--slate-100)", color: "var(--slate-600)", textDecoration: "none", justifyContent: "center" }}>
-                View survey
+                查看問卷
               </a>
             </div>
           </div>

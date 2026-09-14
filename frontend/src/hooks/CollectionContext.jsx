@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { useActivity } from "./ActivityContext";
-import { useAuth } from "./AuthContext";
+import { useAuth } from "./AuthContext"; 
 import { apiUrl } from "../lib/api";
 
 const CollectionContext = createContext(null);
@@ -31,7 +31,7 @@ function getAuthHeader() {
 }
 
 export function CollectionProvider({ children }) {
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn } = useAuth(); 
   const { recordActivity } = useActivity();
   const [folders, setFolders] = useState(() => loadArray(COLLECTION_FOLDERS_KEY, []));
   const [files, setFiles] = useState(() => loadArray(COLLECTION_FILES_KEY, []));
@@ -101,7 +101,7 @@ export function CollectionProvider({ children }) {
         });
 
       } catch (err) {
-        console.error("Failed to sync workspace", err);
+        console.error("同步 workspace 失敗", err);
       }
     };
 
@@ -142,7 +142,7 @@ export function CollectionProvider({ children }) {
           return [...backendDeleted, ...localOnly];
         });
       } catch (err) {
-        console.error("Failed to sync trash", err);
+        console.error("同步垃圾桶失敗", err);
       }
     };
 
@@ -156,7 +156,7 @@ export function CollectionProvider({ children }) {
       return [{ id: sessionId, title, folder_name: null, date: nowString() }, ...prev];
     });
     recordActivity({
-      text: `Created workspace chat: ${title}`,
+      text: `新增工作區 Chat「${title}」`,
       icon: "ri-chat-new-line",
       iconBg: "bg-stat-mauve",
       iconColor: "text-stat-mauve",
@@ -190,7 +190,7 @@ export function CollectionProvider({ children }) {
             body: JSON.stringify({ folder_name: null }),
           });
         } catch (err) {
-          console.error(`Failed to clear folder name`, err);
+          console.error(`清空 folder_name 失敗`, err);
         }
       })
     );
@@ -209,7 +209,7 @@ export function CollectionProvider({ children }) {
       prev.map((s) => (s.folder_name === name ? { ...s, folder_name: null } : s))
     );
     recordActivity({
-      text: `Deleted folder: ${name}`,
+      text: `刪除資料夾「${name}」`,
       icon: "ri-folder-reduce-line",
       iconBg: "bg-stat-coral",
       iconColor: "text-stat-coral",
@@ -218,7 +218,7 @@ export function CollectionProvider({ children }) {
 
   const deleteChatSession = async (sessionId) => {
     const session = workspaceSessions.find((s) => s.id === sessionId);
-    if (!session) throw new Error("Workspace to delete was not found");
+    if (!session) throw new Error("找不到要刪除的工作區");
     if (session.project_id) {
       const res = await fetch(apiUrl(`/api/workspace/${session.project_id}`), {
           method: "PATCH",
@@ -227,7 +227,7 @@ export function CollectionProvider({ children }) {
         });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Failed to delete workspace: ${res.status}`);
+        throw new Error(data.error || `刪除工作區失敗：${res.status}`);
       }
     }
     setDeletedItems((prev) => [
@@ -240,7 +240,7 @@ export function CollectionProvider({ children }) {
     ]);
     setWorkspaceSessions((prev) => prev.filter((s) => s.id !== sessionId));
     recordActivity({
-      text: `Deleted workspace chat: ${session.title}`,
+      text: `刪除工作區 Chat「${session.title}」`,
       icon: "ri-chat-delete-line",
       iconBg: "bg-stat-coral",
       iconColor: "text-stat-coral",
@@ -264,7 +264,7 @@ export function CollectionProvider({ children }) {
               body: JSON.stringify({ folder_name: item.name }),
             });
           } catch (err) {
-            console.error(`Failed to restore folder name`, err);
+            console.error(`還原 folder_name 失敗`, err);
           }
         })
       );
@@ -290,11 +290,11 @@ export function CollectionProvider({ children }) {
           });
           if (!res.ok) {
             const err = await res.json();
-            console.error("Restore failed", err);
+            console.error("還原失敗", err);
             return; // 後端失敗就不更新前端
           }
         } catch (err) {
-          console.error("Restore failed", err);
+          console.error("還原失敗", err);
           return;
         }
       }
@@ -307,7 +307,7 @@ export function CollectionProvider({ children }) {
     setDeletedItems((prev) => prev.filter((d) => d.id !== item.id));
 
     recordActivity({
-      text: `Restored: ${item.name}`,
+      text: `還原「${item.name}」`,
       icon: "ri-arrow-go-back-line",
       iconBg: "bg-stat-teal",
       iconColor: "text-stat-teal",
@@ -334,7 +334,7 @@ export function CollectionProvider({ children }) {
     // 檔案，打 API
     try {
       if (!item.project_id) {
-        console.error("Missing project ID");
+        console.error("缺少 project_id");
         return;
       }
       const response = await fetch(
@@ -343,7 +343,7 @@ export function CollectionProvider({ children }) {
       );
       if (!response.ok) {
         const errData = await response.json();
-        throw new Error(errData.error || "Deletion failed");
+        throw new Error(errData.error || "刪除失敗");
       }
       setDeletedItems((prev) => {
         if (!Array.isArray(prev)) return [];
