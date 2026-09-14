@@ -64,17 +64,14 @@ from services.privacy_service import mask_pii, PiiMaskingError
 from services.question_routing_service import route_question_type
 from services.batch_classification_service import run_batch_analysis
 from services.aggregated_summary_service import build_aggregated_summary, build_aggregated_summary_pair, AggregatedSummaryError
-from services.subcategory_methodology import all_subcategories, QUESTION_OTHER
+from services.subcategory_methodology import QUESTION_OTHER, compute_display_sub_categories
 from routes.surveys.survey import verify_token, find_survey_by_access_or_short_code
 import pandas as pd
 
 classification_bp = Blueprint("classification", __name__)
 
 
-# 【新增｜受試者分組彙整】把「一筆分類一列」的結果，依 (大類別、子類別)
-# 分組成一列，同一組內所有受試者片段合併顯示、「判斷原因」跟「建議摘要」
-# 各自再呼叫一次 build_aggregated_summary() 統整成一段話。
-# 「無具體建議」這種勉強歸類的結果，分組前就先排除，不參與彙整、不顯示。
+
 def _build_aggregated_groups(all_classification_rows, id_to_row_index, question_type, id_field="uploaded_answer_id"):
     """
     依 (大類別、子類別) 分組、合併受試者片段、彙整判斷原因與建議摘要。
@@ -114,35 +111,9 @@ def _build_aggregated_groups(all_classification_rows, id_to_row_index, question_
             "summary": r.summary or "",
         })
 
-    # 【修正｜排序】原本是「哪個類別先出現在資料裡就排第幾個」，等於是隨機的。
-    # 改成照 subcategory_methodology.py 裡固定清單本來的順序排（A1、A2、A3…、
-    # B1、B2…），跟你們團隊文件裡的排法一致。清單裡查不到的子類別（理論上
-    # 不該發生，但保守起見還是處理一下）排在最後面，順序照它們原本出現的
-    # 先後，不會憑空消失。
-    canonical_order = all_subcategories(question_type)
-    order_index = {sub: i for i, sub in enumerate(canonical_order)}
-    order.sort(key=lambda key: order_index.get(key[1], len(canonical_order)))
-
-    # 【新增｜子類別重新編號】原本的編號是完整清單裡的位置（例如這批資料
-    # 只出現 A2、A5、A8，畫面上就會直接顯示 A2、A5、A8，看起來像跳號）。
-    # 改成依照排序後「這批資料實際出現的順序」重新編號，字母（大類別
-    # 對應的那個字母）保留，數字從 1 開始，同一個大類別底下依序累加、
-    # 換下一個大類別時歸零重來。原始 sub_category 字串格式固定是
-    # 「{字母}{數字} {說明文字}」（例如「A5 教育訓練」），用正則抓出
-    # 字母跟說明文字，數字整個換成重新編過的。
-    import re as _re
-    renumbered_sub_category = {}
-    counter_by_main = {}
-    for key in order:
-        main_category, sub_category = key
-        m = _re.match(r"^([A-Za-z]+)\d+\s*(.*)$", sub_category)
-        if m:
-            letter, description = m.group(1), m.group(2)
-            counter_by_main[main_category] = counter_by_main.get(main_category, 0) + 1
-            renumbered_sub_category[key] = f"{letter}{counter_by_main[main_category]} {description}"
-        else:
-            # 格式不符預期（理論上不該發生）時，保留原字串，不硬套規則
-            renumbered_sub_category[key] = sub_category
+    
+    renumbered_sub_category = compute_display_sub_categories(order, question_type)
+    order = list(renumbered_sub_category.keys())
 
     result = []
     for key in order:
@@ -150,10 +121,7 @@ def _build_aggregated_groups(all_classification_rows, id_to_row_index, question_
         items = groups[key]["items"]
         display_sub_category = renumbered_sub_category[key]
 
-        # 【修正｜同一受試者被拆成多段時，同一組內連續出現的同一人合併成一行】
-        # all_classification_rows 的順序本來就是「同一筆原始回答的所有 segment
-        # 連續出現」，所以同一組（同一大類別/子類別）裡，同一個受試者的
-        # 多個 segment 一定是相鄰的，可以簡單依序合併，不用另外排序。
+       
         merged_lines = []
         for it in items:
             if (
@@ -174,24 +142,20 @@ def _build_aggregated_groups(all_classification_rows, id_to_row_index, question_
             for ml in merged_lines
         )
 
-        # 彙整這一步失敗時（Gemini 出錯、格式跑掉），不能讓整支 API 跟著
-        # 失敗——每個人的分類結果已經成功存進資料庫了，退回成簡單拼接文字，
-        # 並標記 synthesis_status 讓前端知道這組是 fallback 出來的。
+        
         synthesis_status = "ok"
         synthesis_error = None
         try:
             reasoning_items = [{"matched_segment_text": it["reasoning"]} for it in items if it["reasoning"]]
             summary_items = [{"matched_segment_text": it["summary"]} for it in items if it["summary"]]
-            # 合併成 1 次 Gemini 呼叫（原本 reasoning、summary 各打一次，
-            # 一個 group 就要 2 次；免費層 RPM 額度緊，先從這裡減半）。
+            
             aggregated_reasoning, aggregated_summary = build_aggregated_summary_pair(
                 main_category, sub_category, reasoning_items, summary_items
             )
         except AggregatedSummaryError as e:
             print("[AGGREGATED_SUMMARY_FAILED]", repr(e))
             synthesis_status = "fallback"
-            # 【新增】原本失敗原因只印在後端 log 裡，前端完全看不到，
-            # 只能靠猜。現在把訊息也帶進回應裡，畫面上就能直接顯示。
+            
             synthesis_error = str(e)[:300]
             aggregated_reasoning = "\n".join(it["reasoning"] for it in items if it["reasoning"])
             aggregated_summary = "\n".join(it["summary"] for it in items if it["summary"])
@@ -219,23 +183,7 @@ def _build_routing_context(column_name: str, samples: list) -> str:
     return f"欄位名稱：{column_name}\n\n實際回答範例（已遮罩個資）：\n{sample_block}"
 
 
-# 排除明顯是 ID / 編號，或姓名、Email、電話這類個資 metadata 欄位，
-# 不當成開放式文字回答欄位。
-# 【修正】原本只排除 ID/編號類欄位，沒有排除姓名/Email/電話，導致
-# Excel 裡的「姓名」欄位（例如值是「受試者A」這種代稱）被誤判成開放式
-# 文字回答，實際送進 Gemini 分類：
-#   - 白白浪費 API 額度（詳見 question_routing_service.py 的額度問題）
-#   - 姓名這種內容 Gemini 通常判斷不出屬於哪個子類別，容易輸出清單外
-#     的字串（例如「資訊不足」），導致 get_methodology() 查無結果、
-#     status 變成 "methodology_not_found"，牽出前面 status 欄位長度
-#     不夠的問題
-# 這裡只新增關鍵字，不改動判斷邏輯本身（仍是欄位名稱完整比對，且
-# 判斷邏輯是「先轉小寫再比對」，中英文都比對得到）：新增「姓名」
-# 「名字」「email」「e-mail」「電子郵件」「電話」「手機」「聯絡電話」
-# 「身分證」「身分證字號」「tel」「phone」，涵蓋使用者這次回報的姓名
-# 案例，以及同樣屬於 metadata、不該送分類的 Email / 電話 / 身分證欄位。
-# 正常的開放式問答欄位（例如「對主管領導的建議」「工作表現回饋」）
-# 欄位名稱不會剛好等於這些字，不受影響。
+
 _ID_LIKE_COLUMN_KEYWORDS = (
     "id", "編號", "序號", "代碼", "code", "no.", "no",
     "姓名", "名字", "email", "e-mail", "電子郵件",
@@ -329,10 +277,7 @@ def _persist_segmentation_result(
 
     classification_rows = []
     for seg in result["segments"]:
-        # Response_Classification 目前沒有獨立的 error_detail 欄位，
-        # 分類失敗（status != completed）時，把 error_detail 放進
-        # reasoning（該情況下 Gemini 本來就沒有真正的 reasoning 可存），
-        # 避免除錯資訊被默默丟棄，同時不需要為此新增欄位。
+        
         reasoning = seg["reasoning"]
         if seg["status"] != "completed" and seg.get("error_detail"):
             reasoning = seg["error_detail"]
@@ -431,9 +376,7 @@ def submit_survey_response():
 # ---------- 2. Excel 上傳分類 ----------
 @classification_bp.route("/api/classification/upload", methods=["POST"])
 def upload_excel_for_classification():
-    # Human Review 需要知道「這批上傳是誰的」才能做 ownership 判斷，
-    # 因此這條路由從這次改動起強制要求登入；沿用既有 verify_token()，
-    # 不另建第二套 authentication。
+    
     auth_user_id, auth_error = verify_token(request)
     if auth_error:
         return jsonify({"error": "Unauthorized"}), 401
@@ -446,21 +389,7 @@ def upload_excel_for_classification():
     text_column_param = request.form.get("text_column")
     total_row_count = len(df)
 
-    # 【修正｜每個欄位都要分析，不能只挑一欄】
-    # 原本這裡只自動判斷「一個」最像開放式回答的欄位，如果 Excel 裡
-    # 有好幾個開放式問題（好幾個文字欄位），其他欄位的受試者回答會
-    # 整批被漏掉，而且沒有任何提示——這正是先前「上傳 26 筆卻只跑出
-    # 幾筆結果」的根本原因之一。
-    #
-    # 現在改成：沒有手動指定 text_column 時，把每一個看起來像開放式
-    # 文字回答的欄位都找出來（_detect_candidate_text_columns），逐欄
-    # 各自跑一次完整流程。TF-IDF 去重（services/batch_classification_service
-    # 的 run_batch_analysis）本來就是以 (upload_batch_id, source_column)
-    # 為單位各自比對，不同欄位的回答不會被誤判成重複，這裡沿用同一套
-    # 邏輯，只是從「只呼叫一次」改成「每欄各呼叫一次」。
-    #
-    # 仍然保留手動指定單一 text_column 的能力（例如未來別的呼叫端要
-    # 精準指定某一欄時可用），這種情況維持原本「只分析這一欄」的行為。
+    
     if text_column_param and text_column_param in df.columns:
         text_columns = [text_column_param]
         auto_detected = False
@@ -476,23 +405,17 @@ def upload_excel_for_classification():
     saved_answer_count = 0
     classified_count = 0
     all_classification_rows = []
-    # 【受試者編號】記錄「這筆 Uploaded_Answer 對應到 Excel 裡第幾列」，
-    # 這樣分類結果回傳時才能標出「受試者N」，方便對照原始資料。同一列
-    # 在不同欄位各自有獨立的 Uploaded_Answer，但都對應同一個 row_index，
-    # 所以「受試者N」的編號在跨欄位時仍然一致。
+    
     answer_id_to_row_index = {}
     aggregated_groups = []   # 攤平版本：向後相容，只看這個欄位的舊呼叫端不用改
     columns_summary = []     # 新增：每個欄位各自的統計 + 各自的 aggregated_groups
 
     for text_column in text_columns:
-        # 每個欄位各自 routing 一次（欄位名稱 + 這一欄前幾筆遮罩後樣本）
-        # ——不同欄位很可能對應不同題目、不同 question_type，不能共用
-        # 同一次判斷結果。
+        
         samples = _collect_masked_routing_samples(df, text_column)
         routing_context = _build_routing_context(text_column, samples)
         routed_question_type = route_question_type(routing_context)
-        # 【動態分類】routing 判斷不出來（None）就 fall back 到「其他
-        # 主題」動態分類，不直接放棄這一欄。
+        
         if routed_question_type:
             prompt_row = Prompt_Template.query.get(routed_question_type)
             if prompt_row is not None:
@@ -539,9 +462,6 @@ def upload_excel_for_classification():
 
         column_classification_rows = []
         if pending_items:
-            # 【TF-IDF 去重】沿用既有 run_batch_analysis：這裡每個欄位
-            # 各自呼叫一次，去重比對只發生在「同一欄位」內部，不會跟
-            # 其他欄位的回答混在一起判斷相似度。
             results = run_batch_analysis(
                 existing_references=[],
                 pending_items=[
@@ -565,8 +485,6 @@ def upload_excel_for_classification():
 
         all_classification_rows.extend(column_classification_rows)
 
-        # 每個欄位各自彙整成自己的一組表格，不會把不同問題的回答混在
-        # 同一組摘要裡（不同欄位就是不同題目，混在一起彙整沒有意義）。
         column_groups = _build_aggregated_groups(
             column_classification_rows, answer_id_to_row_index, question_type
         )
@@ -585,9 +503,6 @@ def upload_excel_for_classification():
 
     db.session.commit()
 
-    # 【受試者編號】把 row_index 換算成「受試者N」（從 1 開始比較符合
-    # 一般人講話習慣），組進每一筆分類結果的字典裡，不動 to_dict() 本身、
-    # 不動資料庫，只在這支 API 回傳前額外加一個欄位。
     classifications_payload = []
     for r in all_classification_rows:
         d = r.to_dict()
@@ -600,18 +515,11 @@ def upload_excel_for_classification():
         "saved_answer_count": saved_answer_count,
         "classified_count": classified_count,
         "classifications": classifications_payload,
-        # 攤平版本：所有欄位的分組結果合併成一個 list，每組多帶
-        # source_column / question_type，讓舊前端不用改也能繼續運作
-        # （只是現在看得到「所有」欄位的結果，不再只有一欄）。
         "aggregated_groups": aggregated_groups,
-        # 新增：依欄位拆開的版本，之後前端想分別顯示「第一題」「第二題」
-        # 各自的表格時可以用這個，不用自己從攤平版本反推。
         "columns": columns_summary,
         "text_columns": text_columns,
         "text_column_auto_detected": auto_detected,
         "total_row_count": total_row_count,
-        # 向後相容：舊前端可能還在讀單數的 text_column / question_type，
-        # 多欄情況下沒有單一答案，給第一欄的值當 fallback。
         "text_column": text_columns[0] if text_columns else None,
         "question_type": columns_summary[0]["question_type"] if columns_summary else None,
     }), 201
@@ -746,18 +654,11 @@ def analyze_survey(access_code):
                 })
             else:
                 if existing_status is not None:
-                    # 卡在 failed / partial_failed 狀態——清掉舊的狀態紀錄
-                    # 跟任何殘留的分類結果（不完整、不可信，不該留著混淆
-                    # 彙整畫面），讓這筆回答用全新的狀態重新走一次分類流程。
                     diag["reset_stuck_records"] += 1
                     Response_Classification.query.filter_by(
                         response_id=response.response_id, question_id=question_id
                     ).delete()
                     db.session.delete(existing_status)
-                    # 【修正】一定要先 flush，把上面的刪除真的送進資料庫，
-                    # 不然等一下新分類結果要寫入同一個 (response_id,
-                    # question_id) 組合時，資料庫還看得到「舊紀錄還在」，
-                    # 會撞到唯一鍵限制直接報錯。
                     db.session.flush()
                 pending_items.append({
                     "identifier": response.response_id,
@@ -788,9 +689,7 @@ def analyze_survey(access_code):
 
     db.session.commit()
 
-    # 【受試者分組彙整】依 question_type 分開彙整（不同題目對應不同
-    # 固定分類清單，排序邏輯不能混在一起），結果合併成一個列表回傳，
-    # 前端可以直接沿用 Excel 上傳那條路已經在用的表格渲染元件。
+    
     aggregated_groups = []
     for q_type, rows in rows_by_question_type.items():
         aggregated_groups.extend(
