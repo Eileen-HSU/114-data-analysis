@@ -21,7 +21,7 @@ def get_jwt_secret() -> str:
     if _JWT_SECRET is None:
         _JWT_SECRET = os.getenv("JWT_SECRET_KEY")
         if not _JWT_SECRET:
-            raise RuntimeError("JWT_SECRET_KEY is not configured")
+            raise RuntimeError("JWT_SECRET_KEY 環境變數未設定")
     return _JWT_SECRET
 
 
@@ -102,7 +102,7 @@ def create_workspace():
     project_name = data.get("project_name")
 
     if not project_name:
-        return jsonify({"error": "Please provide a project name"}), 400
+        return jsonify({"error": "請提供 project_name"}), 400
 
     workspace = Workspace(
         user_id      = current_user_id,
@@ -128,7 +128,7 @@ def get_workspace(project_id):
 
     workspace = db.session.get(Workspace, project_id)
     if not workspace or workspace.user_id != current_user_id or workspace.is_deleted:
-        return jsonify({"error": "Project not found"}), 404
+        return jsonify({"error": "找不到專案"}), 404
 
     return jsonify(workspace_to_dict(workspace)), 200
 
@@ -145,7 +145,7 @@ def update_workspace(project_id):
     ).first()
 
     if not workspace:
-        return jsonify({"error": "Project not found"}), 404
+        return jsonify({"error": "找不到專案"}), 404
 
     data = request.get_json(silent=True)
 
@@ -175,19 +175,19 @@ def delete_workspace(project_id):
     ).first()
 
     if not workspace:
-        return jsonify({"message": "The project is already in trash"}), 200
+        return jsonify({"message": "專案已在垃圾桶中"}), 200
 
     if request.method == "PATCH":
         data = request.get_json(silent=True) or {}
         if data.get("is_deleted") not in [1, True]:
-            return jsonify({"error": "Invalid update parameters"}), 400
+            return jsonify({"error": "不合法的 PATCH 參數"}), 400
 
     try:
         workspace.is_deleted = True
         workspace.deleted_at = taiwan_now()
         db.session.commit()
         return jsonify({
-            "message":   "Project moved to trash. It will be permanently deleted after 30 days.",
+            "message":   "專案已移至垃圾桶，30 天後將永久刪除",
             "workspace": workspace_to_dict(workspace),
         }), 200
     except Exception as e:
@@ -220,7 +220,7 @@ def create_share_link(project_id):
         project_id=project_id, user_id=current_user_id, is_deleted=False
     ).first()
     if not workspace:
-        return jsonify({"error": "Project not found"}), 404
+        return jsonify({"error": "找不到專案"}), 404
 
     if not workspace.share_code:
         workspace.share_code = _generate_unique_share_code()
@@ -240,7 +240,7 @@ def get_shared_workspace(share_code):
     """
     workspace = Workspace.query.filter_by(share_code=share_code, is_deleted=False).first()
     if not workspace:
-        return jsonify({"error": "The invite link is invalid or has expired"}), 404
+        return jsonify({"error": "邀請連結無效或已失效"}), 404
 
     chats = (
         Chat_History.query.filter_by(project_id=workspace.project_id)

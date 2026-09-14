@@ -72,22 +72,22 @@ def create_export():
 
     export_type = data.get("export_type")
     if export_type not in _FORMAT_META:
-        return jsonify({"error": "Only Excel and Word exports are supported"}), 400
+        return jsonify({"error": "僅支援 Excel 或 Word 匯出"}), 400
 
     if not chat_id:
-        return jsonify({"error": "Missing chat ID"}), 400
+        return jsonify({"error": "缺少 chat_id"}), 400
     if not filename or not isinstance(filename, str):
-        return jsonify({"error": "Missing file name"}), 400
+        return jsonify({"error": "缺少 filename"}), 400
 
     chat = _get_owned_chat(chat_id, current_user_id)
     if not chat:
-        return jsonify({"error": "Conversation not found or access denied"}), 404
+        return jsonify({"error": "找不到這個對話，或您無權限操作"}), 404
 
     rows = data.get("rows")
 
     if not rows or not isinstance(rows, list):
         return jsonify({
-            "error": "Missing rows"
+            "error": "缺少 rows"
         }), 400
 
     title = data.get("title") or "分類結果"
@@ -100,7 +100,7 @@ def create_export():
 
     except Exception as e:
         return jsonify({
-            "error": f"Failed to generate {export_type} file: {str(e)[:200]}"
+            "error": f"產生 {export_type} 檔案失敗：{str(e)[:200]}"
         }), 500
 
     stored_content = base64.b64encode(
@@ -187,7 +187,7 @@ def rename_export(export_id):
     data = request.get_json(silent=True) or {}
     new_filename = data.get("filename")
     if not new_filename or not isinstance(new_filename, str) or not new_filename.strip():
-        return jsonify({"error": "File name is missing or empty"}), 400
+        return jsonify({"error": "缺少 filename，或 filename 不能是空字串"}), 400
     new_filename = new_filename.strip()
 
     export = (
@@ -199,7 +199,7 @@ def rename_export(export_id):
         .first()
     )
     if not export:
-        return jsonify({"error": "Export record not found"}), 404
+        return jsonify({"error": "找不到這筆匯出紀錄"}), 404
 
     # 【修正】使用者改名字時，很容易忘記或不小心把副檔名一起改掉/刪掉，
     # 這裡保守處理：如果新名字沒有以正確的副檔名結尾，自動幫他補上，
@@ -231,22 +231,22 @@ def download_export(export_id):
         .first()
     )
     if not export:
-        return jsonify({"error": "Export record not found"}), 404
+        return jsonify({"error": "找不到這筆匯出紀錄"}), 404
 
     format_meta = _FORMAT_META.get(export.export_type)
 
     if not format_meta:
         return jsonify({
-            "error": "This export format is no longer supported"
+            "error": "這筆匯出格式已不再支援"
         }), 400
-
+    
     # 【新增｜Excel／Word 下載】csv 是純文字，直接回傳；xlsx/docx 存的是
     # base64，要先解碼回原始二進位，不然下載下來的檔案打不開。
     try:
         file_data = base64.b64decode(export.content or "")
     except Exception:
         return jsonify({
-            "error": "The file is corrupted and cannot be downloaded"
+            "error": "檔案內容毀損，無法下載"
         }), 500
 
     # 【修正｜中文檔名讓下載直接 500】HTTP 標頭只能放 Latin-1 字元，

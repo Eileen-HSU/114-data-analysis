@@ -65,7 +65,7 @@ def send_password_email_via_resend(recipient: str, subject: str, body_text: str)
     try:
         api_instance.send_transac_email(send_smtp_email)
     except ApiException as e:
-        raise RuntimeError(f"Email delivery failed: {e}")
+        raise RuntimeError(f"Brevo 寄信失敗: {e}")
 
 
 def _invalidate_old_codes(email: str, otp_type: str):
@@ -88,11 +88,11 @@ def send_otp():
     verify_type = data.get("type", "PASSWORD_RESET")
 
     if not email:
-        return jsonify({"error": "Please enter your email address"}), 400
+        return jsonify({"error": "請輸入電子郵件"}), 400
 
     user = User.query.filter_by(email=email).first()
     if not user:
-        return jsonify({"error": "No account was found for this email address"}), 404
+        return jsonify({"error": "找不到此 Email 對應的帳號"}), 404
 
     otp = str(secrets.randbelow(900000) + 100000)
     from_param = "change" if verify_type == "PASSWORD_CHANGE" else "forgot"
@@ -116,17 +116,17 @@ def send_otp():
         db.session.add(verification)
         db.session.commit()  # invalidate + add 合併一次 commit
 
-        action_text = "password change" if verify_type == "PASSWORD_CHANGE" else "password reset"
-        subject = f"DataAnalysis - Verification code for {action_text}"
+        action_text = "變更密碼" if verify_type == "PASSWORD_CHANGE" else "重設密碼"
+        subject = f"DataAnalysis {action_text}驗證碼"
 
         if verify_type == "PASSWORD_CHANGE":
             # 修改密碼
             message_body = (
-                f"Hello,\n\n"
-                f"You requested a {action_text}.\n"
-                f"Your verification code is: {otp}\n\n"
-                f"This code expires in 10 minutes.\n"
-                f"If you did not request this, please ignore this email."
+                f"您好，\n\n"
+                f"您正在進行 {action_text}。\n"
+                f"您的驗證碼是：{otp}\n\n"
+                f"此驗證碼將在 10 分鐘後失效。\n"
+                f"如果您沒有發起這個請求，請忽略此信件。"
             )
         else:
             # 忘記密碼
@@ -135,20 +135,20 @@ def send_otp():
                 f"?email={email}&from={from_param}"
             )
             message_body = (
-                f"Hello,\n\n"
-                f"You requested a {action_text}.\n"
-                f"Your verification code is: {otp}\n\n"
-                f"Open the following link to enter your verification code:\n{reset_link}\n\n"
-                f"This code expires in 10 minutes.\n"
-                f"If you did not request this, please ignore this email."
+                f"您好，\n\n"
+                f"您正在進行 {action_text}。\n"
+                f"您的驗證碼是：{otp}\n\n"
+                f"請點擊以下連結前往輸入驗證碼：\n{reset_link}\n\n"
+                f"此驗證碼將在 10 分鐘後失效。\n"
+                f"如果您沒有發起這個請求，請忽略此信件。"
             )
         send_password_email_via_resend(email, subject, message_body)
-        return jsonify({"message": f"Verification code sent for {action_text}"}), 200
+        return jsonify({"message": f"{action_text}驗證碼已寄出"}), 200
 
     except Exception as e:
         db.session.rollback()
         logging.error(f"OTP send failed: {e}", exc_info=True)
-        return jsonify({"error": "Failed to send verification email. Please try again later."}), 500
+        return jsonify({"error": "寄送驗證信失敗，請稍後再試"}), 500
 
 
 @pwd_bp.route("/api/auth/reset-password", methods=["POST"])
@@ -160,7 +160,7 @@ def reset_password():
     verify_type = data.get("type", "PASSWORD_RESET")
 
     if not all([email, otp, new_password]):
-        return jsonify({"error": "Required fields are missing"}), 400
+        return jsonify({"error": "缺少必要欄位"}), 400
 
     record = UserVerification.query.filter_by(
         target_email=email,
@@ -169,38 +169,38 @@ def reset_password():
     ).order_by(UserVerification.created_at.desc()).first()
 
     if not record:
-        return jsonify({"error": "The verification code is invalid or already used. Please request a new code."}), 400
+        return jsonify({"error": "驗證碼不存在或已使用，請重新取得"}), 400
 
     now = taiwan_now()  # 只取一次，後續不再重複呼叫
 
     if record.expires_at < now:
-        return jsonify({"error": "The verification code has expired. Please request a new code."}), 400
+        return jsonify({"error": "驗證碼已過期，請重新取得"}), 400
 
     if record.attempts >= 5:
         record.is_used = True
         db.session.commit()
-        return jsonify({"error": "Too many attempts. Please request a new verification code."}), 429
+        return jsonify({"error": "嘗試次數過多，請重新取得驗證碼"}), 429
 
     if not check_password_hash(record.code_hash, otp):
         record.attempts += 1
         db.session.commit()
         remaining = 5 - record.attempts
-        return jsonify({"error": f"Incorrect verification code. {remaining} attempts remaining."}), 400
+        return jsonify({"error": f"驗證碼錯誤，剩餘 {remaining} 次機會"}), 400
 
     user = db.session.get(User, record.user_id)
     if not user:
-        return jsonify({"error": "User not found"}), 404
+        return jsonify({"error": "找不到使用者"}), 404
 
     if check_password_hash(user.password_hash, new_password):
-        return jsonify({"error": "Your new password must be different from your current password"}), 400
+        return jsonify({"error": "新密碼不可與原本密碼相同，請設定不同的密碼"}), 400
 
     try:
         user.password_hash = generate_password_hash(new_password)
         record.is_used = True
         db.session.commit()
-        return jsonify({"message": "Password updated"}), 200
+        return jsonify({"message": "密碼已更新"}), 200
 
     except Exception as e:
         db.session.rollback()
         logging.error(f"Password reset failed: {e}", exc_info=True)
-        return jsonify({"error": "Failed to update password. Please try again later."}), 500
+        return jsonify({"error": "密碼更新失敗，請稍後再試"}), 500
