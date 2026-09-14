@@ -545,8 +545,8 @@ export default function SurveyPage({ pptOnly = false }) {
                         <label className="ppt-field">
                           <span>問卷標題</span>
                           <textarea
-                            className="ppt-draft-title-input w-full break-words whitespace-normal resize-y p-3 leading-relaxed"
-                            rows="2"
+                            className="ppt-draft-title-input w-full resize-y break-words whitespace-normal overflow-y-auto p-3 leading-relaxed outline-none focus:ring"
+                            rows={2}
                             value={pptDraft.title}
                             onChange={(event) => updateDraft({ title: event.target.value })}
                           />
@@ -554,8 +554,8 @@ export default function SurveyPage({ pptOnly = false }) {
                         <label className="ppt-field">
                           <span>問卷說明</span>
                           <textarea
-                            className="ppt-draft-description-input w-full break-words whitespace-normal resize-y p-3 leading-relaxed"
-                            rows="4"
+                            className="ppt-draft-description-input w-full resize-y break-words whitespace-normal overflow-y-auto p-3 leading-relaxed outline-none focus:ring"
+                            rows={4}
                             value={pptDraft.description}
                             onChange={(event) => updateDraft({ description: event.target.value })}
                           />
@@ -587,8 +587,8 @@ export default function SurveyPage({ pptOnly = false }) {
                               </button>
                             </div>
                             <textarea
-                              className="ppt-question-title w-full break-words whitespace-normal resize-y p-3 leading-relaxed"
-                              rows="2"
+                              className="ppt-question-title w-full resize-y break-words whitespace-normal overflow-y-auto p-3 leading-relaxed outline-none focus:ring"
+                              rows={3}
                               value={question.title}
                               onChange={(event) => updateDraftQuestion(question.id, { title: event.target.value })}
                               placeholder="輸入題目"
@@ -616,32 +616,6 @@ export default function SurveyPage({ pptOnly = false }) {
                       </div>
                     </div>
 
-                    <aside className="ppt-ai-chat">
-                      <div className="ppt-chat-log">
-                        {chatMessages.map((message, index) => (
-                          <div className={`ppt-chat-message ${message.role}`} key={`${message.role}-${index}`}>
-                            {message.text}
-                          </div>
-                        ))}
-                        {isChatting && (
-                          <div className="ppt-chat-message assistant loading">
-                            <i className="ri-loader-4-line"></i>
-                            調整中...
-                          </div>
-                        )}
-                      </div>
-                      <div className="ppt-chat-box">
-                        <textarea
-                          value={aiMessage}
-                          onChange={(event) => setAiMessage(event.target.value)}
-                          placeholder="輸入修改指令，例如：增加一題評分題、題目更精簡"
-                        />
-                        <button className="ppt-primary-btn" onClick={handleAiRevise} disabled={isChatting || !aiMessage.trim()} type="button">
-                          <i className="ri-send-plane-line"></i>
-                          送出
-                        </button>
-                      </div>
-                    </aside>
                   </div>
                 ) : (
                   <div className="ppt-empty-state">
@@ -664,11 +638,41 @@ export default function SurveyPage({ pptOnly = false }) {
                   <label className="ppt-field">
                     <span>生成重點</span>
                     <textarea
+                      className="w-full resize-y break-words whitespace-normal overflow-y-auto p-3 leading-relaxed outline-none focus:ring"
                       value={pptConfig.focus}
                       onChange={(event) => updatePptConfig({ focus: event.target.value })}
                       placeholder="例如：聚焦課程內容、講師表達、實務應用"
                     />
                   </label>
+                  {pptDraft && (
+                    <aside className="ppt-ai-chat">
+                      <div className="ppt-chat-log">
+                        {chatMessages.map((message, index) => (
+                          <div className={`ppt-chat-message ${message.role}`} key={`${message.role}-${index}`}>
+                            {message.text}
+                          </div>
+                        ))}
+                        {isChatting && (
+                          <div className="ppt-chat-message assistant loading">
+                            <i className="ri-loader-4-line"></i>
+                            調整中...
+                          </div>
+                        )}
+                      </div>
+                      <div className="ppt-chat-box">
+                        <textarea
+                          className="w-full resize-y break-words whitespace-normal overflow-y-auto p-3 leading-relaxed outline-none focus:ring"
+                          value={aiMessage}
+                          onChange={(event) => setAiMessage(event.target.value)}
+                          placeholder="輸入修改指令，例如：增加一題評分題、題目更精簡"
+                        />
+                        <button className="ppt-primary-btn" onClick={handleAiRevise} disabled={isChatting || !aiMessage.trim()} type="button">
+                          <i className="ri-send-plane-line"></i>
+                          送出
+                        </button>
+                      </div>
+                    </aside>
+                  )}
                 </div>
 
                 <div className="ppt-preview-actions">
