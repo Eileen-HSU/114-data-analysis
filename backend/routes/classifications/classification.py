@@ -219,8 +219,29 @@ def _build_routing_context(column_name: str, samples: list) -> str:
     return f"欄位名稱：{column_name}\n\n實際回答範例（已遮罩個資）：\n{sample_block}"
 
 
-# 排除明顯是 ID / 編號的欄位名稱，不當成開放式文字回答欄位。
-_ID_LIKE_COLUMN_KEYWORDS = ("id", "編號", "序號", "代碼", "code", "no.", "no")
+# 排除明顯是 ID / 編號，或姓名、Email、電話這類個資 metadata 欄位，
+# 不當成開放式文字回答欄位。
+# 【修正】原本只排除 ID/編號類欄位，沒有排除姓名/Email/電話，導致
+# Excel 裡的「姓名」欄位（例如值是「受試者A」這種代稱）被誤判成開放式
+# 文字回答，實際送進 Gemini 分類：
+#   - 白白浪費 API 額度（詳見 question_routing_service.py 的額度問題）
+#   - 姓名這種內容 Gemini 通常判斷不出屬於哪個子類別，容易輸出清單外
+#     的字串（例如「資訊不足」），導致 get_methodology() 查無結果、
+#     status 變成 "methodology_not_found"，牽出前面 status 欄位長度
+#     不夠的問題
+# 這裡只新增關鍵字，不改動判斷邏輯本身（仍是欄位名稱完整比對，且
+# 判斷邏輯是「先轉小寫再比對」，中英文都比對得到）：新增「姓名」
+# 「名字」「email」「e-mail」「電子郵件」「電話」「手機」「聯絡電話」
+# 「身分證」「身分證字號」「tel」「phone」，涵蓋使用者這次回報的姓名
+# 案例，以及同樣屬於 metadata、不該送分類的 Email / 電話 / 身分證欄位。
+# 正常的開放式問答欄位（例如「對主管領導的建議」「工作表現回饋」）
+# 欄位名稱不會剛好等於這些字，不受影響。
+_ID_LIKE_COLUMN_KEYWORDS = (
+    "id", "編號", "序號", "代碼", "code", "no.", "no",
+    "姓名", "名字", "email", "e-mail", "電子郵件",
+    "電話", "手機", "聯絡電話", "身分證", "身分證字號",
+    "tel", "phone",
+)
 
 
 def _detect_candidate_text_columns(df):
