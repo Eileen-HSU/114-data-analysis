@@ -424,6 +424,21 @@ a[class*="btn"] i {
   .logo-subtitle { display: none; }
 }
 
+/* Catch larger tablets / narrow viewports where overlap still occurs */
+@media (max-width: 1024px) {
+  /* hide left icon nav and hero badge that can overlap */
+  .nav-link-btn { display: none !important; }
+  .badge-pill { display: none !important; }
+  .hero-tags { display: none !important; }
+
+  /* ensure navbar stays on top and content is pushed below */
+  #mainNavbar { z-index: 13000; position: fixed; top: 0; left: 0; right: 0; }
+  body { padding-top: var(--navbar-height); }
+
+  /* show mobile toggle if present */
+  .mobile-nav-toggle { display: inline-flex !important; }
+}
+
 /* Tablet and small desktop: collapse nav into hamburger to avoid crowding */
 @media (max-width: 991px) {
   :root { --navbar-height: 72px; }
