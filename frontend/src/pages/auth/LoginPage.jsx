@@ -81,10 +81,13 @@ export default function LoginPage() {
       }
 
       const userData = {
-        name: data.user_name,
+        name: data.user_name || data.admin_name,
         user_name: data.user_name,
+        admin_name: data.admin_name,
         email: data.email,
         user_id: data.user_id,
+        admin_id: data.admin_id,
+        account_type: data.account_type,
         role: data.role,
         token: data.token,
         pre_auth_token: data.pre_auth_token,
@@ -99,7 +102,7 @@ export default function LoginPage() {
       }
 
       login(userData);
-      navigate("/workspace");
+      navigate(userData.account_type === "admin" ? "/admin/ai" : "/workspace");
     } catch (err) {
       setIsSubmitting(false);
       sessionStorage.removeItem("dataanalysis_login_loading");

@@ -38,8 +38,11 @@ export function AuthProvider({ children }) {
   const isLoggedIn = Boolean(user);
 
   // 登入後或重新整理時自動預載 profile 並更新 avatar
+  // Admin 沒有 User_Profile 這張表，所以只在 account_type 是 user
+  // （或舊資料沒有 account_type 欄位，視為 user 以維持相容）時才打。
   useEffect(() => {
     if (!user?.token || !user?.user_id) return;
+    if (user?.account_type && user.account_type !== "user") return;
     fetch(apiUrl(`/api/profile/${user.user_id}`), {
       headers: { Authorization: `Bearer ${user.token}` },
     })

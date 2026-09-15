@@ -8,9 +8,9 @@ changed by this blueprint.
 from flask import Blueprint, jsonify, request
 
 from extensions import db
-from models import Prompt_Template, User
+from models import Admin, Prompt_Template
 from response_classification import Response_Classification, ALLOWED_REVIEW_STATUSES
-from routes.surveys.survey import verify_token
+from routes.auth.admin_guard import verify_admin_token
 from services.classify_v2 import _run_classification
 from services.golden_test_set import GOLDEN_TEST_SET
 from services.prompt_admin_service import update_draft, test_draft_prompt, publish_prompt
@@ -19,15 +19,28 @@ from services.subcategory_methodology import SUBCATEGORY_METHODOLOGY
 
 ai_admin_bp = Blueprint("ai_admin", __name__, url_prefix="/api/admin/ai")
 
+# 這裡的錯誤字串沿用 verify_admin_token 回傳的內容，用來決定 401 / 403：
+# token 本身有問題（不存在/過期/簽章錯）→ 401；token 有效但不是
+# admin（例如一般 User 的 token）→ 403。
+_TOKEN_ERROR_STATUS = {
+    "Unauthorized": 401,
+    "Token expired": 401,
+    "Invalid token": 401,
+}
+
 
 def _admin_or_error():
-    user_id, error = verify_token(request)
+    """驗證 Admin JWT（account_type == "admin" 且 role == "admin"），
+    完全不查 User table、不看 User.role（對應需求 #5、#7）。
+    """
+    admin_id, error = verify_admin_token(request)
     if error:
-        return None, (jsonify({"error": error}), 401)
-    user = User.query.get(user_id)
-    if not user or user.role != "admin":
+        status = _TOKEN_ERROR_STATUS.get(error, 403)
+        return None, (jsonify({"error": error}), status)
+    admin = db.session.get(Admin, admin_id)
+    if not admin:
         return None, (jsonify({"error": "Admin access required"}), 403)
-    return user, None
+    return admin, None
 
 
 def _topic(row):

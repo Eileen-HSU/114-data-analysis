@@ -64,7 +64,7 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
             <i className="ri-survey-line"></i>
             <span>{t("survey")}</span>
           </a>
-          {user?.role === "admin" && (
+          {user?.account_type === "admin" && (
             <a
               className={`nav-link-btn ${location.pathname.startsWith("/admin/ai") ? "active" : ""}`}
               href="/admin/ai"

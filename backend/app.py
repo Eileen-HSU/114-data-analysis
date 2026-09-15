@@ -23,6 +23,7 @@ from routes.classifications.review import review_bp
 from routes.classifications.report import report_bp
 from routes.exports.export import exports_bp
 from routes.ai.ppt_survey import ppt_survey_ai_bp
+from routes.admin.ai_admin import ai_admin_bp
 
 load_dotenv()
 
@@ -182,6 +183,32 @@ def ensure_table(model):
         db.metadata.create_all(bind=db.session.get_bind(), tables=[model.__table__])
 
 
+def ensure_unique_index(table_name, column_name, index_name):
+    """確保某欄位有 UNIQUE 索引，只在完全沒有時才補一個新的 UNIQUE
+    INDEX，不會動到既有資料、也不會刪除/取代任何既有索引。用在
+    Admin.email 這種「表可能是舊資料庫留下來、schema 跟現在的
+    model 不完全一樣」的情況（對應需求 #8：不確定現況前不做
+    destructive 動作，schema 不同時用最小、可疊加的方式補齊）。
+    """
+    exists = db.session.execute(
+        text(
+            """
+            SELECT COUNT(*)
+            FROM information_schema.STATISTICS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = :table_name
+              AND COLUMN_NAME = :column_name
+            """
+        ),
+        {"table_name": table_name, "column_name": column_name},
+    ).scalar()
+
+    if not exists:
+        db.session.execute(
+            text(f"ALTER TABLE `{table_name}` ADD UNIQUE INDEX `{index_name}` (`{column_name}`)")
+        )
+
+
 def ensure_runtime_schema():
     with app.app_context():
         try:
@@ -286,6 +313,29 @@ def ensure_runtime_schema():
             # 【新增｜邀請瀏覽】Workspace 補上 share_code 欄位，用來產生
             # 免登入的唯讀邀請連結。
             ensure_column("Workspace", "share_code", "`share_code` VARCHAR(10) NULL UNIQUE")
+
+            # ── Admin 帳號 / Admin 2FA（新增，additive-only）──────────
+            # 先確認資料庫「現況」再動作，不做任何 destructive ALTER：
+            # - 完全沒有 Admin 表 → 直接用 model 定義建一張新的。
+            # - 已經有 Admin 表（例如舊資料庫留下來的同名表，或上次
+            #   啟動已建立過）→ 完全不 DROP、不重建，只用 ensure_column
+            #   補齊 model 裡有、但現有表缺少的欄位；email 的唯一性
+            #   用 ensure_unique_index 補（如果本來就有唯一索引則
+            #   is a no-op）。
+            from models import Admin, AdminVerification
+
+            ensure_table(Admin)
+            ensure_column("Admin", "admin_name", "`admin_name` VARCHAR(50) NOT NULL DEFAULT ''")
+            ensure_column("Admin", "email", "`email` VARCHAR(100) NULL")
+            ensure_column("Admin", "password_hash", "`password_hash` VARCHAR(255) NULL")
+            ensure_column("Admin", "email_2fa_enabled", "`email_2fa_enabled` TINYINT(1) DEFAULT 0")
+            ensure_column("Admin", "created_at", "`created_at` DATETIME NULL")
+            ensure_column("Admin", "updated_at", "`updated_at` DATETIME NULL")
+            db.session.commit()
+            ensure_unique_index("Admin", "email", "uq_admin_email")
+
+            ensure_table(AdminVerification)
+            db.session.commit()
         except Exception as exc:
             db.session.rollback()
             app.logger.exception("Runtime schema check failed: %s", exc)
@@ -307,6 +357,7 @@ app.register_blueprint(review_bp)
 app.register_blueprint(report_bp)
 app.register_blueprint(exports_bp)
 app.register_blueprint(ppt_survey_ai_bp)
+app.register_blueprint(ai_admin_bp)
 
 start_scheduler(app)
 

@@ -55,7 +55,7 @@ export default function LoginTwoFactorPage() {
       if (res.ok) {
         login({ ...data.user, token: data.token });
         sessionStorage.removeItem(PENDING_2FA_KEY);
-        navigate("/workspace", { replace: true });
+        navigate(data.user?.account_type === "admin" ? "/admin/ai" : "/workspace", { replace: true });
       } else {
         setError(data.error || "驗證碼錯誤，請重新輸入");
         setIsSubmitting(false);
