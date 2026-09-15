@@ -212,6 +212,14 @@
   .hero-tags { margin-top: 8px; gap: 8px; }
 }
 
+/* Also hide badge/tags on larger but narrow viewports to avoid overlap */
+@media (max-width: 1024px) {
+  .badge-pill { display: none !important; }
+  .hero-tags { display: none !important; }
+  .hero-section { padding-top: calc(var(--navbar-height) + 8px); }
+  .hero-content { padding-top: 6px; }
+}
+
 /* ── Scroll Hint ── */
 .scroll-hint {
   position: absolute;
