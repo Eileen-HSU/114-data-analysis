@@ -16,10 +16,9 @@ const statusTextEn = (value) => ({ validated: "Meets publish criteria", needs_va
 const statusTextZh = (value) => ({ validated: "符合發布標準", needs_validation: "需審核", published: "已發布", not_published: "未發布" }[value] || value);
 
 const getLang = () => (typeof navigator !== "undefined" && navigator.language && navigator.language.startsWith("zh") ? "zh" : "en");
-const lang = getLang();
-const t = (zh, en) => (lang === "zh" ? zh : en);
+const t = (zh, en) => (getLang() === "zh" ? zh : en);
 
-const statusText = (value) => (lang === "zh" ? statusTextZh(value) : statusTextEn(value));
+const statusText = (value) => (getLang() === "zh" ? statusTextZh(value) : statusTextEn(value));
 
 
 export default function AiAdminPage() {
