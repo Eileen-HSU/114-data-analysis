@@ -421,3 +421,47 @@ a[class*="btn"] i {
   .nav-link-btn span { display: none; }
   .logo-subtitle { display: none; }
 }
+
+/* Additional mobile-specific tweaks to avoid header overlap on small screens */
+@media (max-width: 576px) {
+  #mainNavbar .container-fluid {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  /* Make logo flow inline instead of absolute-centred */
+  #mainNavbar .navbar-brand {
+    position: static !important;
+    left: auto !important;
+    transform: none !important;
+    margin: 0 auto;
+  }
+
+  .navbar-logo-img {
+    width: 120px;
+    max-height: 56px;
+  }
+
+  /* Reduce padding for nav buttons and hide their text labels */
+  .nav-link-btn {
+    padding: 8px 10px;
+    font-size: 15px;
+  }
+  .nav-link-btn span { display: none; }
+
+  /* Hide long user name to prevent overflow */
+  .nav-user-name { display: none; }
+
+  /* Slightly smaller user avatar / button */
+  .nav-user-avatar { width: 28px; height: 28px; }
+  .nav-user-btn { padding: 6px 10px; font-size: 14px; }
+
+  /* Reduce language switcher size (optional: hide if still crowded) */
+  .nav-language-switcher { padding: 2px; }
+  .nav-language-switcher button { padding: 3px 6px; font-size: 11px; }
+
+  .nav-login-btn, .nav-signup-btn { padding: 6px 10px; font-size: 14px; }
+}
