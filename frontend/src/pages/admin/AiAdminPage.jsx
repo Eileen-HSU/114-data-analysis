@@ -15,7 +15,17 @@ const api = async (path, token, options = {}) => {
 const statusTextEn = (value) => ({ validated: "Meets publish criteria", needs_validation: "Needs validation", published: "Published", not_published: "Not published" }[value] || value);
 const statusTextZh = (value) => ({ validated: "符合發布標準", needs_validation: "需審核", published: "已發布", not_published: "未發布" }[value] || value);
 
-const getLang = () => (typeof navigator !== "undefined" && navigator.language && navigator.language.startsWith("zh") ? "zh" : "en");
+const getLang = () => {
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem("dataanalysis_language");
+      if (stored) return stored.startsWith("zh") ? "zh" : "en";
+    } catch (e) {
+      /* ignore localStorage errors */
+    }
+  }
+  return (typeof navigator !== "undefined" && navigator.language && navigator.language.startsWith("zh")) ? "zh" : "en";
+};
 const t = (zh, en) => (getLang() === "zh" ? zh : en);
 
 const statusText = (value) => (getLang() === "zh" ? statusTextZh(value) : statusTextEn(value));
