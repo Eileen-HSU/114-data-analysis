@@ -33,7 +33,7 @@ export default function AiAdminPage() {
   const [systemTab, setSystemTab] = useState("taxonomy");
   const [systemData, setSystemData] = useState([]);
   const [error, setError] = useState("");
-  const canAccess = isLoggedIn && user?.role === "admin";
+  const canAccess = isLoggedIn && user?.account_type === "admin";
 
   const loadTopics = async () => { try { setTopics((await api("/api/admin/ai/topics", token)).topics); } catch (e) { setError(e.message); } };
   useEffect(() => { if (canAccess) loadTopics(); }, [canAccess]);

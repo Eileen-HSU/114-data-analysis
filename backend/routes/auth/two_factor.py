@@ -7,7 +7,8 @@ from flask import Blueprint, request, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from extensions import db
-from models import User, UserVerification
+from models import Admin, AdminVerification, User, UserVerification
+from routes.auth.admin_guard import build_admin_token
 from routes.auth.pwd import send_password_email_via_resend, taiwan_now
 
 two_factor_bp = Blueprint('two_factor', __name__)
@@ -156,6 +157,9 @@ def get_2fa_status():
 
 # 4. 登入時的 2FA 驗證
 # 使用 pre_auth_token 確保第一步密碼驗證已完成
+# pre_auth_token 裡的 account_type 決定要走 Admin 分支還是原本的 User
+# 分支；沒有 account_type（舊 token / 走完整流程前發出的 token）一律
+# 視為 User，保持原本行為不被破壞。
 @two_factor_bp.route('/login/two-factor', methods=['POST'])
 def login_verify_2fa():
     data = request.get_json(silent=True) or {}
@@ -179,6 +183,12 @@ def login_verify_2fa():
     except jwt.InvalidTokenError:
         return jsonify({"error": "Unauthorized"}), 401
 
+    if payload.get("account_type") == "admin":
+        return _verify_admin_2fa(email, otp)
+    return _verify_user_2fa(email, otp)
+
+
+def _verify_user_2fa(email, otp):
     record = UserVerification.query.filter_by(
         target_email=email,
         type='2FA',
@@ -203,9 +213,11 @@ def login_verify_2fa():
         return jsonify({"error": f"驗證碼錯誤，剩餘 {remaining} 次機會"}), 400
 
     user = db.session.get(User, record.user_id)
-    
+
     token = jwt.encode({
+        'account_type': 'user',
         'user_id': user.user_id,
+        'role': user.role,
         'exp': taiwan_now() + timedelta(hours=24)
     }, get_jwt_secret(), algorithm="HS256")
 
@@ -215,11 +227,58 @@ def login_verify_2fa():
     return jsonify({
         "token": token,
         "user": {
+            "account_type": "user",
             "user_id": user.user_id,
             "email": user.email,
             "user_name": user.user_name,
             "name": user.user_name,
             "role": user.role,
+        }
+    }), 200
+
+
+def _verify_admin_2fa(email, otp):
+    record = AdminVerification.query.filter_by(
+        target_email=email,
+        type='2FA',
+        is_used=False,
+    ).order_by(AdminVerification.created_at.desc()).first()
+
+    if not record:
+        return jsonify({"error": "驗證碼不存在或已使用"}), 400
+
+    if record.expires_at < taiwan_now():
+        return jsonify({"error": "驗證碼已過期"}), 400
+
+    if record.attempts >= MAX_OTP_ATTEMPTS:
+        record.is_used = True
+        db.session.commit()
+        return jsonify({"error": "嘗試次數過多，請重新取得驗證碼"}), 429
+
+    if not check_password_hash(record.code_hash, otp):
+        record.attempts += 1
+        db.session.commit()
+        remaining = MAX_OTP_ATTEMPTS - record.attempts
+        return jsonify({"error": f"驗證碼錯誤，剩餘 {remaining} 次機會"}), 400
+
+    admin = db.session.get(Admin, record.admin_id)
+    if not admin:
+        return jsonify({"error": "找不到管理員帳號"}), 404
+
+    token = build_admin_token(admin.admin_id)
+
+    record.is_used = True
+    db.session.commit()
+
+    return jsonify({
+        "token": token,
+        "user": {
+            "account_type": "admin",
+            "admin_id": admin.admin_id,
+            "email": admin.email,
+            "admin_name": admin.admin_name,
+            "name": admin.admin_name,
+            "role": "admin",
         }
     }), 200
 

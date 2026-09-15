@@ -276,14 +276,58 @@ class Prompt_Template(db.Model):
 
 
 # ═══════════════════════════════════════════════════════════════
-# T11: Admin
+# T11: Admin - 管理員帳號（獨立於 User，不依賴 User.role）
 # ═══════════════════════════════════════════════════════════════
-"""
+#
+# 舊版註解掉的 Admin model（config_id / admin_entry_key /
+# prompt_template / system_error_log）其實不是帳號表：它沒有
+# email、沒有 password_hash，本質上是一張「AI 設定/日誌」表，
+# 跟這裡要做的「管理員登入帳號」是完全不同的語意，所以不能直接
+# 拿來當帳號表用，必須另外建一張新的。
+# prompt_template / system_error_log 這兩個欄位的職責已經由
+# Prompt_Template（T10）與應用程式日誌承接，這裡不重複保留。
 class Admin(db.Model):
-    __tablename__ = 'Admin'
-    config_id        = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    admin_entry_key  = db.Column(db.String(50), nullable=False)  # 管理員金鑰
-    prompt_template  = db.Column(db.Text)                        # AI分析提示語模板
-    system_error_log = db.Column(db.Text)                        # 系統錯誤日誌
-    updated_at       = db.Column(db.DateTime(timezone=True), default=taiwan_now, onupdate=taiwan_now)
-"""
+    __tablename__ = "Admin"
+
+    admin_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    admin_name = db.Column(db.String(50), nullable=False)
+    email = db.Column(db.String(100), nullable=False, unique=True)
+    password_hash = db.Column(db.String(255), nullable=False)
+    email_2fa_enabled = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        default=taiwan_now,
+        onupdate=taiwan_now,
+    )
+
+    # 關聯設定
+    verifications = db.relationship(
+        "AdminVerification", backref="admin", cascade="all, delete-orphan"
+    )
+
+
+# T12: Admin_Verification - Admin 專用的驗證碼機制（2FA）
+#
+# 刻意不重複使用 User_Verification：那張表的 user_id 是
+# ForeignKey("User.user_id")，Admin 沒有 user_id，硬塞會產生指向
+# 錯誤資料表的 FK（例如拿 admin_id 冒充 user_id 寫進去），日後資料
+# 一多幾乎必然對不上。這裡另外開一張結構相同、但外鍵對到 Admin
+# 的新表，對既有 User 2FA 完全不動、風險最小。
+class AdminVerification(db.Model):
+    __tablename__ = "Admin_Verification"
+
+    verification_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    # 刪除管理員時保留驗證紀錄，僅將 admin_id 設為 NULL（比照 User_Verification 的作法）
+    admin_id = db.Column(
+        db.Integer,
+        db.ForeignKey("Admin.admin_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    type = db.Column(db.String(50), nullable=False)  # 目前只會用到 2FA
+    code_hash = db.Column(db.String(255), nullable=False)
+    is_used = db.Column(db.Boolean, default=False)
+    attempts = db.Column(db.Integer, default=0, nullable=False)
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
+    target_email = db.Column(db.String(255))
