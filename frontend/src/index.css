@@ -464,4 +464,16 @@ a[class*="btn"] i {
   .nav-language-switcher button { padding: 3px 6px; font-size: 11px; }
 
   .nav-login-btn, .nav-signup-btn { padding: 6px 10px; font-size: 14px; }
+
+  /* Mobile hamburger toggle */
+  .mobile-nav-toggle { display: inline-flex; align-items: center; justify-content: center; border: 0; background: transparent; font-size: 20px; padding: 6px; margin-right: 6px; cursor: pointer; }
+
+  /* Hide desktop nav links on very small screens (use mobile menu) */
+  .nav-link-btn { display: none !important; }
+
+  .mobile-nav-menu { display: none; position: absolute; top: 100%; left: 0; right: 0; background: white; flex-direction: column; padding: 8px 12px; gap: 6px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); z-index: 12005; }
+  .mobile-nav-menu.open { display: flex; }
+  .mobile-nav-link { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; color: var(--slate-700); text-decoration: none; font-weight: 800; }
+  .mobile-nav-link i { font-size: 18px; }
+  .mobile-nav-link.active { background: var(--violet-50); color: var(--violet-600); }
 }
