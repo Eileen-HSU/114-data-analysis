@@ -432,8 +432,13 @@ a[class*="btn"] i {
   #mainNavbar .navbar-brand { position: static !important; left: auto !important; transform: none !important; }
   .navbar-logo-img { width: 140px; max-height: 64px; }
   .nav-link-btn { display: none !important; }
-  .nav-language-switcher { display: none; }
-  .mobile-nav-toggle { display: inline-flex; }
+  .nav-language-switcher { display: none !important; }
+  .nav-signup-btn, .nav-login-btn, .nav-user-btn { display: none !important; }
+  .mobile-nav-toggle { display: inline-flex; position: relative; z-index:12010; margin-right:8px; }
+  /* ensure logo centered despite toggle existing */
+  #mainNavbar .container-fluid { display:flex; align-items:center; }
+  #mainNavbar .navbar-brand { margin-left: auto; margin-right: auto; }
+  .navbar-white, .navbar-transparent { backdrop-filter: none; }
 }
 
 @media (max-width: 768px) {
