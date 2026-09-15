@@ -13,7 +13,17 @@ import {
 } from "../../lib/pptSurveyAi";
 import "./survey.css";
 
-const getLang = () => (typeof navigator !== "undefined" && navigator.language && navigator.language.startsWith("zh") ? "zh" : "en");
+const getLang = () => {
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem("dataanalysis_language");
+      if (stored) return stored.startsWith("zh") ? "zh" : "en";
+    } catch (e) {
+      /* ignore localStorage errors */
+    }
+  }
+  return (typeof navigator !== "undefined" && navigator.language && navigator.language.startsWith("zh")) ? "zh" : "en";
+};
 const t = (zh, en) => (getLang() === "zh" ? zh : en);
 
 const defaultPptConfig = {
