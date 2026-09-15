@@ -344,11 +344,11 @@ export default function SurveyPage({ pptOnly = false }) {
           <div className="survey-intro">
             <div className="survey-hero-badge">
               <i className="ri-survey-line"></i>
-              <span>問卷調查</span>
+              <span>Surveys</span>
             </div>
-            <h1 className="survey-hero-title">建立問卷與蒐集回饋</h1>
+            <h1 className="survey-hero-title">Create surveys and collect feedback</h1>
             <p className="survey-hero-subtitle">
-              建立評分題與問答題，分享邀請碼給填答者，回收後可交由分析助理整理。
+              Create rating and open-ended questions, share an access code with respondents, and have the Analysis Assistant summarize results after collection.
             </p>
           </div>
 
@@ -358,20 +358,20 @@ export default function SurveyPage({ pptOnly = false }) {
                 <div className="entry-card-icon create-icon">
                   <i className="ri-edit-box-line"></i>
                 </div>
-                <span className="entry-card-kicker">手動建立</span>
+                <span className="entry-card-kicker">Manual create</span>
               </div>
               <div className="entry-card-copy">
-                <h2 className="entry-card-title">建立問卷</h2>
+                <h2 className="entry-card-title">Create survey</h2>
                 <p className="entry-card-desc">
-                  自訂題目、設定填答規則，產生邀請碼與專屬連結後即可開始收集回覆。
+                  Customize questions and response rules, then generate an access code and unique link to start collecting responses.
                 </p>
               </div>
               <div className="entry-card-footer">
                 <span className="entry-card-action">
-                  前往建立
+                  Go to create
                   <i className="ri-arrow-right-line"></i>
                 </span>
-                <span className="entry-card-note">評分題 · 問答題 · 邀請碼</span>
+                <span className="entry-card-note">Rating · Open-ended · Access code</span>
               </div>
             </a>
 
@@ -394,10 +394,10 @@ export default function SurveyPage({ pptOnly = false }) {
                   <i className="ri-slideshow-3-line"></i>
                 </div>
                 <div className="entry-card-copy">
-                  <span className="entry-card-kicker">AI 生成</span>
-                  <h2 className="entry-card-title">上傳 PPT/PDF 生成問卷</h2>
+                  <span className="entry-card-kicker">AI generation</span>
+                  <h2 className="entry-card-title">Generate a survey from PPT/PDF</h2>
                   <p className="entry-card-desc">
-                    依簡報或 PDF 重點產生相容草稿，講師可先編修，再儲存成正式問卷。
+                    Create an editable draft from a presentation or PDF; instructors can edit first, then save as a survey.
                   </p>
                 </div>
                 <span className="entry-card-arrow"><i className="ri-sparkling-line"></i></span>
@@ -408,9 +408,9 @@ export default function SurveyPage({ pptOnly = false }) {
                   <i className="ri-file-list-3-line"></i>
                 </div>
                 <div className="entry-card-copy">
-                  <span className="entry-card-kicker">填答入口</span>
-                  <h2 className="entry-card-title">填寫問卷</h2>
-                  <p className="entry-card-desc">輸入邀請碼即可開啟問卷並提交回饋內容。</p>
+                  <span className="entry-card-kicker">Response entry</span>
+                  <h2 className="entry-card-title">Complete survey</h2>
+                  <p className="entry-card-desc">Enter an invite code to open a survey and submit feedback.</p>
                 </div>
                 <span className="entry-card-arrow"><i className="ri-arrow-right-line"></i></span>
               </a>
@@ -418,9 +418,9 @@ export default function SurveyPage({ pptOnly = false }) {
               <section className="survey-activity-card">
                 <div className="survey-activity-head">
                   <div>
-                    <span className="entry-card-kicker">最近建立</span>
-                    <h2>問卷紀錄</h2>
-                    <p className="survey-activity-note">顯示近期建立的問卷與回覆狀態。</p>
+                    <span className="entry-card-kicker">Recently created</span>
+                    <h2>Survey history</h2>
+                    <p className="survey-activity-note">Displays recently created surveys and response status.</p>
                   </div>
                 </div>
 
@@ -432,7 +432,7 @@ export default function SurveyPage({ pptOnly = false }) {
                 ) : isLoading ? (
                   <div className="survey-activity-empty">
                     <i className="ri-loader-4-line ri-spin"></i>
-                    <span>載入問卷中...</span>
+                    <span>Loading surveys...</span>
                   </div>
                 ) : recentSurveys.length > 0 ? (
                   <div className="survey-activity-list">
@@ -454,7 +454,7 @@ export default function SurveyPage({ pptOnly = false }) {
                 ) : (
                   <div className="survey-activity-empty">
                     <i className="ri-time-line"></i>
-                    <span>建立問卷後，這裡會顯示近期狀態。</span>
+                    <span>After you create surveys, recent status will appear here.</span>
                   </div>
                 )}
               </section>
