@@ -1,0 +1,443 @@
+diff --git a/backend/routes/classifications/classification.py b/backend/routes/classifications/classification.py
+index f31ab402..404ddb4b 100644
+--- a/backend/routes/classifications/classification.py
++++ b/backend/routes/classifications/classification.py
+@@ -588,7 +588,19 @@ def analyze_survey(access_code):
+ 
+     analyzed_question_ids = []
+     newly_classified_count = 0
+-    rows_by_question_type = {}
++    # 【修正｜多題目分表需要 question_id】原本用 question_type 當 key
++    # 分組（rows_by_question_type），如果兩個不同的題目（question_id）
++    # 剛好被路由到同一個 question_type（例如都判定成「leadership_and_
++    # dept」），它們的分類結果會被合併進同一個 list，後面呼叫
++    # _build_aggregated_groups 產生 aggregated_groups 時就完全看不出
++    # 這幾筆結果原本屬於哪一題——這正是「不要用類別名稱猜題目」這個
++    # 要求要避免的情況：既有邏輯已經把題目範圍弄丟了。
++    # 改成用 question_id 分組，題目範圍不會再被 question_type 蓋掉；
++    # 同一個 question_id 底下每個回答的 question_type 其實都一樣（來自
++    # question_type_map[question_id]），所以呼叫 _build_aggregated_groups
++    # 需要的 question_type 參數還是拿得到，不影響原本依 question_type
++    # 決定 sub_category 編號規則（compute_display_sub_categories）的邏輯。
++    rows_by_question_id = {}
+     per_question_diagnostic = {}
+ 
+     for question_id, question_type in question_type_map.items():
+@@ -630,7 +642,7 @@ def analyze_survey(access_code):
+                     response_id=response.response_id, question_id=question_id
+                 ).all()
+                 
+-                rows_by_question_type.setdefault(question_type, []).extend(existing_rows)
++                rows_by_question_id.setdefault(question_id, []).extend(existing_rows)
+                 existing_references.append({
+                     "identifier": response.response_id,
+                     "answer_text": answer_text,
+@@ -682,7 +694,7 @@ def analyze_survey(access_code):
+                 question_id=question_id,
+                 response_id=item["identifier"],
+             )
+-            rows_by_question_type.setdefault(question_type, []).extend(new_rows)
++            rows_by_question_id.setdefault(question_id, []).extend(new_rows)
+             newly_classified_count += 1
+ 
+         analyzed_question_ids.append(question_id)
+@@ -691,10 +703,19 @@ def analyze_survey(access_code):
+ 
+     
+     aggregated_groups = []
+-    for q_type, rows in rows_by_question_type.items():
+-        aggregated_groups.extend(
+-            _build_aggregated_groups(rows, response_id_to_number, q_type, id_field="response_id")
++    for question_id, rows in rows_by_question_id.items():
++        q_type = question_type_map.get(question_id, QUESTION_OTHER)
++        question_groups = _build_aggregated_groups(
++            rows, response_id_to_number, q_type, id_field="response_id"
+         )
++        for g in question_groups:
++            # 讓每個 aggregated group 帶著自己的 question_id，前端／匯出
++            # 才有依據可以判斷「這幾筆結果屬於哪一題」，進而在 Word 匯出
++            # 時正確分表，不用回頭用大類別名稱去猜（大類別名稱在不同題
++            # 目底下可能重複，猜不準）。
++            g["question_id"] = question_id
++            g["question_type"] = q_type
++        aggregated_groups.extend(question_groups)
+ 
+     return jsonify({
+         "template_id": template_id,
+diff --git a/backend/services/export_file_service.py b/backend/services/export_file_service.py
+index cf1ae07f..b782a56e 100644
+--- a/backend/services/export_file_service.py
++++ b/backend/services/export_file_service.py
+@@ -11,6 +11,12 @@ CSV 沒有放在這裡——CSV 是純文字格式，前端組字串就能產生
+   - 5 欄：大類別、子類別、問卷回覆內容、判斷原因與說明、受試者建議摘要
+   - 大類別連續相同時合併儲存格（Excel 用 merge_cells，Word 用手動合併
+     儲存格），不逐列重複
++
++Word（build_docx）額外處理「多題目」的情況：如果 rows 帶有
++source_column（Excel 上傳來源）或 question_id（問卷來源）這類題目
++中繼資料，且不只一種值，會依題目切成多張各自完整（各自有表頭）的
++表格；沒有這類中繼資料時維持「整批 rows 一張表」的舊行為，不受影響。
++Excel（build_xlsx）完全沒有異動這部分邏輯。
+ """
+ 
+ import io
+@@ -19,13 +25,21 @@ import openpyxl
+ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+ from openpyxl.utils import get_column_letter
+ from docx import Document
+-from docx.shared import Pt, Cm
++from docx.shared import Pt, Cm, Emu
+ from docx.enum.text import WD_ALIGN_PARAGRAPH
+ from docx.enum.table import WD_ALIGN_VERTICAL
+ from docx.enum.section import WD_ORIENT
++from docx.oxml.ns import qn
++from docx.oxml import OxmlElement
+ 
+ COLUMN_HEADERS = ["大類別", "子類別", "問卷回覆內容", "判斷原因與說明", "受試者建議摘要"]
+ 
++# Word 中文字體：openpyxl 的 Font(name=...) 對中文就夠了，但 python-docx
++# 的 run.font.name 只會設定「西方文字」字型，中文實際顯示用的是
++# w:rFonts 的 eastAsia 屬性，兩個都要設才能保證 Word 開啟後中文確實是
++# 微軟正黑體（否則常見狀況是英數字對了、中文卻掉回系統預設字體）。
++DOCX_CJK_FONT = "微軟正黑體"
++
+ 
+ def _row_values(row: dict) -> list:
+     return [
+@@ -93,36 +107,181 @@ def build_xlsx(rows: list, title: str = "分類結果") -> bytes:
+     return buf.getvalue()
+ 
+ 
+-def build_docx(rows: list, title: str = "分類結果") -> bytes:
+-    """把 rows 產生成 .docx 檔案，回傳檔案的原始 bytes。"""
+-    doc = Document()
++def _apply_docx_font(run, size_pt: float, bold: bool = False):
++    """同時設定西方字型與中文（east-asia）字型，確保 Word 開啟後中文
++    確實套用微軟正黑體，不會只有英數字對、中文掉回系統預設字體。
++    """
++    run.font.size = Pt(size_pt)
++    run.font.bold = bold
++    run.font.name = DOCX_CJK_FONT
++    rPr = run._element.get_or_add_rPr()
++    rFonts = rPr.find(qn("w:rFonts"))
++    if rFonts is None:
++        rFonts = OxmlElement("w:rFonts")
++        rPr.append(rFonts)
++    rFonts.set(qn("w:eastAsia"), DOCX_CJK_FONT)
+ 
+-    # 頁面設定：橫向，欄位比較多，直向會太窄
+-    section = doc.sections[0]
+-    section.orientation = WD_ORIENT.LANDSCAPE
+-    section.page_width, section.page_height = section.page_height, section.page_width
+-    section.left_margin = Cm(1.5)
+-    section.right_margin = Cm(1.5)
+ 
+-    heading = doc.add_heading(title or "分類結果", level=1)
+-    heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
++def _set_cell_shading(cell, fill_hex: str):
++    """套用儲存格底色（表頭淡灰底用）。python-docx 沒有對應的高階 API，
++    要直接操作 XML 加上 <w:shd>。
++    """
++    tcPr = cell._tc.get_or_add_tcPr()
++    shd = OxmlElement("w:shd")
++    shd.set(qn("w:val"), "clear")
++    shd.set(qn("w:color"), "auto")
++    shd.set(qn("w:fill"), fill_hex)
++    tcPr.append(shd)
++
++
++def _set_repeat_header_row(row):
++    """把某一列標記成「表格跨頁時，每一頁都重複顯示」的表頭列
++    （Word 對應功能：表格內容 -> 重複標題列）。這樣長表格自然跨頁時，
++    每一頁最上面都還看得到欄位名稱，不用使用者自己往回翻頁對欄位。
++    """
++    trPr = row._tr.get_or_add_trPr()
++    tblHeader = OxmlElement("w:tblHeader")
++    tblHeader.set(qn("w:val"), "true")
++    trPr.append(tblHeader)
++
++
++def _set_table_fixed_layout(table):
++    """強制固定欄寬（不要讓 Word 依內容自動重新分配欄寬），
++    不然「問卷回覆內容要是最寬欄」這個要求在 Word 實際開啟時可能會
++    因為某一欄剛好內容很長，被自動版面配置悄悄搶走寬度。
++    """
++    tblPr = table._tbl.tblPr
++    layout = OxmlElement("w:tblLayout")
++    layout.set(qn("w:type"), "fixed")
++    tblPr.append(layout)
++    # autofit=False 是 python-docx 官方建議跟 fixed layout 搭配的寫法，
++    # 兩者一起設才會在各版本 Word 都可靠地吃到我們指定的欄寬。
++    table.autofit = False
++
++
++def _write_cell_paragraphs(cell, text: str, *, size_pt: float, bold: bool,
++                            align, extra_paragraph_spacing: bool = False):
++    """把（可能包含多個受試者、以 \\n 分隔的）文字寫進儲存格，每一段
++    各自是獨立的段落，而不是同一段落裡用換行符號硬塞。
++
++    這是「每位受試者之間保留明顯段落間距」的關鍵：如果只是把整串文字
++    （含 \\n）丟給 cell.text，python-docx 會把 \\n 轉成同一段落內的
++    換行（<w:br/>），視覺上看起來只是貼在一起、段落前後距一律是 0，
++    做不出「明顯」的間距。改成每個受試者各自一個 paragraph，並在段落
++    設定 space_after，才有真正的段落間距。
++
++    extra_paragraph_spacing 只對「問卷回覆內容」欄開，其餘欄位
++    （子類別、判斷原因、建議摘要）內容通常較短或本來就是單一敘述，
++    不需要放大段落間距。
++    """
++    lines = str(text or "").split("\n")
++    if not lines:
++        lines = [""]
++
++    # cell 一開始一定至少有一個空段落，重複使用它當第一行，避免多出
++    # 一個看起來像「多空一行」的空白段落。
++    first_paragraph = cell.paragraphs[0]
++    for existing_run in list(first_paragraph.runs):
++        existing_run.text = ""
++
++    for idx, line in enumerate(lines):
++        paragraph = first_paragraph if idx == 0 else cell.add_paragraph()
++        paragraph.alignment = align
++        if extra_paragraph_spacing and idx < len(lines) - 1:
++            # 只在「不是最後一行」時加下段距，最後一行加了反而會在
++            # cell 底部留一截看起來像多的空白。
++            paragraph.paragraph_format.space_after = Pt(8)
++        else:
++            paragraph.paragraph_format.space_after = Pt(0)
++        run = paragraph.add_run(line)
++        _apply_docx_font(run, size_pt=size_pt, bold=bold)
++
++    cell.vertical_alignment = WD_ALIGN_VERTICAL.TOP
++
++
++def _question_scope_key(row: dict):
++    """判斷一筆 row 屬於哪一個「題目」，用來決定要不要分表。
++
++    優先看 source_column（Excel 上傳來源，每欄文字題各自是一個
++    「題目」），其次看 question_id（問卷來源，每一題各自一個
++    question_id）。兩者都沒有就回傳 None——這代表這批 rows 沒有題目
++    範圍的中繼資料（例如比較舊、資料結構還沒帶這兩個欄位的匯出紀錄），
++    這種情況全部當同一組，不會因為缺資訊就亂猜、也不會因此噴錯，
++    維持原本「整批 rows 一張表」的行為。
++    """
++    return row.get("source_column") or row.get("question_id")
++
++
++def _group_rows_by_question(rows: list):
++    """把 rows 依題目分組，回傳 [(question_label, group_rows), ...]，
++    保持每組第一次出現的順序（不重新排序 rows 本身的相對順序）。
+ 
+-    table = doc.add_table(rows=1, cols=5)
+-    table.style = "Table Grid"
++    只要「所有 row 的題目 key 都是 None」，就代表這批資料整體沒有
++    題目範圍資訊，回傳單一組、question_label 為 None，呼叫端看到
++    question_label 是 None 時不額外加小標題，維持原本「一張表」的
++    排版，不會無中生有切出好幾張其實是同一題的表格。
++    """
++    if not rows:
++        return []
+ 
+-    hdr_cells = table.rows[0].cells
++    keys = [_question_scope_key(r) for r in rows]
++    if all(k is None for k in keys):
++        return [(None, rows)]
++
++    order = []
++    buckets = {}
++    for row, key in zip(rows, keys):
++        if key not in buckets:
++            buckets[key] = []
++            order.append(key)
++        buckets[key].append(row)
++
++    return [(key, buckets[key]) for key in order]
++
++
++# 欄寬比例：問卷回覆內容要是最寬欄，大類別/子類別是短標籤，判斷原因跟
++# 建議摘要則是中等長度的敘述文字。比例套用在「版面實際可用寬度」上
++# （橫向頁面寬度扣掉左右邊界），不是寫死的 cm 數字，這樣不管以後
++# 頁面邊界怎麼調，問卷回覆內容永遠保證是最寬的一欄。
++_COLUMN_WIDTH_RATIOS = [0.10, 0.13, 0.38, 0.22, 0.17]  # 大類別/子類別/問卷回覆/判斷原因/建議摘要
++_HEADER_FILL = "D9D9D9"  # 淡灰底
++_BODY_FONT_SIZE = 10
++_HEADER_FONT_SIZE = 11
++
++
++def _build_classification_table(doc: Document, rows: list, col_widths: list):
++    """建立單一張「大類別/子類別/問卷回覆內容/判斷原因與說明/受試者
++    建議摘要」5 欄分類表，對應一個題目範圍（或整批沒有題目範圍資訊
++    的 rows）。多題目時，呼叫端會針對每個題目分別呼叫這個函式，
++    各自建立一張全新的 table，每張都有自己完整的表頭。
++    """
++    table = doc.add_table(rows=1, cols=len(COLUMN_HEADERS))
++    table.style = "Table Grid"  # 黑色細格線
++    _set_table_fixed_layout(table)
++
++    header_row = table.rows[0]
++    hdr_cells = header_row.cells
+     for i, header in enumerate(COLUMN_HEADERS):
+-        hdr_cells[i].text = header
+-        for p in hdr_cells[i].paragraphs:
+-            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+-            for run in p.runs:
+-                run.bold = True
+-                run.font.size = Pt(11)
++        cell = hdr_cells[i]
++        _write_cell_paragraphs(
++            cell, header, size_pt=_HEADER_FONT_SIZE, bold=True,
++            align=WD_ALIGN_PARAGRAPH.CENTER,
++        )
++        _set_cell_shading(cell, _HEADER_FILL)  # 表頭淡灰底
++    _set_repeat_header_row(header_row)  # 跨頁時每頁都重複表頭
+ 
+-    # 欄寬（單位 cm，5 欄加總跟橫向可用寬度大致相符）
+-    col_widths_cm = [2.2, 2.8, 7.5, 7.0, 6.0]
++    # 各欄的粗體/對齊設定：大類別、子類別是短標籤用粗體且靠上，
++    # 問卷回覆內容／判斷原因／建議摘要是內文，靠左、不加粗。
++    # index: 0 大類別 1 子類別 2 問卷回覆內容 3 判斷原因與說明 4 建議摘要
++    column_style = [
++        {"bold": True, "align": WD_ALIGN_PARAGRAPH.CENTER, "extra_spacing": False},
++        {"bold": True, "align": WD_ALIGN_PARAGRAPH.LEFT, "extra_spacing": False},
++        {"bold": False, "align": WD_ALIGN_PARAGRAPH.LEFT, "extra_spacing": True},
++        {"bold": False, "align": WD_ALIGN_PARAGRAPH.LEFT, "extra_spacing": False},
++        {"bold": False, "align": WD_ALIGN_PARAGRAPH.LEFT, "extra_spacing": False},
++    ]
+ 
+-    row_start_index = {}  # main_category -> 這個 docx table 裡的起始 row index
++    row_start_index = {}  # main_category -> 這張表裡的起始 row index（不含表頭）
+     prev_main_category = None
+     for r_idx, row in enumerate(rows):
+         cells = table.add_row().cells
+@@ -131,17 +290,19 @@ def build_docx(rows: list, title: str = "分類結果") -> bytes:
+         is_continuation = r_idx > 0 and prev_main_category == main_category
+ 
+         for c_idx, value in enumerate(values):
+-            # 【修正】大類別（第 0 欄）如果這列要被合併進上一列，這裡故意
+-            # 先不寫文字——python-docx 合併兩個「都已經有文字」的儲存格時，
+-            # 會把兩段文字直接接在一起（變成「主管領導\n主管領導」），
+-            # 不是保留第一格、丟棄第二格。留空再合併，才不會重複。
++            style = column_style[c_idx]
++            # 【沿用既有修正】大類別（第 0 欄）如果這列要被合併進上一列，
++            # 這裡故意先不寫文字——python-docx 合併兩個「都已經有文字」
++            # 的儲存格時，會把兩段文字直接接在一起（變成「主管領導\n
++            # 主管領導」），不是保留第一格、丟棄第二格。留空再合併，
++            # 才不會重複。
+             if c_idx == 0 and is_continuation:
+                 continue
+-            cells[c_idx].text = str(value)
+-            for p in cells[c_idx].paragraphs:
+-                for run in p.runs:
+-                    run.font.size = Pt(10)
+-            cells[c_idx].vertical_alignment = WD_ALIGN_VERTICAL.TOP
++            _write_cell_paragraphs(
++                cells[c_idx], value,
++                size_pt=_BODY_FONT_SIZE, bold=style["bold"], align=style["align"],
++                extra_paragraph_spacing=style["extra_spacing"],
++            )
+ 
+         table_row_idx = r_idx + 1  # +1 因為第 0 列是表頭
+         if is_continuation:
+@@ -149,21 +310,73 @@ def build_docx(rows: list, title: str = "分類結果") -> bytes:
+             first_cell = table.rows[first_row_idx].cells[0]
+             this_cell = table.rows[table_row_idx].cells[0]
+             first_cell.merge(this_cell)
+-            for p in first_cell.paragraphs:
+-                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+         else:
+             row_start_index[main_category] = table_row_idx
+-            cells[0].vertical_alignment = WD_ALIGN_VERTICAL.TOP
+-            for p in cells[0].paragraphs:
+-                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+-                for run in p.runs:
+-                    run.font.size = Pt(10)
+ 
+         prev_main_category = main_category
+ 
+     for row in table.rows:
+-        for i, cm in enumerate(col_widths_cm):
+-            row.cells[i].width = Cm(cm)
++        for i, width in enumerate(col_widths):
++            row.cells[i].width = width
++    # 【重要】只設定每個 cell 的 width 不夠：實際決定 Word 畫面上欄寬的
++    # 是表格底層的 <w:tblGrid>（gridCol），tcW 只是每個儲存格自己的
++    # 寬度提示。fixed layout 底下，沒同步更新 tblGrid 的話，Word 仍然
++    # 會照 add_table() 當初建立時「五欄等寬」的預設值畫出來——也就是
++    # 這裡曾經踩到的坑：cell.width 都設對了，畫面卻還是等寬。
++    # table.columns[i].width 這個 setter 才會真的去改 tblGrid。
++    for i, width in enumerate(col_widths):
++        table.columns[i].width = width
++
++    return table
++
++
++def build_docx(rows: list, title: str = "分類結果") -> bytes:
++    """把 rows 產生成 .docx 檔案，回傳檔案的原始 bytes。
++
++    如果 rows 帶有 source_column（Excel 上傳來源）或 question_id
++    （問卷來源）這類「屬於哪一題」的中繼資料，且不只一種值，會依題目
++    切成多張各自完整（各自有表頭）的表格，避免不同題目的分類結果被
++    混在同一張表裡看不出界線。沒有這類中繼資料時（例如比較舊的匯出
++    資料）維持原本「整批 rows 一張表」的行為。
++    """
++    doc = Document()
++
++    # 頁面設定：直向、A4（python-docx 預設範本是美規 Letter，不是台灣
++    # 慣用的 A4，這裡明確指定，避免列印出來紙張大小跟預期不同）。
++    # 欄寬比例（問卷回覆內容 38% 最寬）是照「可用寬度」動態計算，不是
++    # 寫死 cm 數字，所以頁面大小、邊界要是之後調整，欄寬比例仍然自動
++    # 跟著等比縮放，不用回頭改欄寬設定。
++    section = doc.sections[0]
++    section.orientation = WD_ORIENT.PORTRAIT
++    section.page_width = Cm(21.0)
++    section.page_height = Cm(29.7)
++    section.left_margin = Cm(1.5)
++    section.right_margin = Cm(1.5)
++
++    heading = doc.add_heading(title or "分類結果", level=1)
++    heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
++    for run in heading.runs:
++        _apply_docx_font(run, size_pt=run.font.size.pt if run.font.size else 18, bold=True)
++
++    usable_width = section.page_width - section.left_margin - section.right_margin
++    col_widths = [Emu(int(usable_width * ratio)) for ratio in _COLUMN_WIDTH_RATIOS]
++
++    groups = _group_rows_by_question(rows)
++    multiple_tables = len(groups) > 1
++
++    for idx, (question_label, group_rows) in enumerate(groups):
++        if multiple_tables:
++            if idx > 0:
++                # 表格之間留一個空段落當視覺分隔即可，不強制分頁——
++                # 強制分頁在題目內容很短時會製造一整頁不必要的空白，
++                # 跟「不要出現大量不必要空白」的要求牴觸。內容夠長的
++                # 題目本來就會自然換頁，不需要額外幫它分頁。
++                doc.add_paragraph()
++            subheading = doc.add_heading(question_label or f"題目 {idx + 1}", level=2)
++            for run in subheading.runs:
++                _apply_docx_font(run, size_pt=run.font.size.pt if run.font.size else 14, bold=True)
++
++        _build_classification_table(doc, group_rows, col_widths)
+ 
+     buf = io.BytesIO()
+     doc.save(buf)
+diff --git a/frontend/src/pages/workspace/page.jsx b/frontend/src/pages/workspace/page.jsx
+index 6ffbf7e4..6d57683b 100644
+--- a/frontend/src/pages/workspace/page.jsx
++++ b/frontend/src/pages/workspace/page.jsx
+@@ -49,6 +49,15 @@ function buildClassificationMessageContent(aggregatedGroups, meta) {
+     synthesis_status: g.synthesis_status || "ok",
+     synthesis_error: g.synthesis_error || null,
+     respondent_count: g.respondent_count ?? null,
++    // 【新增】題目範圍中繼資料：source_column 是 Excel 上傳來源的欄位名，
++    // question_id 是問卷來源的題目 id，兩者互斥（依資料來源只會有一個
++    // 有值）。單純存起來、原樣往後傳，不在這裡做任何判斷——後端 Word
++    // 匯出（build_docx）會用這兩個欄位判斷要不要依題目分表。之前這裡
++    // 沒有存這兩個欄位，等於「題目範圍」資訊一路傳到前端就弄丟了，
++    // 匯出時完全沒辦法知道兩筆結果是不是同一題。
++    source_column: g.source_column || null,
++    question_id: g.question_id || null,
++    question_type: g.question_type || null,
+   }));
+   return `${CLASSIFICATION_TABLE_MARKER}${JSON.stringify({ rows, meta: meta || {} })}`;
+ }
