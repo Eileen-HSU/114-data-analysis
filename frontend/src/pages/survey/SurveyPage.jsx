@@ -13,8 +13,8 @@ import {
 } from "../../lib/pptSurveyAi";
 import "./survey.css";
 
-const lang = typeof navigator !== "undefined" && navigator.language && navigator.language.startsWith("zh") ? "zh" : "en";
-const t = (zh, en) => (lang === "zh" ? zh : en);
+const getLang = () => (typeof navigator !== "undefined" && navigator.language && navigator.language.startsWith("zh") ? "zh" : "en");
+const t = (zh, en) => (getLang() === "zh" ? zh : en);
 
 const defaultPptConfig = {
   direction: "",
