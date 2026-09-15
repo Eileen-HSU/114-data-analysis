@@ -72,7 +72,7 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
               style={{ cursor: "pointer" }}
             >
               <i className="ri-shield-star-line"></i>
-              <span>AI 管理</span>
+              <span>{t("AI 管理")}</span>
             </a>
           )}
         </div>
