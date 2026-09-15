@@ -38,6 +38,7 @@ import getpass
 import os
 import re
 import sys
+from urllib.parse import urlsplit, parse_qsl, urlunsplit, urlencode
 
 from dotenv import load_dotenv
 from flask import Flask
@@ -51,10 +52,34 @@ from models import Admin
 EMAIL_REGEX = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
 PASSWORD_MIN_LENGTH = 12  # Admin 密碼要求比一般 User 更高一點
 
+basedir = os.path.abspath(os.path.dirname(__file__))
+
+
+def _normalize_db_url(raw_url: str) -> str:
+    if not raw_url:
+        return raw_url
+    parsed_url = urlsplit(raw_url)
+    query_params = []
+    for key, value in parse_qsl(parsed_url.query, keep_blank_values=True):
+        normalized_key = key.lower().replace("_", "-")
+        if normalized_key == "ssl-mode":
+            continue
+        if key == "ssl_ca" and value == "ca.pem":
+            value = os.path.join(basedir, "ca.pem")
+        query_params.append((key, value))
+
+    return urlunsplit((
+        parsed_url.scheme,
+        parsed_url.netloc,
+        parsed_url.path,
+        urlencode(query_params),
+        parsed_url.fragment,
+    ))
+
+
 app = Flask(__name__)
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL") or os.environ.get(
-    "SQLALCHEMY_DATABASE_URI"
-)
+_raw_db_url = os.environ.get("DATABASE_URL") or os.environ.get("SQLALCHEMY_DATABASE_URI")
+app.config["SQLALCHEMY_DATABASE_URI"] = _normalize_db_url(_raw_db_url)
 db.init_app(app)
 
 
