@@ -30,7 +30,7 @@ const WorkspacePage: React.FC = () => {
     const id = `session-${Date.now()}`;
     const newSession = {
       id,
-      title: "新分析工作區",
+      title: "New analysis workspace",
       createdAt: new Date().toISOString().split("T")[0],
       messages: [],
     };
@@ -40,7 +40,7 @@ const WorkspacePage: React.FC = () => {
       {
         id: "init",
         role: "assistant",
-        content: "您好！我是您的資料分析助理。請上傳檔案或輸入您的問題，開始分析吧！",
+        content: "Hi — I'm your Data Analysis Assistant. Upload a file or type a question to start analyzing.",
         timestamp: new Date().toISOString(),
       },
     ]);
@@ -81,11 +81,11 @@ const WorkspacePage: React.FC = () => {
         {/* 左側歷史紀錄 */}
         <aside className="w-64 bg-white border-r border-slate-100 flex flex-col flex-shrink-0">
           <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-            <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">歷史紀錄</span>
+            <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">Session history</span>
             <button
               onClick={handleNewSession}
               className="w-8 h-8 flex items-center justify-center bg-gradient-to-br from-violet-500 to-sky-500 text-white rounded-lg hover:from-violet-400 hover:to-sky-400 cursor-pointer transition-all"
-              title="新增工作區"
+              title="New workspace"
             >
               <i className="ri-add-line text-base"></i>
             </button>

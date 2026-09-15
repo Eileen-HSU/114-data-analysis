@@ -14,11 +14,11 @@ interface Feature {
 const features: Feature[] = [
   {
     icon: "ri-upload-cloud-2-line",
-    title: "輕鬆上傳檔案",
-    description: "拖放您的 CSV、Excel、JSON 或文字檔案。系統即時處理並準備好您的資料進行分析。",
+    title: "Easy file upload",
+    description: "Drag and drop CSV, Excel, JSON, or text files. The system processes them and prepares your data for analysis.",
     iconColor: "text-violet-500",
     iconBg: "bg-violet-50",
-    tag: "核心功能",
+    tag: "Core",
     tagColor: "text-violet-600",
     tagBg: "bg-violet-50 border-violet-200",
     borderHover: "hover:border-violet-200",
@@ -26,11 +26,11 @@ const features: Feature[] = [
   },
   {
     icon: "ri-brain-line",
-    title: "AI 智能分析",
-    description: "用自然語言提問，獲得智能洞察。我們的 AI 理解上下文，提供有意義的分析結果。",
+    title: "AI-powered analysis",
+    description: "Ask questions in natural language and receive intelligent insights. Our AI understands context and delivers meaningful analysis.",
     iconColor: "text-sky-500",
     iconBg: "bg-sky-50",
-    tag: "AI 驅動",
+    tag: "AI",
     tagColor: "text-sky-600",
     tagBg: "bg-sky-50 border-sky-200",
     borderHover: "hover:border-sky-200",
@@ -38,11 +38,11 @@ const features: Feature[] = [
   },
   {
     icon: "ri-folder-chart-line",
-    title: "智能作品集",
-    description: "將分析檔案整理到資料夾中。建立個人知識庫，隨時回顧您的洞察成果。",
+    title: "Smart portfolio",
+    description: "Organize analyzed files into folders. Build a personal knowledge base and revisit insights anytime.",
     iconColor: "text-cyan-500",
     iconBg: "bg-cyan-50",
-    tag: "組織管理",
+    tag: "Organization",
     tagColor: "text-cyan-600",
     tagBg: "bg-cyan-50 border-cyan-200",
     borderHover: "hover:border-cyan-200",
@@ -50,11 +50,11 @@ const features: Feature[] = [
   },
   {
     icon: "ri-history-line",
-    title: "工作階段歷史",
-    description: "每個分析工作階段都會自動儲存。從上次中斷的地方繼續，或開啟全新工作區。",
+    title: "Session history",
+    description: "Each analysis session is saved automatically. Continue where you left off or open a new workspace.",
     iconColor: "text-teal-500",
     iconBg: "bg-teal-50",
-    tag: "自動儲存",
+    tag: "Auto-save",
     tagColor: "text-teal-600",
     tagBg: "bg-teal-50 border-teal-200",
     borderHover: "hover:border-teal-200",
@@ -62,11 +62,11 @@ const features: Feature[] = [
   },
   {
     icon: "ri-bar-chart-grouped-line",
-    title: "視覺化報告",
-    description: "將原始數字轉化為精美的圖表。以清晰的視覺格式與團隊分享洞察。",
+    title: "Visual reports",
+    description: "Turn raw numbers into beautiful charts. Share insights with your team in clear visual formats.",
     iconColor: "text-violet-500",
     iconBg: "bg-violet-50",
-    tag: "視覺化",
+    tag: "Visualization",
     tagColor: "text-violet-600",
     tagBg: "bg-violet-50 border-violet-200",
     borderHover: "hover:border-violet-200",
@@ -74,11 +74,11 @@ const features: Feature[] = [
   },
   {
     icon: "ri-shield-check-line",
-    title: "安全與隱私",
-    description: "您的資料屬於您。企業級加密確保您的敏感資訊始終受到保護。",
+    title: "Security & privacy",
+    description: "Your data belongs to you. Enterprise-grade encryption keeps your sensitive information protected.",
     iconColor: "text-sky-500",
     iconBg: "bg-sky-50",
-    tag: "資料安全",
+    tag: "Data security",
     tagColor: "text-sky-600",
     tagBg: "bg-sky-50 border-sky-200",
     borderHover: "hover:border-sky-200",
@@ -92,13 +92,13 @@ const FeaturesSection: React.FC = () => {
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-20">
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-violet-50 to-sky-50 border border-violet-100 rounded-full mb-5">
-            <span className="bg-gradient-to-r from-violet-600 to-sky-600 bg-clip-text text-transparent text-base font-semibold">功能特色</span>
+            <span className="bg-gradient-to-r from-violet-600 to-sky-600 bg-clip-text text-transparent text-base font-semibold">Features</span>
           </div>
           <h2 className="text-4xl md:text-5xl font-black text-slate-800 mb-5">
-            分析資料所需的一切工具
+            All the tools you need for data analysis
           </h2>
           <p className="text-slate-500 max-w-xl mx-auto text-xl leading-relaxed">
-            從簡單的 CSV 檔案到複雜的資料集，DataAnalysis 提供您提取有意義洞察所需的所有工具。
+            From simple CSV files to complex datasets, DataAnalysis provides the tools you need to extract meaningful insights.
           </p>
         </div>
 
