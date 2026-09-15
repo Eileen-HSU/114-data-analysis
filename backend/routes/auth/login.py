@@ -85,21 +85,12 @@ def login():
         }), 429
 
     try:
-        # ── 先查 Admin，找到就不 fallback 查 User（需求 #2）──
+        
         admin = Admin.query.filter_by(email=email).first()
-        if admin:
-            if not check_password_hash(admin.password_hash, password):
-                _login_attempts[email] = attempts + 1
-                remaining = MAX_LOGIN_ATTEMPTS - _login_attempts[email]
-                if remaining > 0:
-                    return jsonify({"error": f"帳號或密碼錯誤，剩餘 {remaining} 次機會"}), 401
-                else:
-                    return jsonify({"error": "登入失敗次數過多，請稍後再試"}), 429
-
+        if admin and check_password_hash(admin.password_hash, password):
             _login_attempts.pop(email, None)
             return _login_admin(admin)
 
-        # ── Admin 找不到，才查 User，走原本 User 登入 ──
         user = User.query.filter_by(email=email).first()
 
         if not user or not check_password_hash(user.password_hash, password):
