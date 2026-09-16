@@ -10,14 +10,6 @@ from extensions import db
 from models import User, UserVerification
 
 pwd_bp = Blueprint("pwd", __name__)
-
-# 【修正｜2026-08-27｜串backend 部署穩定性】
-# sib_api_v3_sdk 改成延後到真的要寄信時才 import（見 _get_brevo_client）。
-# 原因：這個套件很久沒更新，在較新的 Python 版本上安裝環境可能裝不完整/裝不到，
-# 一旦寫在檔案最上面就 import，只要這個套件裝失敗，整個 Flask app 會直接開不了機
-# ——連跟寄信完全無關的功能（分類、workspace…）也會一起壞掉。
-# 延後 import 之後：沒有這個套件時，只有「忘記密碼寄信」這個功能會在真的被呼叫
-# 到的當下報錯，其他所有功能不受影響。
 _brevo_client = None
 _brevo_sender: dict | None = None
 
@@ -98,7 +90,7 @@ def send_otp():
     from_param = "change" if verify_type == "PASSWORD_CHANGE" else "forgot"
     frontend_url = os.getenv(
         "FRONTEND_URL",
-        "https://one14-data-analysis-frontend.onrender.com",
+        "https://site--frontend--d6tvmpswrhlp.code.run",
     ).rstrip("/")
 
     try:

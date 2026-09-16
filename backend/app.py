@@ -36,7 +36,6 @@ if not os.environ.get('JWT_SECRET_KEY'):
 app = Flask(__name__)
 ALLOWED_CORS_ORIGINS = {
     "https://site--frontend--d6tvmpswrhlp.code.run",
-    "https://one14-data-analysis-frontend.onrender.com",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 }
@@ -252,24 +251,12 @@ def ensure_runtime_schema():
             )
             db.session.commit()
 
-            # 【修正｜status 欄位長度不足】services/classify_v2.py 會寫入
-            # "methodology_not_found"（22 字元），超過原本 VARCHAR(20)，
-            # 造成 INSERT 直接丟出 "Data too long for column 'status'"、
-            # 整筆分類結果都存不進去。這裡放寬成 VARCHAR(50)，只在資料庫
-            # 現有長度不足時才會真的執行 ALTER TABLE，不會每次啟動都下
-            # 不必要的 DDL，也不影響既有資料。
             ensure_column_length(
                 "Response_Classification", "status",
                 "`status` VARCHAR(50) NOT NULL",
                 min_length=50,
             )
-            # 【修正｜分析追問撈到舊批次】Chat_History.message_content 原本
-            # 是 TEXT（上限 65,535 bytes），分類結果訊息（含所有大類別/
-            # 子類別底下受試者原文與彙整摘要）數量一多就會超過，STRICT
-            # 模式下 INSERT 直接失敗、訊息沒存進 DB，導致
-            # services/chat_ask_service.py 依 project_id 回頭找「目前
-            # 分析結果」時，看不到最新一批、改抓到更舊的 upload_batch_id
-            # /template_id。放寬成 MEDIUMTEXT（16MB），不影響既有資料。
+
             ensure_column_length(
                 "Chat_History", "message_content",
                 "`message_content` MEDIUMTEXT NOT NULL",
@@ -277,10 +264,6 @@ def ensure_runtime_schema():
             )
             db.session.commit()
 
-            # review_status 舊值 migration："removed" -> "excluded"。
-            # 目前 repo 內沒有任何寫入路徑會產生 "removed"（review_status
-            # 尚未被任何 route 實際使用過），資料庫裡如果本來就沒有這個
-            # 值，這條 UPDATE 是 no-op，不會動到任何既有資料列。
             db.session.execute(
                 text(
                     "UPDATE `Response_Classification` "
@@ -290,7 +273,6 @@ def ensure_runtime_schema():
             )
             db.session.commit()
 
-            # 新表：只在完全不存在時建立，不影響任何既有資料。
             from models import (
                 Classification_Review,
                 Classification_Review_Message,
@@ -303,25 +285,10 @@ def ensure_runtime_schema():
             ensure_table(Report)
             ensure_table(Report_Aggregation)
             ensure_table(Report_Aggregation_Item)
-            # 【新增｜Export_File 補欄位】原本 Export_File 是為了「產生檔案存到
-            # 某個路徑」設計的（export_path），但目前沒有真正的檔案儲存服務，
-            # 分類結果的 CSV 匯出改成直接把內容存進資料庫，所以補一個 content
-            # 欄位。用 ensure_column 而不是動 export_path 的意義，避免混淆
-            # 「路徑」跟「內容」這兩種不同語意。
             ensure_column("Export_File", "content", "`content` MEDIUMTEXT NULL")
             ensure_column("Export_File", "row_count", "`row_count` INT NULL")
-            # 【新增｜邀請瀏覽】Workspace 補上 share_code 欄位，用來產生
-            # 免登入的唯讀邀請連結。
             ensure_column("Workspace", "share_code", "`share_code` VARCHAR(10) NULL UNIQUE")
 
-            # ── Admin 帳號 / Admin 2FA（新增，additive-only）──────────
-            # 先確認資料庫「現況」再動作，不做任何 destructive ALTER：
-            # - 完全沒有 Admin 表 → 直接用 model 定義建一張新的。
-            # - 已經有 Admin 表（例如舊資料庫留下來的同名表，或上次
-            #   啟動已建立過）→ 完全不 DROP、不重建，只用 ensure_column
-            #   補齊 model 裡有、但現有表缺少的欄位；email 的唯一性
-            #   用 ensure_unique_index 補（如果本來就有唯一索引則
-            #   is a no-op）。
             from models import Admin, AdminVerification
 
             ensure_table(Admin)
@@ -379,7 +346,7 @@ def get_status():
         "environment": "Production",
     })
 
-# 防止render冷啟動,使用uptime robot每5分鐘呼叫一次
+# 健康檢查端點，供 Northflank health check / uptime robot 定期呼叫
 @app.route("/health", methods=["GET", "HEAD"])
 def health():
     return jsonify({"status": "ok"}), 200

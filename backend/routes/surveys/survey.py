@@ -21,8 +21,7 @@ survey_bp = Blueprint('survey', __name__)
 
 TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 BASE36_ALPHABET = string.digits + string.ascii_uppercase
-DEFAULT_FRONTEND_ORIGIN = "https://one14-data-analysis-frontend.onrender.com"
-
+DEFAULT_FRONTEND_ORIGIN = "https://site--frontend--d6tvmpswrhlp.code.run"
 # 快取 JWT secret
 _JWT_SECRET: str | None = None
 
