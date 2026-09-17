@@ -36,6 +36,9 @@ const defaultPptConfig = {
   },
 };
 
+const defaultTopicOptions = ["學習成效", "講師表達"];
+const defaultFocusOptions = ["實務應用", "情境模擬"];
+
 function getSurveyTime(createdAt) {
   const time = new Date(createdAt || 0).getTime();
   return Number.isNaN(time) ? 0 : time;
@@ -72,11 +75,14 @@ export default function SurveyPage({ pptOnly = false }) {
   const [isPptModalOpen, setIsPptModalOpen] = useState(isPptPage);
   const [pptFile, setPptFile] = useState(null);
   const [pptConfig, setPptConfig] = useState(defaultPptConfig);
+  const [checkedTopics, setCheckedTopics] = useState([]);
+  const [checkedFocus, setCheckedFocus] = useState([]);
   const [pptDraft, setPptDraft] = useState(null);
   const [pptError, setPptError] = useState("");
   const [pptTaskStatus, setPptTaskStatus] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isChatting, setIsChatting] = useState(false);
+  const [isAiChatMinimized, setIsAiChatMinimized] = useState(false);
   const [aiMessage, setAiMessage] = useState("");
   const [chatMessages, setChatMessages] = useState([]);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
@@ -124,11 +130,14 @@ export default function SurveyPage({ pptOnly = false }) {
   const resetPptModal = () => {
     setPptFile(null);
     setPptConfig(defaultPptConfig);
+    setCheckedTopics([]);
+    setCheckedFocus([]);
     setPptDraft(null);
     setPptError("");
     setPptTaskStatus("");
     setIsGenerating(false);
     setIsChatting(false);
+    setIsAiChatMinimized(false);
     setAiMessage("");
     setChatMessages([]);
     setIsSavingDraft(false);
@@ -156,6 +165,63 @@ export default function SurveyPage({ pptOnly = false }) {
     });
   };
 
+  const toggleCheckedValue = (setter, value) => {
+    setter((prev) => (
+      prev.includes(value)
+        ? prev.filter((item) => item !== value)
+        : [...prev, value]
+    ));
+  };
+
+  const composeSemanticField = (inputText, checkedValues, inputLabel, presetLabel) => {
+    const input = String(inputText || "").trim();
+    const checked = checkedValues.filter(Boolean);
+
+    if (input && checked.length) {
+      return `${inputLabel}：${input}。${presetLabel}：${checked.join("、")}。`;
+    }
+    if (input) {
+      return `${inputLabel}：${input}。`;
+    }
+    if (checked.length) {
+      return `${presetLabel}：${checked.join("、")}。`;
+    }
+    return "";
+  };
+
+  const buildPptAiConfig = () => ({
+    ...pptConfig,
+    direction: composeSemanticField(
+      pptConfig.direction,
+      checkedTopics,
+      "自行輸入題目方向",
+      "預設參考方向",
+    ),
+    focus: composeSemanticField(
+      pptConfig.focus,
+      checkedFocus,
+      "自行輸入生成重點",
+      "預設參考重點",
+    ),
+  });
+
+  const buildAiRevisionMessage = (message) => {
+    const direction = composeSemanticField(
+      pptConfig.direction,
+      checkedTopics,
+      "目前自行輸入題目方向",
+      "目前預設參考方向",
+    );
+    const focus = composeSemanticField(
+      pptConfig.focus,
+      checkedFocus,
+      "目前自行輸入生成重點",
+      "目前預設參考重點",
+    );
+    const context = [direction, focus].filter(Boolean).join("\n");
+    return context ? `${message}\n\n${context}` : message;
+  };
+
   const handleGenerateDraft = async () => {
     if (!pptFile) {
       setPptError("請先上傳 PPT 或 PDF 檔案。");
@@ -171,7 +237,7 @@ export default function SurveyPage({ pptOnly = false }) {
     try {
       const draft = await generateSurveyFromPpt({
         file: pptFile,
-        config: pptConfig,
+        config: buildPptAiConfig(),
         token: user?.token,
         onProgress: (task) => {
           setPptTaskStatus(task?.message || `任務狀態：${task?.status || "processing"}`);
@@ -236,7 +302,7 @@ export default function SurveyPage({ pptOnly = false }) {
     try {
       const revisedDraft = await reviseSurveyWithAi({
         draft: pptDraft,
-        message,
+        message: buildAiRevisionMessage(message),
         token: user?.token,
       });
       setPptDraft(normalizeDraft(revisedDraft));
@@ -645,53 +711,50 @@ export default function SurveyPage({ pptOnly = false }) {
 
                 <div className="ppt-preview-settings">
                   <label className="ppt-field">
-                    <span>{t("題目方向","Question direction")}</span>
-                    <input
-                      value={pptConfig.direction}
-                      onChange={(event) => updatePptConfig({ direction: event.target.value })}
-                      placeholder={t("例如：課後滿意度、學習成效","e.g.: course satisfaction, learning outcomes")}
-                    />
-                  </label>
-                  <label className="ppt-field">
-                    <span>{t("生成重點","Generation focus")}</span>
+                    <span>題目方向</span>
                     <textarea
                       className="w-full resize-y break-words whitespace-normal overflow-y-auto p-3 leading-relaxed outline-none focus:ring"
-                      value={pptConfig.focus}
-                      onChange={(event) => updatePptConfig({ focus: event.target.value })}
-                      placeholder={t("例如：聚焦課程內容、講師表達、實務應用","e.g.: focus on course content, instructor delivery, practical application")}
+                      rows={2}
+                      value={pptConfig.direction}
+                      onChange={(event) => updatePptConfig({ direction: event.target.value })}
+                      placeholder="例如：課後滿意度、學習成效"
                     />
                   </label>
-                  {pptDraft && (
-                    <aside className="ppt-ai-chat">
-                      <div className="ppt-chat-log">
-                        {chatMessages.map((message, index) => (
-                          <div className={`ppt-chat-message ${message.role}`} key={`${message.role}-${index}`}>
-                            {message.text}
-                          </div>
-                        ))}
-                        {isChatting && (
-                          <div className="ppt-chat-message assistant loading">
-                            <i className="ri-loader-4-line"></i>
-                            {t("調整中...","Adjusting...")}
-                          </div>
-                        )}
-                      </div>
-                      <div className="ppt-chat-box">
-                        <textarea
-                          className="w-full resize-y break-words whitespace-normal overflow-y-auto p-3 leading-relaxed outline-none focus:ring"
-                          value={aiMessage}
-                          onChange={(event) => setAiMessage(event.target.value)}
-                          placeholder={t("輸入修改指令，例如：增加一題評分題、題目更精簡","Enter an edit command, e.g.: add a rating question, shorten questions")}
+                  <div className="ppt-option-check-grid">
+                    {defaultTopicOptions.map((option) => (
+                      <label className="ppt-option-check" key={option}>
+                        <input
+                          type="checkbox"
+                          checked={checkedTopics.includes(option)}
+                          onChange={() => toggleCheckedValue(setCheckedTopics, option)}
                         />
-                        <button className="ppt-primary-btn" onClick={handleAiRevise} disabled={isChatting || !aiMessage.trim()} type="button">
-                          <i className="ri-send-plane-line"></i>
-                          {t("送出","Send")}
-                        </button>
-                      </div>
-                    </aside>
-                  )}
+                        <span>{option}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <label className="ppt-field">
+                    <span>生成重點</span>
+                    <textarea
+                      className="w-full resize-y break-words whitespace-normal overflow-y-auto p-3 leading-relaxed outline-none focus:ring"
+                      rows={3}
+                      value={pptConfig.focus}
+                      onChange={(event) => updatePptConfig({ focus: event.target.value })}
+                      placeholder="例如：聚焦課程內容、講師表達、實務應用"
+                    />
+                  </label>
+                  <div className="ppt-option-check-grid">
+                    {defaultFocusOptions.map((option) => (
+                      <label className="ppt-option-check" key={option}>
+                        <input
+                          type="checkbox"
+                          checked={checkedFocus.includes(option)}
+                          onChange={() => toggleCheckedValue(setCheckedFocus, option)}
+                        />
+                        <span>{option}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
-
                 <div className="ppt-preview-actions">
                   <button className="ppt-secondary-btn" type="button">
                     <i className="ri-download-2-line"></i>
@@ -720,6 +783,55 @@ export default function SurveyPage({ pptOnly = false }) {
             )}
           </section>
         </div>
+      )}
+
+      {isPptModalOpen && pptDraft && (
+        <aside className={`ppt-floating-chat fixed right-5 bottom-5 z-50 max-w-sm w-[380px] h-[500px] rounded-lg shadow-2xl border border-gray-200 bg-white overflow-hidden flex flex-col ${isAiChatMinimized ? "is-minimized" : ""}`}>
+          <header className="ppt-floating-chat-header">
+            <div>
+              <strong>{t("AI 對話", "AI Chat")}</strong>
+              <span>{t("調整問卷草稿", "Refine draft")}</span>
+            </div>
+            <button
+              className="ppt-floating-chat-toggle"
+              onClick={() => setIsAiChatMinimized((prev) => !prev)}
+              type="button"
+              aria-label={isAiChatMinimized ? t("展開對話", "Expand chat") : t("最小化對話", "Minimize chat")}
+            >
+              <i className={isAiChatMinimized ? "ri-add-line" : "ri-subtract-line"}></i>
+            </button>
+          </header>
+
+          {!isAiChatMinimized && (
+            <>
+              <div className="ppt-floating-chat-log flex-grow overflow-y-auto p-4">
+                {chatMessages.map((message, index) => (
+                  <div className={`ppt-chat-message ${message.role}`} key={`${message.role}-${index}`}>
+                    {message.text}
+                  </div>
+                ))}
+                {isChatting && (
+                  <div className="ppt-chat-message assistant loading">
+                    <i className="ri-loader-4-line"></i>
+                    {t("調整中...", "Adjusting...")}
+                  </div>
+                )}
+              </div>
+              <div className="ppt-floating-chat-input">
+                <textarea
+                  className="w-full resize-y break-words whitespace-normal overflow-y-auto p-3 leading-relaxed outline-none focus:ring"
+                  value={aiMessage}
+                  onChange={(event) => setAiMessage(event.target.value)}
+                  placeholder={t("輸入修改指令，例如：增加一題評分題、題目更精簡", "Enter an edit command, e.g.: add a rating question, shorten questions")}
+                />
+                <button className="ppt-primary-btn" onClick={handleAiRevise} disabled={isChatting || !aiMessage.trim()} type="button">
+                  <i className="ri-send-plane-line"></i>
+                  {t("送出", "Send")}
+                </button>
+              </div>
+            </>
+          )}
+        </aside>
       )}
     </>
   );
