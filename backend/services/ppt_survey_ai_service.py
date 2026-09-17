@@ -21,15 +21,18 @@ class PptSurveyAiError(Exception):
 ALLOWED_EXTENSIONS = {".ppt", ".pptx", ".pdf"}
 ALLOWED_TYPES = {"short", "rating"}
 DEFAULT_MODEL = "gemini-3.6-flash"
-DEFAULT_FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.5-flash"]
+DEFAULT_FALLBACK_MODELS = ["models/gemini-1.5-flash", "models/gemini-1.5-pro"]
 RETIRED_FALLBACK_MODEL_REPLACEMENTS = {
-    "gemini-1.5-flash": "gemini-2.5-flash",
-    "gemini-1.5-pro": "gemini-2.5-pro",
-    "gemini-2.0-flash": "gemini-2.5-flash",
-    "gemini-2.0-flash-001": "gemini-2.5-flash",
-    "gemini-2.0-flash-lite": "gemini-2.5-flash-lite",
-    "gemini-2.0-flash-lite-001": "gemini-2.5-flash-lite",
-    "gemini-3.6-pro": "gemini-2.5-pro",
+    "gemini-1.5-flash": "models/gemini-1.5-flash",
+    "gemini-1.5-pro": "models/gemini-1.5-pro",
+    "gemini-2.0-flash": "models/gemini-1.5-flash",
+    "gemini-2.0-flash-001": "models/gemini-1.5-flash",
+    "gemini-2.0-flash-lite": "models/gemini-1.5-flash",
+    "gemini-2.0-flash-lite-001": "models/gemini-1.5-flash",
+    "gemini-2.5-flash": "models/gemini-1.5-flash",
+    "gemini-2.5-pro": "models/gemini-1.5-pro",
+    "gemini-3.5-flash": "models/gemini-1.5-flash",
+    "gemini-3.6-pro": "models/gemini-1.5-pro",
 }
 GEMINI_RETRY_ATTEMPTS = 3
 GEMINI_RETRY_INITIAL_DELAY_SECONDS = 3
