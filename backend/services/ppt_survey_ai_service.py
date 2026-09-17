@@ -4,6 +4,7 @@ import mimetypes
 import os
 import re
 import time
+import traceback
 import zipfile
 from io import BytesIO
 from xml.etree import ElementTree
@@ -21,18 +22,18 @@ class PptSurveyAiError(Exception):
 ALLOWED_EXTENSIONS = {".ppt", ".pptx", ".pdf"}
 ALLOWED_TYPES = {"short", "rating"}
 DEFAULT_MODEL = "gemini-3.6-flash"
-DEFAULT_FALLBACK_MODELS = ["models/gemini-1.5-flash", "models/gemini-1.5-pro"]
+DEFAULT_FALLBACK_MODELS = ["gemini-1.5-flash", "gemini-1.5-pro"]
 RETIRED_FALLBACK_MODEL_REPLACEMENTS = {
-    "gemini-1.5-flash": "models/gemini-1.5-flash",
-    "gemini-1.5-pro": "models/gemini-1.5-pro",
-    "gemini-2.0-flash": "models/gemini-1.5-flash",
-    "gemini-2.0-flash-001": "models/gemini-1.5-flash",
-    "gemini-2.0-flash-lite": "models/gemini-1.5-flash",
-    "gemini-2.0-flash-lite-001": "models/gemini-1.5-flash",
-    "gemini-2.5-flash": "models/gemini-1.5-flash",
-    "gemini-2.5-pro": "models/gemini-1.5-pro",
-    "gemini-3.5-flash": "models/gemini-1.5-flash",
-    "gemini-3.6-pro": "models/gemini-1.5-pro",
+    "gemini-1.5-flash": "gemini-1.5-flash",
+    "gemini-1.5-pro": "gemini-1.5-pro",
+    "gemini-2.0-flash": "gemini-1.5-flash",
+    "gemini-2.0-flash-001": "gemini-1.5-flash",
+    "gemini-2.0-flash-lite": "gemini-1.5-flash",
+    "gemini-2.0-flash-lite-001": "gemini-1.5-flash",
+    "gemini-2.5-flash": "gemini-1.5-flash",
+    "gemini-2.5-pro": "gemini-1.5-pro",
+    "gemini-3.5-flash": "gemini-1.5-flash",
+    "gemini-3.6-pro": "gemini-1.5-pro",
 }
 GEMINI_RETRY_ATTEMPTS = 3
 GEMINI_RETRY_INITIAL_DELAY_SECONDS = 3
@@ -42,9 +43,13 @@ MAX_EXTRACTED_CHARS = 18000
 
 
 def _get_api_key():
-    api_key = os.getenv("PPT_SURVEY_AI_API_KEY", "").strip()
+    api_key = (
+        os.getenv("PPT_SURVEY_AI_API_KEY", "").strip()
+        or os.getenv("GEMINI_API_KEY", "").strip()
+        or os.getenv("GOOGLE_API_KEY", "").strip()
+    )
     if not api_key:
-        logger.error("PPT_SURVEY_AI_API_KEY is missing")
+        logger.error("PPT_SURVEY_AI_API_KEY/GEMINI_API_KEY/GOOGLE_API_KEY is missing")
         raise PptSurveyAiError("PPT/PDF 問卷 AI API key 尚未設定。", 503)
     return api_key
 
@@ -332,6 +337,7 @@ def _normalize_fallback_model_name(model):
     normalized = _normalize_gemini_model_name(model)
     replacement = RETIRED_FALLBACK_MODEL_REPLACEMENTS.get(normalized)
     if replacement:
+        replacement = _normalize_gemini_model_name(replacement)
         logger.warning(
             "Replacing retired Gemini fallback model: old=%s new=%s",
             normalized,
@@ -367,6 +373,13 @@ def _call_gemini_model(client, types, model, contents):
             ),
         )
     except Exception as exc:
+        logger.exception(
+            "Gemini generate_content failed: model=%s error_type=%s error=%r",
+            model,
+            type(exc).__name__,
+            exc,
+        )
+        traceback.print_exc()
         if _is_gemini_unavailable_error(exc) or _is_model_not_found_error(exc):
             raise
         _handle_ai_exception(exc)
