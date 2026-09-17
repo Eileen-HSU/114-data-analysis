@@ -94,7 +94,11 @@ export default function SurveyPage({ pptOnly = false }) {
   }, [isPptPage]);
 
   useEffect(() => {
-    if (!user?.token) return;
+    if (!user?.token || isPptPage) {
+      setApiSurveys([]);
+      setIsLoading(false);
+      return;
+    }
 
     setIsLoading(true);
     fetch(apiUrl("/api/surveys/mine?limit=3"), {
@@ -113,7 +117,7 @@ export default function SurveyPage({ pptOnly = false }) {
       .finally(() => {
         setIsLoading(false);
       });
-  }, [user]);
+  }, [user, isPptPage]);
 
   const recentSurveys = useMemo(() => {
     if (!user) return [];
