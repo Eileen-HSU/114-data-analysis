@@ -12,83 +12,62 @@ import "./workspace.css";
 import ShareWorkspaceDialog from "./ShareWorkspaceDialog";
 import ExportActions from "./ExportActions";
 
-    <span className="sidebar-title">{t("歷史對話紀錄","Conversation history")}</span>
-  try {
-    const v = localStorage.getItem("dataanalysis_language");
-      placeholder={t("搜尋歷史對話紀錄...","Search conversations...")}
-    const nav = (navigator.language || navigator.userLanguage || "").toLowerCase();
-    return nav.startsWith("zh") ? "zh" : "en";
-      <p>{t("尚無工作區紀錄","No workspace records")}</p>
-    return "en";
-  }
-        {t("新增工作區","New workspace")}
-
-function t(zh, en) {
-      <p>{t("找不到相關紀錄","No matching records")}</p>
-}
-
-          title={t("重新命名","Rename")}
+export const WELCOME_MSG = {
   id: "welcome",
   role: "assistant",
-          title={t("刪除工作區","Delete workspace")}
-    t(
-      "您好！我是 DataAnalysis AI 助手。請上傳您的資料檔案（CSV、Excel 或 TXT），或直接輸入您的分析問題，我將為您提供深度洞察。",
-        <button className="btn-new-session sidebar-bottom-add" onClick={createNewSession} title={t("新增工作區","New workspace")}>
-    ),
+  content:
+    "您好！我是 DataAnalysis AI 助手。請上傳您的資料檔案（CSV、Excel 或 TXT），或直接輸入您的分析問題，我將為您提供深度洞察。",
 };
-    <span>{t("邀請檢視","Invite to view")}</span>
+const ACTIVE_WORKSPACE_KEY = "dataanalysis_active_workspace";
 const EMPTY_SURVEY_TABLE_MARKER = "[[EMPTY_SURVEY_TABLE]]";
 /* ============================================================
-    <p style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>{t("選擇或新增一個工作區開始分析","Select or create a workspace to start analyzing")}</p>
+ * 【新增｜2026-08-27】串接後端真實 Gemini 分類功能
  * 取代原本 workspace 聊天室裡「純前端算數字套中文句型」的假分析。
  * 對應後端 API：POST /api/classification/upload
-      <i className="ri-add-line" style={{ marginRight: 6 }}></i>{t("新增工作區","New workspace")}
+ *   （後端會依序做 PII 遮罩 → TF-IDF 去重 → 送 Gemini 分類 → 直接回傳結果）
  * 這一整段（helper function + ClassificationTable 元件 + runExcelClassification
  * + sendMessage 裡的分流判斷 + 附加檔案 UI 的欄位輸入框）都是新增，
-      <span className="typing-label">{t("AI 思考中","AI thinking")}</span>
+ * 用「新增｜2026-08-27」這幾個字搜尋可以找到全部相關區塊。
  * ============================================================ */
 const CLASSIFICATION_TABLE_MARKER = "[[CLASSIFICATION_TABLE]]";
-      title={t("選擇問卷分析","Select survey for analysis")}
+
 // 判斷附加的檔案是不是 Excel（.xlsx / .xls），用來決定要不要走真分類流程
 function isExcelFile(file) {
-            {t("選擇問卷進行分析","Choose a survey to analyze")}
+  return !!file && /\.(xlsx|xls)$/i.test(file.name || "");
 }
 
-            placeholder={t("搜尋問卷名稱或代碼...","Search survey name or code...")}
+// 把 /api/classification/upload 回傳的 aggregated_groups 陣列存進訊息內容
 // （含 marker 方便還原）。分組、過濾「無具體建議」、彙整判斷原因跟建議摘要
 // 都已經在後端做完了，這裡不用再處理，直接存、直接顯示。
-        <span>{t("問卷載入中...","Loading surveys...")}</span>
+function buildClassificationMessageContent(aggregatedGroups, meta) {
   const rows = (aggregatedGroups || []).map((g) => ({
     main_category: g.main_category || "",
-        <p>{t("找不到相關問卷","No surveys found")}</p>
+    sub_category: g.sub_category || "",
     respondent_text: g.respondent_text || "",
     aggregated_reasoning: g.aggregated_reasoning || "",
-              <span><i className="ri-user-line"></i>{s.responseCount} {t("人回覆","responses")}</span>
+    aggregated_summary: g.aggregated_summary || "",
     synthesis_status: g.synthesis_status || "ok",
     synthesis_error: g.synthesis_error || null,
-            {s.status === "active" ? t("進行中","Active") : t("已結束","Closed")}
+    respondent_count: g.respondent_count ?? null,
   }));
   return `${CLASSIFICATION_TABLE_MARKER}${JSON.stringify({ rows, meta: meta || {} })}`;
-      showToast(getLang() === "en" ? `"${f.name}" attached — it will be uploaded when you send.` : `「${f.name}」已附加，發送後將上傳`);
+}
 
 // 跟上面成對：把存起來的字串還原成表格資料。回傳 null 代表「這不是分類結果訊息」。
-          placeholder={t("輸入您的問題或上傳檔案進行分析...","Type your question or upload a file to analyze...")}
+function parseClassificationMessageContent(content) {
   if (!content || !content.startsWith(CLASSIFICATION_TABLE_MARKER)) return null;
   try {
-        {t(
-          "點擊問卷圖示可直接選擇問卷分析 · 支援 CSV、Excel、TXT · Enter 發送",
-          "Click the survey icon to select a survey · Supports CSV, Excel, TXT · Press Enter to send"
-        )}
+    return JSON.parse(content.slice(CLASSIFICATION_TABLE_MARKER.length));
   } catch {
     return null; // JSON 壞掉（例如存到一半被截斷）就當作不是分類訊息，退回顯示原始文字
-      <h3>{t("刪除工作區","Delete workspace")}</h3>
-      <p>{getLang() === "en" ? `Are you sure you want to delete "${deleteTarget.title}"? It can be restored from Recently Deleted in Project Management.` : `確定要刪除「${deleteTarget.title}」嗎？刪除後可在專案管理的最近刪除中還原。`}</p>
+  }
+}
 /* 【新增區塊到此為止的第 1 段，下面接原本就有的 getAuthHeader】 */
 
-    {isDeletingSession ? t("刪除中...","Deleting...") : t("確定","Confirm")}
+function getAuthHeader() {
   try {
     const user = JSON.parse(localStorage.getItem("dataanalysis_auth"));
-    {t("取消","Cancel")}
+    const token = user?.token;
     return token ? { Authorization: `Bearer ${token}` } : {};
   } catch {
     return {};
@@ -101,7 +80,7 @@ function normalizeSurveyDetail(survey) {
   return {
     ...survey,
     id: survey?.id || survey?.template_id || code,
-    title: survey?.title || survey?.survey_name || (getLang() === "en" ? "Untitled survey" : "未命名問卷"),
+    title: survey?.title || survey?.survey_name || "未命名問卷",
     code,
     createdAt: survey?.createdAt || survey?.created_at || "",
     questions: Array.isArray(survey?.questions) ? survey.questions : [],
@@ -179,9 +158,7 @@ function isSurveyContentTooSmall(stats) {
 function buildSurveyAnalysisReplyFromSurvey(survey, fallbackTitle = "問卷") {
   const stats = getSurveyStats(survey);
   const title = survey?.title || survey?.survey_name || fallbackTitle;
-  const intro = getLang() === "en"
-    ? `I've received the survey "${title}". Here are the preliminary analysis results:`
-    : `我已收到「${title}」的問卷資料，以下是初步分析結果：`;
+  const intro = `我已收到「${title}」的問卷資料，以下是初步分析結果：`;
 
   if (isSurveyContentTooSmall(stats)) {
     return `${EMPTY_SURVEY_TABLE_MARKER}\n${intro}`;
@@ -189,23 +166,15 @@ function buildSurveyAnalysisReplyFromSurvey(survey, fallbackTitle = "問卷") {
 
   const rows = [];
   if (stats.ratingQuestions.length > 0) {
-    rows.push(getLang() === "en"
-      ? `Rating insights: ${stats.ratingQuestions.length} rating questions detected, with an average of ${stats.ratingAverage ?? "No data"} / 5. Consider prioritizing items below the average.`
-      : `評分題洞察：共 ${stats.ratingQuestions.length} 題評分題，平均分為 ${stats.ratingAverage ?? "無資料"} / 5，可優先觀察低於平均的題目。`);
+    rows.push(`評分題洞察：共 ${stats.ratingQuestions.length} 題評分題，平均分為 ${stats.ratingAverage ?? "無資料"} / 5，可優先觀察低於平均的題目。`);
   }
   if (stats.textQuestions.length > 0) {
     const sampleTitle = stats.textQuestions[0]?.title || stats.textQuestions[0]?.question_title;
     const sampleQuestion = sampleTitle ? `「${sampleTitle}」` : "開放題";
-    rows.push(getLang() === "en"
-      ? `Open-ended analysis: Collected ${stats.textAnswers.length} text responses. Start by extracting common keywords from ${sampleQuestion}.`
-      : `問答題主題分析：共收集 ${stats.textAnswers.length} 筆文字回覆，可先從 ${sampleQuestion} 的常見關鍵字整理主要意見。`);
+    rows.push(`問答題主題分析：共收集 ${stats.textAnswers.length} 筆文字回覆，可先從 ${sampleQuestion} 的常見關鍵字整理主要意見。`);
   }
-  rows.push(getLang() === "en"
-    ? `Reply summary: ${stats.responses.length} respondents, ${stats.questions.length} questions, and ${stats.answeredValues.length} analyzable answers.`
-    : `回覆概況：目前共有 ${stats.responses.length} 位填答者、${stats.questions.length} 道題目，已累積 ${stats.answeredValues.length} 筆可分析答案。`);
-  rows.push(getLang() === "en"
-    ? `Recommendations: Compare responses across question types or groups, and follow up on low-scoring items and frequent text replies.`
-    : `改善建議：建議後續比較不同題型或族群的差異，並針對低分題與高頻文字回覆安排追問。`);
+  rows.push(`回覆概況：目前共有 ${stats.responses.length} 位填答者、${stats.questions.length} 道題目，已累積 ${stats.answeredValues.length} 筆可分析答案。`);
+  rows.push("改善建議：建議後續比較不同題型或族群的差異，並針對低分題與高頻文字回覆安排追問。");
 
   return `${intro}\n\n${rows.join("\n")}`;
 }
@@ -233,9 +202,7 @@ function parseBuiltInSurveyText(content) {
 function buildSurveyAnalysisReplyFromText(content) {
   const survey = parseBuiltInSurveyText(content);
   if (!survey) return null;
-  const intro = getLang() === "en"
-    ? `I've received the survey "${survey.title}". Here are the preliminary analysis results:`
-    : `我已收到「${survey.title}」的問卷資料，以下是初步分析結果：`;
+  const intro = `我已收到「${survey.title}」的問卷資料，以下是初步分析結果：`;
 
   if (survey.questionCount === 0 || survey.answerCount < 2) {
     return `${EMPTY_SURVEY_TABLE_MARKER}\n${intro}`;
@@ -243,13 +210,13 @@ function buildSurveyAnalysisReplyFromText(content) {
 
   const rows = [];
   if (survey.hasRating) {
-    rows.push(getLang() === "en" ? "Rating insights detected: compare per-item averages to find gaps." : "評分題洞察：已偵測到評分題資料，可依各題平均分比較滿意度與落差。");
+    rows.push("評分題洞察：已偵測到評分題資料，可依各題平均分比較滿意度與落差。");
   }
   if (survey.hasText) {
-    rows.push(getLang() === "en" ? `Open-ended insights: ${survey.answerCount} text responses detected; organize frequent themes and sentiment.` : `問答題主題分析：已偵測到 ${survey.answerCount} 筆文字回覆，可整理高頻主題與正負向意見。`);
+    rows.push(`問答題主題分析：已偵測到 ${survey.answerCount} 筆文字回覆，可整理高頻主題與正負向意見。`);
   }
-  rows.push(getLang() === "en" ? `Reply summary: ${survey.responseCount} respondents, ${survey.questionCount} questions; initial trend analysis is possible.` : `回覆概況：目前共有 ${survey.responseCount} 位填答者、${survey.questionCount} 道題目，可進行初步趨勢判讀。`);
-  rows.push(getLang() === "en" ? `Recommendations: Add segmentation fields or increase responses to improve reliability.` : `改善建議：建議補充分群欄位或提高回覆數，以提升分析可信度。`);
+  rows.push(`回覆概況：目前共有 ${survey.responseCount} 位填答者、${survey.questionCount} 道題目，可進行初步趨勢判讀。`);
+  rows.push("改善建議：建議補充分群欄位或提高回覆數，以提升分析可信度。");
 
   return `${intro}\n\n${rows.join("\n")}`;
 }
@@ -261,7 +228,7 @@ function isGreetingInput(text) {
 
 function buildAssistantReply(content, surveyDetail = null, surveyTitle = "問卷") {
   if (surveyDetail) return buildSurveyAnalysisReplyFromSurvey(surveyDetail, surveyTitle);
-  if (isGreetingInput(content)) return getLang() === "en" ? "Hello! Nice to see you — please provide data to analyze or pick a built-in survey, and I'll summarize key points." : "您好！很高興見到您，請提供要分析的資料或選擇系統內建問卷，我會協助您整理重點。";
+  if (isGreetingInput(content)) return "您好！很高興見到您，請提供要分析的資料或選擇系統內建問卷，我會協助您整理重點。";
   const surveyReply = buildSurveyAnalysisReplyFromText(content);
   if (surveyReply) return surveyReply;
   return "資料不足，無法進行有效分析。請提供系統內建問卷、完整資料檔案，或更明確的分析問題。";
@@ -281,7 +248,7 @@ function parseAssistantTableRows(content) {
   let isSuggestionSection = false;
   const visibleContent = content.replace(EMPTY_SURVEY_TABLE_MARKER, "");
 
-  const isSuggestionLabel = (value) => [t("建議","Suggestion"), t("可進一步詢問","Follow-up")].includes(value.replace(/[💡]/g, "").trim());
+  const isSuggestionLabel = (value) => ["建議", "可進一步詢問"].includes(value.replace(/[💡]/g, "").trim());
 
   visibleContent.split("\n").forEach((rawLine) => {
     const line = cleanMessageText(rawLine);
@@ -347,10 +314,10 @@ function PlainMessageContent({ content }) {
 function AssistantTableContent({ content, readOnly = false }) {
   const navigate = useNavigate();
   const { intro, rows } = parseAssistantTableRows(content);
-    const isSurveyAnalysisReply = intro.includes(getLang() === "en" ? "preliminary analysis results" : "問卷資料") && intro.includes(getLang() === "en" ? "Here are" : "初步分析結果");
+  const isSurveyAnalysisReply = intro.includes("問卷資料") && intro.includes("初步分析結果");
   const shouldFillEmptySurveyRow = rows.length === 0 && (content.includes(EMPTY_SURVEY_TABLE_MARKER) || isSurveyAnalysisReply);
   const displayRows = shouldFillEmptySurveyRow
-    ? [{ item: getLang() === "en" ? "Insufficient data" : "資料不足", description: getLang() === "en" ? "The survey content is too small for analysis at the moment." : "目前問卷內容過少，暫無足夠資料可進行分析。" }]
+    ? [{ item: "資料不足", description: "目前問卷內容過少，暫無足夠資料可進行分析。" }]
     : rows;
 
   if (displayRows.length < 2 && !shouldFillEmptySurveyRow) {
@@ -364,8 +331,8 @@ function AssistantTableContent({ content, readOnly = false }) {
         <table className="assistant-output-table">
           <thead>
             <tr>
-              <th>{t("分類","Category")}</th>
-              <th>{t("分析內容","Analysis")}</th>
+              <th>分類</th>
+              <th>分析內容</th>
             </tr>
           </thead>
           <tbody>
@@ -560,7 +527,7 @@ export function MessageContent({ message, showToast, readOnly = false }) {
 function buildAutoSessionTitle(text, file) {
   if (file?.name) {
     const baseName = file.name.replace(/\.[^/.]+$/, "");
-    return (getLang() === "en" ? `Analysis: ${baseName}` : `分析：${baseName}`).slice(0, 28);
+    return `分析：${baseName}`.slice(0, 28);
   }
 
   const cleaned = text
@@ -568,7 +535,7 @@ function buildAutoSessionTitle(text, file) {
     .replace(/[，。！？、,.!?]/g, " ")
     .trim();
 
-  if (!cleaned) return getLang() === "en" ? "New workspace" : "新工作區";
+  if (!cleaned) return "新工作區";
   return cleaned.length > 18 ? `${cleaned.slice(0, 18)}...` : cleaned;
 }
 
