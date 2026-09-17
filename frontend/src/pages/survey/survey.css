@@ -1245,7 +1245,12 @@
 }
 
 .ppt-floating-chat {
-  width: min(380px, calc(100vw - 40px));
+  position: fixed !important;
+  right: 32px !important;
+  bottom: 32px !important;
+  z-index: 100 !important;
+  width: min(380px, calc(100vw - 64px));
+  max-width: 380px;
   height: 500px;
   display: flex;
   flex-direction: column;
@@ -1254,7 +1259,6 @@
   background: #ffffff;
   box-shadow: 0 24px 70px rgba(15, 23, 42, 0.24);
   overflow: hidden;
-  z-index: 50;
 }
 
 .ppt-floating-chat.is-minimized {
@@ -2519,9 +2523,12 @@
     position: static;
   }
   .ppt-floating-chat {
-    right: 10px;
-    bottom: 10px;
+    position: fixed !important;
+    right: 10px !important;
+    bottom: 10px !important;
+    z-index: 100 !important;
     width: calc(100vw - 20px);
+    max-width: none;
     max-height: min(500px, calc(100vh - 20px));
   }
 }
