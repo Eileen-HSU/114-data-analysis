@@ -3,6 +3,7 @@ import logging
 import mimetypes
 import os
 import re
+import time
 import zipfile
 from io import BytesIO
 from xml.etree import ElementTree
@@ -20,6 +21,10 @@ class PptSurveyAiError(Exception):
 ALLOWED_EXTENSIONS = {".ppt", ".pptx", ".pdf"}
 ALLOWED_TYPES = {"short", "rating"}
 DEFAULT_MODEL = "gemini-3.6-flash"
+DEFAULT_FALLBACK_MODELS = ["gemini-1.5-flash", "gemini-3.6-pro"]
+GEMINI_RETRY_ATTEMPTS = 3
+GEMINI_RETRY_INITIAL_DELAY_SECONDS = 3
+GEMINI_RETRY_MAX_DELAY_SECONDS = 5
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_EXTRACTED_CHARS = 18000
 
@@ -248,7 +253,7 @@ def _handle_ai_exception(exc):
     raise PptSurveyAiError("AI 服務暫時無法完成分析，請稍後再試。", 502) from exc
 
 
-def _call_gemini(contents):
+def _call_gemini_legacy_unused(contents):
     client, types = _load_genai_client()
     model = os.getenv("PPT_SURVEY_AI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
     logger.info("Calling Gemini model=%s", model)
@@ -269,6 +274,117 @@ def _call_gemini(contents):
     if not text.strip():
         raise PptSurveyAiError("AI 沒有回傳內容，請稍後再試。", 502)
     return _parse_json_response(text)
+
+
+def _is_gemini_unavailable_error(exc):
+    message = str(exc)
+    lower_message = message.lower()
+    code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+    status = str(getattr(exc, "status", "") or getattr(exc, "reason", "")).lower()
+    return (
+        code == 503
+        or "503" in message
+        or "unavailable" in lower_message
+        or "service unavailable" in lower_message
+        or status == "unavailable"
+    )
+
+
+def _retry_delay_seconds(attempt_number):
+    return min(
+        GEMINI_RETRY_MAX_DELAY_SECONDS,
+        GEMINI_RETRY_INITIAL_DELAY_SECONDS * (2 ** max(0, attempt_number - 1)),
+    )
+
+
+def _model_sequence(primary_model):
+    raw_fallbacks = os.getenv("PPT_SURVEY_AI_FALLBACK_MODELS", "").strip()
+    fallback_models = [
+        model.strip()
+        for model in (raw_fallbacks.split(",") if raw_fallbacks else DEFAULT_FALLBACK_MODELS)
+        if model.strip()
+    ]
+    models = []
+    for model in [primary_model, *fallback_models]:
+        if model and model not in models:
+            models.append(model)
+    return models
+
+
+def _call_gemini_model(client, types, model, contents):
+    try:
+        return client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                temperature=0.25,
+                response_mime_type="application/json",
+            ),
+        )
+    except Exception as exc:
+        if _is_gemini_unavailable_error(exc):
+            raise
+        _handle_ai_exception(exc)
+
+
+def _call_gemini(contents):
+    client, types = _load_genai_client()
+    primary_model = os.getenv("PPT_SURVEY_AI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    models = _model_sequence(primary_model)
+    last_unavailable_error = None
+
+    for model in models:
+        logger.info("Calling Gemini model=%s", model)
+        for attempt in range(1, GEMINI_RETRY_ATTEMPTS + 1):
+            try:
+                response = _call_gemini_model(client, types, model, contents)
+                logger.info("Gemini model succeeded: model=%s attempt=%s", model, attempt)
+                break
+            except Exception as exc:
+                if not _is_gemini_unavailable_error(exc):
+                    _handle_ai_exception(exc)
+
+                last_unavailable_error = exc
+                logger.warning(
+                    "Gemini model unavailable: model=%s attempt=%s/%s error=%s",
+                    model,
+                    attempt,
+                    GEMINI_RETRY_ATTEMPTS,
+                    str(exc),
+                    exc_info=True,
+                )
+
+                if attempt < GEMINI_RETRY_ATTEMPTS:
+                    delay_seconds = _retry_delay_seconds(attempt)
+                    logger.info(
+                        "Retrying Gemini model after backoff: model=%s delay_seconds=%s",
+                        model,
+                        delay_seconds,
+                    )
+                    time.sleep(delay_seconds)
+                else:
+                    logger.warning(
+                        "Gemini model exhausted after retries, trying fallback if available: model=%s",
+                        model,
+                    )
+        else:
+            continue
+
+        text = getattr(response, "text", "") or ""
+        logger.info("Gemini response received: model=%s chars=%s", model, len(text))
+        if not text.strip():
+            raise PptSurveyAiError("AI 沒有回傳內容，請稍後再試。", 502)
+        return _parse_json_response(text)
+
+    logger.error(
+        "All Gemini models unavailable after retries: models=%s last_error=%s",
+        models,
+        str(last_unavailable_error) if last_unavailable_error else "",
+    )
+    raise PptSurveyAiError(
+        "Gemini 服務目前忙碌或暫時不可用，已自動重試並切換備援模型但仍失敗，請稍後再試。",
+        503,
+    ) from last_unavailable_error
 
 
 def generate_survey_from_material(filename, file_bytes, config):
