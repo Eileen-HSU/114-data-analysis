@@ -1,6 +1,5 @@
 import json
 import logging
-import multiprocessing
 import os
 import tempfile
 import threading
@@ -185,14 +184,38 @@ def _create_task(user_id, filename, file_size):
     return task
 
 
-def _start_generation_process(task_id, user_id, filename, file_bytes, config):
-    worker = multiprocessing.Process(
-        target=_run_generation_task,
+def _start_generation_thread(task_id, user_id, filename, file_bytes, config):
+    worker = threading.Thread(
+        target=_run_generation_task_safely,
         args=(task_id, user_id, filename, file_bytes, config),
         name=f"ppt-survey-ai-{task_id[:8]}",
+        daemon=True,
     )
     worker.start()
     return worker
+
+
+def _run_generation_task_safely(task_id, user_id, filename, file_bytes, config):
+    try:
+        _run_generation_task(task_id, user_id, filename, file_bytes, config)
+    except Exception as exc:
+        tb = traceback.format_exc()
+        logger.critical(
+            "PPT survey worker escaped task handler: task_id=%s user_id=%s error=%s\n%s",
+            task_id,
+            user_id,
+            str(exc),
+            tb,
+        )
+        _set_task(
+            task_id,
+            status="failed",
+            message="AI 問卷產生失敗。",
+            error=f"{exc.__class__.__name__}: {exc}",
+            error_type=exc.__class__.__name__,
+            status_code=500,
+            traceback=tb,
+        )
 
 
 def _run_generation_task(task_id, user_id, filename, file_bytes, config):
@@ -276,7 +299,7 @@ def generate_ppt_survey():
 
         task = _create_task(user_id=user_id, filename=filename, file_size=len(file_bytes))
         _set_task(task["task_id"], status="processing", message="AI 正在背景分析檔案並產生問卷草稿。")
-        _start_generation_process(task["task_id"], user_id, filename, file_bytes, config)
+        _start_generation_thread(task["task_id"], user_id, filename, file_bytes, config)
 
         logger.info(
             "PPT survey generation queued: task_id=%s user_id=%s filename=%s size=%s config_keys=%s",
