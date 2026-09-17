@@ -21,7 +21,13 @@ class PptSurveyAiError(Exception):
 ALLOWED_EXTENSIONS = {".ppt", ".pptx", ".pdf"}
 ALLOWED_TYPES = {"short", "rating"}
 DEFAULT_MODEL = "gemini-3.6-flash"
-DEFAULT_FALLBACK_MODELS = ["gemini-1.5-flash", "gemini-3.6-pro"]
+DEFAULT_FALLBACK_MODELS = ["gemini-3.5-flash", "gemini-flash-latest", "gemini-2.5-pro"]
+RETIRED_FALLBACK_MODEL_REPLACEMENTS = {
+    "gemini-1.5-flash": "gemini-3.5-flash",
+    "gemini-1.5-pro": "gemini-2.5-pro",
+    "gemini-2.0-flash": "gemini-3.5-flash",
+    "gemini-3.6-pro": "gemini-2.5-pro",
+}
 GEMINI_RETRY_ATTEMPTS = 3
 GEMINI_RETRY_INITIAL_DELAY_SECONDS = 3
 GEMINI_RETRY_MAX_DELAY_SECONDS = 5
@@ -255,7 +261,7 @@ def _handle_ai_exception(exc):
 
 def _call_gemini_legacy_unused(contents):
     client, types = _load_genai_client()
-    model = os.getenv("PPT_SURVEY_AI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    model = _normalize_gemini_model_name(os.getenv("PPT_SURVEY_AI_MODEL", DEFAULT_MODEL)) or DEFAULT_MODEL
     logger.info("Calling Gemini model=%s", model)
     try:
         response = client.models.generate_content(
@@ -290,6 +296,18 @@ def _is_gemini_unavailable_error(exc):
     )
 
 
+def _is_model_not_found_error(exc):
+    message = str(exc)
+    lower_message = message.lower()
+    code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+    return (
+        code == 404
+        or "404" in message
+        or "not_found" in lower_message
+        or "not found" in lower_message
+    ) and "model" in lower_message
+
+
 def _retry_delay_seconds(attempt_number):
     return min(
         GEMINI_RETRY_MAX_DELAY_SECONDS,
@@ -297,12 +315,33 @@ def _retry_delay_seconds(attempt_number):
     )
 
 
+def _normalize_gemini_model_name(model):
+    normalized = (model or "").strip()
+    if normalized.startswith("models/"):
+        normalized = normalized.removeprefix("models/")
+    return normalized
+
+
+def _normalize_fallback_model_name(model):
+    normalized = _normalize_gemini_model_name(model)
+    replacement = RETIRED_FALLBACK_MODEL_REPLACEMENTS.get(normalized)
+    if replacement:
+        logger.warning(
+            "Replacing retired Gemini fallback model: old=%s new=%s",
+            normalized,
+            replacement,
+        )
+        return replacement
+    return normalized
+
+
 def _model_sequence(primary_model):
+    primary_model = _normalize_gemini_model_name(primary_model)
     raw_fallbacks = os.getenv("PPT_SURVEY_AI_FALLBACK_MODELS", "").strip()
     fallback_models = [
-        model.strip()
+        _normalize_fallback_model_name(model)
         for model in (raw_fallbacks.split(",") if raw_fallbacks else DEFAULT_FALLBACK_MODELS)
-        if model.strip()
+        if _normalize_gemini_model_name(model)
     ]
     models = []
     for model in [primary_model, *fallback_models]:
@@ -329,12 +368,13 @@ def _call_gemini_model(client, types, model, contents):
 
 def _call_gemini(contents):
     client, types = _load_genai_client()
-    primary_model = os.getenv("PPT_SURVEY_AI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    primary_model = _normalize_gemini_model_name(os.getenv("PPT_SURVEY_AI_MODEL", DEFAULT_MODEL)) or DEFAULT_MODEL
     models = _model_sequence(primary_model)
     last_unavailable_error = None
 
     for model in models:
         logger.info("Calling Gemini model=%s", model)
+        skip_model = False
         for attempt in range(1, GEMINI_RETRY_ATTEMPTS + 1):
             try:
                 response = _call_gemini_model(client, types, model, contents)
@@ -342,6 +382,16 @@ def _call_gemini(contents):
                 break
             except Exception as exc:
                 if not _is_gemini_unavailable_error(exc):
+                    if model != primary_model and _is_model_not_found_error(exc):
+                        last_unavailable_error = exc
+                        skip_model = True
+                        logger.warning(
+                            "Gemini fallback model not found, skipping to next fallback: model=%s error=%s",
+                            model,
+                            str(exc),
+                            exc_info=True,
+                        )
+                        break
                     _handle_ai_exception(exc)
 
                 last_unavailable_error = exc
@@ -368,6 +418,9 @@ def _call_gemini(contents):
                         model,
                     )
         else:
+            continue
+
+        if skip_model:
             continue
 
         text = getattr(response, "text", "") or ""
