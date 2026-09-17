@@ -1,10 +1,15 @@
 import os
+import traceback
 
 from google import genai
 from google.genai import types
 
 
-_api_key = os.getenv("GEMINI_API_KEY") or os.getenv("PPT_SURVEY_AI_API_KEY")
+_api_key = (
+    os.getenv("PPT_SURVEY_AI_API_KEY")
+    or os.getenv("GEMINI_API_KEY")
+    or os.getenv("GOOGLE_API_KEY")
+)
 
 
 def configure(api_key=None, **_kwargs):
@@ -18,6 +23,13 @@ def _create_client():
     return genai.Client()
 
 
+def _normalize_model_name(model_name):
+    model_name = (model_name or "").strip()
+    if model_name.startswith("models/"):
+        return model_name.removeprefix("models/")
+    return model_name
+
+
 class GenerativeModel:
     def __init__(self, model_name, system_instruction=None, **_kwargs):
         self.model_name = model_name
@@ -29,8 +41,12 @@ class GenerativeModel:
             config_data["system_instruction"] = self.system_instruction
         config = types.GenerateContentConfig(**config_data) if config_data else None
         client = _create_client()
-        return client.models.generate_content(
-            model=self.model_name,
-            contents=contents,
-            config=config,
-        )
+        try:
+            return client.models.generate_content(
+                model=_normalize_model_name(self.model_name),
+                contents=contents,
+                config=config,
+            )
+        except Exception:
+            traceback.print_exc()
+            raise
