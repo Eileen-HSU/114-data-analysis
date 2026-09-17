@@ -43,13 +43,9 @@ MAX_EXTRACTED_CHARS = 18000
 
 
 def _get_api_key():
-    api_key = (
-        os.getenv("PPT_SURVEY_AI_API_KEY", "").strip()
-        or os.getenv("GEMINI_API_KEY", "").strip()
-        or os.getenv("GOOGLE_API_KEY", "").strip()
-    )
+    api_key = os.getenv("PPT_SURVEY_AI_API_KEY", "").strip()
     if not api_key:
-        logger.error("PPT_SURVEY_AI_API_KEY/GEMINI_API_KEY/GOOGLE_API_KEY is missing")
+        logger.error("PPT_SURVEY_AI_API_KEY is missing")
         raise PptSurveyAiError("PPT/PDF 問卷 AI API key 尚未設定。", 503)
     return api_key
 
