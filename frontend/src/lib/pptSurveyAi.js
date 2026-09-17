@@ -1,8 +1,9 @@
 import { apiUrl } from "./api";
 
 const START_TASK_TIMEOUT_MS = 20000;
-const POLL_TIMEOUT_MS = 15000;
+const POLL_TIMEOUT_MS = 60000;
 const MAX_POLL_TIME_MS = 10 * 60 * 1000;
+const MAX_POLL_ATTEMPTS = 200;
 const DEFAULT_POLL_INTERVAL_MS = 3000;
 const CHAT_TIMEOUT_MS = 60000;
 const ALLOWED_TYPES = new Set(["short", "rating"]);
@@ -71,7 +72,7 @@ function isFailedTask(task) {
 
 function isActiveTask(task) {
   const status = normalizeTaskStatus(task);
-  return Boolean(task?.task_id) && (ACTIVE_TASK_STATUSES.has(status) || !status);
+  return ACTIVE_TASK_STATUSES.has(status) || (Boolean(task?.task_id) && !status);
 }
 
 function buildTaskStatusUrl(task) {
@@ -173,15 +174,17 @@ export async function generateSurveyFromPpt({ file, config, token, onProgress })
 
   const startedAt = Date.now();
   const intervalMs = Math.max(
-    1000,
+    DEFAULT_POLL_INTERVAL_MS,
     Number(firstTask.poll_interval_seconds || 0) * 1000 || DEFAULT_POLL_INTERVAL_MS,
   );
   const statusUrl = firstTask.status_url || buildTaskStatusUrl(firstTask);
+  let pollAttempts = 0;
 
   onProgress?.(firstTask);
 
-  while (Date.now() - startedAt < MAX_POLL_TIME_MS) {
+  while (pollAttempts < MAX_POLL_ATTEMPTS && Date.now() - startedAt < MAX_POLL_TIME_MS) {
     await sleep(intervalMs);
+    pollAttempts += 1;
 
     const latestTask = await getSurveyGenerationTask({
       task: firstTask,
