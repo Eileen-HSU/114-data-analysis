@@ -80,19 +80,44 @@ with app.app_context():
         m.User.__table__,
         m.Survey_Template.__table__,
         m.Survey_Response.__table__,
-        m.Prompt_Template.__table__,
         m.Response_Classification.__table__,
         m.Response_Segmentation_Status.__table__,
         m.Uploaded_Answer.__table__,
+        m.Topic.__table__,
+        m.Taxonomy_Version.__table__,
+        m.Taxonomy_Category.__table__,
     ]
     db.metadata.create_all(bind=db.engine, tables=tables)
 
-    db.session.add(m.Prompt_Template(
-        prompt_key="leadership_and_dept", draft_content="d", live_content="LIVE_LEADERSHIP_PROMPT"
-    ))
-    db.session.add(m.Prompt_Template(
-        prompt_key="career_and_feedback", draft_content="d", live_content="LIVE_CAREER_PROMPT"
-    ))
+    # Phase B：production classification 改讀 Published Taxonomy，不再讀
+    # Prompt_Template。比照 migrate_taxonomy_from_legacy.py 的實際搬移
+    # 結果，把兩個既有 Topic 都建成 published Taxonomy_Version。
+    from services.subcategory_methodology import (
+        QUESTION_LEADERSHIP, QUESTION_CAREER, SUBCATEGORY_METHODOLOGY,
+    )
+
+    for topic_key, title in [
+        (QUESTION_LEADERSHIP, "主管領導和部門合作"),
+        (QUESTION_CAREER, "工作表現的回饋及職涯發展"),
+    ]:
+        db.session.add(m.Topic(topic_key=topic_key, title=title))
+        version = m.Taxonomy_Version(
+            topic_key=topic_key, version_number=1,
+            status="published", source="migrated_legacy",
+        )
+        db.session.add(version)
+        db.session.flush()
+        for i, (sub_category, info) in enumerate(SUBCATEGORY_METHODOLOGY[topic_key].items(), start=1):
+            db.session.add(m.Taxonomy_Category(
+                version_id=version.version_id,
+                main_category=info["main_category"],
+                sub_category=sub_category,
+                methodology=info["methodology"],
+                citation=info["citation"],
+                source_raw_text=f"{sub_category}：（測試用簡化規則原文）",
+                sort_order=i,
+            ))
+
     db.session.add(m.User(user_id=1, user_name="tester", email="tester@example.com", password_hash="x"))
     db.session.commit()
 

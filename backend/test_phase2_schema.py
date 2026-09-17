@@ -68,6 +68,12 @@ db.init_app(app)
 with app.app_context():
     tables = [
         m.User.__table__,
+        # Admin / Topic / Taxonomy_Version：Phase B 新增
+        # Response_Classification.taxonomy_version_id FK 之後，即使值
+        # 為 NULL，SQLite 開啟 FK pragma 時仍要求被參照的表存在。
+        m.Admin.__table__,
+        m.Topic.__table__,
+        m.Taxonomy_Version.__table__,
         m.Survey_Template.__table__,
         m.Survey_Response.__table__,
         m.Response_Classification.__table__,

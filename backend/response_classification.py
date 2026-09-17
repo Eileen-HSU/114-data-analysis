@@ -155,6 +155,22 @@ class Response_Classification(db.Model):
         db.DateTime(timezone=True), nullable=False, default=taiwan_now
     )
 
+    # ── Taxonomy version 追溯（Phase B 新增，additive-only）─────────
+    # 這筆分類實際使用哪一版 Published Taxonomy 產生（見
+    # services/taxonomy_service.py）。nullable=True 是刻意的：
+    #   - 舊資料（Phase B 之前，讀 DEFAULT_PROMPT_* + Prompt_Template
+    #     產生的分類結果）沒有對應的 Taxonomy_Version，永遠是 NULL，
+    #     不回填、不猜測對應到哪一版。
+    #   - 不用 ondelete="CASCADE"：Taxonomy_Version 之後如果被刪除
+    #     （目前沒有任何流程會這麼做，但不排除未來 Admin 清除舊草稿），
+    #     不應該連帶砍掉已經產生的分類結果，比照 Uploaded_Answer.user_id
+    #     的作法改用 SET NULL。
+    taxonomy_version_id = db.Column(
+        db.Integer,
+        db.ForeignKey("Taxonomy_Version.version_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     # ── 驗證邏輯 ──────────────────────────────────────────
     def validate_source_relation(self) -> None:
         """驗證資料來源與 response_id / upload_batch_id 的關係是否合法。
@@ -221,6 +237,7 @@ class Response_Classification(db.Model):
             "final_reasoning": self.final_reasoning,
             "status": self.status,
             "review_status": self.review_status,
+            "taxonomy_version_id": self.taxonomy_version_id,
             "created_at": (
                 self.created_at.isoformat() if self.created_at else None
             ),

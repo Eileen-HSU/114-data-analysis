@@ -97,6 +97,7 @@ def run_batch_analysis(
     pending_items: List[Dict[str, Any]],
     prompt_content: str,
     question_type: str,
+    category_lookup=None,
 ) -> List[Dict[str, Any]]:
     """
     對外主要介面。輸入一批「已分析回答」（可作為沿用參考，但不會被
@@ -110,7 +111,11 @@ def run_batch_analysis(
         pending_items: 這次真正要處理的回答。
             每個元素：{"identifier": Any, "answer_text": str}
         prompt_content: 對應這個 question_type 的分類 prompt 內容。
-        question_type: leadership_and_dept / career_and_feedback。
+        question_type: leadership_and_dept / career_and_feedback，或
+            （Phase B 起）任何有 Published Taxonomy 的 topic_key。
+        category_lookup: 見 classify_v2.classify_response_multi_segment()
+            的同名參數，原樣透傳，不傳則維持 question_type 查
+            SUBCATEGORY_METHODOLOGY 固定表的舊行為。
 
     Returns:
         跟 pending_items 順序、數量一致的清單，每個元素形狀跟
@@ -159,7 +164,7 @@ def run_batch_analysis(
         combined_i = _combined_index(local_i)
         if combined_i in keep_indices_set:
             result = classify_response_multi_segment(
-                item["answer_text"], prompt_content, question_type
+                item["answer_text"], prompt_content, question_type, category_lookup=category_lookup
             )
             fresh_results[combined_i] = result
 
@@ -217,7 +222,7 @@ def run_batch_analysis(
         else:
             # 定位失敗，fallback 成完整處理，比照一般回答
             result = classify_response_multi_segment(
-                item["answer_text"], prompt_content, question_type
+                item["answer_text"], prompt_content, question_type, category_lookup=category_lookup
             )
             result = dict(result)
             result["reused_from"] = None
