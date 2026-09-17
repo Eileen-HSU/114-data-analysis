@@ -13,6 +13,7 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
   const { language, setLanguage, t } = useLanguage();
   const [scrolled, setScrolled] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     if (!transparent) return;
@@ -36,6 +37,10 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
     >
       <div className="container-fluid px-4" style={{ position: "relative" }}>
         {/* Left */}
+        <button className="mobile-nav-toggle" aria-label={t("menu")} onClick={() => setMobileOpen(!mobileOpen)}>
+          {mobileOpen ? <i className="ri-close-line"></i> : <i className="ri-menu-line"></i>}
+        </button>
+
         <div className="d-flex align-items-center gap-2 me-auto">
           <a
             className={`nav-link-btn ${location.pathname === "/collection" ? "active" : ""}`}
@@ -64,7 +69,7 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
             <i className="ri-survey-line"></i>
             <span>{t("survey")}</span>
           </a>
-          {user?.role === "admin" && (
+          {user?.account_type === "admin" && (
             <a
               className={`nav-link-btn ${location.pathname.startsWith("/admin/ai") ? "active" : ""}`}
               href="/admin/ai"
@@ -72,7 +77,7 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
               style={{ cursor: "pointer" }}
             >
               <i className="ri-shield-star-line"></i>
-              <span>AI 管理</span>
+              <span>{t("AI 管理")}</span>
             </a>
           )}
         </div>
@@ -142,6 +147,22 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
             </>
           )}
         </div>
+      </div>
+
+      {/* Mobile menu (renders under the navbar when open) */}
+      <div className={`mobile-nav-menu${mobileOpen ? " open" : ""}`}>
+        <a className={`mobile-nav-link ${location.pathname === "/collection" ? "active" : ""}`} href="/collection" onClick={(e) => { e.preventDefault(); setMobileOpen(false); if (readOnly && !isLoggedIn) onRequireLogin?.("專案管理"); else navigate("/collection"); }}>
+          <i className="ri-folder-chart-line"></i>
+          <span>{t("project")}</span>
+        </a>
+        <a className={`mobile-nav-link ${(readOnly || location.pathname === "/workspace") ? "active" : ""}`} href="/workspace" onClick={(e) => { e.preventDefault(); setMobileOpen(false); if (readOnly && !isLoggedIn) onRequireLogin?.("新增對話"); else navigate("/workspace"); }}>
+          <i className="ri-add-circle-line"></i>
+          <span>{t("assistant")}</span>
+        </a>
+        <a className={`mobile-nav-link ${location.pathname.startsWith("/survey") ? "active" : ""}`} href="/survey" onClick={(e) => { e.preventDefault(); setMobileOpen(false); navigate("/survey"); }}>
+          <i className="ri-survey-line"></i>
+          <span>{t("survey")}</span>
+        </a>
       </div>
     </nav>
   );
