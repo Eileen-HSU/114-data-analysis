@@ -4,7 +4,6 @@ import os
 import threading
 import traceback
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request, url_for
@@ -22,10 +21,8 @@ logger = logging.getLogger(__name__)
 ppt_survey_ai_bp = Blueprint("ppt_survey_ai", __name__)
 
 TASK_TTL_HOURS = int(os.getenv("PPT_SURVEY_TASK_TTL_HOURS", "2"))
-TASK_WORKERS = int(os.getenv("PPT_SURVEY_TASK_WORKERS", "2"))
 TASKS = {}
 TASK_LOCK = threading.Lock()
-EXECUTOR = ThreadPoolExecutor(max_workers=max(1, TASK_WORKERS), thread_name_prefix="ppt-survey-ai")
 
 
 def _now():
@@ -108,6 +105,17 @@ def _create_task(user_id, filename, file_size):
     return task
 
 
+def _start_generation_thread(task_id, user_id, filename, file_bytes, config):
+    worker = threading.Thread(
+        target=_run_generation_task,
+        args=(task_id, user_id, filename, file_bytes, config),
+        name=f"ppt-survey-ai-{task_id[:8]}",
+        daemon=True,
+    )
+    worker.start()
+    return worker
+
+
 def _run_generation_task(task_id, user_id, filename, file_bytes, config):
     logger.info(
         "PPT survey background task started: task_id=%s user_id=%s filename=%s size=%s",
@@ -188,7 +196,8 @@ def generate_ppt_survey():
             config = {}
 
         task = _create_task(user_id=user_id, filename=filename, file_size=len(file_bytes))
-        EXECUTOR.submit(_run_generation_task, task["task_id"], user_id, filename, file_bytes, config)
+        _set_task(task["task_id"], status="processing", message="AI 正在背景分析檔案並產生問卷草稿。")
+        _start_generation_thread(task["task_id"], user_id, filename, file_bytes, config)
 
         logger.info(
             "PPT survey generation queued: task_id=%s user_id=%s filename=%s size=%s config_keys=%s",
@@ -200,8 +209,8 @@ def generate_ppt_survey():
         )
         return jsonify({
             "task_id": task["task_id"],
-            "status": task["status"],
-            "message": task["message"],
+            "status": "processing",
+            "message": "AI 正在背景分析檔案並產生問卷草稿。",
             "poll_interval_seconds": 3,
             "status_url": url_for("ppt_survey_ai.get_ppt_survey_task", task_id=task["task_id"]),
         }), 202
@@ -258,8 +267,7 @@ def get_ppt_survey_task(task_id):
         )
         return jsonify({"error": "你沒有權限讀取這個任務。"}), 403
 
-    status_code = task.get("status_code", 200) if task["status"] == "failed" else 200
-    return jsonify(_serialize_task(task)), status_code
+    return jsonify(_serialize_task(task)), 200
 
 
 @ppt_survey_ai_bp.route("/api/ai/ppt-survey/chat", methods=["POST"])
