@@ -786,7 +786,7 @@ export default function SurveyPage({ pptOnly = false }) {
       )}
 
       {isPptModalOpen && pptDraft && (
-        <aside className={`ppt-floating-chat fixed right-5 bottom-5 z-50 max-w-sm w-[380px] h-[500px] rounded-lg shadow-2xl border border-gray-200 bg-white overflow-hidden flex flex-col ${isAiChatMinimized ? "is-minimized" : ""}`}>
+        <aside className={`ppt-floating-chat fixed right-8 bottom-8 z-[100] max-w-sm w-[380px] h-[500px] rounded-lg shadow-2xl border border-gray-200 bg-white overflow-hidden flex flex-col ${isAiChatMinimized ? "is-minimized" : ""}`}>
           <header className="ppt-floating-chat-header">
             <div>
               <strong>{t("AI 對話", "AI Chat")}</strong>
