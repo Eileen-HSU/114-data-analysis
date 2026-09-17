@@ -21,11 +21,14 @@ class PptSurveyAiError(Exception):
 ALLOWED_EXTENSIONS = {".ppt", ".pptx", ".pdf"}
 ALLOWED_TYPES = {"short", "rating"}
 DEFAULT_MODEL = "gemini-3.6-flash"
-DEFAULT_FALLBACK_MODELS = ["gemini-3.5-flash", "gemini-flash-latest", "gemini-2.5-pro"]
+DEFAULT_FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.5-flash"]
 RETIRED_FALLBACK_MODEL_REPLACEMENTS = {
-    "gemini-1.5-flash": "gemini-3.5-flash",
+    "gemini-1.5-flash": "gemini-2.5-flash",
     "gemini-1.5-pro": "gemini-2.5-pro",
-    "gemini-2.0-flash": "gemini-3.5-flash",
+    "gemini-2.0-flash": "gemini-2.5-flash",
+    "gemini-2.0-flash-001": "gemini-2.5-flash",
+    "gemini-2.0-flash-lite": "gemini-2.5-flash-lite",
+    "gemini-2.0-flash-lite-001": "gemini-2.5-flash-lite",
     "gemini-3.6-pro": "gemini-2.5-pro",
 }
 GEMINI_RETRY_ATTEMPTS = 3
@@ -361,7 +364,7 @@ def _call_gemini_model(client, types, model, contents):
             ),
         )
     except Exception as exc:
-        if _is_gemini_unavailable_error(exc):
+        if _is_gemini_unavailable_error(exc) or _is_model_not_found_error(exc):
             raise
         _handle_ai_exception(exc)
 
@@ -381,17 +384,18 @@ def _call_gemini(contents):
                 logger.info("Gemini model succeeded: model=%s attempt=%s", model, attempt)
                 break
             except Exception as exc:
+                if _is_model_not_found_error(exc):
+                    last_unavailable_error = exc
+                    skip_model = True
+                    logger.warning(
+                        "Gemini model not found, skipping to next model: model=%s error=%s",
+                        model,
+                        str(exc),
+                        exc_info=True,
+                    )
+                    break
+
                 if not _is_gemini_unavailable_error(exc):
-                    if model != primary_model and _is_model_not_found_error(exc):
-                        last_unavailable_error = exc
-                        skip_model = True
-                        logger.warning(
-                            "Gemini fallback model not found, skipping to next fallback: model=%s error=%s",
-                            model,
-                            str(exc),
-                            exc_info=True,
-                        )
-                        break
                     _handle_ai_exception(exc)
 
                 last_unavailable_error = exc
