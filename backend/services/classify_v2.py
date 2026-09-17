@@ -286,10 +286,29 @@ def is_text_response(value) -> bool:
     return True
 
 
-def _call_gemini_and_parse(masked_text: str, prompt_content: str, question_type: str) -> dict:
+def _methodology_lookup_for_question_type(question_type: str):
+    """
+    Phase B 之前唯一的查表方式：question_type -> SUBCATEGORY_METHODOLOGY
+    固定表。包成一個 callable，讓 _call_gemini_and_parse() /
+    _call_gemini_batch_classification() 不需要知道查表資料到底來自
+    固定常數表，還是（Phase B 新增）某個 Taxonomy_Version 的
+    Taxonomy_Category——兩種來源共用同一套 Gemini 呼叫/解析邏輯。
+    """
+    return lambda sub_category: get_methodology(question_type, sub_category)
+
+
+def _call_gemini_and_parse(masked_text: str, prompt_content: str, category_lookup) -> dict:
     """
     共用邏輯：把已經遮罩過的文字送進 Gemini、解析結果、查方法論表。
     輸入必須已經是遮罩後文字，這個函式不做任何 PII masking。
+
+    category_lookup: callable(sub_category) -> {"main_category", 
+        "methodology", "citation"} 或 None。Phase B 之前一律是
+        _methodology_lookup_for_question_type(question_type)；Phase B
+        起，production classification（見
+        classify_response_multi_segment 的 category_lookup 參數）改傳
+        services.taxonomy_service.methodology_lookup_for_taxonomy_version()
+        產生的查表函式，確保分類跟驗證讀同一份 Published Taxonomy。
 
     被 _run_classification()（單一整則回答，內部自己遮罩一次）與
     _classify_segment()（意義單元拆分後的單一 segment，遮罩已在
@@ -325,7 +344,7 @@ def _call_gemini_and_parse(masked_text: str, prompt_content: str, question_type:
         result["summary"] = parsed["summary"]
         result["confidence"] = parsed.get("confidence", "high")
 
-        methodology_info = get_methodology(question_type, result["sub_category"])
+        methodology_info = category_lookup(result["sub_category"])
         if methodology_info:
             result["methodology"] = methodology_info["methodology"]
             result["citation"] = methodology_info["citation"]
@@ -337,7 +356,7 @@ def _call_gemini_and_parse(masked_text: str, prompt_content: str, question_type:
         # 次要類別是選填的，只有在 AI 真的有輸出、且是合法子類別時才查表補上；
         # 查不到就靜默留空，不影響主要分類的 status
         if result["secondary_sub_category"]:
-            secondary_info = get_methodology(question_type, result["secondary_sub_category"])
+            secondary_info = category_lookup(result["secondary_sub_category"])
             if secondary_info:
                 result["secondary_methodology"] = secondary_info["methodology"]
                 result["secondary_citation"] = secondary_info["citation"]
@@ -380,13 +399,15 @@ def _run_classification(answer_text: str, prompt_content: str, question_type: st
             "error_detail": f"PII_MASKING_FAILED: {str(e)[:180]}",
         }
 
-    return _call_gemini_and_parse(masked_text, prompt_content, question_type)
+    return _call_gemini_and_parse(masked_text, prompt_content, _methodology_lookup_for_question_type(question_type))
 
 
-def _build_classification_result(parsed: dict, question_type: str) -> dict:
+def _build_classification_result(parsed: dict, category_lookup) -> dict:
     """
     把 Gemini 回傳的一筆分類物件（單一 segment 或批次陣列裡的一個
     元素，格式相同）補上方法論查表結果，組成完整的分類結果 dict。
+
+    category_lookup: 同 _call_gemini_and_parse()，見該處說明。
     """
     result = {
         "main_category": parsed["main_category"],
@@ -403,7 +424,7 @@ def _build_classification_result(parsed: dict, question_type: str) -> dict:
         "error_detail": None,
     }
 
-    methodology_info = get_methodology(question_type, result["sub_category"])
+    methodology_info = category_lookup(result["sub_category"])
     if methodology_info:
         result["methodology"] = methodology_info["methodology"]
         result["citation"] = methodology_info["citation"]
@@ -413,7 +434,7 @@ def _build_classification_result(parsed: dict, question_type: str) -> dict:
         result["error_detail"] = f"sub_category 不在固定清單裡：{result['sub_category']}"
 
     if result["secondary_sub_category"]:
-        secondary_info = get_methodology(question_type, result["secondary_sub_category"])
+        secondary_info = category_lookup(result["secondary_sub_category"])
         if secondary_info:
             result["secondary_methodology"] = secondary_info["methodology"]
             result["secondary_citation"] = secondary_info["citation"]
@@ -438,7 +459,7 @@ def _failed_classification_result(error_detail: str) -> dict:
     }
 
 
-def _call_gemini_batch_classification(masked_segments: list, prompt_content: str, question_type: str) -> list:
+def _call_gemini_batch_classification(masked_segments: list, prompt_content: str, category_lookup) -> list:
     """
     Gemini #2：一次把所有已驗證合法的 masked segments 送進去，
     一次回傳每個 segment 的分類結果（固定 2 次呼叫策略的第二次，
@@ -493,7 +514,7 @@ def _call_gemini_batch_classification(masked_segments: list, prompt_content: str
                 f"實際收到 {sorted(seen_indices)}"
             )
 
-        return [_build_classification_result(result_by_index[i], question_type) for i in range(n)]
+        return [_build_classification_result(result_by_index[i], category_lookup) for i in range(n)]
 
     except Exception as e:
         print("[CLASSIFY ERROR][BATCH_CLASSIFICATION_FAILED]", repr(e))
@@ -502,11 +523,27 @@ def _call_gemini_batch_classification(masked_segments: list, prompt_content: str
 
 
 
-def classify_response_multi_segment(answer_text: str, prompt_content: str, question_type: str) -> dict:
+def classify_response_multi_segment(
+    answer_text: str, prompt_content: str, question_type: str, category_lookup=None
+) -> dict:
     """
     多意義單元分類協調函式：遮罩 → 拆分驗證（Gemini #1）→ 批次分類
     （Gemini #2，一次呼叫涵蓋所有 segment）。固定 2 次 Gemini 呼叫，
     不隨 segment 數量增加而增加呼叫次數。
+
+    category_lookup（Phase B 新增，keyword-only 慣例但不強制）：
+        callable(sub_category) -> {"main_category", "methodology",
+        "citation"} 或 None。
+            - 不傳（None，預設）：維持 Phase B 之前的行為，內部用
+              question_type 查 SUBCATEGORY_METHODOLOGY 固定表——所有
+              既有呼叫端（services/batch_classification_service.py、
+              舊版 routes/classifications/classification.py 呼叫、
+              test_classify_v2_multi_segment.py）完全不用修改。
+            - 有傳：直接用它做驗證/查表，不理會 question_type 對應到
+              固定表的結果。production classification（Phase B 起）
+              會傳 services.taxonomy_service 依 Published Taxonomy
+              產生的查表函式，這裡的 question_type 這時純粹只是
+              topic_key 字串，不影響查表行為。
 
     只負責「組出資料結構」，不寫入 DB（DB 寫入是呼叫端
     routes/classifications/classification.py 的職責）。segmentation_status
@@ -551,8 +588,10 @@ def classify_response_multi_segment(answer_text: str, prompt_content: str, quest
             "segments": [],
         }
 
+    effective_category_lookup = category_lookup or _methodology_lookup_for_question_type(question_type)
+
     masked_texts = [seg["masked_text"] for seg in valid_segments]
-    classifications = _call_gemini_batch_classification(masked_texts, prompt_content, question_type)
+    classifications = _call_gemini_batch_classification(masked_texts, prompt_content, effective_category_lookup)
 
     classified_segments = [
         {"orig_start": seg["orig_start"], "orig_end": seg["orig_end"], **classification}
@@ -565,6 +604,39 @@ def classify_response_multi_segment(answer_text: str, prompt_content: str, quest
         "segments": classified_segments,
     }
 
+
+
+def resolve_published_taxonomy_prompt(topic_key: str):
+    """
+    Phase B production classification 的標準入口：topic_key -> 
+    (prompt_content, category_lookup, taxonomy_version)。
+
+    呼叫端（routes/classifications/classification.py）拿到這三個值後，
+    直接把 prompt_content / category_lookup 傳進
+    classify_response_multi_segment()，taxonomy_version.version_id
+    則用來寫入 Response_Classification.taxonomy_version_id，確保
+    「Gemini 用哪份 taxonomy 分類，後端就用同一份驗證/查表/回填版本
+    追溯」三件事永遠一致。
+
+    Raises:
+        services.taxonomy_service.PublishedTaxonomyNotFoundError:
+            topic_key 沒有 published Taxonomy_Version。呼叫端必須
+            視為「這個 Topic 目前無法分類」，不可以 fallback 到
+            DYNAMIC_GENERAL_PROMPT。
+        services.taxonomy_service.PublishedTaxonomyIntegrityError:
+            topic_key 有超過一個 published 版本（或版本沒有任何
+            category），資料完整性問題，同樣不可以默默選一個繼續跑。
+    """
+    from services.taxonomy_service import (
+        get_published_taxonomy_version,
+        build_classification_prompt,
+        methodology_lookup_for_taxonomy_version,
+    )
+
+    taxonomy_version = get_published_taxonomy_version(topic_key)
+    prompt_content = build_classification_prompt(taxonomy_version)
+    category_lookup = methodology_lookup_for_taxonomy_version(taxonomy_version)
+    return prompt_content, category_lookup, taxonomy_version
 
 
 def classify_response_v2(answer_text: str, question_type: str) -> dict:

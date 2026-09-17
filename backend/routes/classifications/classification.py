@@ -54,22 +54,45 @@ from extensions import db
 from models import (
     Survey_Response,
     Survey_Template,
-    Prompt_Template,
     Response_Classification,
     Response_Segmentation_Status,
     Uploaded_Answer,
 )
-from services.classify_v2 import classify_response_multi_segment, is_text_response, DYNAMIC_GENERAL_PROMPT
+from services.classify_v2 import classify_response_multi_segment, is_text_response, resolve_published_taxonomy_prompt
 from services.privacy_service import mask_pii, PiiMaskingError
 from services.question_routing_service import route_question_type
 from services.batch_classification_service import run_batch_analysis
 from services.aggregated_summary_service import build_aggregated_summary, build_aggregated_summary_pair, AggregatedSummaryError
 from services.subcategory_methodology import QUESTION_OTHER, compute_display_sub_categories
+from services.taxonomy_service import PublishedTaxonomyNotFoundError, PublishedTaxonomyIntegrityError
 from routes.surveys.survey import verify_token, find_survey_by_access_or_short_code
 import pandas as pd
 
 classification_bp = Blueprint("classification", __name__)
 
+
+def _resolve_taxonomy_for_topic(question_type: str):
+    """
+    Phase B production classification 的唯一 taxonomy 來源入口。
+
+    回傳 (prompt_content, category_lookup, taxonomy_version_id) 三元組；
+    若這個 question_type 目前沒有可用的 Published Taxonomy（包含
+    routing 判斷不出來、被視為 QUESTION_OTHER 的情況），回傳
+    (None, None, None) 並印出診斷 log——呼叫端看到 None 三元組時必須
+    跳過這批文字的分類（原始文字仍照舊寫入 Uploaded_Answer /
+    Survey_Response，不受影響），不可以 fallback 到 DYNAMIC_GENERAL_PROMPT
+    自創分類。沒有 taxonomy 的 Topic 之後要走 Taxonomy Generation
+    （Phase C），不是 classification 當下 fallback。
+    """
+    if question_type == QUESTION_OTHER:
+        print(f"[TAXONOMY_UNAVAILABLE] question_type={question_type!r}：routing 判斷不出來，非真正 Topic")
+        return None, None, None
+    try:
+        prompt_content, category_lookup, taxonomy_version = resolve_published_taxonomy_prompt(question_type)
+        return prompt_content, category_lookup, taxonomy_version.version_id
+    except (PublishedTaxonomyNotFoundError, PublishedTaxonomyIntegrityError) as e:
+        print(f"[TAXONOMY_UNAVAILABLE] question_type={question_type!r}：{e}")
+        return None, None, None
 
 
 def _build_aggregated_groups(all_classification_rows, id_to_row_index, question_type, id_field="uploaded_answer_id"):
@@ -254,11 +277,17 @@ def _persist_segmentation_result(
     response_id: int = None,
     upload_batch_id: str = None,
     uploaded_answer_id: int = None,
+    taxonomy_version_id: int = None,
 ):
     """
     把 classify_response_multi_segment() 的回傳結果寫進 DB：
     1 筆 Response_Segmentation_Status（回答層級現況）+
     0~N 筆 Response_Classification（每個驗證通過的 segment 各一筆）。
+
+    taxonomy_version_id（Phase B 新增）：這批分類實際使用哪一版
+    Published Taxonomy 產生的，原樣寫進每一筆 Response_Classification；
+    不傳（None）時維持舊行為（legacy path 或無 taxonomy 可用時的
+    未分類回答，欄位保持 NULL）。
 
     只負責 db.session.add()，不呼叫 commit()，交給呼叫端統一 commit。
 
@@ -301,6 +330,7 @@ def _persist_segmentation_result(
             secondary_methodology=seg["secondary_methodology"],
             secondary_citation=seg["secondary_citation"],
             status=seg["status"],
+            taxonomy_version_id=taxonomy_version_id,
         )
         db.session.add(row)
         classification_rows.append(row)
@@ -344,21 +374,25 @@ def submit_survey_response():
             skipped_question_ids.append(question_id)
             continue
 
-        prompt_row = Prompt_Template.query.get(question_type)
-        if prompt_row is None:
-            # 理論上 question_type 合法值都應該有對應 Prompt_Template；
-            # 真的查不到時保守跳過，不讓整個問卷送出失敗
+        prompt_content, category_lookup, taxonomy_version_id = _resolve_taxonomy_for_topic(question_type)
+        if prompt_content is None:
+            # 沒有 Published Taxonomy：這一題跳過分類，原始回答本來就
+            # 已經完整存在 survey.answer_json，不受影響（見需求文件
+            # Phase B 第 5 節：不可 fallback 到 DYNAMIC_GENERAL_PROMPT）
             skipped_question_ids.append(question_id)
             continue
 
         answer_text = str(answer)
-        result = classify_response_multi_segment(answer_text, prompt_row.live_content, question_type)
+        result = classify_response_multi_segment(
+            answer_text, prompt_content, question_type, category_lookup=category_lookup
+        )
         _, rows = _persist_segmentation_result(
             result,
             source_type="survey",
             answer_text=answer_text,
             question_id=question_id,
             response_id=survey.response_id,
+            taxonomy_version_id=taxonomy_version_id,
         )
         all_classification_rows.extend(rows)
         classified_question_count += 1
@@ -415,20 +449,10 @@ def upload_excel_for_classification():
         samples = _collect_masked_routing_samples(df, text_column)
         routing_context = _build_routing_context(text_column, samples)
         routed_question_type = route_question_type(routing_context)
-        
-        if routed_question_type:
-            prompt_row = Prompt_Template.query.get(routed_question_type)
-            if prompt_row is not None:
-                question_type = routed_question_type
-                prompt_content_for_batch = prompt_row.live_content
-            else:
-                # 理論上不該發生（合法 question_type 卻查無 Prompt_Template）；
-                # 保守 fallback 成動態分類，不讓這一欄整個被跳過
-                question_type = QUESTION_OTHER
-                prompt_content_for_batch = DYNAMIC_GENERAL_PROMPT
-        else:
-            question_type = QUESTION_OTHER
-            prompt_content_for_batch = DYNAMIC_GENERAL_PROMPT
+        question_type = routed_question_type or QUESTION_OTHER
+
+        prompt_content_for_batch, category_lookup, taxonomy_version_id = _resolve_taxonomy_for_topic(question_type)
+        taxonomy_unavailable = prompt_content_for_batch is None
 
         pending_items = []  # 每個元素額外帶一個 _question_id，DB 寫入時才用得到
         column_saved_count = 0
@@ -461,7 +485,7 @@ def upload_excel_for_classification():
             })
 
         column_classification_rows = []
-        if pending_items:
+        if pending_items and not taxonomy_unavailable:
             results = run_batch_analysis(
                 existing_references=[],
                 pending_items=[
@@ -470,6 +494,7 @@ def upload_excel_for_classification():
                 ],
                 prompt_content=prompt_content_for_batch,
                 question_type=question_type,
+                category_lookup=category_lookup,
             )
             for item, result in zip(pending_items, results):
                 _, rows = _persist_segmentation_result(
@@ -479,6 +504,7 @@ def upload_excel_for_classification():
                     question_id=item["_question_id"],
                     upload_batch_id=upload_batch_id,
                     uploaded_answer_id=item["identifier"],
+                    taxonomy_version_id=taxonomy_version_id,
                 )
                 column_classification_rows.extend(rows)
                 classified_count += 1
@@ -499,6 +525,10 @@ def upload_excel_for_classification():
             "saved_answer_count": column_saved_count,
             "classified_count": len(column_classification_rows),
             "aggregated_groups": column_groups,
+            # Phase B 新增：這一欄沒有 Published Taxonomy 時，原始文字
+            # 仍已寫入 Uploaded_Answer（saved_answer_count 不受影響），
+            # 只是完全不會有分類結果（不 fallback 動態分類）。
+            "taxonomy_unavailable": taxonomy_unavailable,
         })
 
     db.session.commit()
@@ -592,14 +622,14 @@ def analyze_survey(access_code):
     per_question_diagnostic = {}
 
     for question_id, question_type in question_type_map.items():
-    
-        if question_type == QUESTION_OTHER:
-            prompt_content_for_batch = DYNAMIC_GENERAL_PROMPT
-        else:
-            prompt_row = Prompt_Template.query.get(question_type)
-            if prompt_row is None:
-                continue  # 理論上不該發生，保守跳過
-            prompt_content_for_batch = prompt_row.live_content
+
+        prompt_content_for_batch, category_lookup, taxonomy_version_id = _resolve_taxonomy_for_topic(question_type)
+        if prompt_content_for_batch is None:
+            # 沒有 Published Taxonomy（含 QUESTION_OTHER）：整題跳過，
+            # 不 fallback 到 DYNAMIC_GENERAL_PROMPT。原始回答仍完整存在
+            # Survey_Response.answer_json，只是這次不會產生新分類結果。
+            per_question_diagnostic[question_id] = {"taxonomy_unavailable": True}
+            continue
 
         existing_references = []
         pending_items = []
@@ -671,7 +701,8 @@ def analyze_survey(access_code):
             continue  # 這題沒有新回答需要處理
 
         results = run_batch_analysis(
-            existing_references, pending_items, prompt_content_for_batch, question_type
+            existing_references, pending_items, prompt_content_for_batch, question_type,
+            category_lookup=category_lookup,
         )
 
         for item, result in zip(pending_items, results):
@@ -681,6 +712,7 @@ def analyze_survey(access_code):
                 answer_text=item["answer_text"],
                 question_id=question_id,
                 response_id=item["identifier"],
+                taxonomy_version_id=taxonomy_version_id,
             )
             rows_by_question_type.setdefault(question_type, []).extend(new_rows)
             newly_classified_count += 1

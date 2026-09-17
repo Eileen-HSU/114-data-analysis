@@ -303,6 +303,21 @@ def ensure_runtime_schema():
 
             ensure_table(AdminVerification)
             db.session.commit()
+
+            # ── Taxonomy 核心資料層（Phase A，additive-only）──────────
+            from models import Topic, Taxonomy_Version, Taxonomy_Category
+
+            ensure_table(Topic)
+            ensure_table(Taxonomy_Version)
+            ensure_table(Taxonomy_Category)
+            db.session.commit()
+
+            # ── Response_Classification taxonomy version 追溯（Phase B）──
+            ensure_column(
+                "Response_Classification", "taxonomy_version_id",
+                "`taxonomy_version_id` INT NULL",
+            )
+            db.session.commit()
         except Exception as exc:
             db.session.rollback()
             app.logger.exception("Runtime schema check failed: %s", exc)

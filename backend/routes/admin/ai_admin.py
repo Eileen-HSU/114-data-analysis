@@ -15,6 +15,13 @@ from services.classify_v2 import _run_classification
 from services.golden_test_set import GOLDEN_TEST_SET
 from services.prompt_admin_service import update_draft, test_draft_prompt, publish_prompt
 from services.subcategory_methodology import SUBCATEGORY_METHODOLOGY
+from services.taxonomy_generation_service import (
+    generate_taxonomy_draft,
+    load_reference_material,
+    TaxonomyGenerationError,
+    TaxonomyGenerationValidationError,
+)
+from services import taxonomy_service as taxo
 
 
 ai_admin_bp = Blueprint("ai_admin", __name__, url_prefix="/api/admin/ai")
@@ -174,3 +181,212 @@ def golden_tests():
     for prompt_key, items in GOLDEN_TEST_SET.items():
         cases.extend({"prompt_key": prompt_key, **item} for item in items)
     return jsonify({"cases": cases})
+
+
+@ai_admin_bp.post("/topics/<topic_key>/taxonomy/generate")
+def generate_taxonomy(topic_key):
+    """
+    Phase C：Taxonomy Generation。輸入一批初始回答，由 AI 歸納出一份
+    結構化 draft taxonomy（Taxonomy_Version.status=draft），交給
+    Phase D 的 Admin Review 流程。
+
+    這個端點刻意跟上面 candidate（Prompt_Template draft）系列的
+    /topics/<prompt_key>/... 路由分開：topic_key 這裡指的是
+    Topic.topic_key（taxonomy 概念），不是 Prompt_Template.prompt_key
+    （prompt 概念），兩者目前是同一套字串 key 空間但語意不同，沿用
+    Phase A/B 已經定案的區分，不因為路由方便就混用。
+
+    請求 body：
+        answer_texts (必填)：這批要拿來歸納的原始回答文字陣列。
+        topic_title：Topic 不存在時必填；已存在時會被忽略。
+        question_text：選填，問卷題目原文。
+        global_instructions：選填，額外分析原則。
+        reference_topic_keys：選填，從這些既有 Topic 的 published
+            taxonomy 抽取少量格式範例 + citation 白名單（見
+            services.taxonomy_generation_service.load_reference_material）。
+
+    絕對不會發布：回傳的版本一律是 draft，不會 archive 任何既有
+    published 版本，也不會讓 production classification 切換過去。
+    """
+    admin, failure = _admin_or_error()
+    if failure:
+        return failure
+
+    payload = request.get_json(silent=True) or {}
+    answer_texts = payload.get("answer_texts")
+    if not isinstance(answer_texts, list) or not answer_texts:
+        return jsonify({"error": "answer_texts is required and must be a non-empty array"}), 400
+
+    reference_topic_keys = payload.get("reference_topic_keys") or []
+    if not isinstance(reference_topic_keys, list):
+        return jsonify({"error": "reference_topic_keys must be an array"}), 400
+
+    reference_examples, reference_citations = load_reference_material(reference_topic_keys)
+
+    try:
+        version = generate_taxonomy_draft(
+            topic_key=topic_key,
+            answer_texts=answer_texts,
+            topic_title=payload.get("topic_title"),
+            question_text=payload.get("question_text"),
+            global_instructions=payload.get("global_instructions"),
+            reference_examples=reference_examples,
+            reference_citations=reference_citations,
+            created_by=admin.admin_id,
+        )
+    except ValueError as exc:
+        # topic_key 不存在且未提供 topic_title
+        return jsonify({"error": str(exc)}), 400
+    except TaxonomyGenerationValidationError as exc:
+        # Gemini 輸出不合法，或 answer_texts 批次超過安全上限，沒有任何 DB 寫入
+        return jsonify({"error": str(exc)}), 422
+    except taxo.TaxonomyVersionConflictError as exc:
+        # version_number 撞號（併發生成），rollback 已在 service 層完成
+        return jsonify({"error": str(exc)}), 409
+    except TaxonomyGenerationError as exc:
+        # Gemini 呼叫本身失敗（API 錯誤/逾時等），沒有任何 DB 寫入
+        return jsonify({"error": str(exc)}), 502
+
+    return jsonify({"taxonomy_version": version.to_dict(include_categories=True)}), 201
+
+
+# ── Phase D：Admin Taxonomy Review / Edit / Publish ────────────────
+#
+# 這些路由跟上面 candidate（Prompt_Template draft）系列的
+# /topics/<prompt_key>/... 完全分開資料流：這裡一律透過
+# services/taxonomy_service.py（taxo 別名）操作 Topic/Taxonomy_Version/
+# Taxonomy_Category，不會touchPrompt_Template，也不會被誤認成「修改
+# Prompt 草稿」（需求文件第 2、15 節）。
+
+
+@ai_admin_bp.get("/taxonomy-topics")
+def list_taxonomy_topics():
+    """Admin Topic List：全部 Topic + 由版本資料推導出的狀態
+    （no_taxonomy / draft / in_review / published / draft_and_published），
+    不另存第二份 status。"""
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    return jsonify({"topics": taxo.list_topics_with_status()})
+
+
+@ai_admin_bp.get("/topics/<topic_key>/taxonomy/<int:version_id>")
+def taxonomy_version_detail(topic_key, version_id):
+    """單一 taxonomy version 的完整內容，含依 sort_order 排序的
+    categories（每筆都回 source_raw_text，供 legacy v1 沒有結構化
+    欄位時 Admin 參考用；不自動拆分或改寫）。"""
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    version = taxo.get_taxonomy_version(topic_key, version_id)
+    if version is None:
+        return jsonify({"error": "taxonomy version not found"}), 404
+    return jsonify({"taxonomy_version": version.to_dict(include_categories=True)})
+
+
+@ai_admin_bp.put("/topics/<topic_key>/taxonomy/<int:version_id>/categories/<int:category_id>")
+def update_taxonomy_category(topic_key, version_id, category_id):
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    updates = request.get_json(silent=True) or {}
+    try:
+        category = taxo.update_category(topic_key, version_id, category_id, updates)
+    except taxo.TaxonomyEditNotAllowedError as exc:
+        return jsonify({"error": str(exc)}), 409
+    except taxo.TaxonomyVersionConflictError as exc:
+        return jsonify({"error": str(exc)}), 409
+    except ValueError as exc:
+        status = 404 if "not found" in str(exc) else 400
+        return jsonify({"error": str(exc)}), status
+    return jsonify({"category": category.to_dict()})
+
+
+@ai_admin_bp.post("/topics/<topic_key>/taxonomy/<int:version_id>/categories")
+def add_taxonomy_category(topic_key, version_id):
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    data = request.get_json(silent=True) or {}
+    try:
+        category = taxo.add_category(topic_key, version_id, data)
+    except taxo.TaxonomyEditNotAllowedError as exc:
+        return jsonify({"error": str(exc)}), 409
+    except taxo.TaxonomyVersionConflictError as exc:
+        return jsonify({"error": str(exc)}), 409
+    except ValueError as exc:
+        status = 404 if "not found" in str(exc) else 400
+        return jsonify({"error": str(exc)}), status
+    return jsonify({"category": category.to_dict()}), 201
+
+
+@ai_admin_bp.delete("/topics/<topic_key>/taxonomy/<int:version_id>/categories/<int:category_id>")
+def delete_taxonomy_category(topic_key, version_id, category_id):
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    try:
+        taxo.delete_category(topic_key, version_id, category_id)
+    except taxo.TaxonomyEditNotAllowedError as exc:
+        return jsonify({"error": str(exc)}), 409
+    except ValueError as exc:
+        status = 404 if "not found" in str(exc) else 400
+        return jsonify({"error": str(exc)}), status
+    return jsonify({"deleted": True})
+
+
+@ai_admin_bp.post("/topics/<topic_key>/taxonomy/<int:version_id>/categories/reorder")
+def reorder_taxonomy_categories(topic_key, version_id):
+    """Body: {"ordered_category_ids": [3, 1, 2, ...]}——前端不需要真的
+    支援 drag-and-drop，上下移動只要把兩個 id 互換位置後，把目前完整
+    的順序清單丟進來即可（見 services.taxonomy_service.reorder_categories
+    的說明）。"""
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    data = request.get_json(silent=True) or {}
+    ordered_ids = data.get("ordered_category_ids")
+    if not isinstance(ordered_ids, list) or not all(isinstance(i, int) for i in ordered_ids):
+        return jsonify({"error": "ordered_category_ids must be an array of integers"}), 400
+    try:
+        categories = taxo.reorder_categories(topic_key, version_id, ordered_ids)
+    except taxo.TaxonomyEditNotAllowedError as exc:
+        return jsonify({"error": str(exc)}), 409
+    except ValueError as exc:
+        status = 404 if "not found" in str(exc) else 400
+        return jsonify({"error": str(exc)}), status
+    return jsonify({"categories": [c.to_dict() for c in categories]})
+
+
+@ai_admin_bp.post("/topics/<topic_key>/taxonomy/<int:version_id>/clone")
+def clone_taxonomy(topic_key, version_id):
+    """複製任一版本（通常是 published）成一份新的 draft，供 Admin
+    要修改正式 taxonomy時使用；原版本完全不受影響。"""
+    admin, failure = _admin_or_error()
+    if failure:
+        return failure
+    try:
+        new_version = taxo.clone_taxonomy_version(topic_key, version_id, created_by=admin.admin_id)
+    except taxo.TaxonomyVersionConflictError as exc:
+        return jsonify({"error": str(exc)}), 409
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 404
+    return jsonify({"taxonomy_version": new_version.to_dict(include_categories=True)}), 201
+
+
+@ai_admin_bp.post("/topics/<topic_key>/taxonomy/<int:version_id>/publish")
+def publish_taxonomy(topic_key, version_id):
+    """驗證通過才呼叫 services.taxonomy_service.publish_taxonomy_version()
+    （同一 transaction：舊 published -> archived，新版 -> published）。
+    production classification 下一次呼叫 get_published_taxonomy_version()
+    立即讀到新版，這裡不維護任何第二份「目前 taxonomy id」欄位。"""
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    try:
+        version = taxo.publish_taxonomy_version_with_validation(topic_key, version_id)
+    except taxo.TaxonomyPublishValidationError as exc:
+        return jsonify({"error": str(exc)}), 422
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 404
+    return jsonify({"taxonomy_version": version.to_dict(include_categories=True)})

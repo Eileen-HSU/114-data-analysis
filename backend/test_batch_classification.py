@@ -187,14 +187,41 @@ with app.app_context():
         m.User.__table__,
         m.Survey_Template.__table__,
         m.Survey_Response.__table__,
-        m.Prompt_Template.__table__,
         m.Response_Classification.__table__,
         m.Response_Segmentation_Status.__table__,
         m.Uploaded_Answer.__table__,
+        m.Topic.__table__,
+        m.Taxonomy_Version.__table__,
+        m.Taxonomy_Category.__table__,
     ]
     db.metadata.create_all(bind=db.engine, tables=tables)
 
-    db.session.add(m.Prompt_Template(prompt_key="leadership_and_dept", draft_content="d", live_content="LIVE_PROMPT"))
+    # Phase B：production classification 改讀 Published Taxonomy，
+    # 不再讀 Prompt_Template。這裡比照 migrate_taxonomy_from_legacy.py
+    # 的實際搬移結果，建一份 leadership_and_dept 的 published
+    # Taxonomy_Version（完整 10 個子類別，含下面測試會用到的
+    # "A2 回饋與溝通"、"B2 支援協作"），讓 _resolve_taxonomy_for_topic()
+    # 能正常解析出 prompt_content + category_lookup。
+    from services.subcategory_methodology import QUESTION_LEADERSHIP, SUBCATEGORY_METHODOLOGY
+
+    db.session.add(m.Topic(topic_key=QUESTION_LEADERSHIP, title="主管領導和部門合作"))
+    version = m.Taxonomy_Version(
+        topic_key=QUESTION_LEADERSHIP, version_number=1,
+        status="published", source="migrated_legacy",
+    )
+    db.session.add(version)
+    db.session.flush()
+    for i, (sub_category, info) in enumerate(SUBCATEGORY_METHODOLOGY[QUESTION_LEADERSHIP].items(), start=1):
+        db.session.add(m.Taxonomy_Category(
+            version_id=version.version_id,
+            main_category=info["main_category"],
+            sub_category=sub_category,
+            methodology=info["methodology"],
+            citation=info["citation"],
+            source_raw_text=f"{sub_category}：（測試用簡化規則原文）",
+            sort_order=i,
+        ))
+
     db.session.add(m.User(user_id=1, user_name="tester", email="tester@example.com", password_hash="x"))
     db.session.commit()
 
