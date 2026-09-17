@@ -41,7 +41,7 @@ from taxonomy import (
     TAXONOMY_VERSION_SOURCE_AI_GENERATED,
 )
 
-import google.generativeai as genai
+from services import gemini_client as genai
 
 
 # ── Phase D：輸入批次安全上限（Phase C 遺留的 unresolved risk）───────

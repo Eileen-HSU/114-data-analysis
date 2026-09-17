@@ -7,7 +7,7 @@
 import os
 import json
 import re
-import google.generativeai as genai
+from services import gemini_client as genai
 
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 

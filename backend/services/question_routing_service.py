@@ -54,7 +54,7 @@ import re
 import time
 from typing import Optional
 
-import google.generativeai as genai
+from services import gemini_client as genai
 
 from services.subcategory_methodology import QUESTION_LEADERSHIP, QUESTION_CAREER
 

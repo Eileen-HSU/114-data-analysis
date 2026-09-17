@@ -27,7 +27,7 @@ import json
 import os
 import re
 
-import google.generativeai as genai
+from services import gemini_client as genai
 
 from services.privacy_service import mask_pii, PiiMaskingError
 from services.subcategory_methodology import all_subcategories, get_methodology

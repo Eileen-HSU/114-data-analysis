@@ -13,7 +13,7 @@ import os
 import re
 import time
 
-import google.generativeai as genai
+from services import gemini_client as genai
 
 from services.privacy_service import PlaceholderBoundaryError
 
