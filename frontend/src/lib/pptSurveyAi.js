@@ -1,11 +1,11 @@
 import { apiUrl } from "./api";
 
-const START_TASK_TIMEOUT_MS = 20000;
+const START_TASK_TIMEOUT_MS = 10 * 60 * 1000;
 const POLL_TIMEOUT_MS = 60000;
 const MAX_POLL_TIME_MS = 10 * 60 * 1000;
 const MAX_POLL_ATTEMPTS = 200;
 const DEFAULT_POLL_INTERVAL_MS = 3000;
-const CHAT_TIMEOUT_MS = 60000;
+const CHAT_TIMEOUT_MS = 10 * 60 * 1000;
 const ALLOWED_TYPES = new Set(["short", "rating"]);
 const ACTIVE_TASK_STATUSES = new Set(["queued", "processing", "pending", "running", "started"]);
 const FAILED_TASK_STATUSES = new Set(["failed", "error"]);
