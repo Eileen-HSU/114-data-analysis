@@ -174,7 +174,7 @@ const handleSubmit = async (e) => {
             <span>返回首頁</span>
           </button>
 
-          <div className="auth-form-wrapper">
+          <div className="auth-form-wrapper auth-signup-form-wrapper">
             <div className="d-lg-none text-center mb-4">
               <div className="mobile-logo">
                 <img src={conqightLogo} alt="CON QIGHT" />
