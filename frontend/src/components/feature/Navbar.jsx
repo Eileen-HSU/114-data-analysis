@@ -17,6 +17,7 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
   useEffect(() => {
     if (!transparent) return;
     const handleScroll = () => setScrolled(window.scrollY > 20);
+    handleScroll();
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, [transparent]);
