@@ -28,7 +28,7 @@ export default function HomePage() {
   }, []);
 
   return (
-    <>
+    <main className="home-page">
       <Navbar transparent />
 
       {/* ── Hero Section ── */}
@@ -162,6 +162,6 @@ export default function HomePage() {
           </div>
         </div>
       </section>
-    </>
+    </main>
   );
 }

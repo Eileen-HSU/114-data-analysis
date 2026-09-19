@@ -1,4 +1,9 @@
 /* ── Hero Parallax ── */
+.home-page {
+  /* The global body offset is for regular pages with a white fixed navbar. */
+  margin-top: calc(-1 * var(--navbar-height));
+}
+
 .hero-section {
   position: relative;
   min-height: 100vh;
