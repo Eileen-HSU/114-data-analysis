@@ -182,6 +182,12 @@
   max-width: 420px;
 }
 
+@media (min-width: 992px) {
+  .auth-signup-form-wrapper {
+    transform: translateY(32px);
+  }
+}
+
 .mobile-logo {
   width: min(180px, 64vw);
   height: auto;
