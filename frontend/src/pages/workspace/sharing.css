@@ -6,7 +6,8 @@
 .share-heading h2 { margin: 0 0 4px; font-size: 21px; font-weight: 750; color: #334155; }
 .share-heading p { margin: 0; font-size: 13px; line-height: 1.5; color: #8490a2; }
 .workspace-share-card button { font: inherit; cursor: pointer; border: 0; text-decoration: none; }
-.workspace-share-card .share-close { display: grid; place-items: center; flex-shrink: 0; width: 30px; height: 30px; margin-left: auto; border-radius: 50%; background: #f5f6f8; color: #8490a2; font-size: 19px; }
+.workspace-share-card .share-close { display: grid; place-items: center; flex-shrink: 0; width: 30px; height: 30px; padding: 0; margin-left: auto; border-radius: 50%; background: #f5f6f8; color: #8490a2; font-size: 19px; line-height: 1; }
+.workspace-share-card .share-close i { display: block; margin: 0; line-height: 1; }
 .workspace-share-card :focus-visible { outline: 3px solid #d4b9e7; outline-offset: 3px; }
 .share-conversation { display: flex; align-items: center; gap: 10px; margin: 24px 0; padding: 14px; border: 1px solid #f0e8ef; border-radius: 12px; background: #fcf9fc; }
 .share-conversation > i { font-size: 22px; color: #c07191; }
