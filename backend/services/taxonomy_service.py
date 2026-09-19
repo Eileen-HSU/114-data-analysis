@@ -714,3 +714,23 @@ def list_topics_with_status():
             "latest_draft_version": latest_draft.to_dict() if latest_draft else None,
         })
     return result
+
+
+def list_versions_for_topic(topic_key: str):
+    """
+    列出這個 topic 的「全部」版本（含 archived），依 version_number
+    排序，不含 categories（用途是版本選擇清單，不是版本詳情）。
+
+    這是 Topic-centric IA 重構（Sandbox 功能）新增的缺口修補：
+    list_topics_with_status() 只回傳「目前 published」跟「最新一筆
+    未發布版本」兩個摘要，沒辦法列出 archived 版本或更早的歷史草稿，
+    但 Sandbox 明確需要讓 Admin 可以選擇 archived 版本做歷史比較/
+    問題重現，所以這裡補一個完整列表函式。
+    """
+    from models import Taxonomy_Version
+
+    return (
+        Taxonomy_Version.query.filter_by(topic_key=topic_key)
+        .order_by(Taxonomy_Version.version_number.desc())
+        .all()
+    )
