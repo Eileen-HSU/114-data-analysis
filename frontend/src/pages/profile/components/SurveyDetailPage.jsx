@@ -32,6 +32,18 @@ function getNextDeadlineMin() {
   return toDateTimeLocalValue(nextMinute);
 }
 
+// runtime language detection (reads user's selected language from localStorage)
+function getLang() {
+  try {
+    const l = (typeof window !== "undefined" && window.localStorage.getItem("dataanalysis_language")) || "";
+    const nav = (typeof navigator !== "undefined" && (navigator.language || navigator.userLanguage)) || "";
+    const lang = (l || nav || "").toLowerCase();
+    return lang.startsWith("en") ? "en" : "zh";
+  } catch (e) {
+    return "zh";
+  }
+}
+
 function formatDeadline(value) {
   if (!value) return "未設定";
   const date = new Date(value);
@@ -182,6 +194,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
   const [copyLinkSuccess, setCopyLinkSuccess] = useState(false);
   const [externalSurveyLink, setExternalSurveyLink] = useState("");
   const [isShorteningLink, setIsShorteningLink] = useState(false);
+  const lang = getLang();
   
   // 避免 survey 為空時引發閃退白屏
   const currentSurvey = survey || {};
@@ -326,7 +339,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
                   <span className="sdp-code-value">{currentSurvey.code}</span>
                   <button className="sdp-copy-code-btn" onClick={handleCopyCode} type="button">
                     <i className={copyCodeSuccess ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
-                    {copyCodeSuccess ? "已複製" : "複製代碼"}
+                    {copyCodeSuccess ? (lang === "en" ? "Copied" : "已複製") : (lang === "en" ? "Copy code" : "複製代碼")}
                   </button>
                 </div>
               </div>
@@ -352,7 +365,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
               </div>
               <button className={`sdp-import-btn ${importSuccess ? "sdp-import-btn-success" : ""}`} onClick={handleImportToChat} disabled={importSuccess}>
                 <i className={importSuccess ? "ri-checkbox-circle-line" : "ri-chat-upload-line"}></i>
-                {importSuccess ? "匯入中..." : "匯入 Chat 分析"}
+                {importSuccess ? (lang === "en" ? "Importing..." : "匯入中...") : (lang === "en" ? "Import to Chat" : "匯入 Chat 分析")}
               </button>
             </div>
           </div>
@@ -371,13 +384,13 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
             </div>
             <div className="sdp-link-card">
               <div className="sdp-code-label">
-                <i className="ri-link"></i>填寫連結
+                <i className="ri-link"></i>{lang === "en" ? "Survey Link" : "填寫連結"}
               </div>
               <div className="sdp-link-row">
-                <span className="sdp-link-value" title={surveyLink}>{isShorteningLink ? "短連結產生中..." : surveyLink}</span>
+                <span className="sdp-link-value" title={surveyLink}>{isShorteningLink ? (lang === "en" ? "Generating short link..." : "短連結產生中...") : surveyLink}</span>
                 <button className="sdp-copy-code-btn sdp-copy-link-btn" onClick={handleCopySurveyLink} disabled={isShorteningLink || !surveyLink} type="button">
                   <i className={isShorteningLink ? "ri-loader-4-line" : copyLinkSuccess ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
-                  {isShorteningLink ? "產生中" : copyLinkSuccess ? "已複製" : "複製連結"}
+                  {isShorteningLink ? (lang === "en" ? "Generating..." : "產生中") : copyLinkSuccess ? (lang === "en" ? "Copied" : "已複製") : (lang === "en" ? "Copy link" : "複製連結")}
                 </button>
               </div>
             </div>
