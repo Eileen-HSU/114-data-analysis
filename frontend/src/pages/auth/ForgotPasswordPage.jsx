@@ -83,7 +83,7 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="auth-page">
+    <div className="auth-page auth-page-without-navbar">
       <div className="row g-0" style={{ minHeight: "100vh" }}>
         {/* Left Visual */}
         <div className="col-lg-6 d-none d-lg-flex auth-visual auth-visual-forgot">
