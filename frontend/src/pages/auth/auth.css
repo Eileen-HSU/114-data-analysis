@@ -3,6 +3,11 @@
   min-height: 100vh;
 }
 
+.auth-page-without-navbar {
+  /* Cancel the global offset reserved for pages that render the fixed navbar. */
+  margin-top: calc(-1 * var(--navbar-height));
+}
+
 /* Left Visual */
 .auth-visual {
   position: relative;
