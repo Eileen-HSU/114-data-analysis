@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import Navbar from "../../components/feature/Navbar";
 import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
 import { useAuth } from "../../hooks/AuthContext";
+import { useLanguage } from "../../context/LanguageContext";
 import { useCollection } from "../../hooks/CollectionContext";
 import { useActivity } from "../../hooks/ActivityContext";
 import { apiUrl } from "../../lib/api";
@@ -543,6 +544,7 @@ export default function WorkspacePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isLoggedIn, user } = useAuth();
+  const { language } = useLanguage();
   const { recordActivity } = useActivity();
   const loadedProjectIds = useRef(new Set());
 
@@ -1689,7 +1691,11 @@ export default function WorkspacePage() {
             <div className="workspace-share-float">
               <button className="workspace-share-btn" type="button" onClick={handleInviteView} disabled={isSharing}>
                 <i className="ri-eye-line"></i>
-                <span>{isSharing ? "產生連結中..." : "邀請檢視"}</span>
+                <span key={`${language}-${isSharing}`}>
+                  {language === "en"
+                    ? (isSharing ? "Generating link…" : "Invite viewers")
+                    : (isSharing ? "產生連結中..." : "邀請檢視")}
+                </span>
               </button>
             </div>
             {activeSession === null ? (
