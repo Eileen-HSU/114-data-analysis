@@ -22,6 +22,11 @@ from services.taxonomy_generation_service import (
     TaxonomyGenerationValidationError,
 )
 from services import taxonomy_service as taxo
+from services.taxonomy_sandbox_service import (
+    run_sandbox_classification,
+    SandboxValidationError,
+    SandboxExecutionError,
+)
 
 
 ai_admin_bp = Blueprint("ai_admin", __name__, url_prefix="/api/admin/ai")
@@ -130,6 +135,19 @@ def publish_candidate(prompt_key):
 
 @ai_admin_bp.get("/classifications")
 def reviewed_classifications():
+    """
+    review_status 可選；topic 可選——不傳＝查全部（既有行為，不可改壞）。
+
+    topic="__unassigned__" 是這次 Topic-centric IA 重構新增的特殊值
+    （internal-only，前端 UI 不會顯示這個字串，只顯示「其他 / 未歸屬
+    資料」），對應「不屬於任何目前 Topic 的分類結果」：
+      - question_id IS NULL（schema 允許但目前寫入路徑不會產生，
+        可能是更早期的歷史資料）
+      - question_id == "other"（QUESTION_OTHER，routing 判斷不出來，
+        不是一個真正的 Topic，Topic 表裡不會有這個 topic_key）
+    這條路徑存在的目的：Topic-centric 首頁拿掉「全部 Topic 混看」的
+    下拉選單後，這類資料不能因此變得完全不可達（見需求文件第五節）。
+    """
     _, failure = _admin_or_error()
     if failure:
         return failure
@@ -140,7 +158,14 @@ def reviewed_classifications():
         if review_status not in ALLOWED_REVIEW_STATUSES:
             return jsonify({"error": "Invalid review_status"}), 400
         query = query.filter_by(review_status=review_status)
-    if topic:
+    if topic == "__unassigned__":
+        query = query.filter(
+            db.or_(
+                Response_Classification.question_id.is_(None),
+                Response_Classification.question_id == "other",
+            )
+        )
+    elif topic:
         query = query.filter_by(question_id=topic)
     rows = query.order_by(Response_Classification.created_at.desc()).limit(200).all()
     results = []
@@ -390,3 +415,52 @@ def publish_taxonomy(topic_key, version_id):
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 404
     return jsonify({"taxonomy_version": version.to_dict(include_categories=True)})
+
+
+@ai_admin_bp.post("/topics/<topic_key>/taxonomy/<int:version_id>/sandbox")
+def sandbox_taxonomy_classification(topic_key, version_id):
+    """
+    Taxonomy-based Sandbox：用指定的 Taxonomy Version 試跑一批測試
+    文字，回傳跟正式分類完全一致邏輯產生的結果，但不寫入任何
+    Response_Classification / Uploaded_Answer / 其他正式資料（見
+    services/taxonomy_sandbox_service.py 開頭的架構保證說明）。
+
+    允許測試 archived 版本（歷史比較/問題重現用途），不在這裡擋，
+    前端預設選單另外處理「不鼓勵但不禁止」的呈現方式。
+    """
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+
+    data = request.get_json(silent=True) or {}
+    answer_texts = data.get("answer_texts")
+
+    if not isinstance(answer_texts, list) or not answer_texts:
+        return jsonify({"error": "answer_texts is required and must be a non-empty array"}), 400
+
+    try:
+        result = run_sandbox_classification(topic_key, version_id, answer_texts)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 404
+    except SandboxValidationError as exc:
+        return jsonify({"error": str(exc)}), 422
+    except SandboxExecutionError as exc:
+        return jsonify({"error": str(exc)}), 502
+
+    return jsonify(result)
+
+
+@ai_admin_bp.get("/topics/<topic_key>/taxonomy")
+def list_topic_taxonomy_versions(topic_key):
+    """
+    列出這個 topic 的全部 Taxonomy_Version（含 archived），供 Admin
+    Sandbox 的版本選擇清單使用（見
+    services/taxonomy_service.list_versions_for_topic() 的說明：
+    既有 taxonomy-topics 列表只給「目前 published」+「最新草稿」兩筆
+    摘要，沒辦法列出 archived 版本）。不含 categories。
+    """
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    versions = taxo.list_versions_for_topic(topic_key)
+    return jsonify({"versions": [v.to_dict() for v in versions]})
