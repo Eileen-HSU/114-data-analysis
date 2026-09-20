@@ -342,7 +342,7 @@ def _call_gemini_and_parse(masked_text: str, prompt_content: str, category_looku
         result["secondary_sub_category"] = parsed.get("secondary_sub_category")
         result["reasoning"] = parsed["reasoning"]
         result["summary"] = parsed["summary"]
-        result["confidence"] = parsed.get("confidence", "high")
+        result["confidence"] = parsed.get("confidence")
 
         methodology_info = category_lookup(result["sub_category"])
         if methodology_info:
@@ -415,7 +415,7 @@ def _build_classification_result(parsed: dict, category_lookup) -> dict:
         "secondary_sub_category": parsed.get("secondary_sub_category"),
         "reasoning": parsed["reasoning"],
         "summary": parsed["summary"],
-        "confidence": parsed.get("confidence", "high"),
+        "confidence": parsed.get("confidence"),
         "methodology": None,
         "citation": None,
         "secondary_methodology": None,

@@ -156,7 +156,7 @@ _OUTPUT_FORMAT_BLOCK = """【輸出格式】
   "secondary_sub_category": "次要子類別名稱，若無則為 null",
   "reasoning": "判斷原因與說明，1-2句話",
   "summary": "受試者建議摘要，1句話",
-  "confidence": "high 或 low"
+  "confidence": 0.0 到 1.0 之間的浮點數，代表你對這個分類判斷的自陳信心程度，不是機率或正確率，只是你自己覺得有多確定
 }"""
 
 
@@ -734,3 +734,49 @@ def list_versions_for_topic(topic_key: str):
         .order_by(Taxonomy_Version.version_number.desc())
         .all()
     )
+
+
+def delete_taxonomy_version(topic_key: str, version_id: int):
+    """
+    刪除一個 draft 版本（含底下全部 Taxonomy_Category）。
+
+    只有 status == "draft" 可以刪除；in_review 也不行——這比
+    _require_editable_version() 允許 draft/in_review 一起編輯的規則
+    更嚴格，所以這裡不重用那個函式，另外寫判斷式。
+
+    Raises:
+        ValueError: topic_key/version_id 找不到，或 version 不屬於
+            這個 topic（呼叫端應轉 404）。
+        TaxonomyEditNotAllowedError: 版本不是 draft，或已經有
+            Response_Classification 引用這個版本（呼叫端應轉 409）。
+            重用既有例外類別，不為此新增例外階層，兩種情況純粹用
+            不同的錯誤訊息文字區分。
+
+    刪除方式：db.session.delete(version) 之後直接 commit，底下的
+    Taxonomy_Category 由既有的 ORM cascade
+    （Taxonomy_Version.categories 的 cascade="all, delete-orphan"）+
+    DB 層 ondelete="CASCADE" 雙重保障自動連鎖刪除，不需要手動
+    迴圈刪除 category。不做 version_number renumber，其他版本
+    完全不受影響。
+    """
+    from models import Response_Classification
+    from taxonomy import TAXONOMY_VERSION_STATUS_DRAFT
+
+    version = get_taxonomy_version(topic_key, version_id)
+    if version is None:
+        raise ValueError(f"topic_key={topic_key!r} 找不到 version_id={version_id}")
+
+    if version.status != TAXONOMY_VERSION_STATUS_DRAFT:
+        raise TaxonomyEditNotAllowedError(
+            f"status={version.status!r} 的版本不允許刪除，只有 draft 版本可以刪除"
+        )
+
+    referenced_count = Response_Classification.query.filter_by(taxonomy_version_id=version_id).count()
+    if referenced_count > 0:
+        raise TaxonomyEditNotAllowedError(
+            f"version_id={version_id} 已有 {referenced_count} 筆 Response_Classification 引用此版本，"
+            "為避免破壞資料完整性，不允許刪除"
+        )
+
+    db.session.delete(version)
+    db.session.commit()

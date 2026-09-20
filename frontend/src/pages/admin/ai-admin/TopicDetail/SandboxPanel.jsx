@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../shared/apiClient";
-import { t, taxStatusText } from "../shared/taxStatus";
+import { t, taxStatusText, reviewFlagReasonText } from "../shared/taxStatus";
 import { useAuth } from "../../../../hooks/AuthContext";
 
 const NORMAL_STATUSES = ["published", "draft", "in_review"];
@@ -132,8 +132,14 @@ export default function SandboxPanel() {
                   {seg.secondary_sub_category ? ` (+ ${seg.secondary_sub_category})` : ""}
                 </p>
                 <p>{t("推理", "Reasoning")}: {seg.reasoning}</p>
-                <p>{t("摘要", "Summary")}: {seg.summary} · {t("信心", "Confidence")}: {seg.confidence}</p>
+                <p>{t("摘要", "Summary")}: {seg.summary} · {t("信心", "Confidence")}: {typeof seg.confidence === "number" ? seg.confidence.toFixed(2) : "—"}</p>
                 <p>{t("方法論", "Methodology")}: {seg.methodology || "—"} · {t("引用", "Citation")}: {seg.citation || "—"}</p>
+                {seg.needs_human_review && (
+                  <p className="review-flag-badge">
+                    ⚠ {t("建議人工審查", "Suggest human review")}
+                    {seg.review_flag_reason && ` — ${reviewFlagReasonText(seg.review_flag_reason)}`}
+                  </p>
+                )}
                 {seg.error_detail && <p className="fail">{seg.error_detail}</p>}
               </div>
             ))}

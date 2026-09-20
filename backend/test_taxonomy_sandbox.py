@@ -137,7 +137,7 @@ def post_sandbox(version_id, answer_texts, topic_key="topic_sandbox", auth=True)
 
 VALID_CLASSIFICATION = {
     "main_category": "M", "sub_category": "有方法論",
-    "secondary_sub_category": None, "reasoning": "r", "summary": "s", "confidence": "high",
+    "secondary_sub_category": None, "reasoning": "r", "summary": "s", "confidence": 0.95,
 }
 
 
@@ -158,6 +158,8 @@ for label, version_id in [("published", published_id), ("draft", draft_id), ("ar
     check(f"{label} 版本：results 有 1 筆", len(body["results"]) == 1)
     check(f"{label} 版本：分類結果 status=completed", body["results"][0]["segments"][0]["status"] == "completed")
     check(f"{label} 版本：methodology/citation 正確帶出", body["results"][0]["segments"][0]["methodology"] == "法A")
+    check(f"{label} 版本：confidence 正確帶出（float）", body["results"][0]["segments"][0]["confidence"] == 0.95)
+    check(f"{label} 版本：高信心不被 flag（needs_human_review=False）", body["results"][0]["segments"][0]["needs_human_review"] is False)
 
 
 print("\n========== 測試 8：Gemini 回傳不存在的 sub_category，原樣透傳，不是 API 錯誤 ==========")
@@ -168,6 +170,27 @@ q({"classifications": [classification_with_index(0, {"sub_category": "Gemini亂�
 resp = post_sandbox(draft_id, ["測試回答內容"])
 check("HTTP 200（不是錯誤）", resp.status_code == 200)
 check("segment status 為 methodology_not_found", resp.get_json()["results"][0]["segments"][0]["status"] == "methodology_not_found")
+check("methodology_not_found 也會被標記 needs_human_review=True", resp.get_json()["results"][0]["segments"][0]["needs_human_review"] is True)
+check("review_flag_reason 為 methodology_not_found", resp.get_json()["results"][0]["segments"][0]["review_flag_reason"] == "methodology_not_found")
+
+
+print("\n========== 測試 8b：低信心結果 -> needs_human_review=True，但 Sandbox 不寫 DB ==========")
+
+with app.app_context():
+    rc_before = m.Response_Classification.query.count()
+
+_queue.clear()
+q({"segments": ["測試回答內容"]})
+q({"classifications": [classification_with_index(0, {"confidence": 0.4})]})
+resp = post_sandbox(draft_id, ["測試回答內容"])
+seg = resp.get_json()["results"][0]["segments"][0]
+check("HTTP 200", resp.status_code == 200)
+check("低信心 confidence=0.4 正確帶出", seg["confidence"] == 0.4)
+check("低信心被標記 needs_human_review=True", seg["needs_human_review"] is True)
+check("review_flag_reason 為 low_confidence", seg["review_flag_reason"] == "low_confidence")
+
+with app.app_context():
+    check("低信心結果不會建立任何 Response_Classification（sandbox 不寫 DB）", m.Response_Classification.query.count() == rc_before)
 
 
 print("\n========== 測試 2：版本沒有 categories -> 422 ==========")
