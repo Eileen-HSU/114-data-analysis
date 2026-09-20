@@ -3,9 +3,11 @@ import { useLocation, useNavigate } from "react-router-dom";
 import "./auth.css";
 import axios from "axios";
 import { apiUrl } from "../../lib/api";
+import { useLanguage } from "../../context/LanguageContext";
 import conqightLogo from "../../assets/conqight-logo.png";
 
 export default function ForgotPasswordPage() {
+  const { language } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
   const emailRef = useRef(null);
@@ -213,15 +215,19 @@ export default function ForgotPasswordPage() {
               <div className="forgot-success-icon">
                 <i className="ri-mail-check-line"></i>
               </div>
-              <h1 className="auth-title" style={{ textAlign: "center" }}>郵件已發送！</h1>
-              <p style={{ color: "var(--slate-500)", fontSize: 15, lineHeight: 1.7, marginBottom: 8 }}>
-                我們已將密碼重設連結發送至
+              <h1 key={`title-${language}`} className="auth-title" style={{ textAlign: "center" }}>{language === "en" ? "Email sent!" : "郵件已發送！"}</h1>
+              <p key={`sent-${language}`} style={{ color: "var(--slate-500)", fontSize: 15, lineHeight: 1.7, marginBottom: 8 }}>
+                {language === "en" ? "We've sent a password reset link to" : "我們已將密碼重設連結發送至"}
               </p>
               <p style={{ fontWeight: 700, color: "var(--slate-800)", fontSize: 16, marginBottom: 28 }}>
                 <span ref={sentEmailRef}></span>
               </p>
-              <p style={{ color: "var(--slate-400)", fontSize: 13, lineHeight: 1.7, marginBottom: 32 }}>
-                請檢查您的收件匣（包含垃圾郵件資料夾）。連結將在 <strong>30 分鐘</strong>內有效。
+              <p key={`expiry-${language}`} style={{ color: "var(--slate-400)", fontSize: 13, lineHeight: 1.7, marginBottom: 32 }}>
+                {language === "en" ? (
+                  <>Check your inbox (including your spam folder). The link is valid for <strong>30 minutes</strong>.</>
+                ) : (
+                  <>請檢查您的收件匣（包含垃圾郵件資料夾）。連結將在 <strong>30 分鐘</strong>內有效。</>
+                )}
               </p>
 
               <button
@@ -229,7 +235,7 @@ export default function ForgotPasswordPage() {
                 onClick={() => navigate("/login")}
               >
                 <i className="ri-arrow-left-line" style={{ marginRight: 6 }}></i>
-                返回登入頁面
+                <span key={`login-${language}`}>{language === "en" ? "Back to login" : "返回登入頁面"}</span>
               </button>
 
               <button
@@ -257,7 +263,7 @@ export default function ForgotPasswordPage() {
                 }}
               >
                 <i className="ri-refresh-line" style={{ marginRight: 6 }}></i>
-                重新發送
+                <span key={`resend-${language}`}>{language === "en" ? "Resend" : "重新發送"}</span>
               </button>
             </div>
           </div>
