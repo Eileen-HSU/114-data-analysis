@@ -2,8 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/AuthContext";
 import { apiUrl } from "../../lib/api";
+import { translateInterfaceText, useLanguage } from "../../context/LanguageContext";
 
 export default function ExportActions({ rows, ratingStats, chatId, sourceFilename }) {
+  const { language } = useLanguage();
+  const isEnglish = language === "en";
   const navigate = useNavigate();
   const { user } = useAuth();
   const [pendingFormat, setPendingFormat] = useState("");
@@ -57,7 +60,7 @@ export default function ExportActions({ rows, ratingStats, chatId, sourceFilenam
         navigate("/collection", { state: { activeView: "exports", exportCreated: data.export_name || "匯出檔案" } });
       }
     } catch (err) {
-      if (mountedRef.current) setError(`匯出失敗：${err.message || "請檢查網路連線後再試。"}`);
+      if (mountedRef.current) setError(err.message || "請檢查網路連線後再試。");
     } finally {
       busyRef.current = false;
       if (mountedRef.current) setPendingFormat("");
@@ -70,12 +73,12 @@ export default function ExportActions({ rows, ratingStats, chatId, sourceFilenam
         {["xlsx", "docx"].map((format) => (
           <button key={format} className="assistant-export-btn" type="button" disabled={!!pendingFormat} onClick={() => generate(format)}>
             <i className={pendingFormat === format ? "ri-loader-4-line ri-spin" : format === "xlsx" ? "ri-file-excel-2-line" : "ri-file-word-2-line"} />
-            {pendingFormat === format ? "生成中..." : `匯出成 ${format === "xlsx" ? "Excel" : "Word"}`}
+            <span data-localized>{pendingFormat === format ? (isEnglish ? "Generating…" : "生成中...") : `${isEnglish ? "Export to" : "匯出成"} ${format === "xlsx" ? "Excel" : "Word"}`}</span>
           </button>
         ))}
       </div>
-      {pendingFormat && <div ref={noticeRef} className="export-generation-status" role="status"><i className="ri-loader-4-line ri-spin" /> 正在生成 {pendingFormat === "xlsx" ? "Excel" : "Word"} 檔案，請稍候，完成後會自動前往匯出檔案。</div>}
-      {error && <div ref={noticeRef} className="export-generation-error" role="alert"><i className="ri-error-warning-line" /> {error}</div>}
+      {pendingFormat && <div ref={noticeRef} className="export-generation-status" role="status" data-localized><i className="ri-loader-4-line ri-spin" />{isEnglish ? "Generating " : "正在生成 "}{pendingFormat === "xlsx" ? "Excel" : "Word"}{isEnglish ? ". Please wait. You will be taken to Exported files when it is ready." : " 檔案，請稍候，完成後會自動前往匯出檔案。"}</div>}
+      {error && <div ref={noticeRef} className="export-generation-error" role="alert" data-localized><i className="ri-error-warning-line" /> {translateInterfaceText(error, language)}</div>}
     </div>
   );
 }

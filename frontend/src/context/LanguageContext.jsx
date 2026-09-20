@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import axios from "axios";
+import { interfaceEnglish } from "./interfaceEnglish";
 import { useAuth } from "../hooks/AuthContext";
 import { apiUrl, installLanguageAwareFetch } from "../lib/api";
 
@@ -159,18 +160,31 @@ Object.assign(legacyEnglish, {
   "送出": "Send", "儲存成正式問卷": "Save as survey", "儲存成功": "Saved successfully",
 });
 
+// Short fragments are translated explicitly at their render sites, never globally.
+const completeInterfaceEnglish = { ...legacyEnglish, ...Object.fromEntries(Object.entries(interfaceEnglish).filter(([key]) => key.length > 1)) };
+
+export function translateInterfaceText(text, language) {
+  return language === "en" ? (interfaceEnglish[text] || legacyEnglish[text] || text) : text;
+}
+
 function translateLegacyInterface(language) {
   if (!document.body) return;
   const target = language === "en"
     ? legacyEnglish
     : Object.fromEntries(Object.entries(legacyEnglish).map(([zh, en]) => [en, zh]));
   const phrases = Object.keys(target).filter(Boolean).sort((a, b) => b.length - a.length);
-  const translate = (value) => phrases.reduce((result, phrase) => result.split(phrase).join(target[phrase]), value);
+  const completeTarget = language === "en" ? completeInterfaceEnglish
+    : Object.fromEntries(Object.entries(completeInterfaceEnglish).map(([zh, en]) => [en, zh]));
+  const translate = (value) => {
+    const key = value.trim();
+    if (Object.hasOwn(completeTarget, key)) return value.replace(key, completeTarget[key]);
+    return phrases.reduce((result, phrase) => result.split(phrase).join(target[phrase]), value);
+  };
   const isProtected = (element) => element?.closest?.(PROTECTED_OUTPUT_SELECTOR);
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       const value = node.nodeValue.trim();
-      return isProtected(node.parentElement) || !value || !phrases.some((phrase) => value.includes(phrase))
+      return isProtected(node.parentElement) || !value || (!Object.hasOwn(completeTarget, value) && !phrases.some((phrase) => value.includes(phrase)))
         ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
     },
   });
@@ -184,7 +198,7 @@ function translateLegacyInterface(language) {
     if (isProtected(element)) return;
     ["placeholder", "title", "aria-label"].forEach((attribute) => {
       const value = element.getAttribute(attribute);
-      if (value && phrases.some((phrase) => value.includes(phrase))) element.setAttribute(attribute, translate(value));
+      if (value && (Object.hasOwn(completeTarget, value.trim()) || phrases.some((phrase) => value.includes(phrase)))) element.setAttribute(attribute, translate(value));
     });
   });
 
@@ -213,10 +227,20 @@ export function LanguageProvider({ children }) {
     axios.defaults.headers.common["Accept-Language"] = language;
   }, [language]);
   useEffect(() => {
-    const applyTranslations = () => translateLegacyInterface(language);
-    const frame = window.requestAnimationFrame(applyTranslations);
-    const observer = new MutationObserver(() => window.requestAnimationFrame(applyTranslations));
-    observer.observe(document.body, { childList: true, subtree: true });
+    const observeOptions = { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ["placeholder", "title", "aria-label"] };
+    const applyTranslations = () => {
+      observer.disconnect();
+      translateLegacyInterface(language);
+      observer.observe(document.body, observeOptions);
+    };
+    let frame;
+    const scheduleTranslations = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(applyTranslations);
+    };
+    scheduleTranslations();
+    const observer = new MutationObserver(scheduleTranslations);
+    observer.observe(document.body, observeOptions);
     return () => {
       window.cancelAnimationFrame(frame);
       observer.disconnect();

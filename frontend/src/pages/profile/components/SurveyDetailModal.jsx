@@ -1,3 +1,4 @@
+import InterfaceText from "../../../components/feature/InterfaceText";
 import { useState } from "react";
 
 function RatingStats({ question, responses }) {
@@ -39,11 +40,11 @@ function RatingStats({ question, responses }) {
       <div className="rating-stats-header">
         <div className="rating-avg-badge">
           <span className="rating-avg-num">{avg}</span>
-          <span className="rating-avg-label">平均分</span>
+          <span className="rating-avg-label"><InterfaceText>{"平均分"}</InterfaceText></span>
         </div>
         <div className="rating-answered-info">
           <i className="ri-user-line"></i>
-          <span>{answered} 人作答</span>
+          <span>{answered}<InterfaceText>{"人作答"}</InterfaceText></span>
         </div>
       </div>
       <div className="rating-bars">
@@ -65,7 +66,7 @@ function RatingStats({ question, responses }) {
                   style={{ width: `${pct}%`, background: col.bar }}
                 />
               </div>
-              <div className="rating-bar-count">{c} 人</div>
+              <div className="rating-bar-count">{c}<InterfaceText>{"人"}</InterfaceText></div>
             </div>
           );
         })}
@@ -87,8 +88,8 @@ function ResponseTable({ questions, responses }) {
           <thead>
             <tr>
               <th className="response-table-th response-table-th-idx">#</th>
-              <th className="response-table-th response-table-th-identity">填答人</th>
-              <th className="response-table-th response-table-th-time">提交時間</th>
+              <th className="response-table-th response-table-th-identity"><InterfaceText>{"填答人"}</InterfaceText></th>
+              <th className="response-table-th response-table-th-time"><InterfaceText>{"提交時間"}</InterfaceText></th>
               {safeQuestions.map((q, i) => (
                 <th key={q.id || q.question_id || i} className="response-table-th response-table-th-q">
                   <div className="response-table-q-title">{q.title || q.question_title || "未命名題目"}</div>
@@ -148,7 +149,7 @@ export default function SurveyDetailModal({ survey, onClose }) {
             <div className="survey-detail-meta">
               <span><i className="ri-key-2-line"></i> {survey.code}</span>
               <span><i className="ri-calendar-line"></i> {survey.createdAt || survey.created_at || "—"}</span>
-              <span><i className="ri-user-line"></i> {responses.length} 人回覆</span>
+              <span><i className="ri-user-line"></i> {responses.length}<InterfaceText>{"人回覆"}</InterfaceText></span>
             </div>
           </div>
           <button className="survey-detail-close" onClick={onClose}>
@@ -162,16 +163,12 @@ export default function SurveyDetailModal({ survey, onClose }) {
             className={`survey-detail-tab ${activeTab === "overview" ? "active" : ""}`}
             onClick={() => setActiveTab("overview")}
           >
-            <i className="ri-bar-chart-line"></i>
-            統計總覽
-          </button>
+            <i className="ri-bar-chart-line"></i><InterfaceText>{"統計總覽"}</InterfaceText></button>
           <button
             className={`survey-detail-tab ${activeTab === "responses" ? "active" : ""}`}
             onClick={() => setActiveTab("responses")}
           >
-            <i className="ri-table-line"></i>
-            回覆明細
-          </button>
+            <i className="ri-table-line"></i><InterfaceText>{"回覆明細"}</InterfaceText></button>
         </div>
 
         {/* Content */}
@@ -182,9 +179,7 @@ export default function SurveyDetailModal({ survey, onClose }) {
               {ratingQuestions.length > 0 && (
                 <div className="survey-detail-section">
                   <div className="survey-detail-section-title">
-                    <i className="ri-star-line"></i>
-                    評分題統計
-                  </div>
+                    <i className="ri-star-line"></i><InterfaceText>{"評分題統計"}</InterfaceText></div>
                   <div className="rating-questions-grid">
                     {ratingQuestions.map((q) => (
                       <div key={q.id || q.question_id} className="rating-question-card">
@@ -203,9 +198,7 @@ export default function SurveyDetailModal({ survey, onClose }) {
               {textQuestions.length > 0 && (
                 <div className="survey-detail-section">
                   <div className="survey-detail-section-title">
-                    <i className="ri-file-text-line"></i>
-                    問答題摘要
-                  </div>
+                    <i className="ri-file-text-line"></i><InterfaceText>{"問答題摘要"}</InterfaceText></div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                     {textQuestions.map((q) => {
                       const qId = q.id !== undefined ? q.id : q.question_id;
@@ -217,7 +210,7 @@ export default function SurveyDetailModal({ survey, onClose }) {
                           <div className="text-q-summary-header">
                             <span className="text-q-num">Q{questions.indexOf(q) + 1}</span>
                             <span className="text-q-title">{q.title || q.question_title}</span>
-                            <span className="text-q-count">{answers.length} 人回答</span>
+                            <span className="text-q-count">{answers.length}<InterfaceText>{"人回答"}</InterfaceText></span>
                           </div>
                           <div className="text-q-answers-preview">
                             {answers.slice(0, 3).map((ans, i) => (
@@ -230,9 +223,7 @@ export default function SurveyDetailModal({ survey, onClose }) {
                               <div
                                 className="text-q-more"
                                 onClick={() => setActiveTab("responses")}
-                              >
-                                還有 {answers.length - 3} 筆回答，點此查看全部 →
-                              </div>
+                              ><InterfaceText>{"還有"}</InterfaceText>{answers.length - 3}<InterfaceText>{"筆回答，點此查看全部 →"}</InterfaceText></div>
                             )}
                           </div>
                         </div>
@@ -267,7 +258,7 @@ export default function SurveyDetailModal({ survey, onClose }) {
                         <div key={q.id || q.question_id} className="responses-rating-chip">
                           <span className="responses-rating-chip-q">Q{questions.indexOf(q) + 1}</span>
                           <span className="responses-rating-chip-title">{q.title || q.question_title}</span>
-                          <span className="responses-rating-chip-avg">平均 {avg} 分</span>
+                          <span className="responses-rating-chip-avg"><InterfaceText>{"平均"}</InterfaceText>{avg}<InterfaceText>{"分"}</InterfaceText></span>
                         </div>
                       );
                     })}

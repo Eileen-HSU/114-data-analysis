@@ -1,3 +1,4 @@
+import InterfaceText from "../../components/feature/InterfaceText";
 import { useState } from "react";
 
 export default function ExportFileRow({ item, onDownload, onRename, onOpenChat }) {
@@ -56,7 +57,7 @@ export default function ExportFileRow({ item, onDownload, onRename, onOpenChat }
       </div>
       {editing ? (
         <form className="export-rename-form" onSubmit={save}>
-          <label htmlFor={`export-name-${item.export_id}`}>修改檔案名稱</label>
+          <label htmlFor={`export-name-${item.export_id}`}><InterfaceText>{"修改檔案名稱"}</InterfaceText></label>
           <div className="export-rename-controls">
             <div className="export-name-field">
               <input id={`export-name-${item.export_id}`} value={name}
@@ -71,7 +72,7 @@ export default function ExportFileRow({ item, onDownload, onRename, onOpenChat }
             </div>
             <div className="export-rename-actions">
               <button className="export-save-btn" type="submit" disabled={saving}>{saving ? "儲存中..." : "儲存"}</button>
-              <button className="export-cancel-btn" type="button" disabled={saving} onClick={() => setEditing(false)}>取消</button>
+              <button className="export-cancel-btn" type="button" disabled={saving} onClick={() => setEditing(false)}><InterfaceText>{"取消"}</InterfaceText></button>
             </div>
           </div>
           {error && <p className="export-rename-error" role="alert" id={`export-error-${item.export_id}`}>{error}</p>}
@@ -81,7 +82,7 @@ export default function ExportFileRow({ item, onDownload, onRename, onOpenChat }
           <button type="button" className="export-download-target" onClick={() => onDownload(item)} title="點擊下載">
             <i className="ri-file-text-line export-list-item-icon" />
             <div className="export-list-item-info">
-              <span className="export-column-label">匯出檔案</span>
+              <span className="export-column-label"><InterfaceText>{"匯出檔案"}</InterfaceText></span>
               <div className="export-list-item-name">{item.export_name}</div>
               <div className="export-list-item-meta">
                 {item.row_count != null ? `${item.row_count} 筆` : ""}
@@ -91,7 +92,7 @@ export default function ExportFileRow({ item, onDownload, onRename, onOpenChat }
             <i className="ri-download-2-line export-list-item-download" />
           </button>
           <button type="button" className="export-rename-btn" onClick={startRename} aria-label={`重新命名 ${item.export_name}`}>
-            <i className="ri-edit-line" /> <span>重新命名</span>
+            <i className="ri-edit-line" /> <span><InterfaceText>{"重新命名"}</InterfaceText></span>
           </button>
         </>
       )}

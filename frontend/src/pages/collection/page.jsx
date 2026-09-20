@@ -1,3 +1,4 @@
+import InterfaceText from "../../components/feature/InterfaceText";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Navbar from "../../components/feature/Navbar";
@@ -709,8 +710,8 @@ export default function CollectionPage() {
             <div className="d-flex align-items-center justify-content-between flex-wrap gap-3">
               <div>
                 <p className="collection-banner-label">Project Management</p>
-                <h1 className="collection-banner-title">專案管理</h1>
-                <p className="collection-banner-stats">{stats.folders} 個資料夾 · {stats.chats} 個 Chat</p>
+                <h1 className="collection-banner-title"><InterfaceText>{"專案管理"}</InterfaceText></h1>
+                <p className="collection-banner-stats">{stats.folders} 個資料夾 · {stats.chats}<InterfaceText>{"個 Chat"}</InterfaceText></p>
               </div>
               <div className="d-flex gap-2 align-items-center">
                 <button
@@ -752,11 +753,8 @@ export default function CollectionPage() {
               {/* 資料夾 */}
               <section className="mb-5">
                 <h2 className="section-heading">
-                  <span className="section-icon folder-icon"><i className="ri-folder-2-line"></i></span>
-                  資料夾
-                  <button className="btn btn-add-folder ms-auto" onClick={() => setShowNewFolderModal(true)}>
-                    <i className="ri-folder-add-line me-1"></i>新增資料夾
-                  </button>
+                  <span className="section-icon folder-icon"><i className="ri-folder-2-line"></i></span><InterfaceText>{"資料夾"}</InterfaceText><button className="btn btn-add-folder ms-auto" onClick={() => setShowNewFolderModal(true)}>
+                    <i className="ri-folder-add-line me-1"></i><InterfaceText>{"新增資料夾"}</InterfaceText></button>
                 </h2>
                 <div className="row g-3">
                   {folders.map((folder) => {
@@ -774,7 +772,7 @@ export default function CollectionPage() {
                           onDragLeave={handleFolderDragLeave}
                           onDrop={(event) => handleDrop(folder.id, event)}
                         >
-                          {isDragOver && <div className="folder-drop-hint"><i className="ri-folder-received-line me-2"></i>移到「{folder.name}」</div>}
+                          {isDragOver && <div className="folder-drop-hint"><i className="ri-folder-received-line me-2"></i><InterfaceText>{"移到「"}</InterfaceText>{folder.name}」</div>}
                           <div
                             className="folder-header"
                             onClick={() => { if (!draggingId) toggleFolder(folder.id); }}
@@ -803,7 +801,7 @@ export default function CollectionPage() {
                                     {folder.name}
                                   </span>
                                 )}
-                                <span className="folder-count">{folderItemCount} 個</span>
+                                <span className="folder-count">{folderItemCount}<InterfaceText>{"個"}</InterfaceText></span>
                               </div>
                               <div className="folder-tags">
                                 {["csv", "xlsx", "json", "txt", "chat"].map((type) => {
@@ -837,7 +835,7 @@ export default function CollectionPage() {
                               onDrop={(event) => handleDrop(folder.id, event)}
                             >
                               {folderItemCount === 0 ? (
-                                <div className="empty-folder"><i className="ri-drag-move-line"></i><p>拖曳檔案到這裡</p></div>
+                                <div className="empty-folder"><i className="ri-drag-move-line"></i><p><InterfaceText>{"拖曳檔案到這裡"}</InterfaceText></p></div>
                               ) : (
                                 <div
                                   className="folder-files"
@@ -899,10 +897,8 @@ export default function CollectionPage() {
               {/* 未分類檔案 */}
               <section className="mb-5">
                 <h2 className="section-heading">
-                  <span className="section-icon loose-icon"><i className="ri-file-list-3-line"></i></span>
-                  未分類檔案
-                  {(looseFiles.length + looseSessions.length) > 0 && (
-                    <span className="loose-count">{looseFiles.length + looseSessions.length} 個</span>
+                  <span className="section-icon loose-icon"><i className="ri-file-list-3-line"></i></span><InterfaceText>{"未分類檔案"}</InterfaceText>{(looseFiles.length + looseSessions.length) > 0 && (
+                    <span className="loose-count">{looseFiles.length + looseSessions.length}<InterfaceText>{"個"}</InterfaceText></span>
                   )}
                 </h2>
                 <div
@@ -912,10 +908,10 @@ export default function CollectionPage() {
                   onDrop={(event) => handleDrop(null, event)}
                 >
                   {dragOverTarget === "loose" && (
-                    <div className="loose-drop-hint"><i className="ri-file-transfer-line me-2"></i>移到未分類</div>
+                    <div className="loose-drop-hint"><i className="ri-file-transfer-line me-2"></i><InterfaceText>{"移到未分類"}</InterfaceText></div>
                   )}
                   {looseFiles.length === 0 && looseSessions.length === 0 ? (
-                    <div className="empty-loose"><i className="ri-file-list-3-line"></i><p>目前沒有未分類檔案。</p></div>
+                    <div className="empty-loose"><i className="ri-file-list-3-line"></i><p><InterfaceText>{"目前沒有未分類檔案。"}</InterfaceText></p></div>
                   ) : (
                     <div className="row g-3">
                       {looseFiles.map((file) => (
@@ -969,9 +965,7 @@ export default function CollectionPage() {
             <section>
               <div className="exports-toolbar">
               <h2 className="section-heading">
-                <span className="section-icon export-icon"><i className="ri-download-cloud-2-line"></i></span>
-                匯出檔案
-                <span className="loose-count" role="status">{exportSearchTerm ? `${filteredExports.length} / ${stats.exports} 個` : `${stats.exports} 個`}</span>
+                <span className="section-icon export-icon"><i className="ri-download-cloud-2-line"></i></span><InterfaceText>{"匯出檔案"}</InterfaceText><span className="loose-count" role="status">{exportSearchTerm ? `${filteredExports.length} / ${stats.exports} 個` : `${stats.exports} 個`}</span>
               </h2>
               <div className="export-search" role="search" aria-label="搜尋匯出檔案">
                 <i className="ri-search-line" aria-hidden="true" />
@@ -989,22 +983,22 @@ export default function CollectionPage() {
               {exportsLoading ? (
                 <div className="empty-loose">
                   <i className="ri-loader-4-line"></i>
-                  <p>載入中…</p>
+                  <p><InterfaceText>{"載入中…"}</InterfaceText></p>
                 </div>
               ) : exportsError ? (
                 <div className="empty-loose">
                   <i className="ri-error-warning-line"></i>
-                  <p>載入失敗：{exportsError}</p>
+                  <p><InterfaceText>{"載入失敗："}</InterfaceText>{exportsError}</p>
                 </div>
               ) : exportsList.length === 0 ? (
                 <div className="empty-loose">
                   <i className="ri-download-cloud-2-line"></i>
-                  <p>目前沒有匯出檔案。</p>
+                  <p><InterfaceText>{"目前沒有匯出檔案。"}</InterfaceText></p>
                 </div>
               ) : filteredExports.length === 0 ? (
                 <div className="empty-loose" role="status">
                   <i className="ri-search-line" aria-hidden="true" />
-                  <p>找不到符合「{exportSearch.trim()}」的檔案，請試試其他關鍵字。</p>
+                  <p><InterfaceText>{"找不到符合「"}</InterfaceText>{exportSearch.trim()}<InterfaceText>{"」的檔案，請試試其他關鍵字。"}</InterfaceText></p>
                 </div>
               ) : (
                 <div className="exports-list">
@@ -1019,14 +1013,12 @@ export default function CollectionPage() {
           {activeView === "deleted" && (
             <section>
               <h2 className="section-heading">
-                <span className="section-icon deleted-icon"><i className="ri-delete-bin-line"></i></span>
-                最近刪除
-                <span className="loose-count">{deletedItems.length} 個</span>
+                <span className="section-icon deleted-icon"><i className="ri-delete-bin-line"></i></span><InterfaceText>{"最近刪除"}</InterfaceText><span className="loose-count">{deletedItems.length}<InterfaceText>{"個"}</InterfaceText></span>
               </h2>
               {deletedItems.length === 0 ? (
                 <div className="empty-loose">
                   <i className="ri-delete-bin-line"></i>
-                  <p>目前沒有最近刪除的項目。</p>
+                  <p><InterfaceText>{"目前沒有最近刪除的項目。"}</InterfaceText></p>
                 </div>
               ) : (
                 <div className="deleted-list">
@@ -1043,7 +1035,7 @@ export default function CollectionPage() {
                       <div className="deleted-info">
                         <div className="deleted-name">{item.name}</div>
                         <div className="deleted-meta">
-                          {item.type === "folder" ? "資料夾" : "Chat"} · 刪除時間 {item.deletedAt || "-"}
+                          {item.type === "folder" ? "資料夾" : "Chat"}<InterfaceText>{"· 刪除時間"}</InterfaceText>{item.deletedAt || "-"}
                         </div>
                       </div>
                       <div className="deleted-actions">
@@ -1073,13 +1065,13 @@ export default function CollectionPage() {
           <div className="modal-box" onClick={(event) => event.stopPropagation()}>
             <div className="d-flex align-items-center gap-3 mb-4">
               <div className="modal-folder-icon"><i className="ri-folder-add-line"></i></div>
-              <h5 className="fw-bold m-0">新增資料夾</h5>
+              <h5 className="fw-bold m-0"><InterfaceText>{"新增資料夾"}</InterfaceText></h5>
             </div>
-            <label className="auth-label">資料夾名稱</label>
+            <label className="auth-label"><InterfaceText>{"資料夾名稱"}</InterfaceText></label>
             <input className="form-control" value={newFolderName} onChange={(event) => setNewFolderName(event.target.value)} onKeyDown={(event) => event.key === "Enter" && createFolder()} autoFocus />
             <div className="d-flex gap-2 mt-4">
-              <button className="btn btn-add-folder flex-fill" onClick={createFolder}>建立</button>
-              <button className="btn btn-outline-secondary flex-fill" onClick={() => setShowNewFolderModal(false)}>取消</button>
+              <button className="btn btn-add-folder flex-fill" onClick={createFolder}><InterfaceText>{"建立"}</InterfaceText></button>
+              <button className="btn btn-outline-secondary flex-fill" onClick={() => setShowNewFolderModal(false)}><InterfaceText>{"取消"}</InterfaceText></button>
             </div>
           </div>
         </div>
@@ -1090,9 +1082,9 @@ export default function CollectionPage() {
           <div className="modal-box" onClick={(event) => event.stopPropagation()}>
             <div className="d-flex align-items-center gap-3 mb-4">
               <div className="modal-folder-icon"><i className="ri-edit-line"></i></div>
-              <h5 className="fw-bold m-0">重新命名</h5>
+              <h5 className="fw-bold m-0"><InterfaceText>{"重新命名"}</InterfaceText></h5>
             </div>
-            <label className="auth-label">名稱</label>
+            <label className="auth-label"><InterfaceText>{"名稱"}</InterfaceText></label>
             <input
               className="form-control"
               value={renameFileValue}
@@ -1107,14 +1099,12 @@ export default function CollectionPage() {
               <button className="btn btn-add-folder flex-fill" onClick={submitRename} disabled={isSavingRename || !renameFileValue.trim()}>
                 {isSavingRename ? (
                   <>
-                    <i className="ri-loader-4-line ri-spin me-2"></i>
-                    儲存中
-                  </>
+                    <i className="ri-loader-4-line ri-spin me-2"></i><InterfaceText>{"儲存中"}</InterfaceText></>
                 ) : (
                   "儲存"
                 )}
               </button>
-              <button className="btn btn-outline-secondary flex-fill" onClick={closeRenameModal} disabled={isSavingRename}>取消</button>
+              <button className="btn btn-outline-secondary flex-fill" onClick={closeRenameModal} disabled={isSavingRename}><InterfaceText>{"取消"}</InterfaceText></button>
             </div>
           </div>
         </div>
@@ -1136,14 +1126,12 @@ export default function CollectionPage() {
               <button className="btn btn-danger flex-fill" onClick={confirmDelete} disabled={isDeleting}>
                 {isDeleting ? (
                   <>
-                    <i className="ri-loader-4-line ri-spin me-2"></i>
-                    刪除中
-                  </>
+                    <i className="ri-loader-4-line ri-spin me-2"></i><InterfaceText>{"刪除中"}</InterfaceText></>
                 ) : (
                   "確認刪除"
                 )}
               </button>
-              <button className="btn btn-outline-secondary flex-fill" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>取消</button>
+              <button className="btn btn-outline-secondary flex-fill" onClick={() => setDeleteTarget(null)} disabled={isDeleting}><InterfaceText>{"取消"}</InterfaceText></button>
             </div>
           </div>
         </div>
@@ -1211,11 +1199,9 @@ function FileRow({ file, compact = false, renamingId, renameValue, menuOpen, onM
         {menuOpen && (
           <div className="file-menu" onClick={(event) => event.stopPropagation()}>
             <button className="file-menu-item" onClick={() => { onMenuClose(); onRenameStart(); }}>
-              <i className="ri-edit-line"></i>重新命名
-            </button>
+              <i className="ri-edit-line"></i><InterfaceText>{"重新命名"}</InterfaceText></button>
             <button className="file-menu-item danger" onClick={() => { onMenuClose(); onDelete(); }}>
-              <i className="ri-delete-bin-line"></i>刪除
-            </button>
+              <i className="ri-delete-bin-line"></i><InterfaceText>{"刪除"}</InterfaceText></button>
           </div>
         )}
       </div>

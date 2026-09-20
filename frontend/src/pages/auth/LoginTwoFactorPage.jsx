@@ -1,3 +1,4 @@
+import InterfaceText from "../../components/feature/InterfaceText";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/AuthContext";
@@ -81,10 +82,10 @@ export default function LoginTwoFactorPage() {
                 className="auth-logo-img"
               />
             </div>
-            <h2 className="auth-visual-title">雙因子驗證</h2>
+            <h2 className="auth-visual-title"><InterfaceText>{"雙因子驗證"}</InterfaceText></h2>
             <p className="auth-visual-desc">
-              <span>請輸入信箱中的驗證碼</span>
-              <span>完成後即可安全登入</span>
+              <span><InterfaceText>{"請輸入信箱中的驗證碼"}</InterfaceText></span>
+              <span><InterfaceText>{"完成後即可安全登入"}</InterfaceText></span>
             </p>
             <div className="auth-features">
               {[
@@ -114,18 +115,16 @@ export default function LoginTwoFactorPage() {
             <div className="back-home-icon">
               <i className="ri-arrow-left-line"></i>
             </div>
-            <span>返回登入</span>
+            <span><InterfaceText>{"返回登入"}</InterfaceText></span>
           </button>
 
           <div className="auth-form-wrapper two-factor-form-wrapper">
-            <h1 className="auth-title">輸入驗證碼</h1>
-            <p className="auth-subtitle" style={{ marginBottom: 28 }}>
-              請輸入寄送至 {pendingUser.email} 的 6 位數驗證碼
-            </p>
+            <h1 className="auth-title"><InterfaceText>{"輸入驗證碼"}</InterfaceText></h1>
+            <p className="auth-subtitle" style={{ marginBottom: 28 }}><InterfaceText>{"請輸入寄送至"}</InterfaceText>{pendingUser.email}<InterfaceText>{"的 6 位數驗證碼"}</InterfaceText></p>
 
             <form onSubmit={handleSubmit} noValidate autoComplete="off">
               <div className="mb-3">
-                <label className="auth-label">驗證碼</label>
+                <label className="auth-label"><InterfaceText>{"驗證碼"}</InterfaceText></label>
                 <div className="position-relative">
                   <i className="ri-key-2-line form-icon"></i>
                   <input

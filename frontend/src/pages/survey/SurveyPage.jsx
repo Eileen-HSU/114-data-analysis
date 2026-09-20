@@ -1,3 +1,4 @@
+import InterfaceText from "../../components/feature/InterfaceText";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
@@ -715,7 +716,7 @@ export default function SurveyPage({ pptOnly = false }) {
 
                 <div className="ppt-preview-settings">
                   <label className="ppt-field">
-                    <span>題目方向</span>
+                    <span><InterfaceText>{"題目方向"}</InterfaceText></span>
                     <textarea
                       className="w-full resize-y break-words whitespace-normal overflow-y-auto p-3 leading-relaxed outline-none focus:ring"
                       rows={2}
@@ -737,7 +738,7 @@ export default function SurveyPage({ pptOnly = false }) {
                     ))}
                   </div>
                   <label className="ppt-field">
-                    <span>生成重點</span>
+                    <span><InterfaceText>{"生成重點"}</InterfaceText></span>
                     <textarea
                       className="w-full resize-y break-words whitespace-normal overflow-y-auto p-3 leading-relaxed outline-none focus:ring"
                       rows={3}
@@ -777,7 +778,7 @@ export default function SurveyPage({ pptOnly = false }) {
                     <a href={buildSurveyFillPath(savedResult.accessCode)}>{t("測試填答","Test fill")}</a>
                   </div>
                 ) : (
-                  <span>儲存後會走原本問卷 API，自動取得邀請碼與專屬連結。</span>
+                  <span><InterfaceText>{"儲存後會走原本問卷 API，自動取得邀請碼與專屬連結。"}</InterfaceText></span>
                 )}
                 <button className="ppt-primary-btn" onClick={handleSaveDraft} disabled={isSavingDraft || Boolean(savedResult)} type="button">
                   <i className={isSavingDraft ? "ri-loader-4-line" : "ri-save-3-line"}></i>

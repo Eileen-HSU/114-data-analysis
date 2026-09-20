@@ -1,3 +1,4 @@
+import InterfaceText from "../../components/feature/InterfaceText";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Navbar from "../../components/feature/Navbar";
 import "./survey.css";
@@ -330,8 +331,8 @@ export default function FillSurveyPage() {
       <main className="fill-survey-page">
         <section className="fill-survey-hero">
           <div className="container">
-            <h1 className="fill-survey-title">填寫問卷</h1>
-            <p className="fill-survey-subtitle">輸入邀請碼即可開始作答。</p>
+            <h1 className="fill-survey-title"><InterfaceText>{"填寫問卷"}</InterfaceText></h1>
+            <p className="fill-survey-subtitle"><InterfaceText>{"輸入邀請碼即可開始作答。"}</InterfaceText></p>
           </div>
         </section>
 
@@ -339,8 +340,8 @@ export default function FillSurveyPage() {
           {!survey && !expiredSurvey && !submitted && (
             <section className="code-entry-card">
               <div className="code-entry-icon"><i className="ri-key-2-line"></i></div>
-              <h2 style={{ textAlign: "center", fontSize: 18, fontWeight: 800 }}>輸入邀請碼</h2>
-              <p style={{ textAlign: "center", color: "var(--slate-500)" }}>請輸入問卷建立後產生的邀請碼</p>
+              <h2 style={{ textAlign: "center", fontSize: 18, fontWeight: 800 }}><InterfaceText>{"輸入邀請碼"}</InterfaceText></h2>
+              <p style={{ textAlign: "center", color: "var(--slate-500)" }}><InterfaceText>{"請輸入問卷建立後產生的邀請碼"}</InterfaceText></p>
               <div className="code-input-wrapper">
                 <input className={`code-input ${error ? "error" : ""}`} value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === "Enter" && handleEnterCode()} maxLength={12} placeholder="輸入邀請碼" />
                 <button className="btn-enter-code" onClick={handleEnterCode} disabled={loadingSurvey}>
@@ -354,10 +355,9 @@ export default function FillSurveyPage() {
           {expiredSurvey && !survey && (
             <section className="survey-expired-card">
               <div className="survey-expired-icon"><i className="ri-time-line"></i></div>
-              <h2 className="survey-expired-title">問卷已截止</h2>
+              <h2 className="survey-expired-title"><InterfaceText>{"問卷已截止"}</InterfaceText></h2>
               <p className="survey-expired-desc">
-                {expiredSurvey.title ? `「${expiredSurvey.title}」` : "這份問卷"}已超過填答期限，無法再送出回覆。
-              </p>
+                {expiredSurvey.title ? `「${expiredSurvey.title}」` : "這份問卷"}<InterfaceText>{"已超過填答期限，無法再送出回覆。"}</InterfaceText></p>
               {expiredSurvey.deadlineAt && (
                 <div className="survey-expired-time">
                   截止時間：{formatDeadline(expiredSurvey.deadlineAt)}
@@ -371,16 +371,15 @@ export default function FillSurveyPage() {
                   setCode("");
                 }}
               >
-                <i className="ri-arrow-left-line"></i>輸入其他邀請碼
-              </button>
+                <i className="ri-arrow-left-line"></i><InterfaceText>{"輸入其他邀請碼"}</InterfaceText></button>
             </section>
           )}
 
           {survey && isSubmitting && !submitted && (
             <section className="submit-loading-card" role="status" aria-live="polite">
               <div className="submit-loading-icon"><i className="ri-loader-4-line"></i></div>
-              <h2 className="submit-loading-title">送出中</h2>
-              <p className="submit-loading-desc">正在送出你的問卷回覆，請稍候。</p>
+              <h2 className="submit-loading-title"><InterfaceText>{"送出中"}</InterfaceText></h2>
+              <p className="submit-loading-desc"><InterfaceText>{"正在送出你的問卷回覆，請稍候。"}</InterfaceText></p>
             </section>
           )}
 
@@ -390,8 +389,8 @@ export default function FillSurveyPage() {
                 <h2 className="survey-form-title">{survey.title}</h2>
                 {survey.description && <p className="survey-form-desc">{survey.description}</p>}
                 <div className="survey-form-meta">
-                  <div className="survey-form-meta-item"><i className="ri-question-line"></i><span>{questionCount} 題</span></div>
-                  <div className="survey-form-meta-item"><i className="ri-check-line"></i><span>{answeredCount} 題已填</span></div>
+                  <div className="survey-form-meta-item"><i className="ri-question-line"></i><span>{questionCount}<InterfaceText>{"題"}</InterfaceText></span></div>
+                  <div className="survey-form-meta-item"><i className="ri-check-line"></i><span>{answeredCount}<InterfaceText>{"題已填"}</InterfaceText></span></div>
                   <div className="survey-form-meta-item">
                     <i className={survey.identityMode === "identified" ? "ri-user-line" : "ri-shield-user-line"}></i>
                     <span>{survey.identityMode === "identified" ? "非匿名" : "匿名"}</span>
@@ -399,7 +398,7 @@ export default function FillSurveyPage() {
                   {survey.deadlineAt && (
                     <div className="survey-form-meta-item">
                       <i className="ri-time-line"></i>
-                      <span>截止 {formatDeadline(survey.deadlineAt)}</span>
+                      <span><InterfaceText>{"截止"}</InterfaceText>{formatDeadline(survey.deadlineAt)}</span>
                     </div>
                   )}
                 </div>
@@ -408,9 +407,7 @@ export default function FillSurveyPage() {
               {survey.identityMode === "identified" && (
                 <div className="respondent-identity-card">
                   <label className="answer-question-label">
-                    <i className="ri-user-line"></i>
-                    填答人身分
-                    <span className="required-star">*</span>
+                    <i className="ri-user-line"></i><InterfaceText>{"填答人身分"}</InterfaceText><span className="required-star">*</span>
                   </label>
                   <input
                     className="answer-text-input"
@@ -442,11 +439,11 @@ export default function FillSurveyPage() {
           {submitted && (
             <section className="thankyou-card">
               <div className="thankyou-icon"><i className="ri-checkbox-circle-line"></i></div>
-              <h2 className="thankyou-title">謝謝你的回覆</h2>
-              <p className="thankyou-desc">你的問卷回覆已送出。</p>
+              <h2 className="thankyou-title"><InterfaceText>{"謝謝你的回覆"}</InterfaceText></h2>
+              <p className="thankyou-desc"><InterfaceText>{"你的問卷回覆已送出。"}</InterfaceText></p>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <button className="btn-submit-survey" onClick={resetForAnotherSurvey}>填寫另一份</button>
-                <a href="/survey" style={{ textAlign: "center", color: "var(--slate-500)", fontWeight: 700, textDecoration: "none" }}>返回問卷中心</a>
+                <button className="btn-submit-survey" onClick={resetForAnotherSurvey}><InterfaceText>{"填寫另一份"}</InterfaceText></button>
+                <a href="/survey" style={{ textAlign: "center", color: "var(--slate-500)", fontWeight: 700, textDecoration: "none" }}><InterfaceText>{"返回問卷中心"}</InterfaceText></a>
               </div>
             </section>
           )}

@@ -1,3 +1,4 @@
+import InterfaceText from "../../components/feature/InterfaceText";
 import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../../components/feature/Navbar";
@@ -57,10 +58,10 @@ export default function HomePage() {
             </button>
           </div>
           <div className="hero-tags">
-            <span className="hero-tag"><i className="ri-clipboard-line me-1"></i>問卷管理</span>
-            <span className="hero-tag"><i className="ri-brain-line me-1"></i>AI 輔助分析</span>
-            <span className="hero-tag"><i className="ri-folder-chart-line me-1"></i>專案管理</span>
-            <span className="hero-tag"><i className="ri-table-line me-1"></i>表格式結果呈現</span>
+            <span className="hero-tag"><i className="ri-clipboard-line me-1"></i><InterfaceText>{"問卷管理"}</InterfaceText></span>
+            <span className="hero-tag"><i className="ri-brain-line me-1"></i><InterfaceText>{"AI 輔助分析"}</InterfaceText></span>
+            <span className="hero-tag"><i className="ri-folder-chart-line me-1"></i><InterfaceText>{"專案管理"}</InterfaceText></span>
+            <span className="hero-tag"><i className="ri-table-line me-1"></i><InterfaceText>{"表格式結果呈現"}</InterfaceText></span>
           </div>
         </div>
 
@@ -76,9 +77,7 @@ export default function HomePage() {
           <div className="text-center mb-5">
             <div className="section-badge mb-3"><span>{t("home.features")}</span></div>
             <h2 className="section-title">{t("home.featureTitle")}</h2>
-            <p className="section-subtitle">
-              從問卷建立、回饋蒐集到 AI 輔助分析，系統協助顧問快速整理文字回饋，產生清楚的分類結果與分析紀錄。
-            </p>
+            <p className="section-subtitle"><InterfaceText>{"從問卷建立、回饋蒐集到 AI 輔助分析，系統協助顧問快速整理文字回饋，產生清楚的分類結果與分析紀錄。"}</InterfaceText></p>
           </div>
           <div className="row g-4">
             {[
@@ -110,9 +109,9 @@ export default function HomePage() {
       <section className="how-section">
         <div className="container">
           <div className="text-center mb-5">
-            <div className="section-badge mb-3"><span>使用流程</span></div>
-            <h2 className="section-title">如何使用</h2>
-            <p className="section-subtitle">四個簡單步驟，完成培訓回饋整理與分析。</p>
+            <div className="section-badge mb-3"><span><InterfaceText>{"使用流程"}</InterfaceText></span></div>
+            <h2 className="section-title"><InterfaceText>{"如何使用"}</InterfaceText></h2>
+            <p className="section-subtitle"><InterfaceText>{"四個簡單步驟，完成培訓回饋整理與分析。"}</InterfaceText></p>
           </div>
           <div className="row g-4">
             {[
@@ -147,17 +146,12 @@ export default function HomePage() {
             <div className="cta-icon">
               <i className="ri-bar-chart-box-line"></i>
             </div>
-            <h2 className="cta-title">準備好開始整理培訓回饋了嗎？</h2>
-            <p className="cta-subtitle">
-              立即建立帳號，使用問卷管理與 AI 分析助理，快速整理文字回饋並查看分析結果。
-            </p>
+            <h2 className="cta-title"><InterfaceText>{"準備好開始整理培訓回饋了嗎？"}</InterfaceText></h2>
+            <p className="cta-subtitle"><InterfaceText>{"立即建立帳號，使用問卷管理與 AI 分析助理，快速整理文字回饋並查看分析結果。"}</InterfaceText></p>
             <div className="cta-buttons">
               <button className="btn btn-cta-primary" onClick={() => navigate("/signup")}>
-                <i className="ri-rocket-line me-2"></i>立即開始使用
-              </button>
-              <button className="btn btn-cta-secondary" onClick={() => navigate("/login")}>
-                已有帳號？登入
-              </button>
+                <i className="ri-rocket-line me-2"></i><InterfaceText>{"立即開始使用"}</InterfaceText></button>
+              <button className="btn btn-cta-secondary" onClick={() => navigate("/login")}><InterfaceText>{"已有帳號？登入"}</InterfaceText></button>
             </div>
           </div>
         </div>

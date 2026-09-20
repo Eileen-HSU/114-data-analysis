@@ -1,3 +1,4 @@
+import InterfaceText from "../../components/feature/InterfaceText";
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { apiUrl } from "../../lib/api";
@@ -56,7 +57,7 @@ export default function SharedWorkspacePage() {
         <div className="workspace-body">
           <aside className="workspace-sidebar" aria-label="分享的對話">
             <div className="sidebar-header">
-              <div className="d-flex align-items-center mb-3"><span className="sidebar-title">歷史對話紀錄</span></div>
+              <div className="d-flex align-items-center mb-3"><span className="sidebar-title"><InterfaceText>{"歷史對話紀錄"}</InterfaceText></span></div>
               <div className="sidebar-search">
                 <i className="ri-search-line" />
                 <input placeholder="搜尋歷史對話紀錄..." aria-label="搜尋歷史對話紀錄（唯讀）" disabled />
@@ -76,10 +77,10 @@ export default function SharedWorkspacePage() {
           </aside>
           <main className="workspace-main" aria-label={result?.data?.project_name || "分享對話"}>
             <div className="workspace-share-float">
-              <span className="workspace-share-btn shared-view-label"><i className="ri-eye-line" /> 訪客檢視</span>
+              <span className="workspace-share-btn shared-view-label"><i className="ri-eye-line" /><InterfaceText>{"訪客檢視"}</InterfaceText></span>
             </div>
             <section className="messages-area" aria-label="分享的對話紀錄">
-              {!result ? <p className="shared-status" role="status">對話載入中...</p>
+              {!result ? <p className="shared-status" role="status"><InterfaceText>{"對話載入中..."}</InterfaceText></p>
                 : result.error ? <p className="shared-status" role="alert">{result.error}</p>
                 : messages.map((message) => (
                   <div key={message.id} className={`message-row ${message.role === "user" ? "user" : ""}`}>
@@ -99,7 +100,7 @@ export default function SharedWorkspacePage() {
                 <textarea placeholder="此對話僅供檢視，無法輸入指令..." aria-label="對話輸入（唯讀）" rows={1} disabled />
                 <button className="send-btn" type="button" disabled aria-label="傳送訊息（唯讀模式無法使用）"><i className="ri-send-plane-line" /></button>
               </div>
-              <p className="input-hint">免登入瀏覽 · 僅能檢視此對話，無法傳送指令或修改內容</p>
+              <p className="input-hint"><InterfaceText>{"免登入瀏覽 · 僅能檢視此對話，無法傳送指令或修改內容"}</InterfaceText></p>
             </div>
           </main>
         </div>

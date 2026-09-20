@@ -1,3 +1,4 @@
+import InterfaceText from "../../../components/feature/InterfaceText";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../../../components/feature/Navbar";
@@ -93,8 +94,8 @@ function RatingStats({ question, responses, qNum }) {
             <span className="sdp-avg-sub">/ 5</span>
           </div>
           <div className="sdp-avg-info">
-            <div className="sdp-avg-label">平均分數</div>
-            <div className="sdp-avg-count">{answered} 份回答</div>
+            <div className="sdp-avg-label"><InterfaceText>{"平均分數"}</InterfaceText></div>
+            <div className="sdp-avg-count">{answered}<InterfaceText>{"份回答"}</InterfaceText></div>
           </div>
         </div>
         <div className="sdp-bars">
@@ -104,7 +105,7 @@ function RatingStats({ question, responses, qNum }) {
               <div className="sdp-bar-track">
                 <div className="sdp-bar-fill" style={{ width: `${(counts[score] / max) * 100}%` }} />
               </div>
-              <div className="sdp-bar-count">{counts[score]} 人</div>
+              <div className="sdp-bar-count">{counts[score]}<InterfaceText>{"人"}</InterfaceText></div>
             </div>
           ))}
         </div>
@@ -124,8 +125,8 @@ function ResponseTable({ questions, responses }) {
           <thead>
             <tr>
               <th className="sdp-th sdp-th-idx">#</th>
-              <th className="sdp-th sdp-th-identity">填答人</th>
-              <th className="sdp-th sdp-th-time">提交時間</th>
+              <th className="sdp-th sdp-th-identity"><InterfaceText>{"填答人"}</InterfaceText></th>
+              <th className="sdp-th sdp-th-time"><InterfaceText>{"提交時間"}</InterfaceText></th>
               {safeQuestions.map((question, index) => (
                 <th key={question.id || question.question_id || index} className="sdp-th sdp-th-q">
                   <div className="sdp-th-q-num">Q{index + 1}</div>
@@ -319,22 +320,20 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
         <div className="sdp-header-fixed">
           <div className="sdp-topbar">
             <button className="sdp-back-btn" onClick={onBack}>
-              <i className="ri-arrow-left-line"></i>返回問卷
-            </button>
+              <i className="ri-arrow-left-line"></i><InterfaceText>{"返回問卷"}</InterfaceText></button>
             <div className="sdp-topbar-center">
               <h1 className="sdp-topbar-title">{currentSurvey.title || currentSurvey.survey_name || "未命名問卷"}</h1>
               <div className="sdp-topbar-meta">
                 <span><i className="ri-calendar-line"></i>{currentSurvey.createdAt || currentSurvey.created_at || "—"}</span>
-                <span><i className="ri-time-line"></i>截止 {formatDeadline(currentSurvey.deadlineAt || currentSurvey.deadline_at)}</span>
-                <span><i className="ri-user-line"></i>{responses.length} 份回覆</span>
-                <span><i className="ri-question-line"></i>{questions.length} 題</span>
+                <span><i className="ri-time-line"></i><InterfaceText>{"截止"}</InterfaceText>{formatDeadline(currentSurvey.deadlineAt || currentSurvey.deadline_at)}</span>
+                <span><i className="ri-user-line"></i>{responses.length}<InterfaceText>{"份回覆"}</InterfaceText></span>
+                <span><i className="ri-question-line"></i>{questions.length}<InterfaceText>{"題"}</InterfaceText></span>
               </div>
             </div>
             <div className="sdp-topbar-right">
               <div className="sdp-code-card">
                 <div className="sdp-code-label">
-                  <i className="ri-key-2-line"></i>問卷代碼
-                </div>
+                  <i className="ri-key-2-line"></i><InterfaceText>{"問卷代碼"}</InterfaceText></div>
                 <div className="sdp-code-row">
                   <span className="sdp-code-value">{currentSurvey.code}</span>
                   <button className="sdp-copy-code-btn" onClick={handleCopyCode} type="button">
@@ -345,8 +344,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
               </div>
               <div className="sdp-deadline-card sdp-deadline-card-top">
                 <label className="sdp-code-label" htmlFor="survey-deadline-input">
-                  <i className="ri-time-line"></i>截止時間
-                </label>
+                  <i className="ri-time-line"></i><InterfaceText>{"截止時間"}</InterfaceText></label>
                 <div className="sdp-deadline-row">
                   <DeadlineDateTimePicker
                     id="survey-deadline-input"
@@ -372,11 +370,9 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
           <div className="sdp-tabbar">
             <div className="sdp-tab-group">
               <button className={`sdp-tab ${activeTab === "overview" ? "active" : ""}`} onClick={() => setActiveTab("overview")}>
-                <i className="ri-bar-chart-line"></i>總覽
-              </button>
+                <i className="ri-bar-chart-line"></i><InterfaceText>{"總覽"}</InterfaceText></button>
               <button className={`sdp-tab ${activeTab === "responses" ? "active" : ""}`} onClick={() => setActiveTab("responses")}>
-                <i className="ri-table-line"></i>回覆資料
-              </button>
+                <i className="ri-table-line"></i><InterfaceText>{"回覆資料"}</InterfaceText></button>
             </div>
             <div className="sdp-stat-pill sdp-stat-pill-compact">
               <i className="ri-bar-chart-2-line"></i>
@@ -404,8 +400,8 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
                 <div className="sdp-section-header">
                   <div className="sdp-section-icon"><i className="ri-star-line"></i></div>
                   <div>
-                    <h2 className="sdp-section-title">評分統計</h2>
-                    <p className="sdp-section-sub">{ratingQuestions.length} 題評分題</p>
+                    <h2 className="sdp-section-title"><InterfaceText>{"評分統計"}</InterfaceText></h2>
+                    <p className="sdp-section-sub">{ratingQuestions.length}<InterfaceText>{"題評分題"}</InterfaceText></p>
                   </div>
                 </div>
                 <div className="sdp-rating-grid">
@@ -424,8 +420,8 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
                 <div className="sdp-section-header">
                   <div className="sdp-section-icon sdp-section-icon-cyan"><i className="ri-file-text-line"></i></div>
                   <div>
-                    <h2 className="sdp-section-title">文字與選擇題摘要</h2>
-                    <p className="sdp-section-sub">{textQuestions.length} 題非評分題</p>
+                    <h2 className="sdp-section-title"><InterfaceText>{"文字與選擇題摘要"}</InterfaceText></h2>
+                    <p className="sdp-section-sub">{textQuestions.length}<InterfaceText>{"題非評分題"}</InterfaceText></p>
                   </div>
                 </div>
                 <div className="sdp-text-q-list">
@@ -437,7 +433,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
                         <div className="sdp-text-q-header">
                           <span className="sdp-q-badge sdp-q-badge-cyan">Q{questions.indexOf(question) + 1}</span>
                           <span className="sdp-text-q-title">{question.title || question.question_title}</span>
-                          <span className="sdp-text-q-count">{answers.length} 筆</span>
+                          <span className="sdp-text-q-count">{answers.length}<InterfaceText>{"筆"}</InterfaceText></span>
                         </div>
                         <div className="sdp-text-q-answers">
                           {answers.slice(0, 4).map((answer, index) => (
@@ -446,7 +442,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
                               <span>{displayAnswer(answer)}</span>
                             </div>
                           ))}
-                          {answers.length > 4 && <button className="sdp-see-more" onClick={() => setActiveTab("responses")}>查看全部 {answers.length} 筆</button>}
+                          {answers.length > 4 && <button className="sdp-see-more" onClick={() => setActiveTab("responses")}><InterfaceText>{"查看全部"}</InterfaceText>{answers.length}<InterfaceText>{"筆"}</InterfaceText></button>}
                         </div>
                       </div>
                     );
@@ -460,8 +456,8 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
             <div className="sdp-responses">
               <div className="sdp-table-section">
                 <div className="sdp-table-section-header">
-                  <span className="sdp-table-count">共 {responses.length} 份回覆</span>
-                  <span className="sdp-table-hint">可橫向捲動查看所有題目</span>
+                  <span className="sdp-table-count"><InterfaceText>{"共"}</InterfaceText>{responses.length}<InterfaceText>{"份回覆"}</InterfaceText></span>
+                  <span className="sdp-table-hint"><InterfaceText>{"可橫向捲動查看所有題目"}</InterfaceText></span>
                 </div>
                 <ResponseTable questions={questions} responses={responses} />
               </div>

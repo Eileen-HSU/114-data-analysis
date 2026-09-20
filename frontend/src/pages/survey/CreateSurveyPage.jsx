@@ -1,3 +1,4 @@
+import InterfaceText from "../../components/feature/InterfaceText";
 import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../../components/feature/Navbar";
@@ -245,10 +246,9 @@ export default function CreateSurveyPage() {
           <div className="container">
             <div className="d-flex align-items-center gap-3">
               <a href="/survey" style={{ color: "var(--slate-500)", fontWeight: 700, textDecoration: "none" }}>
-                <i className="ri-arrow-left-line"></i> 返回問卷中心
-              </a>
+                <i className="ri-arrow-left-line"></i><InterfaceText>{"返回問卷中心"}</InterfaceText></a>
               <span style={{ color: "var(--slate-300)" }}>|</span>
-              <span style={{ fontWeight: 800, color: "var(--slate-800)" }}>建立問卷</span>
+              <span style={{ fontWeight: 800, color: "var(--slate-800)" }}><InterfaceText>{"建立問卷"}</InterfaceText></span>
             </div>
           </div>
         </div>
@@ -256,19 +256,17 @@ export default function CreateSurveyPage() {
         <div className="create-survey-body">
           <section className="survey-meta-card">
             <div className="survey-meta-title">
-              <div className="survey-meta-icon"><i className="ri-file-text-line"></i></div>
-              問卷資訊
-            </div>
+              <div className="survey-meta-icon"><i className="ri-file-text-line"></i></div><InterfaceText>{"問卷資訊"}</InterfaceText></div>
             <div className="mb-3">
-              <label className="auth-label">問卷標題 <span style={{ color: "#ef4444" }}>*</span></label>
+              <label className="auth-label"><InterfaceText>{"問卷標題"}</InterfaceText><span style={{ color: "#ef4444" }}>*</span></label>
               <input className="survey-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例如：產品滿意度調查" />
             </div>
             <div>
-              <label className="auth-label">問卷說明</label>
+              <label className="auth-label"><InterfaceText>{"問卷說明"}</InterfaceText></label>
               <textarea className="survey-input survey-textarea" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="補充填答說明、用途或注意事項" maxLength={500} />
             </div>
             <div className="survey-identity-setting">
-              <label className="auth-label">填答身分 <span style={{ color: "#ef4444" }}>*</span></label>
+              <label className="auth-label"><InterfaceText>{"填答身分"}</InterfaceText><span style={{ color: "#ef4444" }}>*</span></label>
               <div className="survey-identity-options" role="radiogroup" aria-label="填答身分設定">
                 <label className={`survey-identity-option ${identityMode === "anonymous" ? "active" : ""}`}>
                   <input
@@ -278,8 +276,8 @@ export default function CreateSurveyPage() {
                     checked={identityMode === "anonymous"}
                     onChange={() => setIdentityMode("anonymous")}
                   />
-                  <span className="identity-option-title">匿名</span>
-                  <span className="identity-option-desc">填答者不需要留下身分。</span>
+                  <span className="identity-option-title"><InterfaceText>{"匿名"}</InterfaceText></span>
+                  <span className="identity-option-desc"><InterfaceText>{"填答者不需要留下身分。"}</InterfaceText></span>
                 </label>
                 <label className={`survey-identity-option ${identityMode === "identified" ? "active" : ""}`}>
                   <input
@@ -289,15 +287,15 @@ export default function CreateSurveyPage() {
                     checked={identityMode === "identified"}
                     onChange={() => setIdentityMode("identified")}
                   />
-                  <span className="identity-option-title">非匿名</span>
-                  <span className="identity-option-desc">填答者送出前需填寫身分。</span>
+                  <span className="identity-option-title"><InterfaceText>{"非匿名"}</InterfaceText></span>
+                  <span className="identity-option-desc"><InterfaceText>{"填答者送出前需填寫身分。"}</InterfaceText></span>
                 </label>
               </div>
             </div>
             <div className="survey-deadline-setting">
-              <label className="auth-label">問卷截止日</label>
+              <label className="auth-label"><InterfaceText>{"問卷截止日"}</InterfaceText></label>
               <DeadlineDateTimePicker value={deadlineAt} min={minDeadlineAt} onChange={setDeadlineAt} />
-              <p className="survey-field-hint">填答者只能在截止時間前送出問卷。</p>
+              <p className="survey-field-hint"><InterfaceText>{"填答者只能在截止時間前送出問卷。"}</InterfaceText></p>
             </div>
           </section>
 
@@ -315,7 +313,7 @@ export default function CreateSurveyPage() {
                 </select>
                 <label className="question-required-toggle ms-auto me-2" style={{ cursor: "pointer" }}>
                   <input type="checkbox" checked={question.required} onChange={(e) => updateQuestion(question.id, { required: e.target.checked })} />
-                  <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 700, color: "var(--slate-500)" }}>必填</span>
+                  <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 700, color: "var(--slate-500)" }}><InterfaceText>{"必填"}</InterfaceText></span>
                 </label>
                 <button className="question-delete-btn" onClick={() => duplicateQuestion(question)} title="複製題目" type="button">
                   <i className="ri-file-copy-line"></i>
@@ -337,7 +335,7 @@ export default function CreateSurveyPage() {
 
           <button className="add-question-area" onClick={() => setQuestions((prev) => [...prev, newQuestion()])} type="button">
             <i className="ri-add-circle-line"></i>
-            <p>新增題目</p>
+            <p><InterfaceText>{"新增題目"}</InterfaceText></p>
           </button>
 
           {error && <p style={{ color: "#ef4444", fontWeight: 800 }}>{error}</p>}
@@ -404,11 +402,8 @@ export default function CreateSurveyPage() {
             </button>
             <div className="d-flex gap-3">
               <a href={buildSurveyFillPath(generatedCode)} className="btn-generate" style={{ flex: 1, padding: "14px", textDecoration: "none", justifyContent: "center" }}>
-                <i className="ri-pencil-line"></i> 測試填答
-              </a>
-              <a href="/profile" className="btn-generate" style={{ flex: 1, padding: "14px", background: "var(--slate-100)", color: "var(--slate-600)", textDecoration: "none", justifyContent: "center" }}>
-                查看問卷
-              </a>
+                <i className="ri-pencil-line"></i><InterfaceText>{"測試填答"}</InterfaceText></a>
+              <a href="/profile" className="btn-generate" style={{ flex: 1, padding: "14px", background: "var(--slate-100)", color: "var(--slate-600)", textDecoration: "none", justifyContent: "center" }}><InterfaceText>{"查看問卷"}</InterfaceText></a>
             </div>
           </div>
         </div>
