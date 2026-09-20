@@ -21,3 +21,17 @@ const taxStatusTextZh = (value) => ({ no_taxonomy: "尚無 taxonomy", draft: "�
 export const taxStatusText = (value) => (getLang() === "zh" ? taxStatusTextZh(value) : taxStatusTextEn(value));
 
 export const TAX_EDITABLE_STATUSES = ["draft", "in_review"];
+
+const reviewFlagReasonTextEn = (reason) => ({
+  low_confidence: "Low confidence",
+  invalid_confidence: "Missing or invalid confidence score",
+  methodology_not_found: "Returned sub-category not in current taxonomy",
+  classification_incomplete: "Incomplete classification result",
+}[reason] || reason);
+const reviewFlagReasonTextZh = (reason) => ({
+  low_confidence: "信心分數偏低",
+  invalid_confidence: "信心分數缺失或格式異常",
+  methodology_not_found: "AI 回傳的子類別不在目前分類清單中",
+  classification_incomplete: "分類結果不完整",
+}[reason] || reason);
+export const reviewFlagReasonText = (reason) => (getLang() === "zh" ? reviewFlagReasonTextZh(reason) : reviewFlagReasonTextEn(reason));

@@ -84,8 +84,22 @@ def create_export():
         return jsonify({"error": "找不到這個對話，或您無權限操作"}), 404
 
     rows = data.get("rows")
+    if rows is None:
+        rows = []
+    if not isinstance(rows, list):
+        return jsonify({"error": "缺少 rows"}), 400
 
-    if not rows or not isinstance(rows, list):
+    # 【新增｜評分題統計】rating_stats 是可選欄位，跟 rows 完全平行：
+    # rating 題從來不會出現在 rows 裡（後端從沒把它們送進 Gemini 分類），
+    # 有評分題統計時就算 rows 是空陣列（例如整份問卷只有 rating 題）也
+    # 要能正常匯出，不能因為「沒有分類結果列」就直接擋掉整個請求。
+    rating_stats = data.get("rating_stats")
+    if rating_stats is not None and not isinstance(rating_stats, list):
+        return jsonify({"error": "rating_stats 格式不正確"}), 400
+
+    # rows 跟 rating_stats 都是空的：這份匯出真的沒有任何內容，維持
+    # 這個欄位新增之前的行為，回 400。有任一邊有內容就放行。
+    if not rows and not rating_stats:
         return jsonify({
             "error": "缺少 rows"
         }), 400
@@ -94,9 +108,9 @@ def create_export():
 
     try:
         if export_type == "xlsx":
-            file_bytes = build_xlsx(rows, title=title)
+            file_bytes = build_xlsx(rows, title=title, rating_stats=rating_stats)
         else:
-            file_bytes = build_docx(rows, title=title)
+            file_bytes = build_docx(rows, title=title, rating_stats=rating_stats)
 
     except Exception as e:
         return jsonify({

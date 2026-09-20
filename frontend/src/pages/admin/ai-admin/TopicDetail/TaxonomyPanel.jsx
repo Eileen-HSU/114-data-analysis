@@ -97,6 +97,18 @@ export default function TaxonomyPanel() {
       await loadTopicMeta();
     } catch (e) { setError(e.message); }
   };
+  const deleteTaxVersion = async () => {
+    if (!window.confirm(t("確定要刪除此草稿版本嗎？刪除後無法復原。", "Are you sure you want to delete this draft version? This cannot be undone."))) return;
+    try {
+      await api(`/api/admin/ai/topics/${topicKey}/taxonomy/${taxVersion.version_id}`, token, { method: "DELETE" });
+      setTaxVersion(null);
+      const meta = await loadTopicMeta();
+      if (meta) {
+        const nextVersionId = meta.latest_draft_version?.version_id ?? meta.published_version?.version_id;
+        if (nextVersionId) await openVersion(nextVersionId);
+      }
+    } catch (e) { setError(e.message); }
+  };
 
   if (loading) return <div className="admin-card"><p>{t("載入中...", "Loading...")}</p></div>;
 
@@ -132,6 +144,7 @@ export default function TaxonomyPanel() {
       <div style={{ display: "flex", gap: 10, margin: "14px 0" }}>
         {taxVersion.status === "published" ? <button className="primary" onClick={cloneTaxVersion}>{t("建立新草稿版本（複製此版）", "Create new draft (clone this version)")}</button>
           : <>{TAX_EDITABLE_STATUSES.includes(taxVersion.status) && <button onClick={addTaxCategory}>{t("＋ 新增子類別", "＋ Add category")}</button>}<button className="primary" onClick={publishTaxVersion}>{t("發布為正式 Taxonomy", "Publish as production taxonomy")}</button></>}
+        {taxVersion.status === "draft" && <button onClick={deleteTaxVersion}>{t("刪除草稿", "Delete draft")}</button>}
       </div>
       {taxVersion.status === "published" && <p className="tax-legacy-note">{t("已發布版本唯讀，不可直接編輯；如需修改請先建立新草稿版本。", "Published versions are read-only. Create a new draft to make changes.")}</p>}
 

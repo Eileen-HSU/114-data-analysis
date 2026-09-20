@@ -65,10 +65,11 @@ with app.app_context():
     survey_response = m.Survey_Response(template_id=template.template_id, answer_json={"answers": {}})
     db.session.add(survey_response)
     db.session.commit()
+    survey_response_id = survey_response.response_id
 
     def make_row(question_id, sub_category):
         return m.Response_Classification(
-            response_id=survey_response.response_id, source_type="survey", question_id=question_id,
+            response_id=survey_response_id, source_type="survey", question_id=question_id,
             answer_text="a", segment_start=0, segment_end=1,
             main_category="M", sub_category=sub_category,
         )
@@ -77,6 +78,19 @@ with app.app_context():
     db.session.add(make_row("career_and_feedback", "career-row"))
     db.session.add(make_row("other", "other-row"))
     db.session.add(make_row(None, "null-row"))
+    db.session.commit()
+
+    # Confidence Gate 篩選測試用資料：獨立 topic_key，避免影響上面既有斷言
+    flagged_row = make_row("topic_confidence_gate_test", "flagged-row")
+    flagged_row.needs_human_review = True
+    flagged_row.review_flag_reason = "low_confidence"
+    flagged_row.confidence = 0.4
+    db.session.add(flagged_row)
+
+    normal_row = make_row("topic_confidence_gate_test", "normal-row")
+    normal_row.needs_human_review = False
+    normal_row.confidence = 0.9
+    db.session.add(normal_row)
     db.session.commit()
 
 client = app.test_client()
@@ -90,7 +104,10 @@ def sub_categories(resp):
 print("========== 既有行為：不可改壞 ==========")
 
 resp_all = client.get("/api/admin/ai/classifications", headers=AUTH)
-check("不傳 topic 時查全部（4 筆）", sub_categories(resp_all) == {"leadership-row", "career-row", "other-row", "null-row"})
+check(
+    "不傳 topic 時查全部（含 Confidence Gate 測試資料，共 6 筆）",
+    sub_categories(resp_all) == {"leadership-row", "career-row", "other-row", "null-row", "flagged-row", "normal-row"},
+)
 
 resp_leadership = client.get("/api/admin/ai/classifications?topic=leadership_and_dept", headers=AUTH)
 check("topic=leadership_and_dept 只查到該 topic 的資料", sub_categories(resp_leadership) == {"leadership-row"})
@@ -148,6 +165,58 @@ check("archived 版本有被列出", sum(1 for v in versions_body if v["status"]
 
 resp_versions_no_auth = client.get("/api/admin/ai/topics/topic_versions/taxonomy")
 check("沒帶 token 時回 401", resp_versions_no_auth.status_code == 401)
+
+
+print("\n========== 新增：GET /classifications?needs_human_review=true 篩選 ==========")
+
+resp_flagged_only = client.get("/api/admin/ai/classifications?topic=topic_confidence_gate_test&needs_human_review=true", headers=AUTH)
+check("HTTP 200", resp_flagged_only.status_code == 200)
+check(
+    "?needs_human_review=true 只回傳被 flag 的那一筆",
+    sub_categories(resp_flagged_only) == {"flagged-row"},
+)
+
+resp_topic_only = client.get("/api/admin/ai/classifications?topic=topic_confidence_gate_test", headers=AUTH)
+check(
+    "不帶 needs_human_review 參數時，topic 篩選行為不變（兩筆都回）",
+    sub_categories(resp_topic_only) == {"flagged-row", "normal-row"},
+)
+
+resp_unassigned_with_flag = client.get("/api/admin/ai/classifications?topic=__unassigned__&needs_human_review=true", headers=AUTH)
+check(
+    "topic=__unassigned__ + needs_human_review=true：unassigned 資料沒有被 flag，回傳空集合",
+    sub_categories(resp_unassigned_with_flag) == set(),
+)
+
+# 額外驗證：__unassigned__ 資料裡如果有一筆被 flag，篩選要正確撈到（不因為 __unassigned__ 特殊分支而漏接）
+with app.app_context():
+    flagged_unassigned = make_row("other", "flagged-unassigned-row")
+    flagged_unassigned.needs_human_review = True
+    flagged_unassigned.review_flag_reason = "invalid_confidence"
+    db.session.add(flagged_unassigned)
+    db.session.commit()
+
+resp_unassigned_with_flag2 = client.get("/api/admin/ai/classifications?topic=__unassigned__&needs_human_review=true", headers=AUTH)
+check(
+    "topic=__unassigned__ + needs_human_review=true 正確撈到 unassigned 底下被 flag 的資料",
+    sub_categories(resp_unassigned_with_flag2) == {"flagged-unassigned-row"},
+)
+
+resp_review_status_still_works = client.get("/api/admin/ai/classifications?review_status=pending_review", headers=AUTH)
+check(
+    "review_status=pending_review 既有行為不受影響（回傳全部，因為測試資料都是預設 pending_review）",
+    "flagged-row" in sub_categories(resp_review_status_still_works)
+    and "normal-row" in sub_categories(resp_review_status_still_works),
+)
+
+resp_combo_review_and_flag = client.get(
+    "/api/admin/ai/classifications?topic=topic_confidence_gate_test&review_status=pending_review&needs_human_review=true",
+    headers=AUTH,
+)
+check(
+    "topic + review_status + needs_human_review 三個條件同時使用（AND 疊加）",
+    sub_categories(resp_combo_review_and_flag) == {"flagged-row"},
+)
 
 
 print("\n" + "=" * 50)
