@@ -67,7 +67,7 @@ Object.assign(legacyEnglish, {
   "雙因子驗證": "Two-factor authentication", "請輸入信箱中的驗證碼": "Enter the verification code from your email", "完成後即可安全登入": "Sign in securely after verification", "降低未授權登入風險": "Reduce unauthorized access risk", "驗證碼已寄送到信箱": "Verification code sent by email", "驗證碼 10 分鐘內有效": "Code valid for 10 minutes", "輸入驗證碼": "Enter verification code", "驗證碼": "Verification code", "請輸入 6 位數驗證碼": "Enter the 6-digit verification code", "驗證中...": "Verifying…", "完成啟用": "Finish setup", "啟用雙因子驗證": "Enable two-factor authentication", "寄送驗證碼": "Send verification code", "寄送中...": "Sending…", "寄送失敗，請稍後再試": "Unable to send. Please try again.", "驗證碼錯誤，請重新輸入": "Incorrect code. Please try again.", "驗證失敗，請重新輸入": "Verification failed. Please try again.",
 
 });
-const PROTECTED_OUTPUT_SELECTOR = ".messages-area, .message-bubble, .assistant-bubble, .user-bubble, .classification-table, .response-table, .responses-table, .sdp-response-table, .sdp-text-answers, [data-ai-output], [data-user-content]";
+const PROTECTED_OUTPUT_SELECTOR = ".messages-area, .message-bubble, .assistant-bubble, .user-bubble, .classification-table, .response-table, .responses-table, .sdp-response-table, .sdp-text-answers, [data-ai-output], [data-user-content], [data-localized]";
 Object.assign(legacyEnglish, {
   "資料匯入": "Data import", "資料上傳與匯入": "Upload and import data", "資料分析": "Data analysis", "分析助理": "Analysis Assistant", "新增對話": "New conversation", "問卷管理": "Survey management", "問卷蒐集": "Survey collection",
   "問卷建立與回饋蒐集": "Create surveys and collect feedback", "歷史紀錄保存": "Save history", "結果呈現": "Results", "專案保存": "Save projects", "歷程追蹤": "Track history", "AI 輔助": "AI assistance",

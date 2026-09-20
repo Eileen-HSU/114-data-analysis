@@ -211,7 +211,7 @@ export default function ForgotPasswordPage() {
             </div>
 
             {/* ── Step 2: Sent Success ── */}
-            <div ref={stepDoneRef} style={{ display: "none", textAlign: "center" }}>
+            <div ref={stepDoneRef} data-localized style={{ display: "none", textAlign: "center" }}>
               <div className="forgot-success-icon">
                 <i className="ri-mail-check-line"></i>
               </div>
