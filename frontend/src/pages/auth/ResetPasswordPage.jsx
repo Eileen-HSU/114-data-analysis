@@ -93,7 +93,7 @@ export default function ResetPasswordPage() {
         {/* 左側視覺裝飾區域 */}
         <div className="col-lg-6 d-none d-lg-flex auth-visual auth-visual-reset-pw">
           <div className="auth-visual-overlay"></div>
-          <div className="auth-visual-content">
+          <div className="auth-visual-content" data-localized>
             <div className="auth-logo mb-5">
               <img
                 src={conqightLogo}
@@ -102,17 +102,17 @@ export default function ResetPasswordPage() {
               />
             </div>
             <h2 className="auth-visual-title">
-              {isForgotFlow ? "重設您的密碼" : "設定新密碼"}
+              {isForgotFlow ? localize("重設您的密碼", "Reset your password") : localize("設定新密碼", "Set a new password")}
             </h2>
             <p className="auth-visual-desc">
-              <span>{isForgotFlow ? "輸入驗證碼" : "確認您的身份"}</span>
-              <span>{isForgotFlow ? "重新設定安全密碼" : "完成後返回個人資料"}</span>
+              <span>{isForgotFlow ? localize("輸入驗證碼", "Enter your verification code") : localize("確認您的身份", "Verify your identity")}</span>
+              <span>{isForgotFlow ? localize("重新設定安全密碼", "Set a new, secure password") : localize("完成後返回個人資料", "Return to your profile when finished")}</span>
             </p>
             <div className="auth-features">
               {[
-                { icon: "ri-key-2-line", text: "驗證碼 10 分鐘內有效" },
-                { icon: "ri-lock-star-line", text: "新密碼至少 8 個字元" },
-                { icon: "ri-shield-check-line", text: isForgotFlow ? "完成後請重新登入" : "完成後不會登出帳號" },
+                { icon: "ri-key-2-line", text: localize("驗證碼 10 分鐘內有效", "Code valid for 10 minutes") },
+                { icon: "ri-lock-star-line", text: localize("新密碼至少 8 個字元", "New password must be at least 8 characters") },
+                { icon: "ri-shield-check-line", text: isForgotFlow ? localize("完成後請重新登入", "Log in again when finished") : localize("完成後不會登出帳號", "You will remain logged in") },
               ].map((f, i) => (
                 <div className="auth-feature-item" key={i}>
                   <div className="auth-feature-icon">
