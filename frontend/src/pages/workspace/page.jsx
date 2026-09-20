@@ -1,3 +1,4 @@
+import InterfaceText from "../../components/feature/InterfaceText";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Navbar from "../../components/feature/Navbar";
@@ -346,8 +347,8 @@ function AssistantTableContent({ content, readOnly = false }) {
         <table className="assistant-output-table">
           <thead>
             <tr>
-              <th>分類</th>
-              <th>分析內容</th>
+              <th><InterfaceText>{"分類"}</InterfaceText></th>
+              <th><InterfaceText>{"分析內容"}</InterfaceText></th>
             </tr>
           </thead>
           <tbody>
@@ -366,9 +367,7 @@ function AssistantTableContent({ content, readOnly = false }) {
           type="button"
           onClick={() => navigate("/collection", { state: { activeView: "exports" } })}
         >
-          <i className="ri-download-cloud-2-line"></i>
-          匯出檔案
-        </button>
+          <i className="ri-download-cloud-2-line"></i><InterfaceText>{"匯出檔案"}</InterfaceText></button>
       </div>}
     </div>
   );
@@ -489,13 +488,13 @@ function RatingStatCard({ stat }) {
         <RatingDonutChart distribution={distribution} average={stat.average} />
 
         <div className="rating-stat-card-side">
-          <div className="rating-stat-card-answered">{answeredCount} 份有效回答</div>
+          <div className="rating-stat-card-answered">{answeredCount}<InterfaceText>{"份有效回答"}</InterfaceText></div>
           <ul className="rating-stat-legend">
             {[0, 1, 2, 3, 4, 5].map((score) => (
               <li key={score} className="rating-stat-legend-item">
                 <span className="rating-stat-legend-swatch" style={{ background: RATING_SCORE_COLORS[score] }} />
-                <span className="rating-stat-legend-label">{score} 分</span>
-                <span className="rating-stat-legend-count">{Number(distribution[String(score)]) || 0} 人</span>
+                <span className="rating-stat-legend-label">{score}<InterfaceText>{"分"}</InterfaceText></span>
+                <span className="rating-stat-legend-count">{Number(distribution[String(score)]) || 0}<InterfaceText>{"人"}</InterfaceText></span>
               </li>
             ))}
           </ul>
@@ -508,7 +507,7 @@ function RatingStatCard({ stat }) {
 function RatingStatsPanel({ ratingStats }) {
   return (
     <div className="assistant-output-panel assistant-output-panel--rating">
-      <div className="assistant-output-intro">評分題統計</div>
+      <div className="assistant-output-intro"><InterfaceText>{"評分題統計"}</InterfaceText></div>
       <div className="rating-stats-grid">
         {ratingStats.map((stat) => (
           <RatingStatCard key={stat.question_id} stat={stat} />
@@ -528,9 +527,7 @@ function ClassificationTable({ rows, ratingStats, meta, chatId, showToast, readO
   if (!hasClassificationRows && !hasRatingStats) {
     return (
       <div className="assistant-output-panel">
-        <div className="assistant-output-intro">
-          這批資料沒有產生任何分類結果。
-        </div>
+        <div className="assistant-output-intro"><InterfaceText>{"這批資料沒有產生任何分類結果。"}</InterfaceText></div>
 
         {meta?.diagnostic_message && (
           <div className="assistant-output-diagnostic">
@@ -550,19 +547,17 @@ function ClassificationTable({ rows, ratingStats, meta, chatId, showToast, readO
 
       {hasClassificationRows ? (
         <>
-          <div className="assistant-output-intro">
-            分類完成，共 {rows.length} 個類別。
-          </div>
+          <div className="assistant-output-intro"><InterfaceText>{"分類完成，共"}</InterfaceText>{rows.length}<InterfaceText>{"個類別。"}</InterfaceText></div>
 
           <div className="assistant-output-table-wrap">
             <table className="assistant-output-table classification-table">
               <thead>
                 <tr>
-                  <th>大類別</th>
-                  <th>子類別</th>
-                  <th>問卷回覆內容</th>
-                  <th>判斷原因與說明</th>
-                  <th>受試者建議摘要</th>
+                  <th><InterfaceText>{"大類別"}</InterfaceText></th>
+                  <th><InterfaceText>{"子類別"}</InterfaceText></th>
+                  <th><InterfaceText>{"問卷回覆內容"}</InterfaceText></th>
+                  <th><InterfaceText>{"判斷原因與說明"}</InterfaceText></th>
+                  <th><InterfaceText>{"受試者建議摘要"}</InterfaceText></th>
                 </tr>
               </thead>
 
@@ -615,12 +610,8 @@ function ClassificationTable({ rows, ratingStats, meta, chatId, showToast, readO
                         <MultilineText text={row.aggregated_summary} />
 
                         {row.synthesis_status === "fallback" && (
-                          <div className="synthesis-fallback-note">
-                            （彙整摘要暫時失敗，以下為個別意見簡易拼接，非完整統整）
-
-                            {row.synthesis_error && (
-                              <div className="synthesis-error-detail">
-                                錯誤原因：{row.synthesis_error}
+                          <div className="synthesis-fallback-note"><InterfaceText>{"（彙整摘要暫時失敗，以下為個別意見簡易拼接，非完整統整）"}</InterfaceText>{row.synthesis_error && (
+                              <div className="synthesis-error-detail"><InterfaceText>{"錯誤原因："}</InterfaceText>{row.synthesis_error}
                               </div>
                             )}
                           </div>
@@ -638,9 +629,7 @@ function ClassificationTable({ rows, ratingStats, meta, chatId, showToast, readO
         // rating 題）：不顯示分類表格，但仍要讓使用者知道這是正常情況，
         // 而不是誤以為分析失敗；匯出按鈕照樣顯示（見下方 ExportActions），
         // 讓評分統計仍然能匯出成 Excel/Word。
-        <div className="assistant-output-intro">
-          這份問卷沒有開放式文字題可供分類，以上為評分題統計結果。
-        </div>
+        <div className="assistant-output-intro"><InterfaceText>{"這份問卷沒有開放式文字題可供分類，以上為評分題統計結果。"}</InterfaceText></div>
       )}
 
       {!readOnly && (
@@ -1758,7 +1747,7 @@ export default function WorkspacePage() {
           <aside className="workspace-sidebar">
             <div className="sidebar-header">
               <div className="d-flex align-items-center mb-3">
-                <span className="sidebar-title">歷史對話紀錄</span>
+                <span className="sidebar-title"><InterfaceText>{"歷史對話紀錄"}</InterfaceText></span>
               </div>
               <div className="sidebar-search">
                 <i className="ri-search-line"></i>
@@ -1779,7 +1768,7 @@ export default function WorkspacePage() {
               {sessions.length === 0 ? (
                 <div className="sidebar-empty">
                   <i className="ri-chat-ai-line"></i>
-                  <p>尚無工作區紀錄</p>
+                  <p><InterfaceText>{"尚無工作區紀錄"}</InterfaceText></p>
                   <button
                     onClick={createNewSession}
                     style={{
@@ -1787,14 +1776,12 @@ export default function WorkspacePage() {
                       border: "none", borderRadius: 8, padding: "6px 14px",
                       fontSize: 12, fontWeight: 700, cursor: "pointer",
                     }}
-                  >
-                    新增工作區
-                  </button>
+                  ><InterfaceText>{"新增工作區"}</InterfaceText></button>
                 </div>
               ) : filteredSessions.length === 0 ? (
                 <div className="sidebar-empty">
                   <i className="ri-search-line"></i>
-                  <p>找不到相關紀錄</p>
+                  <p><InterfaceText>{"找不到相關紀錄"}</InterfaceText></p>
                 </div>
               ) : (
                 filteredSessions.map((s) => (
@@ -1875,7 +1862,7 @@ export default function WorkspacePage() {
                 }}>
                   <i className="ri-chat-ai-line"></i>
                 </div>
-                <p style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>選擇或新增一個工作區開始分析</p>
+                <p style={{ fontSize: 15, fontWeight: 600, margin: 0 }}><InterfaceText>{"選擇或新增一個工作區開始分析"}</InterfaceText></p>
                 <button
                   onClick={createNewSession}
                   style={{
@@ -1884,8 +1871,7 @@ export default function WorkspacePage() {
                     fontWeight: 700, cursor: "pointer",
                   }}
                 >
-                  <i className="ri-add-line" style={{ marginRight: 6 }}></i>新增工作區
-                </button>
+                  <i className="ri-add-line" style={{ marginRight: 6 }}></i><InterfaceText>{"新增工作區"}</InterfaceText></button>
               </div>
             ) : (
               <>
@@ -1906,7 +1892,7 @@ export default function WorkspacePage() {
                         <i className="ri-robot-line"></i>
                       </div>
                       <div className="message-bubble assistant-bubble typing-bubble">
-                        <span className="typing-label">AI 思考中</span>
+                        <span className="typing-label"><InterfaceText>{"AI 思考中"}</InterfaceText></span>
                         <div className="typing-dots">
                           <span></span><span></span><span></span>
                         </div>
@@ -1923,7 +1909,7 @@ export default function WorkspacePage() {
                       <i className="ri-attachment-line"></i>
                       <span>{attachedFile.name}</span>
                       {isExcelFile(attachedFile) && (
-                        <span className="classification-hint">（送出後將自動分類）</span>
+                        <span className="classification-hint"><InterfaceText>{"（送出後將自動分類）"}</InterfaceText></span>
                       )}
                       <button onClick={() => setAttachedFile(null)} disabled={isClassifying}>
                         <i className="ri-close-line"></i>
@@ -1946,9 +1932,7 @@ export default function WorkspacePage() {
                         <div className="survey-picker-panel">
                           <div className="survey-picker-header">
                             <span className="survey-picker-title">
-                              <i className="ri-survey-line"></i>
-                              選擇問卷進行分析
-                            </span>
+                              <i className="ri-survey-line"></i><InterfaceText>{"選擇問卷進行分析"}</InterfaceText></span>
                             <button className="survey-picker-close" onClick={() => setShowSurveyPicker(false)}>
                               <i className="ri-close-line"></i>
                             </button>
@@ -1972,12 +1956,12 @@ export default function WorkspacePage() {
                             {isSurveyPickerLoading ? (
                               <div className="survey-picker-loading" role="status" aria-live="polite">
                                 <i className="ri-loader-4-line ri-spin"></i>
-                                <span>問卷載入中...</span>
+                                <span><InterfaceText>{"問卷載入中..."}</InterfaceText></span>
                               </div>
                             ) : filteredSurveyPicker.length === 0 ? (
                               <div className="survey-picker-empty">
                                 <i className="ri-search-line"></i>
-                                <p>找不到相關問卷</p>
+                                <p><InterfaceText>{"找不到相關問卷"}</InterfaceText></p>
                               </div>
                             ) : (
                               filteredSurveyPicker.map((s) => (
@@ -1993,7 +1977,7 @@ export default function WorkspacePage() {
                                     <span className="survey-picker-name">{s.title}</span>
                                     <div className="survey-picker-meta">
                                       <span><i className="ri-key-2-line"></i>{s.code}</span>
-                                      <span><i className="ri-user-line"></i>{s.responseCount} 人回覆</span>
+                                      <span><i className="ri-user-line"></i>{s.responseCount}<InterfaceText>{"人回覆"}</InterfaceText></span>
                                       <span><i className="ri-calendar-line"></i>{s.createdAt}</span>
                                     </div>
                                   </div>
@@ -2046,9 +2030,7 @@ export default function WorkspacePage() {
                     </button>
                   </div>
                   <p className="input-hint">
-                    <i className="ri-survey-line" style={{ marginRight: 4 }}></i>
-                    點擊問卷圖示可直接選擇問卷分析 · 支援 CSV、Excel、TXT · Enter 發送
-                  </p>
+                    <i className="ri-survey-line" style={{ marginRight: 4 }}></i><InterfaceText>{"點擊問卷圖示可直接選擇問卷分析 · 支援 CSV、Excel、TXT · Enter 發送"}</InterfaceText></p>
                 </div>
               </>
             )}
@@ -2062,15 +2044,13 @@ export default function WorkspacePage() {
             <div className="workspace-alert-icon">
               <i className="ri-error-warning-line"></i>
             </div>
-            <h3>刪除工作區</h3>
-            <p>確定要刪除「{deleteTarget.title}」嗎？刪除後可在專案管理的最近刪除中還原。</p>
+            <h3><InterfaceText>{"刪除工作區"}</InterfaceText></h3>
+            <p><InterfaceText>{"確定要刪除「"}</InterfaceText>{deleteTarget.title}<InterfaceText>{"」嗎？刪除後可在專案管理的最近刪除中還原。"}</InterfaceText></p>
             <div className="workspace-alert-actions">
               <button className="workspace-alert-primary" onClick={confirmDeleteSession} type="button" disabled={isDeletingSession}>
                 {isDeletingSession ? "刪除中..." : "確定"}
               </button>
-              <button className="workspace-alert-secondary" onClick={() => setDeleteTarget(null)} type="button" disabled={isDeletingSession}>
-                取消
-              </button>
+              <button className="workspace-alert-secondary" onClick={() => setDeleteTarget(null)} type="button" disabled={isDeletingSession}><InterfaceText>{"取消"}</InterfaceText></button>
             </div>
           </div>
         </div>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useLanguage } from "../../context/LanguageContext";
 import "./DeadlineDateTimePicker.css";
 
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
@@ -46,6 +47,8 @@ function buildCalendarDays(monthDate) {
 }
 
 export default function DeadlineDateTimePicker({ id, value, min, onChange, className = "", compact = false }) {
+  const { language } = useLanguage();
+  const isEnglish = language === "en";
   const rootRef = useRef(null);
   const minDate = useMemo(() => parseLocalValue(min) || new Date(), [min]);
   const selectedDate = parseLocalValue(value);
@@ -100,12 +103,12 @@ export default function DeadlineDateTimePicker({ id, value, min, onChange, class
     emitDate(next);
   };
 
-  const monthLabel = `${viewDate.getFullYear()}年${pad(viewDate.getMonth() + 1)}月`;
+  const monthLabel = isEnglish ? viewDate.toLocaleDateString("en", { month: "long", year: "numeric" }) : `${viewDate.getFullYear()}年${pad(viewDate.getMonth() + 1)}月`;
   const prevMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1);
   const prevMonthDisabled = new Date(prevMonth.getFullYear(), prevMonth.getMonth() + 1, 0) < startOfDay(minDate);
 
   return (
-    <div ref={rootRef} className={`deadline-picker ${compact ? "deadline-picker-compact" : ""} ${className}`}>
+    <div ref={rootRef} data-localized className={`deadline-picker ${compact ? "deadline-picker-compact" : ""} ${className}`}>
       <button
         id={id}
         type="button"
@@ -113,12 +116,12 @@ export default function DeadlineDateTimePicker({ id, value, min, onChange, class
         onClick={() => setIsOpen((open) => !open)}
         aria-expanded={isOpen}
       >
-        <span>{formatDisplay(value)}</span>
+        <span>{!parseLocalValue(value) && isEnglish ? "Choose deadline date and time" : formatDisplay(value)}</span>
         <i className="ri-calendar-line"></i>
       </button>
 
       {isOpen && (
-        <div className="deadline-picker-popover" role="dialog" aria-label="選擇截止日期與時間">
+        <div className="deadline-picker-popover" role="dialog" aria-label={isEnglish ? "Choose deadline date and time" : "選擇截止日期與時間"}>
           <div className="deadline-picker-calendar">
             <div className="deadline-picker-header">
               <button type="button" className="deadline-picker-icon-btn" disabled={prevMonthDisabled} onClick={() => setViewDate(prevMonth)}>
@@ -130,7 +133,7 @@ export default function DeadlineDateTimePicker({ id, value, min, onChange, class
               </button>
             </div>
             <div className="deadline-picker-weekdays">
-              {WEEKDAYS.map((weekday) => <span key={weekday}>{weekday}</span>)}
+              {(isEnglish ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] : WEEKDAYS).map((weekday) => <span key={weekday}>{weekday}</span>)}
             </div>
             <div className="deadline-picker-days">
               {calendarDays.map((day) => {
@@ -160,8 +163,8 @@ export default function DeadlineDateTimePicker({ id, value, min, onChange, class
             </div>
             <div className="deadline-picker-time-columns">
               <div className="deadline-picker-time-group">
-                <div className="deadline-picker-time-label">時</div>
-                <div className="deadline-picker-time-column" aria-label="選擇小時">
+                <div className="deadline-picker-time-label">{isEnglish ? "Hour" : "時"}</div>
+                <div className="deadline-picker-time-column" aria-label={isEnglish ? "Choose hour" : "選擇小時"}>
                   {Array.from({ length: 24 }, (_, hour) => {
                     const candidate = new Date(activeDate);
                     candidate.setHours(hour, activeMinute, 0, 0);
@@ -174,8 +177,8 @@ export default function DeadlineDateTimePicker({ id, value, min, onChange, class
                 </div>
               </div>
               <div className="deadline-picker-time-group">
-                <div className="deadline-picker-time-label">分</div>
-                <div className="deadline-picker-time-column" aria-label="選擇分鐘">
+                <div className="deadline-picker-time-label">{isEnglish ? "Minute" : "分"}</div>
+                <div className="deadline-picker-time-column" aria-label={isEnglish ? "Choose minute" : "選擇分鐘"}>
                   {Array.from({ length: 60 }, (_, minute) => {
                     const candidate = new Date(activeDate);
                     candidate.setMinutes(minute, 0, 0);

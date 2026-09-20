@@ -1,3 +1,4 @@
+import InterfaceText from "../../components/feature/InterfaceText";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiUrl } from "../../lib/api";
@@ -123,10 +124,10 @@ export default function TwoFactorPage() {
                 className="auth-logo-img"
               />
             </div>
-            <h2 className="auth-visual-title">啟用雙因子驗證</h2>
+            <h2 className="auth-visual-title"><InterfaceText>{"啟用雙因子驗證"}</InterfaceText></h2>
             <p className="auth-visual-desc">
-              <span>為帳號多加一道保護</span>
-              <span>登入時使用信箱驗證碼確認身份</span>
+              <span><InterfaceText>{"為帳號多加一道保護"}</InterfaceText></span>
+              <span><InterfaceText>{"登入時使用信箱驗證碼確認身份"}</InterfaceText></span>
             </p>
             <div className="auth-features">
               {[
@@ -150,20 +151,18 @@ export default function TwoFactorPage() {
             <div className="back-home-icon">
               <i className="ri-arrow-left-line"></i>
             </div>
-            <span>返回個人資料</span>
+            <span><InterfaceText>{"返回個人資料"}</InterfaceText></span>
           </button>
 
           <div className="auth-form-wrapper two-factor-form-wrapper">
             {step === "send" && (
               <>
-                <h1 className="auth-title">啟用雙因子驗證</h1>
-                <p className="auth-subtitle" style={{ marginBottom: 28 }}>
-                  輸入您的電子郵件，我們會寄送驗證碼確認身分。
-                </p>
+                <h1 className="auth-title"><InterfaceText>{"啟用雙因子驗證"}</InterfaceText></h1>
+                <p className="auth-subtitle" style={{ marginBottom: 28 }}><InterfaceText>{"輸入您的電子郵件，我們會寄送驗證碼確認身分。"}</InterfaceText></p>
 
                 <form onSubmit={sendCode} noValidate autoComplete="off">
                   <div className="mb-4">
-                    <label className="auth-label">電子郵件</label>
+                    <label className="auth-label"><InterfaceText>{"電子郵件"}</InterfaceText></label>
                     <div className="position-relative">
                       <i className="ri-mail-line form-icon"></i>
                       <input
@@ -201,16 +200,10 @@ export default function TwoFactorPage() {
                     boxShadow: "0 8px 18px rgba(244, 63, 94, 0.12)",
                   }}>
                     <i className="ri-information-line" style={{ color: "#e11d48", fontSize: 16, marginTop: 2, flexShrink: 0 }}></i>
-                    <p style={{ fontSize: 13, color: "#be123c", margin: 0, lineHeight: 1.6, fontWeight: 600 }}>
-                      啟用後，下次登入時需輸入信箱驗證碼才能進入帳號。
-                      <br />
-                      寄出的郵件可能存在垃圾郵件中
-                    </p>
+                    <p style={{ fontSize: 13, color: "#be123c", margin: 0, lineHeight: 1.6, fontWeight: 600 }}><InterfaceText>{"啟用後，下次登入時需輸入信箱驗證碼才能進入帳號。"}</InterfaceText><br /><InterfaceText>{"寄出的郵件可能存在垃圾郵件中"}</InterfaceText></p>
                   </div>
 
-                  <button ref={submitBtnRef} type="submit" className="btn btn-auth-submit w-100 mb-3">
-                    寄送驗證碼
-                  </button>
+                  <button ref={submitBtnRef} type="submit" className="btn btn-auth-submit w-100 mb-3"><InterfaceText>{"寄送驗證碼"}</InterfaceText></button>
 
                   <button
                     type="button"
@@ -228,25 +221,21 @@ export default function TwoFactorPage() {
                       whiteSpace: "nowrap",
                     }}
                     onClick={() => navigate("/profile")}
-                  >
-                    取消
-                  </button>
+                  ><InterfaceText>{"取消"}</InterfaceText></button>
                 </form>
               </>
             )}
 
             {step === "otp" && (
               <div>
-                <h1 className="auth-title" style={{ textAlign: "center" }}>輸入驗證碼</h1>
-                <p style={{ color: "var(--slate-500)", fontSize: 15, lineHeight: 1.7, marginBottom: 8, textAlign: "center" }}>
-                  我們已將驗證碼寄送至
-                </p>
+                <h1 className="auth-title" style={{ textAlign: "center" }}><InterfaceText>{"輸入驗證碼"}</InterfaceText></h1>
+                <p style={{ color: "var(--slate-500)", fontSize: 15, lineHeight: 1.7, marginBottom: 8, textAlign: "center" }}><InterfaceText>{"我們已將驗證碼寄送至"}</InterfaceText></p>
                 <p style={{ fontWeight: 700, color: "var(--slate-800)", fontSize: 16, marginBottom: 28, textAlign: "center" }}>
                   {sentEmail}
                 </p>
 
                 <div className="mb-3">
-                  <label className="auth-label">驗證碼</label>
+                  <label className="auth-label"><InterfaceText>{"驗證碼"}</InterfaceText></label>
                   <div className="position-relative">
                     <i className="ri-key-2-line form-icon"></i>
                     <input
@@ -303,9 +292,7 @@ export default function TwoFactorPage() {
                     if (emailRef.current) emailRef.current.value = "";
                   }}
                 >
-                  <i className="ri-refresh-line" style={{ marginRight: 6 }}></i>
-                  重新寄送
-                </button>
+                  <i className="ri-refresh-line" style={{ marginRight: 6 }}></i><InterfaceText>{"重新寄送"}</InterfaceText></button>
               </div>
             )}
           </div>

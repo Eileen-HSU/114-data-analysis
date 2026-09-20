@@ -1,3 +1,4 @@
+import InterfaceText from "../../components/feature/InterfaceText";
 import { useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import "./auth.css";
@@ -98,10 +99,10 @@ export default function ForgotPasswordPage() {
                 className="auth-logo-img"
               />
             </div>
-            <h2 className="auth-visual-title">重設您的密碼</h2>
+            <h2 className="auth-visual-title"><InterfaceText>{"重設您的密碼"}</InterfaceText></h2>
             <p className="auth-visual-desc">
-              <span>輸入您的電子郵件</span>
-              <span>我們會寄送安全重設連結</span>
+              <span><InterfaceText>{"輸入您的電子郵件"}</InterfaceText></span>
+              <span><InterfaceText>{"我們會寄送安全重設連結"}</InterfaceText></span>
             </p>
             <div className="auth-features">
               {[
@@ -126,7 +127,7 @@ export default function ForgotPasswordPage() {
             <div className="back-home-icon">
               <i className="ri-arrow-left-line"></i>
             </div>
-            <span>返回登入</span>
+            <span><InterfaceText>{"返回登入"}</InterfaceText></span>
           </button>
 
           <div className="auth-form-wrapper">
@@ -143,14 +144,12 @@ export default function ForgotPasswordPage() {
               <div className="forgot-icon-wrap">
                 <i className="ri-lock-password-line"></i>
               </div>
-              <h1 className="auth-title">忘記密碼？</h1>
-              <p className="auth-subtitle" style={{ marginBottom: 28 }}>
-                輸入您的帳號電子郵件，我們將發送密碼重設連結。
-              </p>
+              <h1 className="auth-title"><InterfaceText>{"忘記密碼？"}</InterfaceText></h1>
+              <p className="auth-subtitle" style={{ marginBottom: 28 }}><InterfaceText>{"輸入您的帳號電子郵件，我們將發送密碼重設連結。"}</InterfaceText></p>
 
               <form onSubmit={handleSubmit} noValidate autoComplete="off">
                 <div className="mb-4">
-                  <label className="auth-label">電子郵件</label>
+                  <label className="auth-label"><InterfaceText>{"電子郵件"}</InterfaceText></label>
                   <div className="position-relative">
                     <i className="ri-mail-line form-icon"></i>
                     <input
@@ -177,9 +176,7 @@ export default function ForgotPasswordPage() {
                   </p>
                 </div>
 
-                <button ref={submitBtnRef} type="submit" className="btn btn-auth-submit w-100 mb-3">
-                  發送重設連結
-                </button>
+                <button ref={submitBtnRef} type="submit" className="btn btn-auth-submit w-100 mb-3"><InterfaceText>{"發送重設連結"}</InterfaceText></button>
 
                 <button
                   type="button"
@@ -197,16 +194,11 @@ export default function ForgotPasswordPage() {
                     whiteSpace: "nowrap",
                   }}
                   onClick={() => navigate("/login")}
-                >
-                  返回登入
-                </button>
+                ><InterfaceText>{"返回登入"}</InterfaceText></button>
               </form>
 
-              <p className="auth-terms text-center mt-4">
-                還沒有帳號？{" "}
-                <a className="auth-link" onClick={() => navigate("/signup")} style={{ cursor: "pointer" }}>
-                  免費註冊
-                </a>
+              <p className="auth-terms text-center mt-4"><InterfaceText>{"還沒有帳號？"}</InterfaceText>{" "}
+                <a className="auth-link" onClick={() => navigate("/signup")} style={{ cursor: "pointer" }}><InterfaceText>{"免費註冊"}</InterfaceText></a>
               </p>
             </div>
 

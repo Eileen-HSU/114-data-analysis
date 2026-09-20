@@ -1,3 +1,4 @@
+import InterfaceText from "../../components/feature/InterfaceText";
 import { useMemo, useRef, useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Navbar from "../../components/feature/Navbar";
@@ -20,11 +21,11 @@ function getSurveyTime(createdAt) {
   return Number.isNaN(time) ? 0 : time;
 }
 
-function formatSurveyDeadline(deadlineAt) {
-  if (!deadlineAt) return "未設定截止時間";
+function formatSurveyDeadline(deadlineAt, language) {
+  if (!deadlineAt) return language === "en" ? "No deadline set" : "未設定截止時間";
   const date = new Date(deadlineAt);
   if (Number.isNaN(date.getTime())) return deadlineAt;
-  return new Intl.DateTimeFormat("zh-TW", {
+  return new Intl.DateTimeFormat(language, {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -34,7 +35,7 @@ function formatSurveyDeadline(deadlineAt) {
   }).format(date);
 }
 
-function formatActivityTime(value) {
+function formatActivityTime(value, language) {
   const time = new Date(value).getTime();
   if (!time || Number.isNaN(time)) return "";
   const diff = Date.now() - time;
@@ -42,11 +43,11 @@ function formatActivityTime(value) {
   const hour = 60 * minute;
   const day = 24 * hour;
 
-  if (diff < minute) return "剛剛";
-  if (diff < hour) return `${Math.floor(diff / minute)} 分鐘前`;
-  if (diff < day) return `${Math.floor(diff / hour)} 小時前`;
+  if (diff < minute) return language === "en" ? "Just now" : "剛剛";
+  if (diff < hour) return new Intl.RelativeTimeFormat(language).format(-Math.floor(diff / minute), "minute");
+  if (diff < day) return new Intl.RelativeTimeFormat(language).format(-Math.floor(diff / hour), "hour");
 
-  return new Intl.DateTimeFormat("zh-TW", {
+  return new Intl.DateTimeFormat(language, {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -462,8 +463,8 @@ export default function ProfilePage() {
             <div className="profile-survey-loading-icon">
               <i className="ri-loader-4-line ri-spin"></i>
             </div>
-            <h1>正在載入問卷詳情…</h1>
-            <p>正在整理題目、統計與回覆資料，請稍候。</p>
+            <h1><InterfaceText>{"正在載入問卷詳情…"}</InterfaceText></h1>
+            <p><InterfaceText>{"正在整理題目、統計與回覆資料，請稍候。"}</InterfaceText></p>
           </div>
         </main>
       </>
@@ -747,7 +748,7 @@ export default function ProfilePage() {
           {activeTab === "info" && (
             <section className="profile-card-inner p-4 p-md-5" ref={editSectionRef}>
               <div className="profile-section-header">
-                <h2 className="tab-title mb-0">基本資料</h2>
+                <h2 className="tab-title mb-0"><InterfaceText>{"基本資料"}</InterfaceText></h2>
                 <button className="btn btn-violet" onClick={handleEditToggle}>
                   <i className={`${isEditing ? "ri-close-line" : "ri-edit-line"} me-1`}></i>
                   {isEditing ? "取消編輯" : "編輯資料"}
@@ -771,7 +772,7 @@ export default function ProfilePage() {
                   </div>
                 ))}
                 <div className="col-12">
-                  <label className="auth-label">自我介紹</label>
+                  <label className="auth-label"><InterfaceText>{"自我介紹"}</InterfaceText></label>
                   {isEditing ? (
                     <textarea className="form-control" rows={3} value={editProfile.bio} onChange={(e) => setEditProfile((prev) => ({ ...prev, bio: e.target.value }))} />
                   ) : (
@@ -781,9 +782,9 @@ export default function ProfilePage() {
               </div>
               {isEditing && (
                 <div className="edit-actions">
-                  <button className="btn btn-violet" onClick={handleSave}>儲存變更</button>
-                  <button className="btn btn-outline-secondary" onClick={handleCancel}>取消</button>
-                  {saved && <span className="save-success"><i className="ri-checkbox-circle-line"></i> 已儲存</span>}
+                  <button className="btn btn-violet" onClick={handleSave}><InterfaceText>{"儲存變更"}</InterfaceText></button>
+                  <button className="btn btn-outline-secondary" onClick={handleCancel}><InterfaceText>{"取消"}</InterfaceText></button>
+                  {saved && <span className="save-success"><i className="ri-checkbox-circle-line"></i><InterfaceText>{"已儲存"}</InterfaceText></span>}
                 </div>
               )}
             </section>
@@ -791,16 +792,16 @@ export default function ProfilePage() {
 
           {activeTab === "security" && (
             <section className="profile-card-inner p-4 p-md-5" ref={securitySectionRef}>
-              <h2 className="tab-title">安全設定</h2>
+              <h2 className="tab-title"><InterfaceText>{"安全設定"}</InterfaceText></h2>
               <div className="security-item">
                 <div className="d-flex align-items-center gap-3">
                   <div className="security-icon bg-violet-50"><i className="ri-lock-password-line text-violet"></i></div>
                   <div>
-                    <p className="security-label mb-0">密碼</p>
-                    <p className="security-desc mb-0">建議定期更新密碼，提升帳號安全。</p>
+                    <p className="security-label mb-0"><InterfaceText>{"密碼"}</InterfaceText></p>
+                    <p className="security-desc mb-0"><InterfaceText>{"建議定期更新密碼，提升帳號安全。"}</InterfaceText></p>
                   </div>
                 </div>
-                <button className="btn-security-action" onClick={() => navigate("/change-password")}>變更密碼</button>
+                <button className="btn-security-action" onClick={() => navigate("/change-password")}><InterfaceText>{"變更密碼"}</InterfaceText></button>
               </div>
               <div className="security-item">
                 <div className="d-flex align-items-center gap-3">
@@ -809,7 +810,7 @@ export default function ProfilePage() {
                   </div>
                   <div>
                     <div className="security-title-row">
-                      <p className="security-label mb-0">雙因子驗證</p>
+                      <p className="security-label mb-0"><InterfaceText>{"雙因子驗證"}</InterfaceText></p>
                       <span className={`two-factor-status ${twoFactorEnabled ? "enabled" : "disabled"}`}>
                         {twoFactorEnabled ? "已開啟" : "未開啟"}
                       </span>
@@ -841,17 +842,15 @@ export default function ProfilePage() {
           {activeTab === "activity" && (
             <section className="profile-card-inner p-4 p-md-5">
               <div className="activity-header">
-                <h2 className="tab-title mb-0">近期活動</h2>
+                <h2 className="tab-title mb-0"><InterfaceText>{"近期活動"}</InterfaceText></h2>
                 {activities.length > 0 && (
-                  <button className="activity-clear-btn" type="button" onClick={clearActivities}>
-                    清除紀錄
-                  </button>
+                  <button className="activity-clear-btn" type="button" onClick={clearActivities}><InterfaceText>{"清除紀錄"}</InterfaceText></button>
                 )}
               </div>
               <div className="activity-list">
                 {activities.length === 0 && (
                   <div className="profile-field">
-                    <span className="field-value">目前還沒有活動紀錄。</span>
+                    <span className="field-value"><InterfaceText>{"目前還沒有活動紀錄。"}</InterfaceText></span>
                   </div>
                 )}
                 {activities.map((activity) => (
@@ -861,7 +860,7 @@ export default function ProfilePage() {
                     </div>
                     <div className="activity-main">
                       <span className="activity-text">{activity.text}</span>
-                      <span className="activity-time">{formatActivityTime(activity.createdAt)}</span>
+                      <span className="activity-time" data-localized>{formatActivityTime(activity.createdAt, language)}</span>
                     </div>
                   </div>
                 ))}
@@ -873,7 +872,7 @@ export default function ProfilePage() {
             <section className="profile-card-inner p-4 p-md-5" ref={surveysSectionRef}>
               <div className="surveys-toolbar">
                 <div className="surveys-title-group">
-                  <h2 className="tab-title mb-0">我的問卷</h2>
+                  <h2 className="tab-title mb-0"><InterfaceText>{"我的問卷"}</InterfaceText></h2>
                   <div className="survey-search">
                     <i className="ri-search-line"></i>
                     <input
@@ -888,7 +887,7 @@ export default function ProfilePage() {
                 <div className="survey-controls">
                   <div className="survey-sort-options" role="radiogroup" aria-label="問卷時間排序">
                     <label className="survey-sort-option">
-                      <span>追蹤日期：由近到遠</span>
+                      <span><InterfaceText>{"追蹤日期：由近到遠"}</InterfaceText></span>
                       <input
                         type="radio"
                         name="survey-sort-order"
@@ -898,7 +897,7 @@ export default function ProfilePage() {
                       />
                     </label>
                     <label className="survey-sort-option">
-                      <span>追蹤日期：由遠到近</span>
+                      <span><InterfaceText>{"追蹤日期：由遠到近"}</InterfaceText></span>
                       <input
                         type="radio"
                         name="survey-sort-order"
@@ -913,29 +912,27 @@ export default function ProfilePage() {
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 {isLoadingSurveys && (
                   <div className="profile-field">
-                    <span className="field-value">載入問卷中…</span>
+                    <span className="field-value"><InterfaceText>{"載入問卷中…"}</InterfaceText></span>
                   </div>
                 )}
                 {!isLoadingSurveys && surveyRecords.length === 0 && (
                   <div className="profile-field">
-                    <span className="field-value">目前還沒有建立問卷。</span>
+                    <span className="field-value"><InterfaceText>{"目前還沒有建立問卷。"}</InterfaceText></span>
                   </div>
                 )}
                 {!isLoadingSurveys && surveyRecords.length > 0 && visibleSurveyRecords.length === 0 && (
                   <div className="profile-field">
-                    <span className="field-value">找不到符合搜尋條件的問卷。</span>
+                    <span className="field-value"><InterfaceText>{"找不到符合搜尋條件的問卷。"}</InterfaceText></span>
                   </div>
                 )}
                 {!isLoadingSurveys && visibleSurveyRecords.map((survey) => (
                   <div key={`${survey.id}-${survey.code}`} className="profile-field" style={{ justifyContent: "space-between", gap: 16 }}>
                     <div>
                       <strong>{survey.title}</strong>
-                      <div style={{ color: "var(--slate-400)", fontSize: 13 }}>
-                        邀請碼 {survey.code} · {survey.responseCount} 份回覆 · {survey.createdAt}
+                      <div style={{ color: "var(--slate-400)", fontSize: 13 }}><InterfaceText>{"邀請碼"}</InterfaceText>{survey.code} · {survey.responseCount} 份回覆 · {survey.createdAt}
                       </div>
                       <div className="survey-deadline-meta">
-                        <i className="ri-time-line"></i>
-                        截止 {formatSurveyDeadline(survey.deadlineAt)}
+                        <i className="ri-time-line"></i><InterfaceText>{"截止"}</InterfaceText>{formatSurveyDeadline(survey.deadlineAt, language)}
                       </div>
                     </div>
                     <button
@@ -949,9 +946,7 @@ export default function ProfilePage() {
                         });
                         handleOpenSurveyDetail(survey);
                       }}
-                    >
-                      查看詳情
-                    </button>
+                    ><InterfaceText>{"查看詳情"}</InterfaceText></button>
                   </div>
                 ))}
               </div>
@@ -966,8 +961,8 @@ export default function ProfilePage() {
             <i className="ri-checkbox-circle-line"></i>
           </div>
           <div>
-            <strong>已開啟雙因子驗證</strong>
-            <p>下次登入時會要求輸入驗證碼。</p>
+            <strong><InterfaceText>{"已開啟雙因子驗證"}</InterfaceText></strong>
+            <p><InterfaceText>{"下次登入時會要求輸入驗證碼。"}</InterfaceText></p>
           </div>
           <button onClick={() => setShowTwoFactorNotice(false)} aria-label="關閉通知">
             <i className="ri-close-line"></i>
@@ -981,8 +976,8 @@ export default function ProfilePage() {
             <i className="ri-checkbox-circle-line"></i>
           </div>
           <div>
-            <strong>密碼已修改</strong>
-            <p>你的登入密碼已成功更新。</p>
+            <strong><InterfaceText>{"密碼已修改"}</InterfaceText></strong>
+            <p><InterfaceText>{"你的登入密碼已成功更新。"}</InterfaceText></p>
           </div>
           <button onClick={() => setShowPasswordNotice(false)} aria-label="關閉通知">
             <i className="ri-close-line"></i>
@@ -996,9 +991,9 @@ export default function ProfilePage() {
             <div className="profile-confirm-icon">
               <i className="ri-shield-keyhole-line"></i>
             </div>
-            <h3>關閉雙因子驗證</h3>
-            <p>請輸入目前的登入密碼，確認是你本人操作。</p>
-            <label className="profile-confirm-label" htmlFor="disable-2fa-password">密碼</label>
+            <h3><InterfaceText>{"關閉雙因子驗證"}</InterfaceText></h3>
+            <p><InterfaceText>{"請輸入目前的登入密碼，確認是你本人操作。"}</InterfaceText></p>
+            <label className="profile-confirm-label" htmlFor="disable-2fa-password"><InterfaceText>{"密碼"}</InterfaceText></label>
             <div className="profile-confirm-input-wrap">
               <input
                 id="disable-2fa-password"
@@ -1024,9 +1019,7 @@ export default function ProfilePage() {
             </div>
             {twoFactorPasswordError && <div className="profile-confirm-error">{twoFactorPasswordError}</div>}
             <div className="profile-confirm-actions">
-              <button className="profile-confirm-secondary" type="button" onClick={closeDisableTwoFactorModal} disabled={isDisablingTwoFactor}>
-                取消
-              </button>
+              <button className="profile-confirm-secondary" type="button" onClick={closeDisableTwoFactorModal} disabled={isDisablingTwoFactor}><InterfaceText>{"取消"}</InterfaceText></button>
               <button className="profile-confirm-danger" type="submit" disabled={isDisablingTwoFactor}>
                 {isDisablingTwoFactor ? "確認中..." : "確認關閉"}
               </button>
@@ -1045,9 +1038,7 @@ export default function ProfilePage() {
               <h3>{twoFactorModal.title}</h3>
               <p>{twoFactorModal.message}</p>
             </div>
-            <button className="profile-alert-primary" type="button" onClick={() => setTwoFactorModal(null)}>
-              知道了
-            </button>
+            <button className="profile-alert-primary" type="button" onClick={() => setTwoFactorModal(null)}><InterfaceText>{"知道了"}</InterfaceText></button>
           </div>
         </div>
       )}

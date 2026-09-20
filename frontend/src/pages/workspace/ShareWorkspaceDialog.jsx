@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import InterfaceText from "../../components/feature/InterfaceText";
 import "./sharing.css";
 
 export default function ShareWorkspaceDialog({ invite, onClose }) {
@@ -32,7 +33,7 @@ export default function ShareWorkspaceDialog({ invite, onClose }) {
         </header>
         <div className="share-conversation">
           <i className="ri-chat-3-line" />
-          <div><span>分享的對話</span><strong>{invite.title}</strong></div>
+          <div><span>分享的對話</span><strong data-user-content>{invite.title}</strong></div>
           <span className="share-permission"><i className="ri-eye-line" /> 僅供瀏覽</span>
         </div>
         <label htmlFor="workspace-share-link">檢視連結</label>
@@ -43,7 +44,7 @@ export default function ShareWorkspaceDialog({ invite, onClose }) {
         <button type="button" className={`share-primary${copied ? " is-copied" : ""}`} onClick={copyLink}>
           <i className={copied ? "ri-check-line" : "ri-file-copy-line"} />{copied ? "已複製連結" : "複製檢視連結"}
         </button>
-        <p className="share-copy-status" role="status">{copyStatus}</p>
+        <p className="share-copy-status" role="status" data-localized><InterfaceText>{copyStatus}</InterfaceText></p>
         <div className="share-access-note"><i className="ri-shield-check-line" /><p>取得連結即可免登入查看。<br />訪客無法傳送指令或修改這段對話。</p></div>
         <footer className="share-dialog-actions">
           <button type="button" onClick={onClose}>完成</button>

@@ -1,3 +1,4 @@
+import InterfaceText from "../../components/feature/InterfaceText";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
@@ -143,10 +144,10 @@ const handleSubmit = async (e) => {
                 className="auth-logo-img"
               />
             </div>
-            <h2 className="auth-visual-title">開始您的分析旅程</h2>
+            <h2 className="auth-visual-title"><InterfaceText>{"開始您的分析旅程"}</InterfaceText></h2>
             <p className="auth-visual-desc">
-              <span>建立帳號</span>
-              <span>立即體驗 AI 驅動的資料分析</span>
+              <span><InterfaceText>{"建立帳號"}</InterfaceText></span>
+              <span><InterfaceText>{"立即體驗 AI 驅動的資料分析"}</InterfaceText></span>
             </p>
             <div className="auth-features">
               {[
@@ -171,7 +172,7 @@ const handleSubmit = async (e) => {
             <div className="back-home-icon">
               <i className="ri-arrow-left-line"></i>
             </div>
-            <span>返回首頁</span>
+            <span><InterfaceText>{"返回首頁"}</InterfaceText></span>
           </button>
 
           <div className="auth-form-wrapper auth-signup-form-wrapper">
@@ -182,25 +183,22 @@ const handleSubmit = async (e) => {
               <span className="mobile-logo-text">DataAnalysis</span>
             </div>
 
-            <h1 className="auth-title">建立帳號</h1>
-            <p className="auth-subtitle">
-              已有帳號？{" "}
-              <a className="auth-link" onClick={() => navigate("/login")} style={{ cursor: "pointer" }}>
-                立即登入
-              </a>
+            <h1 className="auth-title"><InterfaceText>{"建立帳號"}</InterfaceText></h1>
+            <p className="auth-subtitle"><InterfaceText>{"已有帳號？"}</InterfaceText>{" "}
+              <a className="auth-link" onClick={() => navigate("/login")} style={{ cursor: "pointer" }}><InterfaceText>{"立即登入"}</InterfaceText></a>
             </p>
 
             <form onSubmit={handleSubmit} autoComplete="off">
               <div className="row g-3 mb-3">
                 <div className="col-md-6">
-                  <label className="auth-label">姓名<span className="required-mark">*</span></label>
+                  <label className="auth-label"><InterfaceText>{"姓名"}</InterfaceText><span className="required-mark">*</span></label>
                   <div className="position-relative">
                     <i className="ri-user-line form-icon"></i>
                     <input type="text" name="signup_name" autoComplete="off" required className="form-control form-control-custom" placeholder="您的姓名" value={name} onChange={(e) => setName(e.target.value)} />
                   </div>
                 </div>
                 <div className="col-md-6">
-                  <label className="auth-label">手機號碼<span className="required-mark">*</span></label>
+                  <label className="auth-label"><InterfaceText>{"手機號碼"}</InterfaceText><span className="required-mark">*</span></label>
                   <div className="position-relative">
                     <i className="ri-smartphone-line form-icon"></i>
                     <input type="tel" name="signup_phone" autoComplete="off" required className="form-control form-control-custom" placeholder="+886 912 345 678" value={phone} onChange={(e) => setPhone(e.target.value)} />
@@ -210,14 +208,14 @@ const handleSubmit = async (e) => {
 
               <div className="row g-3 mb-3">
                 <div className="col-md-6">
-                  <label className="auth-label">公司 / 機構<span className="required-mark">*</span></label>
+                  <label className="auth-label"><InterfaceText>{"公司 / 機構"}</InterfaceText><span className="required-mark">*</span></label>
                   <div className="position-relative">
                     <i className="ri-building-line form-icon"></i>
                     <input type="text" name="signup_company" autoComplete="off" required className="form-control form-control-custom" placeholder="您的公司名稱" value={company} onChange={(e) => setCompany(e.target.value)} />
                   </div>
                 </div>
                 <div className="col-md-6">
-                  <label className="auth-label">性別<span className="required-mark">*</span></label>
+                  <label className="auth-label"><InterfaceText>{"性別"}</InterfaceText><span className="required-mark">*</span></label>
                   <div className="position-relative">
                     <i className="ri-user-heart-line form-icon"></i>
                     <div className={`auth-select ${isGenderOpen ? "open" : ""}`}>
@@ -263,7 +261,7 @@ const handleSubmit = async (e) => {
               </div>
 
               <div className="mb-3">
-                <label className="auth-label">電子郵件<span className="required-mark">*</span></label>
+                <label className="auth-label"><InterfaceText>{"電子郵件"}</InterfaceText><span className="required-mark">*</span></label>
                 <div className="position-relative">
                   <i className="ri-mail-line form-icon"></i>
                   <input type="email" name="signup_email" autoComplete="off" required className="form-control form-control-custom" placeholder="your@email.com" value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -271,7 +269,7 @@ const handleSubmit = async (e) => {
               </div>
 
               <div className="mb-3">
-                <label className="auth-label">密碼<span className="required-mark">*</span></label>
+                <label className="auth-label"><InterfaceText>{"密碼"}</InterfaceText><span className="required-mark">*</span></label>
                 <div className="position-relative">
                   <i className="ri-lock-line form-icon"></i>
                   <input
@@ -288,11 +286,11 @@ const handleSubmit = async (e) => {
                     <i className={showPassword ? "ri-eye-off-line" : "ri-eye-line"}></i>
                   </button>
                 </div>
-                <p className="password-requirement-note">!密碼需有一個字元為大寫，要英文及數字總共8位元!</p>
+                <p className="password-requirement-note"><InterfaceText>{"!密碼需有一個字元為大寫，要英文及數字總共8位元!"}</InterfaceText></p>
               </div>
 
               <div className="mb-4">
-                <label className="auth-label">確認密碼<span className="required-mark">*</span></label>
+                <label className="auth-label"><InterfaceText>{"確認密碼"}</InterfaceText><span className="required-mark">*</span></label>
                 <div className="position-relative">
                   <i className="ri-lock-2-line form-icon"></i>
                   <input
@@ -316,10 +314,9 @@ const handleSubmit = async (e) => {
               </button>
             </form>
 
-            <p className="auth-terms text-center mt-4">
-              註冊即表示您同意我們的{" "}
-              <a href="#" rel="nofollow">服務條款</a> 與{" "}
-              <a href="#" rel="nofollow">隱私政策</a>
+            <p className="auth-terms text-center mt-4"><InterfaceText>{"註冊即表示您同意我們的"}</InterfaceText>{" "}
+              <a href="#" rel="nofollow"><InterfaceText>{"服務條款"}</InterfaceText></a><InterfaceText>{"與"}</InterfaceText>{" "}
+              <a href="#" rel="nofollow"><InterfaceText>{"隱私政策"}</InterfaceText></a>
             </p>
           </div>
         </div>
@@ -335,9 +332,7 @@ const handleSubmit = async (e) => {
               <h3>{alertModal.title}</h3>
               <p>{alertModal.message}</p>
             </div>
-            <button className="auth-alert-primary" type="button" onClick={closeAlertModal}>
-              確定
-            </button>
+            <button className="auth-alert-primary" type="button" onClick={closeAlertModal}><InterfaceText>{"確定"}</InterfaceText></button>
           </div>
         </div>
       )}
@@ -347,8 +342,8 @@ const handleSubmit = async (e) => {
             <div className="auth-loading-icon">
               <i className="ri-loader-4-line"></i>
             </div>
-            <h2>正在建立帳號...</h2>
-            <p>註冊完成後會直接登入並進入系統，請稍候。</p>
+            <h2><InterfaceText>{"正在建立帳號..."}</InterfaceText></h2>
+            <p><InterfaceText>{"註冊完成後會直接登入並進入系統，請稍候。"}</InterfaceText></p>
           </div>
         </div>
       )}

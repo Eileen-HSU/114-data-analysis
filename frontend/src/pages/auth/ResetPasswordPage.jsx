@@ -1,3 +1,4 @@
+import InterfaceText from "../../components/feature/InterfaceText";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
@@ -131,7 +132,7 @@ export default function ResetPasswordPage() {
             <div className="back-home-icon">
               <i className="ri-arrow-left-line"></i>
             </div>
-            <span>重新發送</span>
+            <span><InterfaceText>{"重新發送"}</InterfaceText></span>
           </button>
 
           <div className="auth-form-wrapper">
@@ -151,7 +152,7 @@ export default function ResetPasswordPage() {
 
             <form onSubmit={handleSubmit} noValidate autoComplete="off">
               <div className="mb-3">
-                <label className="auth-label">驗證碼</label>
+                <label className="auth-label"><InterfaceText>{"驗證碼"}</InterfaceText></label>
                 <div className="position-relative">
                   <i className="ri-shield-keyhole-line form-icon"></i>
                   <input
@@ -169,7 +170,7 @@ export default function ResetPasswordPage() {
               </div>
 
               <div className="mb-3">
-                <label className="auth-label">設定新密碼</label>
+                <label className="auth-label"><InterfaceText>{"設定新密碼"}</InterfaceText></label>
                 <div className="position-relative">
                   <i className="ri-lock-line form-icon"></i>
                   <input
@@ -193,7 +194,7 @@ export default function ResetPasswordPage() {
               </div>
 
               <div className="mb-4">
-                <label className="auth-label">再次確認新密碼</label>
+                <label className="auth-label"><InterfaceText>{"再次確認新密碼"}</InterfaceText></label>
                 <div className="position-relative">
                   <i className="ri-lock-line form-icon"></i>
                   <input
@@ -241,8 +242,8 @@ export default function ResetPasswordPage() {
             <div className="auth-success-icon">
               <i className="ri-checkbox-circle-line"></i>
             </div>
-            <h3>密碼重設成功</h3>
-            <p>請使用新密碼重新登入您的帳號。</p>
+            <h3><InterfaceText>{"密碼重設成功"}</InterfaceText></h3>
+            <p><InterfaceText>{"請使用新密碼重新登入您的帳號。"}</InterfaceText></p>
             <button type="button" className="auth-success-action" data-localized onClick={() => navigate("/login", { replace: true })}>
               {language === "en" ? "Back to login" : "回到登入頁"}
             </button>
