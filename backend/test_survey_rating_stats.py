@@ -114,7 +114,14 @@ from routes.classifications.classification import (
 )
 from routes.surveys.survey import survey_bp
 from routes.exports.export import exports_bp
-from services.export_file_service import build_xlsx, build_docx, COLUMN_HEADERS
+from services.export_file_service import (
+    build_xlsx,
+    build_docx,
+    COLUMN_HEADERS,
+    _render_rating_donut_png,
+)
+import openpyxl
+from docx import Document as _DocxDocument
 
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
@@ -439,26 +446,71 @@ sample_rating_stats = [
     },
 ]
 
-print("\n--- D1：有 rating_stats，rows 也有內容 -> Excel 多一張評分題統計 sheet ---")
+print("\n--- D1：有 rating_stats，rows 也有內容 -> Excel 用極簡正式報表版型呈現（不使用圖表／bar／卡片底色）---")
 xlsx_with_rating = build_xlsx(sample_classification_rows, title="分類結果", rating_stats=sample_rating_stats)
 sheets_with_rating, sheet_names_with_rating = read_xlsx_sheets(xlsx_with_rating)
 check("評分題統計 sheet 存在", "評分題統計" in sheets_with_rating)
 check("分類結果 sheet 仍然存在", "分類結果" in sheets_with_rating)
-rating_sheet_rows = sheets_with_rating["評分題統計"]
+
+_wb_check = openpyxl.load_workbook(io.BytesIO(xlsx_with_rating))
+_rating_ws_check = _wb_check["評分題統計"]
+check("評分題統計 sheet 完全沒有使用 Excel 圖表物件", len(_rating_ws_check._charts) == 0)
 check(
-    "評分題統計表頭正確",
-    rating_sheet_rows[0] == ["題目", "平均分", "有效回答數", "0 分人數", "1 分人數", "2 分人數", "3 分人數", "4 分人數", "5 分人數"],
+    "評分題統計 sheet 完全沒有套用任何 conditional formatting（不使用 data bar／長條圖）",
+    len(list(_rating_ws_check.conditional_formatting)) == 0,
 )
-check("評分題統計資料列裡 0 分人數是 1（不是被當成未作答漏掉）", rating_sheet_rows[1][3] == 1)
-check("評分題統計資料列裡 5 分人數是 1", rating_sheet_rows[1][8] == 1)
-check("平均分正確顯示 2.7", rating_sheet_rows[1][1] == 2.7)
+
+rating_sheet_rows = sheets_with_rating["評分題統計"]
+check("Q 編號＋題目全文出現在題目列（同一格，橫跨整個區塊寬度）", rating_sheet_rows[0][0] == "Q1　課程整體滿意度")
+check("平均分數行格式為「平均分數：」＋「2.7 / 5」兩個儲存格", rating_sheet_rows[1][0] == "平均分數：" and rating_sheet_rows[1][1] == "2.7 / 5")
+check("有效回答行格式為「有效回答：」＋「3 份」", rating_sheet_rows[2][0] == "有效回答：" and rating_sheet_rows[2][1] == "3 份")
+check("分布區只用兩列：第一列是 0~5 分表頭", rating_sheet_rows[4] == ["0 分", "1 分", "2 分", "3 分", "4 分", "5 分"])
+check(
+    "分布區第二列是對應人數，0 分那格是「1 人」（不是被當成未作答漏掉）",
+    rating_sheet_rows[5][0] == "1 人",
+)
+check("分布區第二列裡 5 分那格是「1 人」", rating_sheet_rows[5][5] == "1 人")
+
+average_value_cell = _rating_ws_check.cell(row=2, column=2)
+title_cell_check = _rating_ws_check.cell(row=1, column=1)
+check(
+    "只有平均分數這個關鍵數字用粉色強調，題目列文字是深灰色（不是整條高飽和桃紅底白字）",
+    average_value_cell.font.color.rgb in ("FFF43F5E", "00F43F5E")
+    and title_cell_check.font.color is not None
+    and title_cell_check.font.color.rgb not in ("FFFFFFFF", "00FFFFFF"),
+)
 check("分類結果 sheet 內容完全沒被影響", sheets_with_rating["分類結果"][0] == COLUMN_HEADERS)
+
+print("\n--- D1b：多題時每題各自一個獨立區塊，題目之間留 2 列空白 ---")
+two_question_stats = sample_rating_stats + [
+    {
+        "question_id": "q_rating_2",
+        "question_number": 2,
+        "title": "講師表達能力",
+        "average": 4.0,
+        "answered_count": 2,
+        "distribution": {"0": 0, "1": 0, "2": 0, "3": 0, "4": 2, "5": 0},
+    },
+]
+xlsx_two_questions = build_xlsx([], title="分類結果", rating_stats=two_question_stats)
+sheets_two_questions, _ = read_xlsx_sheets(xlsx_two_questions)
+two_q_rows = sheets_two_questions["評分題統計"]
+check(
+    "第一題區塊佔用第 1~6 列（題目、平均分、有效回答、空白、分布表頭、分布數值）",
+    two_q_rows[0][0] == "Q1　課程整體滿意度" and two_q_rows[5][0] == "1 人",
+)
+check("第 7、8 列是空白列（題目之間留白，不套用任何內容）", two_q_rows[6] == [None] * 6 and two_q_rows[7] == [None] * 6)
+check("第二題區塊從第 9 列重新開始，兩題不會黏在一起", two_q_rows[8][0] == "Q2　講師表達能力")
 
 print("\n--- D2：有 rating_stats，但 rows=[]（問卷只有 rating 題）不能壞 ---")
 try:
     xlsx_rating_only = build_xlsx([], title="分類結果", rating_stats=sample_rating_stats)
     sheets_rating_only, _ = read_xlsx_sheets(xlsx_rating_only)
     check("rows=[] 時 build_xlsx 不拋例外，評分題統計 sheet 仍正常產生", "評分題統計" in sheets_rating_only)
+    check(
+        "rows=[] 時評分題統計內容仍然正確（不因為分類結果是空的而跟著壞掉）",
+        sheets_rating_only["評分題統計"][1][1] == "2.7 / 5",
+    )
 except Exception as e:
     check(f"rows=[] 時 build_xlsx 不拋例外（實際拋出：{e!r}）", False)
 
@@ -472,15 +524,30 @@ check(
     sheets_no_rating["分類結果"] == sheets_with_rating["分類結果"],
 )
 
-print("\n--- D4：Word 有 rating_stats -> 評分題統計出現在既有分類結果之前 ---")
+print("\n--- D4：Word 有 rating_stats -> 每題一個區塊，插入甜甜圈圖圖片，不是表格或純文字清單 ---")
 docx_with_rating = build_docx(sample_classification_rows, title="分類結果", rating_stats=sample_rating_stats)
 docx_text_with_rating = read_docx_text(docx_with_rating)
 check("Word 裡出現「評分題統計」標題", "評分題統計" in docx_text_with_rating)
-check("Word 裡評分題統計的平均分 2.7 有輸出", "2.7" in docx_text_with_rating)
-check("Word 裡 0 分人數 1 有輸出（用獨立儲存格文字比對，避免跟其他數字誤判）", "\n1\n" in ("\n" + docx_text_with_rating + "\n"))
+check("Word 裡題目全文清楚出現，作為小標題（Q 編號 + 題目同一行）", "Q1　課程整體滿意度" in docx_text_with_rating)
+check("Word 裡平均分視覺突出的文字「2.7 / 5」有輸出", "2.7 / 5" in docx_text_with_rating)
+check("Word 裡有效回答數正確輸出", "有效回答：3 份" in docx_text_with_rating)
+check("Word 裡精簡列出 0 分：1 人（0 分沒被當成未作答漏掉）", "0 分：1 人" in docx_text_with_rating)
+check("Word 裡精簡列出 5 分：1 人", "5 分：1 人" in docx_text_with_rating)
 check(
     "顯示順序：評分題統計在既有分類結果標題之前",
     docx_text_with_rating.index("評分題統計") < docx_text_with_rating.index("部門合作"),
+)
+
+_doc_check = _DocxDocument(io.BytesIO(docx_with_rating))
+check(
+    "評分題統計不是用表格呈現：整份文件裡只有 1 張表格（既有分類結果那張），\n"
+    "    評分題統計那段完全沒有產生表格",
+    len(_doc_check.tables) == 1,
+)
+_inline_shapes = _doc_check.inline_shapes
+check(
+    "評分題統計改成插入甜甜圈圖圖片：文件裡有 1 張內嵌圖片（對應這 1 題）",
+    len(_inline_shapes) == 1,
 )
 
 print("\n--- D5：Word 有 rating_stats，但 rows=[]（rating-only）不能壞 ---")
@@ -488,6 +555,9 @@ try:
     docx_rating_only = build_docx([], title="問卷分析", rating_stats=sample_rating_stats)
     docx_text_rating_only = read_docx_text(docx_rating_only)
     check("rows=[] 時 build_docx 不拋例外", "評分題統計" in docx_text_rating_only)
+    check("rows=[] 時評分題統計內容仍正確（平均分 2.7 / 5 仍有輸出）", "2.7 / 5" in docx_text_rating_only)
+    _doc_rating_only_check = _DocxDocument(io.BytesIO(docx_rating_only))
+    check("rows=[] 時甜甜圈圖圖片仍正常插入", len(_doc_rating_only_check.inline_shapes) == 1)
 except Exception as e:
     check(f"rows=[] 時 build_docx 不拋例外（實際拋出：{e!r}）", False)
 
@@ -496,6 +566,29 @@ docx_no_rating = build_docx(sample_classification_rows, title="分類結果")
 docx_text_no_rating = read_docx_text(docx_no_rating)
 check("Word 裡沒有「評分題統計」字樣", "評分題統計" not in docx_text_no_rating)
 check("Word 裡既有分類內容仍然存在", "部門合作" in docx_text_no_rating and "B2 支援協作" in docx_text_no_rating)
+check("沒有 rating_stats 時完全不插入任何圖片", len(_DocxDocument(io.BytesIO(docx_no_rating)).inline_shapes) == 0)
+
+
+# ═══════════════════════════════════════════════════════════════
+# Part F：_render_rating_donut_png() 圖片產生器單元測試
+# ═══════════════════════════════════════════════════════════════
+print("\n========== Part F：_render_rating_donut_png() 單元測試 ==========")
+
+png_normal = _render_rating_donut_png({"0": 1, "1": 0, "2": 0, "3": 1, "4": 0, "5": 1}, 2.7)
+check("正常情況（有資料）能產生非空的 PNG bytes", isinstance(png_normal, (bytes, bytearray)) and len(png_normal) > 0)
+check("PNG 檔頭正確（合法圖片檔案）", png_normal[:8] == b"\x89PNG\r\n\x1a\n")
+
+png_no_data = _render_rating_donut_png({"0": 0, "1": 0, "2": 0, "3": 0, "4": 0, "5": 0}, None)
+check(
+    "完全沒有人作答（average=None、distribution 全 0）時，圖片仍能正常產生，不拋例外",
+    isinstance(png_no_data, (bytes, bytearray)) and len(png_no_data) > 0,
+)
+
+png_rating_zero_only = _render_rating_donut_png({"0": 5, "1": 0, "2": 0, "3": 0, "4": 0, "5": 0}, 0.0)
+check(
+    "全部受試者都回答 0 分（average=0.0）時仍能正常產生圖片，不會因為 0 是 falsy 而被當成沒資料",
+    isinstance(png_rating_zero_only, (bytes, bytearray)) and len(png_rating_zero_only) > 0,
+)
 
 
 # ═══════════════════════════════════════════════════════════════
