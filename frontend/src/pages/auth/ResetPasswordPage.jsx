@@ -8,6 +8,7 @@ import "./auth.css";
 
 export default function ResetPasswordPage() {
   const { language } = useLanguage();
+  const localize = (zh, en) => language === "en" ? en : zh;
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   
@@ -41,19 +42,19 @@ export default function ResetPasswordPage() {
 
     // 基礎前端驗證
     if (!email) {
-      setError("缺少電子郵件資訊，請重新從信箱連結進入。");
+      setError(localize("缺少電子郵件資訊，請重新從信箱連結進入。", "Email information is missing. Please open the link in your email again."));
       return;
     }
     if (!/^\d{6}$/.test(trimmedOtp)) {
-      setError("請輸入正確的 6 位數驗證碼。");
+      setError(localize("請輸入正確的 6 位數驗證碼。", "Please enter a valid 6-digit verification code."));
       return;
     }
     if (newPassword.length < 8) {
-      setError("新密碼至少需要 8 個字元，並包含英文字母和數字");
+      setError(localize("新密碼至少需要 8 個字元，並包含英文字母和數字", "Your new password must contain at least 8 characters, including letters and numbers."));
       return;
     }
     if (newPassword !== confirmPassword) {
-      setError("兩次輸入的新密碼不一致。");
+      setError(localize("兩次輸入的新密碼不一致。", "The new passwords do not match."));
       return;
     }
 
@@ -80,7 +81,7 @@ export default function ResetPasswordPage() {
       
     } catch (err) {
       // 處理後端回傳的錯誤 (如：驗證碼錯誤、過期等)
-      setError(err.response?.data?.error || "密碼重設失敗，請檢查驗證碼或稍後再試。");
+      setError(err.response?.data?.error || localize("密碼重設失敗，請檢查驗證碼或稍後再試。", "Password reset failed. Check your verification code or try again later."));
     } finally {
       setIsSubmitting(false);
     }
@@ -137,11 +138,15 @@ export default function ResetPasswordPage() {
             <div className="forgot-icon-wrap">
               <i className="ri-lock-unlock-line"></i>
             </div>
-            <h1 className="auth-title">
-              {isForgotFlow ? "重新設定密碼" : "變更您的密碼"}
+            <h1 className="auth-title" data-localized>
+              {isForgotFlow ? localize("重新設定密碼", "Reset your password") : localize("變更您的密碼", "Change your password")}
             </h1>
-            <p className="auth-subtitle" style={{ marginBottom: 28 }}>
-              {isForgotFlow ? "正在重設" : "正在變更"} <strong>{email || "您的電子郵件"}</strong> 的密碼
+            <p className="auth-subtitle" style={{ marginBottom: 28 }} data-localized>
+              {language === "en" ? (
+                <>{isForgotFlow ? "Resetting the password for " : "Changing the password for "}<strong>{email || "your email address"}</strong></>
+              ) : (
+                <>{isForgotFlow ? "正在重設" : "正在變更"} <strong>{email || "您的電子郵件"}</strong> 的密碼</>
+              )}
             </p>
 
             <form onSubmit={handleSubmit} noValidate autoComplete="off">
@@ -172,7 +177,8 @@ export default function ResetPasswordPage() {
                     name="reset_new_password"
                     autoComplete="new-password"
                     className="form-control form-control-custom pe-5"
-                    placeholder="請輸入新密碼"
+                    data-localized
+                    placeholder={localize("請輸入新密碼", "Enter your new password")}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                   />
@@ -195,7 +201,8 @@ export default function ResetPasswordPage() {
                     name="reset_confirm_password"
                     autoComplete="new-password"
                     className="form-control form-control-custom"
-                    placeholder="請再次輸入新密碼"
+                    data-localized
+                    placeholder={localize("請再次輸入新密碼", "Re-enter your new password")}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                   />
@@ -208,12 +215,12 @@ export default function ResetPasswordPage() {
                 </p>
               )}
 
-              <button type="submit" className="btn btn-auth-submit w-100 mt-2" disabled={isSubmitting}>
+              <button type="submit" className="btn btn-auth-submit w-100 mt-2" disabled={isSubmitting} data-localized>
                 {isSubmitting
-                  ? "設定中..."
+                  ? localize("設定中...", "Saving…")
                   : isForgotFlow
-                    ? "確定重設並返回登入"
-                    : "確定修改並回個人資料"}
+                    ? localize("確定重設並返回登入", "Reset password and return to login")
+                    : localize("確定修改並回個人資料", "Save password and return to profile")}
               </button>
             </form>
           </div>
