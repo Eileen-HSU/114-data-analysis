@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/AuthContext";
+import { useLanguage } from "../../context/LanguageContext";
 import { apiUrl } from "../../lib/api";
 import conqightLogo from "../../assets/conqight-logo.png";
 import "./auth.css";
@@ -8,6 +9,7 @@ import "./auth.css";
 export default function LoginPage() {
   const navigate = useNavigate();
   const { login } = useAuth();
+  const { language } = useLanguage();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -239,10 +241,12 @@ export default function LoginPage() {
               </button>
             </form>
 
-            <p className="auth-terms text-center mt-4">
-              登入即表示您同意我們的{" "}
-              <a href="#" rel="nofollow">服務條款</a> 與{" "}
-              <a href="#" rel="nofollow">隱私政策</a>
+            <p className="auth-terms text-center mt-4" data-localized>
+              {language === "en" ? "By logging in, you agree to our " : "登入即表示您同意我們的 "}
+              <a href="#" rel="nofollow">{language === "en" ? "Terms of Service" : "服務條款"}</a>
+              {language === "en" ? " and " : " 與 "}
+              <a href="#" rel="nofollow">{language === "en" ? "Privacy Policy" : "隱私政策"}</a>
+              {language === "en" ? "." : "。"}
             </p>
           </div>
         </div>
