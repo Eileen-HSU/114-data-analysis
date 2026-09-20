@@ -49,8 +49,18 @@ def _row_values(row: dict) -> list:
     ]
 
 
-def build_xlsx(rows: list, title: str = "分類結果") -> bytes:
-    """把 rows 產生成 .xlsx 檔案，回傳檔案的原始 bytes。"""
+def build_xlsx(rows: list, title: str = "分類結果", rating_stats: list | None = None) -> bytes:
+    """把 rows 產生成 .xlsx 檔案，回傳檔案的原始 bytes。
+
+    rating_stats 是【新增｜問卷 Chat 分析評分題統計】的可選參數，預設
+    None，行為與呼叫端完全相容：
+      - 不傳／傳 None／傳空陣列 []：跟這個參數新增之前的行為逐位元組
+        相同，不會多一張 sheet，既有呼叫端（分類結果匯出、Excel 上傳
+        分類）完全不受影響。
+      - 傳非空陣列：在既有分類結果 sheet 之外，另外插入一張「評分題
+        統計」sheet（放在最前面，索引 0），下面既有的分類結果建置邏輯
+        （表頭、合併儲存格、欄寬…）一行都不動。
+    """
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = title[:31] if title else "分類結果"  # Excel 分頁名稱上限 31 字元
@@ -100,9 +110,71 @@ def build_xlsx(rows: list, title: str = "分類結果") -> bytes:
 
     ws.freeze_panes = "A2"
 
+    # 【新增｜評分題統計 sheet】只在有評分題統計時才建立，插在最前面
+    # （index=0），讓使用者打開檔案先看到評分題總覽、再看質化分類細節。
+    # rating_stats 為 None 或空陣列時完全不執行這段，既有分類結果 sheet
+    # （上面已經建置完成）逐位元組不變。
+    if rating_stats:
+        _write_rating_stats_sheet(wb, rating_stats, index=0)
+        wb.active = 0
+
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+def _write_rating_stats_sheet(wb, rating_stats: list, *, index: int = 0):
+    """在既有 workbook 裡插入一張「評分題統計」sheet。
+
+    只服務 build_xlsx() 的評分統計附加需求，跟既有分類結果 sheet 的
+    建置邏輯（COLUMN_HEADERS、_row_values、合併儲存格）完全獨立，
+    不共用、也不會互相影響。
+    """
+    ws = wb.create_sheet(title="評分題統計", index=index)
+
+    header_font = Font(name="微軟正黑體", bold=True, color="FFFFFFFF")
+    header_fill = PatternFill(start_color="FFF43F5E", end_color="FFF43F5E", fill_type="solid")
+    body_font = Font(name="微軟正黑體")
+    wrap_alignment = Alignment(wrap_text=True, vertical="top", horizontal="left")
+    center_alignment = Alignment(wrap_text=True, vertical="center", horizontal="center")
+    thin_border = Border(
+        left=Side(style="thin", color="FF000000"),
+        right=Side(style="thin", color="FF000000"),
+        top=Side(style="thin", color="FF000000"),
+        bottom=Side(style="thin", color="FF000000"),
+    )
+
+    headers = ["題目", "平均分", "有效回答數"] + [f"{score} 分人數" for score in range(6)]
+    for col_idx, header in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=col_idx, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = center_alignment
+        cell.border = thin_border
+
+    for row_idx, stat in enumerate(rating_stats, start=2):
+        distribution = stat.get("distribution") or {}
+        question_number = stat.get("question_number")
+        title_text = stat.get("title") or ""
+        question_label = f"Q{question_number}：{title_text}" if question_number else title_text
+        average = stat.get("average")
+        values = [
+            question_label,
+            average if average is not None else "無資料",
+            stat.get("answered_count", 0),
+        ] + [distribution.get(str(score), 0) for score in range(6)]
+        for col_idx, value in enumerate(values, start=1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.font = body_font
+            cell.border = thin_border
+            cell.alignment = wrap_alignment if col_idx == 1 else center_alignment
+
+    column_widths = [40, 10, 12] + [10] * 6
+    for col_idx, width in enumerate(column_widths, start=1):
+        ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+    ws.freeze_panes = "A2"
+    return ws
 
 
 def _apply_docx_font(run, size_pt: float, bold: bool = False):
@@ -314,7 +386,59 @@ def _build_classification_table(doc: Document, rows: list, col_widths: list):
     return table
 
 
-def build_docx(rows: list, title: str = "分類結果") -> bytes:
+_RATING_STATS_COLUMN_HEADERS = ["題目", "平均分", "有效回答數", "0分", "1分", "2分", "3分", "4分", "5分"]
+_RATING_STATS_COL_WIDTH_RATIOS = [0.34, 0.10, 0.12, 0.074, 0.074, 0.074, 0.074, 0.074, 0.074]
+
+
+def _build_rating_stats_table(doc: Document, rating_stats: list, col_widths: list):
+    """建立「評分題統計」表格：題目 / 平均分 / 有效回答數 / 0~5 分人數。
+
+    只服務 build_docx() 的評分統計附加需求，重用既有純排版 helper
+    （_write_cell_paragraphs／_set_cell_shading／_set_repeat_header_row／
+    _set_table_fixed_layout），不跟 _build_classification_table() 共用
+    任何分類結果專屬的欄位定義或合併儲存格邏輯。
+    """
+    table = doc.add_table(rows=1, cols=len(_RATING_STATS_COLUMN_HEADERS))
+    table.style = "Table Grid"
+    _set_table_fixed_layout(table)
+
+    header_row = table.rows[0]
+    for cell, header in zip(header_row.cells, _RATING_STATS_COLUMN_HEADERS):
+        _write_cell_paragraphs(
+            cell, header, size_pt=_HEADER_FONT_SIZE, bold=True,
+            align=WD_ALIGN_PARAGRAPH.CENTER,
+        )
+        _set_cell_shading(cell, _HEADER_FILL)
+    _set_repeat_header_row(header_row)
+
+    for stat in rating_stats:
+        distribution = stat.get("distribution") or {}
+        question_number = stat.get("question_number")
+        title_text = stat.get("title") or ""
+        question_label = f"Q{question_number}：{title_text}" if question_number else title_text
+        average = stat.get("average")
+        average_text = str(average) if average is not None else "無資料"
+
+        values = [question_label, average_text, str(stat.get("answered_count", 0))] + [
+            str(distribution.get(str(score), 0)) for score in range(6)
+        ]
+        cells = table.add_row().cells
+        for c_idx, value in enumerate(values):
+            _write_cell_paragraphs(
+                cells[c_idx], value, size_pt=_BODY_FONT_SIZE, bold=(c_idx == 0),
+                align=WD_ALIGN_PARAGRAPH.LEFT if c_idx == 0 else WD_ALIGN_PARAGRAPH.CENTER,
+            )
+
+    for row in table.rows:
+        for i, width in enumerate(col_widths):
+            row.cells[i].width = width
+    for i, width in enumerate(col_widths):
+        table.columns[i].width = width
+
+    return table
+
+
+def build_docx(rows: list, title: str = "分類結果", rating_stats: list | None = None) -> bytes:
     """把 rows 產生成 .docx 檔案，回傳檔案的原始 bytes。
 
     如果 rows 帶有 source_column（Excel 上傳來源）或 question_id
@@ -322,6 +446,14 @@ def build_docx(rows: list, title: str = "分類結果") -> bytes:
     切成多張各自完整（各自有表頭）的表格，避免不同題目的分類結果被
     混在同一張表裡看不出界線。沒有這類中繼資料時（例如比較舊的匯出
     資料）維持原本「整批 rows 一張表」的行為。
+
+    rating_stats 是【新增｜問卷 Chat 分析評分題統計】的可選參數，預設
+    None，行為與呼叫端完全相容：
+      - 不傳／傳 None／傳空陣列 []：不會多輸出任何段落或表格，既有
+        分類結果輸出逐段落相同，既有呼叫端不受影響。
+      - 傳非空陣列：在既有分類結果標題／表格**之前**，先輸出一段
+        「評分題統計」標題＋表格，兩者之間用分頁隔開，不會把評分統計
+        跟分類結果擠在同一頁。
     """
     doc = Document()
 
@@ -333,12 +465,25 @@ def build_docx(rows: list, title: str = "分類結果") -> bytes:
     section.left_margin = Cm(1.5)
     section.right_margin = Cm(1.5)
 
+    usable_width = section.page_width - section.left_margin - section.right_margin
+
+    # 【新增｜評分題統計】只在有評分題統計時才輸出，放在既有分類結果
+    # 之前；輸出完之後強制分頁，避免跟下面的分類結果標題擠在同一頁。
+    if rating_stats:
+        rating_heading = doc.add_heading("評分題統計", level=1)
+        rating_heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        for run in rating_heading.runs:
+            _apply_docx_font(run, size_pt=run.font.size.pt if run.font.size else 18, bold=True)
+
+        rating_col_widths = [Emu(int(usable_width * ratio)) for ratio in _RATING_STATS_COL_WIDTH_RATIOS]
+        _build_rating_stats_table(doc, rating_stats, rating_col_widths)
+        doc.add_page_break()
+
     heading = doc.add_heading(title or "分類結果", level=1)
     heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
     for run in heading.runs:
         _apply_docx_font(run, size_pt=run.font.size.pt if run.font.size else 18, bold=True)
 
-    usable_width = section.page_width - section.left_margin - section.right_margin
     col_widths = [Emu(int(usable_width * ratio)) for ratio in _COLUMN_WIDTH_RATIOS]
 
     groups = _group_rows_by_question(rows)

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/AuthContext";
 import { apiUrl } from "../../lib/api";
 
-export default function ExportActions({ rows, chatId, sourceFilename }) {
+export default function ExportActions({ rows, ratingStats, chatId, sourceFilename }) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [pendingFormat, setPendingFormat] = useState("");
@@ -37,6 +37,9 @@ export default function ExportActions({ rows, chatId, sourceFilename }) {
     setPendingFormat(format);
     const timestamp = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 19).replace(/[:T]/g, "-");
     const baseFilename = sourceFilename ? sourceFilename.replace(/\.[^.]+$/, "") : `分類結果_${timestamp}`;
+    // 【新增｜評分題統計】ratingStats 是可選欄位，沒有評分題（或是 Excel
+    // 上傳分類，本來就沒有這個概念）時是 undefined/[]，後端 create_export
+    // 收到空值時行為跟這個欄位新增之前完全一樣，不會多產生任何 sheet/section。
     try {
       const response = await fetch(apiUrl("/api/exports"), {
         method: "POST",
@@ -44,6 +47,7 @@ export default function ExportActions({ rows, chatId, sourceFilename }) {
         body: JSON.stringify({
           chat_id: chatId, filename: `${baseFilename}_分類結果.${format}`,
           export_type: format, row_count: rows.length, rows, title: baseFilename,
+          rating_stats: ratingStats && ratingStats.length > 0 ? ratingStats : undefined,
         }),
       });
       const data = await response.json().catch(() => ({}));

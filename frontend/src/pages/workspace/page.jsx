@@ -37,10 +37,16 @@ function isExcelFile(file) {
   return !!file && /\.(xlsx|xls)$/i.test(file.name || "");
 }
 
-// 把 /api/classification/upload 回傳的 aggregated_groups 陣列存進訊息內容
-// （含 marker 方便還原）。分組、過濾「無具體建議」、彙整判斷原因跟建議摘要
-// 都已經在後端做完了，這裡不用再處理，直接存、直接顯示。
-function buildClassificationMessageContent(aggregatedGroups, meta) {
+// 把 /api/classification/upload（或問卷 /analyze）回傳的 aggregated_groups
+// 陣列存進訊息內容（含 marker 方便還原）。分組、過濾「無具體建議」、彙整
+// 判斷原因跟建議摘要都已經在後端做完了，這裡不用再處理，直接存、直接顯示。
+//
+// 【新增｜評分題統計】第三個參數 ratingStats 是問卷 rating 題的後端統計
+// （/api/surveys/<code>/analyze 回傳的 rating_stats），跟 aggregatedGroups
+// 完全平行、互不相干：Excel 上傳分類（沒有問卷、沒有 rating 題）永遠不會
+// 傳這個參數，預設 undefined -> 存成空陣列，跟這個參數新增之前的訊息格式
+// 相容（parseClassificationMessageContent 單純 JSON.parse，不需要改）。
+function buildClassificationMessageContent(aggregatedGroups, meta, ratingStats) {
   const rows = (aggregatedGroups || []).map((g) => ({
     main_category: g.main_category || "",
     sub_category: g.sub_category || "",
@@ -51,7 +57,15 @@ function buildClassificationMessageContent(aggregatedGroups, meta) {
     synthesis_error: g.synthesis_error || null,
     respondent_count: g.respondent_count ?? null,
   }));
-  return `${CLASSIFICATION_TABLE_MARKER}${JSON.stringify({ rows, meta: meta || {} })}`;
+  const rating_stats = (ratingStats || []).map((r) => ({
+    question_id: r.question_id,
+    question_number: r.question_number ?? null,
+    title: r.title || "",
+    average: r.average ?? null,
+    answered_count: r.answered_count ?? 0,
+    distribution: r.distribution || {},
+  }));
+  return `${CLASSIFICATION_TABLE_MARKER}${JSON.stringify({ rows, meta: meta || {}, rating_stats })}`;
 }
 
 // 跟上面成對：把存起來的字串還原成表格資料。回傳 null 代表「這不是分類結果訊息」。
@@ -390,8 +404,128 @@ function MultilineText({ text, highlightRespondent = false }) {
   });
 }
 
-function ClassificationTable({ rows, meta, chatId, showToast, readOnly = false }) {
-  if (!rows || rows.length === 0) {
+// 【新增｜評分題統計】rating 題完全不經過 Gemini，是後端直接算好的
+// 平均分／有效回答數／0~5 分布，這裡純顯示，不做任何額外計算，避免
+// 前後端各自算一份分數兜不起來。ratingStats 為空陣列時，呼叫端
+// （ClassificationTable）根本不會渲染這個元件，這裡不需要再判斷一次。
+//
+// 【UI 改版｜卡片 + donut chart】沿用專案既有的 rose/pink 色階
+// （index.css 裡的 --rose-100 ~ --rose-500、--pink-500），依 0~5 分
+// 由淺到深排列，不引入新的語意色彩（例如紅=差／綠=好），純粹讓 6 個
+// 分數區段在同一個甜甜圈裡視覺上可分辨。donut 用原生 SVG
+// 的 stroke-dasharray/stroke-dashoffset 疊圓弧技巧手刻，不依賴任何
+// 圖表套件（專案目前也沒有安裝任何圖表庫，不為了這個小圖表新增依賴）。
+const RATING_SCORE_COLORS = ["#ffe4e6", "#fecdd3", "#fda4af", "#fb7185", "#f43f5e", "#ec4899"];
+
+function RatingDonutChart({ distribution, average }) {
+  const size = 128;
+  const strokeWidth = 16;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const center = size / 2;
+
+  const counts = [0, 1, 2, 3, 4, 5].map((score) => Number((distribution || {})[String(score)]) || 0);
+  const total = counts.reduce((sum, count) => sum + count, 0);
+
+  // 依序疊加每個分數的弧長，cumulative 是「目前已經畫到哪裡」，用負值
+  // 當 dashoffset 讓每一段接續上一段的結尾，不會互相蓋掉。
+  let cumulative = 0;
+  const segments = [];
+  if (total > 0) {
+    counts.forEach((count, score) => {
+      if (count > 0) {
+        const dash = (count / total) * circumference;
+        segments.push({
+          score,
+          color: RATING_SCORE_COLORS[score],
+          dasharray: `${dash} ${circumference - dash}`,
+          dashoffset: -cumulative,
+        });
+        cumulative += dash;
+      }
+    });
+  }
+
+  return (
+    <div className="rating-donut-wrap">
+      <svg className="rating-donut-svg" viewBox={`0 0 ${size} ${size}`} width={size} height={size} role="img" aria-label="0 到 5 分分布甜甜圈圖">
+        <circle cx={center} cy={center} r={radius} fill="none" stroke="var(--rose-50, #fff1f2)" strokeWidth={strokeWidth} />
+        {segments.map((seg) => (
+          <circle
+            key={seg.score}
+            cx={center}
+            cy={center}
+            r={radius}
+            fill="none"
+            stroke={seg.color}
+            strokeWidth={strokeWidth}
+            strokeDasharray={seg.dasharray}
+            strokeDashoffset={seg.dashoffset}
+            transform={`rotate(-90 ${center} ${center})`}
+          />
+        ))}
+      </svg>
+      <div className="rating-donut-center">
+        <span className="rating-donut-average">{average ?? "－"}</span>
+        <span className="rating-donut-scale">{average != null ? "/ 5" : "尚無資料"}</span>
+      </div>
+    </div>
+  );
+}
+
+function RatingStatCard({ stat }) {
+  const distribution = stat.distribution || {};
+  const qLabel = stat.question_number ? `Q${stat.question_number}` : null;
+  const answeredCount = stat.answered_count ?? 0;
+
+  return (
+    <div className="rating-stat-card">
+      <div className="rating-stat-card-header">
+        {qLabel && <span className="rating-stat-card-qnum">{qLabel}</span>}
+        <span className="rating-stat-card-title">{stat.title || ""}</span>
+      </div>
+
+      <div className="rating-stat-card-body">
+        <RatingDonutChart distribution={distribution} average={stat.average} />
+
+        <div className="rating-stat-card-side">
+          <div className="rating-stat-card-answered">{answeredCount} 份有效回答</div>
+          <ul className="rating-stat-legend">
+            {[0, 1, 2, 3, 4, 5].map((score) => (
+              <li key={score} className="rating-stat-legend-item">
+                <span className="rating-stat-legend-swatch" style={{ background: RATING_SCORE_COLORS[score] }} />
+                <span className="rating-stat-legend-label">{score} 分</span>
+                <span className="rating-stat-legend-count">{Number(distribution[String(score)]) || 0} 人</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RatingStatsPanel({ ratingStats }) {
+  return (
+    <div className="assistant-output-panel assistant-output-panel--rating">
+      <div className="assistant-output-intro">評分題統計</div>
+      <div className="rating-stats-grid">
+        {ratingStats.map((stat) => (
+          <RatingStatCard key={stat.question_id} stat={stat} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
+function ClassificationTable({ rows, ratingStats, meta, chatId, showToast, readOnly = false }) {
+  const hasRatingStats = Array.isArray(ratingStats) && ratingStats.length > 0;
+  const hasClassificationRows = Array.isArray(rows) && rows.length > 0;
+
+  // 兩者都沒有：維持跟這次改動之前完全一樣的「沒有結果」畫面，純 short
+  // 問卷、或分類真的沒有產生任何結果時，畫面必須跟現在一模一樣。
+  if (!hasClassificationRows && !hasRatingStats) {
     return (
       <div className="assistant-output-panel">
         <div className="assistant-output-intro">
@@ -409,90 +543,114 @@ function ClassificationTable({ rows, meta, chatId, showToast, readOnly = false }
 
   return (
     <div className="assistant-output-panel assistant-output-panel--wide">
-      <div className="assistant-output-intro">
-        分類完成，共 {rows.length} 個類別。
-      </div>
+      {/* 顯示順序：1. 評分題統計、2. 既有文字分類結果。ratingStats 為空
+          陣列時 hasRatingStats 是 false，這整塊完全不渲染——不留空標題、
+          不留空表格。 */}
+      {hasRatingStats && <RatingStatsPanel ratingStats={ratingStats} />}
 
-      <div className="assistant-output-table-wrap">
-        <table className="assistant-output-table classification-table">
-          <thead>
-            <tr>
-              <th>大類別</th>
-              <th>子類別</th>
-              <th>問卷回覆內容</th>
-              <th>判斷原因與說明</th>
-              <th>受試者建議摘要</th>
-            </tr>
-          </thead>
+      {hasClassificationRows ? (
+        <>
+          <div className="assistant-output-intro">
+            分類完成，共 {rows.length} 個類別。
+          </div>
 
-          <tbody>
-            {rows.map((row, index) => {
-              const isSameMainAsPrev =
-                index > 0 &&
-                rows[index - 1].main_category === row.main_category;
+          <div className="assistant-output-table-wrap">
+            <table className="assistant-output-table classification-table">
+              <thead>
+                <tr>
+                  <th>大類別</th>
+                  <th>子類別</th>
+                  <th>問卷回覆內容</th>
+                  <th>判斷原因與說明</th>
+                  <th>受試者建議摘要</th>
+                </tr>
+              </thead>
 
-              let mainCategoryRowSpan = 1;
+              <tbody>
+                {rows.map((row, index) => {
+                  const isSameMainAsPrev =
+                    index > 0 &&
+                    rows[index - 1].main_category === row.main_category;
 
-              if (!isSameMainAsPrev) {
-                for (
-                  let j = index + 1;
-                  j < rows.length &&
-                  rows[j].main_category === row.main_category;
-                  j++
-                ) {
-                  mainCategoryRowSpan++;
-                }
-              }
+                  let mainCategoryRowSpan = 1;
 
-              return (
-                <tr key={index}>
-                  {!isSameMainAsPrev && (
-                    <td
-                      rowSpan={mainCategoryRowSpan}
-                      className="merged-cell-center"
-                    >
-                      {row.main_category}
-                    </td>
-                  )}
+                  if (!isSameMainAsPrev) {
+                    for (
+                      let j = index + 1;
+                      j < rows.length &&
+                      rows[j].main_category === row.main_category;
+                      j++
+                    ) {
+                      mainCategoryRowSpan++;
+                    }
+                  }
 
-                  <td className="sub-category-cell">
-                    {row.sub_category}
-                  </td>
+                  return (
+                    <tr key={index}>
+                      {!isSameMainAsPrev && (
+                        <td
+                          rowSpan={mainCategoryRowSpan}
+                          className="merged-cell-center"
+                        >
+                          {row.main_category}
+                        </td>
+                      )}
 
-                  <td>
-                    <MultilineText
-                      text={row.respondent_text}
-                      highlightRespondent={true}
-                    />
-                  </td>
+                      <td className="sub-category-cell">
+                        {row.sub_category}
+                      </td>
 
-                  <td>
-                    <MultilineText text={row.aggregated_reasoning} />
-                  </td>
+                      <td>
+                        <MultilineText
+                          text={row.respondent_text}
+                          highlightRespondent={true}
+                        />
+                      </td>
 
-                  <td>
-                    <MultilineText text={row.aggregated_summary} />
+                      <td>
+                        <MultilineText text={row.aggregated_reasoning} />
+                      </td>
 
-                    {row.synthesis_status === "fallback" && (
-                      <div className="synthesis-fallback-note">
-                        （彙整摘要暫時失敗，以下為個別意見簡易拼接，非完整統整）
+                      <td>
+                        <MultilineText text={row.aggregated_summary} />
 
-                        {row.synthesis_error && (
-                          <div className="synthesis-error-detail">
-                            錯誤原因：{row.synthesis_error}
+                        {row.synthesis_status === "fallback" && (
+                          <div className="synthesis-fallback-note">
+                            （彙整摘要暫時失敗，以下為個別意見簡易拼接，非完整統整）
+
+                            {row.synthesis_error && (
+                              <div className="synthesis-error-detail">
+                                錯誤原因：{row.synthesis_error}
+                              </div>
+                            )}
                           </div>
                         )}
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : (
+        // 有評分題統計、但沒有開放式文字分類結果（例如整份問卷只有
+        // rating 題）：不顯示分類表格，但仍要讓使用者知道這是正常情況，
+        // 而不是誤以為分析失敗；匯出按鈕照樣顯示（見下方 ExportActions），
+        // 讓評分統計仍然能匯出成 Excel/Word。
+        <div className="assistant-output-intro">
+          這份問卷沒有開放式文字題可供分類，以上為評分題統計結果。
+        </div>
+      )}
 
-      {!readOnly && <ExportActions rows={rows} chatId={chatId} sourceFilename={meta?.source_filename} />}
+      {!readOnly && (
+        <ExportActions
+          rows={rows || []}
+          ratingStats={ratingStats}
+          chatId={chatId}
+          sourceFilename={meta?.source_filename}
+        />
+      )}
     </div>
   );
 }
@@ -510,6 +668,7 @@ export function MessageContent({ message, showToast, readOnly = false }) {
       <ClassificationTable
         readOnly={readOnly}
         rows={classificationData.rows}
+        ratingStats={classificationData.rating_stats}
         meta={classificationData.meta}
         chatId={message.chatId}
         showToast={showToast}
@@ -968,7 +1127,12 @@ export default function WorkspacePage() {
               // 【新增｜診斷訊息】沒有結果時，把後端算出來的原因帶過去，
               // 不要只顯示「沒有結果」讓使用者猜。
               diagnostic_message: analyzeData.diagnostic?.message,
-            }
+            },
+            // 【新增｜評分題統計】rating 題不會出現在 aggregated_groups
+            // 裡（後端從沒把它們送進 Gemini），是後端另外直接算好、放在
+            // 回應同層級的 rating_stats。沒有評分題的問卷這裡是 []，
+            // ClassificationTable 看到空陣列就完全不畫評分區塊。
+            analyzeData.rating_stats
           );
           setSessions((currentList) =>
             (Array.isArray(currentList) ? currentList : []).map((session) =>
