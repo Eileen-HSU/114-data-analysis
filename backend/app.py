@@ -318,6 +318,21 @@ def ensure_runtime_schema():
                 "`taxonomy_version_id` INT NULL",
             )
             db.session.commit()
+
+            # ── Response_Classification Confidence Gate（新增）──────────
+            ensure_column(
+                "Response_Classification", "confidence",
+                "`confidence` FLOAT NULL",
+            )
+            ensure_column(
+                "Response_Classification", "needs_human_review",
+                "`needs_human_review` TINYINT(1) NOT NULL DEFAULT 0",
+            )
+            ensure_column(
+                "Response_Classification", "review_flag_reason",
+                "`review_flag_reason` VARCHAR(50) NULL",
+            )
+            db.session.commit()
         except Exception as exc:
             db.session.rollback()
             app.logger.exception("Runtime schema check failed: %s", exc)

@@ -490,6 +490,170 @@
   font-weight: 700;
 }
 
+/* ============================================================
+ * 【新增｜評分題統計卡片 + donut chart】
+ * 對應 page.jsx 的 RatingStatsPanel / RatingStatCard / RatingDonutChart。
+ * 沿用既有 rose/pink 色階，不新增任何色彩語意；只影響評分題統計這塊，
+ * 完全不碰 .classification-table 系列既有樣式。
+ * ============================================================ */
+.rating-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.rating-stat-card {
+  background: white;
+  border: 1px solid var(--rose-100);
+  border-radius: 16px;
+  padding: 16px 18px;
+  box-shadow: 0 1px 2px rgba(244, 63, 94, 0.05);
+  min-width: 0; /* grid item 內有 SVG／長文字時，避免撐破格子 */
+}
+
+.rating-stat-card-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.rating-stat-card-qnum {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--rose-400), var(--pink-500));
+  color: white;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.rating-stat-card-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--slate-800);
+  font-weight: 800;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.rating-stat-card-body {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.rating-donut-wrap {
+  position: relative;
+  flex: none;
+  width: 128px;
+  height: 128px;
+}
+
+.rating-donut-svg {
+  display: block;
+}
+
+.rating-donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.rating-donut-average {
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--rose-500);
+  line-height: 1.2;
+}
+
+.rating-donut-scale {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--slate-400, #94a3b8);
+}
+
+.rating-stat-card-side {
+  flex: 1 1 160px;
+  min-width: 140px;
+}
+
+.rating-stat-card-answered {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--slate-500, #64748b);
+  margin-bottom: 8px;
+}
+
+.rating-stat-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rating-stat-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--slate-600);
+}
+
+.rating-stat-legend-swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.rating-stat-legend-label {
+  flex: none;
+  width: 30px;
+  color: var(--slate-500, #64748b);
+}
+
+.rating-stat-legend-count {
+  font-weight: 800;
+  color: var(--slate-700);
+}
+
+/* 手機版：卡片內容改成上下堆疊（donut 置中、legend 在下方），
+   避免窄螢幕把 donut 跟 legend 硬擠在同一列造成爆版。 */
+@media (max-width: 480px) {
+  .rating-stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .rating-stat-card-body {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .rating-stat-card-side {
+    width: 100%;
+  }
+
+  .rating-stat-legend-item {
+    justify-content: center;
+  }
+}
+
 .assistant-output-actions {
   display: flex;
   justify-content: flex-end;

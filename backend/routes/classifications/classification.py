@@ -59,6 +59,7 @@ from models import (
     Uploaded_Answer,
 )
 from services.classify_v2 import classify_response_multi_segment, is_text_response, resolve_published_taxonomy_prompt
+from services.confidence_gate import evaluate_confidence_gate
 from services.privacy_service import mask_pii, PiiMaskingError
 from services.question_routing_service import route_question_type
 from services.batch_classification_service import run_batch_analysis
@@ -93,6 +94,86 @@ def _resolve_taxonomy_for_topic(question_type: str):
     except (PublishedTaxonomyNotFoundError, PublishedTaxonomyIntegrityError) as e:
         print(f"[TAXONOMY_UNAVAILABLE] question_type={question_type!r}：{e}")
         return None, None, None
+
+
+def _safe_rating_int(raw):
+    """把 rating 答案安全轉成 0~5 的整數；轉不出來或超出範圍回傳 None
+    （代表這筆值不合法，呼叫端要直接跳過，不能讓一筆髒資料讓整份統計
+    失敗）。
+
+    刻意排除 bool：Python 的 bool 是 int 的子類別，True/False 轉出來會
+    變成 1/0，混進 rating 分數裡會是很難查的資料錯誤。
+    """
+    if isinstance(raw, bool):
+        return None
+    try:
+        if isinstance(raw, (int, float)):
+            value = int(raw)
+        else:
+            value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+    if 0 <= value <= 5:
+        return value
+    return None
+
+
+def _build_rating_stats(items, responses):
+    """對問卷裡所有 type == "rating" 的題目直接在後端算統計，完全不經過
+    Gemini／Taxonomy／Human Review——這幾個管線本來就只認
+    question_type_map（只收 type == "short"），rating 的 question_id
+    從未出現在那裡，這裡的計算是純數學統計，不寫入
+    Response_Classification／Response_Segmentation_Status 任何一張表，
+    自然不會被 Human Review 摸到。
+
+    規則（都跟「一位受試者一列」的問卷原始回覆匯出用同一套判斷邏輯，
+    避免兩處各自維護一份、不小心兜不起來）：
+      - 未作答的判斷是 `qid in answers`（key 存在與否），不是 truthy
+        判斷——rating 答 0 分時 `0`／`"0"` 都是 falsy，用 `answer or ...`
+        這種寫法會把「答 0 分」誤判成「沒有作答」，是這裡最需要避開的
+        地雷。
+      - 未作答的人不進 average、answered_count、distribution。
+      - 轉不出 0~5 整數的值（例如被改壞的資料）視為非法值，直接跳過，
+        不計入任何統計、也不讓整份匯出失敗。
+      - distribution 固定是 0~5 六個桶，即使某個分數沒人選也要出現在
+        結果裡（值是 0），不是動態長度的 dict。
+      - 完全沒有人回答的 rating 題：average=None、answered_count=0，
+        distribution 六個桶全是 0——這題仍然要出現在結果陣列裡，不能
+        因為沒人答就從陣列裡消失（消失會讓使用者以為這題不存在）。
+    """
+    rating_stats = []
+    for index, item in enumerate(items):
+        if not isinstance(item, dict) or item.get("type") != "rating":
+            continue
+
+        qid = item.get("id")
+        distribution = {str(score): 0 for score in range(6)}
+        total = 0
+        answered_count = 0
+
+        for response in responses:
+            answers = (response.answer_json or {}).get("answers") or {}
+            if not isinstance(answers, dict) or qid not in answers:
+                continue  # 未作答：不進平均、answered_count、distribution
+            rating_value = _safe_rating_int(answers.get(qid))
+            if rating_value is None:
+                continue  # 非法 rating 值：直接跳過，不計入任何統計
+            distribution[str(rating_value)] += 1
+            total += rating_value
+            answered_count += 1
+
+        average = round(total / answered_count, 1) if answered_count else None
+
+        rating_stats.append({
+            "question_id": qid,
+            "question_number": index + 1,
+            "title": item.get("title") or item.get("question_title") or "",
+            "average": average,
+            "answered_count": answered_count,
+            "distribution": distribution,
+        })
+
+    return rating_stats
 
 
 def _build_aggregated_groups(all_classification_rows, id_to_row_index, question_type, id_field="uploaded_answer_id"):
@@ -311,6 +392,8 @@ def _persist_segmentation_result(
         if seg["status"] != "completed" and seg.get("error_detail"):
             reasoning = seg["error_detail"]
 
+        needs_human_review, review_flag_reason = evaluate_confidence_gate(seg)
+
         row = Response_Classification(
             response_id=response_id,
             upload_batch_id=upload_batch_id,
@@ -331,6 +414,9 @@ def _persist_segmentation_result(
             secondary_citation=seg["secondary_citation"],
             status=seg["status"],
             taxonomy_version_id=taxonomy_version_id,
+            confidence=seg["confidence"] if isinstance(seg["confidence"], (int, float)) and not isinstance(seg["confidence"], bool) else None,
+            needs_human_review=needs_human_review,
+            review_flag_reason=review_flag_reason,
         )
         db.session.add(row)
         classification_rows.append(row)
@@ -578,6 +664,20 @@ def analyze_survey(access_code):
     question_json = survey.question_json or {}
     items = question_json.get("items", [])
 
+    # 【新增｜rating 題後端直接統計】跟 question_type_map（只收
+    # type == "short"）完全平行、互不相干：rating 的 question_id 從頭
+    # 到尾不會出現在 question_type_map 裡，所以不管下面 short 題那條
+    # 分類流程走不走得下去，rating 統計都要能獨立算出來——這也是「整份
+    # 問卷只有 rating 題」時，這支 API 仍然要回傳有意義結果的關鍵。
+    # responses 要在判斷 question_type_map 是否為空之前先查出來，
+    # 因為 rating-only 問卷會直接命中下面那個早退分支，如果 responses
+    # 查詢留在早退分支之後，rating-only 情境就永遠算不到統計。
+    responses = Survey_Response.query.filter_by(template_id=template_id).order_by(
+        Survey_Response.response_id.asc()
+    ).all()
+
+    rating_stats = _build_rating_stats(items, responses)
+
     
     question_type_map = {
         item.get("id"): (item.get("question_type") or QUESTION_OTHER)
@@ -593,6 +693,7 @@ def analyze_survey(access_code):
             "analyzed_question_ids": [],
             "newly_classified_count": 0,
             "aggregated_groups": [],
+            "rating_stats": rating_stats,
             "diagnostic": {
                 "total_question_items": len(items),
                 "short_type_question_count": len(short_type_items),
@@ -606,10 +707,6 @@ def analyze_survey(access_code):
                 ),
             },
         }), 200
-
-    responses = Survey_Response.query.filter_by(template_id=template_id).order_by(
-        Survey_Response.response_id.asc()
-    ).all()
 
     
     response_id_to_number = {
@@ -733,6 +830,7 @@ def analyze_survey(access_code):
         "analyzed_question_ids": analyzed_question_ids,
         "newly_classified_count": newly_classified_count,
         "aggregated_groups": aggregated_groups,
+        "rating_stats": rating_stats,
         "diagnostic": {
             "question_type_map_size": len(question_type_map),
             "total_responses": len(responses),

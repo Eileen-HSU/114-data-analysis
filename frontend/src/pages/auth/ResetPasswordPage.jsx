@@ -85,7 +85,7 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <div className="auth-page">
+    <div className="auth-page auth-page-without-navbar">
       <div className="row g-0" style={{ minHeight: "100vh" }}>
         {/* 左側視覺裝飾區域 */}
         <div className="col-lg-6 d-none d-lg-flex auth-visual auth-visual-reset-pw">

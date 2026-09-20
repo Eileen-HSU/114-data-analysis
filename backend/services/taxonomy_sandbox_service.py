@@ -31,6 +31,7 @@ published/draft/in_review，archived 版本要另外展開「顯示封存版本�
 """
 
 from services.classify_v2 import classify_response_multi_segment
+from services.confidence_gate import evaluate_confidence_gate
 from services.taxonomy_service import (
     get_taxonomy_version,
     build_classification_prompt,
@@ -142,11 +143,22 @@ def run_sandbox_classification(topic_key: str, version_id: int, answer_texts: li
         except Exception as e:
             print("[SANDBOX ERROR][GEMINI_CALL_FAILED]", repr(e))
             raise SandboxExecutionError(f"分類過程發生錯誤：{e}") from e
+        # Sandbox 用同一個純函式判斷，只加進回應的 segment 資料，
+        # 不寫入任何 DB record（見本檔開頭的架構保證說明）。
+        segments_with_gate = []
+        for seg in result["segments"]:
+            needs_human_review, review_flag_reason = evaluate_confidence_gate(seg)
+            segments_with_gate.append({
+                **seg,
+                "needs_human_review": needs_human_review,
+                "review_flag_reason": review_flag_reason,
+            })
+
         results.append({
             "input": text,
             "segmentation_status": result["segmentation_status"],
             "segmentation_error_detail": result["segmentation_error_detail"],
-            "segments": result["segments"],
+            "segments": segments_with_gate,
         })
 
     return {
