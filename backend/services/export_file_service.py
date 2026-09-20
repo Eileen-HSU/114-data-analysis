@@ -25,8 +25,9 @@ from zoneinfo import ZoneInfo
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
+from PIL import Image, ImageDraw, ImageFont
 from docx import Document
-from docx.shared import Pt, Cm, Emu
+from docx.shared import Pt, Cm, Emu, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_ALIGN_VERTICAL
 from docx.enum.section import WD_ORIENT
@@ -37,6 +38,14 @@ COLUMN_HEADERS = ["大類別", "子類別", "問卷回覆內容", "判斷原因�
 
 
 DOCX_CJK_FONT = "微軟正黑體"
+
+# 評分題統計圖表共用的 0~5 分色階（rose -> pink，由淺到深），跟 Chat
+# 端 RatingDonutChart（frontend/src/pages/workspace/page.jsx）用的是
+# 同一組顏色，讓「聊天室看到的甜甜圈」跟「匯出檔案裡的甜甜圈」視覺一致。
+# Excel（openpyxl DataPoint.graphicalProperties.solidFill）吃不帶 # 的
+# 6 碼色碼，Word 那邊用 Pillow 畫圖則需要帶 # 的寫法，兩邊分開放。
+_RATING_SCORE_COLORS_HEX = ["FFE4E6", "FECDD3", "FDA4AF", "FB7185", "F43F5E", "EC4899"]
+_RATING_SCORE_COLORS_CSS = [f"#{c}" for c in _RATING_SCORE_COLORS_HEX]
 
 
 def _row_values(row: dict) -> list:
@@ -124,56 +133,122 @@ def build_xlsx(rows: list, title: str = "分類結果", rating_stats: list | Non
 
 
 def _write_rating_stats_sheet(wb, rating_stats: list, *, index: int = 0):
-    """在既有 workbook 裡插入一張「評分題統計」sheet。
+    """在既有 workbook 裡插入一張「評分題統計」sheet：極簡正式報表版型，
+    每一題一個獨立區塊，不使用圖表、不使用 data bar、不做卡片式底色
+    區塊，整體以白／淡粉／深灰為主色，只有平均分數這個關鍵數字用
+    粉色強調。
+
+    每一題的區塊配置（同一組欄位重複往下疊）：
+      - 第 1 列：題目列。「Q3　題目全文」，粗體深色字，白底或極淡粉
+        底（不是整條高飽和桃紅色banner），底部一條細灰線當作段落
+        分隔，橫跨整個區塊寬度＋wrap_text，題目再長也能完整換行。
+      - 第 2～3 列：摘要區。「平均分數：2.9 / 5」（平均分數字稍微
+        放大、用粉色，但不到誇張的大小）、「有效回答：8 份」（一般
+        深灰字，不特別強調）。
+      - 第 4～5 列：分布區，只用兩列——第一列是「0 分／1 分…5 分」
+        表頭（小字、深灰、底部細線），第二列是對應人數（「1 人」…），
+        單純兩列小表，不是長條圖也不是每列一個分數的清單。
+      - 題目之間留 2 列空白，完全不套樣式。
 
     只服務 build_xlsx() 的評分統計附加需求，跟既有分類結果 sheet 的
     建置邏輯（COLUMN_HEADERS、_row_values、合併儲存格）完全獨立，
-    不共用、也不會互相影響。
+    不共用、也不會互相影響。Word（build_docx／_write_rating_stats_blocks）
+    完全沒有被這次改動觸及。
     """
     ws = wb.create_sheet(title="評分題統計", index=index)
 
-    header_font = Font(name="微軟正黑體", bold=True, color="FFFFFFFF")
-    header_fill = PatternFill(start_color="FFF43F5E", end_color="FFF43F5E", fill_type="solid")
-    body_font = Font(name="微軟正黑體")
-    wrap_alignment = Alignment(wrap_text=True, vertical="top", horizontal="left")
+    title_font = Font(name="微軟正黑體", bold=True, size=12, color="FF334155")  # 深灰，不是白字
+    title_fill = PatternFill(start_color="FFFFFBFB", end_color="FFFFFBFB", fill_type="solid")  # 近乎白色的極淡粉
+    label_font = Font(name="微軟正黑體", bold=False, size=10.5, color="FF64748B")  # 次要文字：深灰
+    average_label_font = Font(name="微軟正黑體", bold=False, size=10.5, color="FF64748B")
+    average_value_font = Font(name="微軟正黑體", bold=True, size=14, color="FFF43F5E")  # 唯一的粉色強調
+    dist_header_font = Font(name="微軟正黑體", bold=False, size=10, color="FF64748B")
+    dist_value_font = Font(name="微軟正黑體", bold=True, size=11, color="FF334155")
+
+    left_alignment = Alignment(wrap_text=True, vertical="center", horizontal="left")
     center_alignment = Alignment(wrap_text=True, vertical="center", horizontal="center")
-    thin_border = Border(
-        left=Side(style="thin", color="FF000000"),
-        right=Side(style="thin", color="FF000000"),
-        top=Side(style="thin", color="FF000000"),
-        bottom=Side(style="thin", color="FF000000"),
-    )
+    thin_grey_bottom = Border(bottom=Side(style="thin", color="FFE2E8F0"))  # 極淡的分隔線，不是實心框線
 
-    headers = ["題目", "平均分", "有效回答數"] + [f"{score} 分人數" for score in range(6)]
-    for col_idx, header in enumerate(headers, start=1):
-        cell = ws.cell(row=1, column=col_idx, value=header)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = center_alignment
-        cell.border = thin_border
+    HEADER_SPAN = 6  # 區塊整體寬度（欄數），跟下面 0~5 分布的 6 欄對齊
+    BLANK_ROWS_BETWEEN = 2  # 題目之間留白的列數
 
-    for row_idx, stat in enumerate(rating_stats, start=2):
-        distribution = stat.get("distribution") or {}
-        question_number = stat.get("question_number")
-        title_text = stat.get("title") or ""
-        question_label = f"Q{question_number}：{title_text}" if question_number else title_text
-        average = stat.get("average")
-        values = [
-            question_label,
-            average if average is not None else "無資料",
-            stat.get("answered_count", 0),
-        ] + [distribution.get(str(score), 0) for score in range(6)]
-        for col_idx, value in enumerate(values, start=1):
-            cell = ws.cell(row=row_idx, column=col_idx, value=value)
-            cell.font = body_font
-            cell.border = thin_border
-            cell.alignment = wrap_alignment if col_idx == 1 else center_alignment
-
-    column_widths = [40, 10, 12] + [10] * 6
+    column_widths = [14] * HEADER_SPAN
     for col_idx, width in enumerate(column_widths, start=1):
         ws.column_dimensions[get_column_letter(col_idx)].width = width
 
-    ws.freeze_panes = "A2"
+    current_row = 1
+    for stat in rating_stats:
+        distribution = stat.get("distribution") or {}
+        question_number = stat.get("question_number")
+        title_text = stat.get("title") or ""
+        question_label = f"Q{question_number}　{title_text}" if question_number else title_text
+        average = stat.get("average")
+        answered_count = stat.get("answered_count", 0)
+
+        # 第 1 列：題目列。白／極淡粉底、深色粗體字、底部細線分隔，
+        # 不是整條高飽和的桃紅色 banner。
+        title_row = current_row
+        ws.merge_cells(start_row=title_row, start_column=1, end_row=title_row, end_column=HEADER_SPAN)
+        title_cell = ws.cell(row=title_row, column=1, value=question_label)
+        title_cell.font = title_font
+        title_cell.fill = title_fill
+        title_cell.alignment = left_alignment
+        title_cell.border = thin_grey_bottom
+        for col in range(2, HEADER_SPAN + 1):
+            ws.cell(row=title_row, column=col).fill = title_fill
+            ws.cell(row=title_row, column=col).border = thin_grey_bottom
+        ws.row_dimensions[title_row].height = 22
+
+        # 第 2 列：平均分數。字級稍微放大、用粉色強調，但不到誇張的
+        # 大小（14pt，不是動輒 18~20pt 那種主視覺數字）。
+        average_row = title_row + 1
+        average_text = f"{average:.1f} / 5" if average is not None else "尚無資料"
+        label_cell = ws.cell(row=average_row, column=1, value="平均分數：")
+        label_cell.font = average_label_font
+        label_cell.alignment = Alignment(vertical="center", horizontal="left")
+        value_cell = ws.cell(row=average_row, column=2, value=average_text)
+        value_cell.font = average_value_font
+        value_cell.alignment = Alignment(vertical="center", horizontal="left")
+        ws.row_dimensions[average_row].height = 22
+
+        # 第 3 列：有效回答數。一般深灰字，不特別強調。
+        answered_row = average_row + 1
+        answered_label_cell = ws.cell(row=answered_row, column=1, value="有效回答：")
+        answered_label_cell.font = label_font
+        answered_label_cell.alignment = Alignment(vertical="center", horizontal="left")
+        answered_value_cell = ws.cell(row=answered_row, column=2, value=f"{answered_count} 份")
+        answered_value_cell.font = label_font
+        answered_value_cell.alignment = Alignment(vertical="center", horizontal="left")
+
+        # 第 4~5 列：分布區，只有兩列——表頭「0 分～5 分」＋對應人數，
+        # 不是每個分數各自一列、也不是長條圖。表頭底部一條細線，
+        # 看起來像正式報表裡的一個小表格，不是資料庫傾印。
+        dist_header_row = answered_row + 2
+        dist_value_row = dist_header_row + 1
+        for score in range(6):
+            col = score + 1
+            header_cell = ws.cell(row=dist_header_row, column=col, value=f"{score} 分")
+            header_cell.font = dist_header_font
+            header_cell.alignment = center_alignment
+            header_cell.border = thin_grey_bottom
+
+            count = int(distribution.get(str(score), 0) or 0)
+            value_cell = ws.cell(row=dist_value_row, column=col, value=f"{count} 人")
+            value_cell.font = dist_value_font
+            value_cell.alignment = center_alignment
+
+        # 題目之間留白：這幾列完全不套用任何樣式，區塊與區塊之間
+        # 自然分開。
+        current_row = dist_value_row + 1 + BLANK_ROWS_BETWEEN
+
+    # 欄數不多，但為了題目列有足夠寬度可以換行，欄寬加起來容易超出
+    # 一頁列印寬度；設定縮放至一頁寬，使用者如果把這張 sheet 印出來，
+    # 不會被攔腰切成兩頁。只影響列印設定，不影響在 Excel 裡直接檢視
+    # 的畫面。
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+
     return ws
 
 
@@ -386,56 +461,121 @@ def _build_classification_table(doc: Document, rows: list, col_widths: list):
     return table
 
 
-_RATING_STATS_COLUMN_HEADERS = ["題目", "平均分", "有效回答數", "0分", "1分", "2分", "3分", "4分", "5分"]
-_RATING_STATS_COL_WIDTH_RATIOS = [0.34, 0.10, 0.12, 0.074, 0.074, 0.074, 0.074, 0.074, 0.074]
+def _render_rating_donut_png(distribution: dict, average, *, size: int = 480) -> bytes:
+    """用 Pillow 畫一張 0~5 分分布的甜甜圈圖 PNG（透明背景），插進 Word
+    用。跟 Excel 的 DoughnutChart、Chat 端 RatingDonutChart 用同一組
+    rose→pink 色階（_RATING_SCORE_COLORS_HEX），三個地方視覺一致。
 
-
-def _build_rating_stats_table(doc: Document, rating_stats: list, col_widths: list):
-    """建立「評分題統計」表格：題目 / 平均分 / 有效回答數 / 0~5 分人數。
-
-    只服務 build_docx() 的評分統計附加需求，重用既有純排版 helper
-    （_write_cell_paragraphs／_set_cell_shading／_set_repeat_header_row／
-    _set_table_fixed_layout），不跟 _build_classification_table() 共用
-    任何分類結果專屬的欄位定義或合併儲存格邏輯。
+    圖片本身只放「數字」（平均分、"/ 5"、或英數字的 "-" / "N/A"），
+    不在圖片裡寫中文：Pillow 的預設點陣字型（ImageFont.load_default）
+    完全沒有中文字型資料，畫中文只會變成方框亂碼。中文說明（例如「尚無
+    資料」）改成用 docx 一般文字段落輸出，交給 Word 自己的字型渲染，
+    不會有這個問題。
     """
-    table = doc.add_table(rows=1, cols=len(_RATING_STATS_COLUMN_HEADERS))
-    table.style = "Table Grid"
-    _set_table_fixed_layout(table)
+    counts = [int(distribution.get(str(score), 0) or 0) for score in range(6)]
+    total = sum(counts)
 
-    header_row = table.rows[0]
-    for cell, header in zip(header_row.cells, _RATING_STATS_COLUMN_HEADERS):
-        _write_cell_paragraphs(
-            cell, header, size_pt=_HEADER_FONT_SIZE, bold=True,
-            align=WD_ALIGN_PARAGRAPH.CENTER,
-        )
-        _set_cell_shading(cell, _HEADER_FILL)
-    _set_repeat_header_row(header_row)
+    image = Image.new("RGBA", (size, size), (255, 255, 255, 0))
+    draw = ImageDraw.Draw(image)
+    margin = size * 0.06
+    bbox = [margin, margin, size - margin, size - margin]
+    ring_width = size * 0.17
 
-    for stat in rating_stats:
+    if total > 0:
+        start_angle = -90.0  # 從正上方（12 點鐘方向）開始，順時針疊加
+        for score, count in enumerate(counts):
+            if count <= 0:
+                continue
+            sweep = 360.0 * count / total
+            draw.pieslice(bbox, start_angle, start_angle + sweep, fill=_RATING_SCORE_COLORS_CSS[score])
+            start_angle += sweep
+    else:
+        # 完全沒有人作答：畫一圈淡粉色的空環，不畫任何色塊比例。
+        draw.pieslice(bbox, 0, 360, fill=_RATING_SCORE_COLORS_CSS[0])
+
+    hole_margin = margin + ring_width
+    hole_bbox = [hole_margin, hole_margin, size - hole_margin, size - hole_margin]
+    draw.ellipse(hole_bbox, fill=(255, 255, 255, 255))
+
+    center_text = f"{average:.1f}" if average is not None else "-"
+    sub_text = "/ 5" if average is not None else "N/A"
+    try:
+        font_big = ImageFont.load_default(size=int(size * 0.15))
+        font_small = ImageFont.load_default(size=int(size * 0.055))
+    except TypeError:
+        # 舊版 Pillow（< 10.1）的 load_default() 不支援 size 參數。
+        font_big = ImageFont.load_default()
+        font_small = font_big
+    cx, cy = size / 2, size / 2
+    draw.text((cx, cy - size * 0.05), center_text, font=font_big, fill="#F43F5E", anchor="mm")
+    draw.text((cx, cy + size * 0.09), sub_text, font=font_small, fill="#94A3B8", anchor="mm")
+
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _write_rating_stats_blocks(doc: Document, rating_stats: list):
+    """把評分題統計寫成「每題一個小區塊」：題目當小標題，中間插入
+    Pillow 產生的甜甜圈圖（0~5 分分布），圖片下方用一般文字段落顯示
+    平均分（視覺突出）、有效回答數，以及一行精簡的 0~5 分布數字。
+
+    圖表是這裡的主視覺，文字只是輔助說明，不再是表格或條列清單。
+    只服務 build_docx() 的評分統計附加需求，不影響既有
+    _build_classification_table()／_group_rows_by_question() 分類結果
+    專屬的邏輯。
+    """
+    for idx, stat in enumerate(rating_stats):
         distribution = stat.get("distribution") or {}
         question_number = stat.get("question_number")
         title_text = stat.get("title") or ""
-        question_label = f"Q{question_number}：{title_text}" if question_number else title_text
+        question_label = f"Q{question_number}　{title_text}" if question_number else title_text
         average = stat.get("average")
-        average_text = str(average) if average is not None else "無資料"
+        answered_count = stat.get("answered_count", 0)
 
-        values = [question_label, average_text, str(stat.get("answered_count", 0))] + [
-            str(distribution.get(str(score), 0)) for score in range(6)
-        ]
-        cells = table.add_row().cells
-        for c_idx, value in enumerate(values):
-            _write_cell_paragraphs(
-                cells[c_idx], value, size_pt=_BODY_FONT_SIZE, bold=(c_idx == 0),
-                align=WD_ALIGN_PARAGRAPH.LEFT if c_idx == 0 else WD_ALIGN_PARAGRAPH.CENTER,
-            )
+        # 題目：當作這個區塊的小標題，獨立一行、加粗。
+        title_paragraph = doc.add_paragraph()
+        title_paragraph.paragraph_format.space_before = Pt(6) if idx == 0 else Pt(26)
+        title_paragraph.paragraph_format.space_after = Pt(8)
+        title_run = title_paragraph.add_run(question_label)
+        _apply_docx_font(title_run, size_pt=13, bold=True)
 
-    for row in table.rows:
-        for i, width in enumerate(col_widths):
-            row.cells[i].width = width
-    for i, width in enumerate(col_widths):
-        table.columns[i].width = width
+        # 甜甜圈圖：主視覺，置中插入，圖片本身不含任何文字說明。
+        png_bytes = _render_rating_donut_png(distribution, average)
+        picture_paragraph = doc.add_paragraph()
+        picture_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        picture_paragraph.paragraph_format.space_after = Pt(6)
+        picture_run = picture_paragraph.add_run()
+        picture_run.add_picture(io.BytesIO(png_bytes), width=Cm(4.6))
 
-    return table
+        # 圖片下方：平均分（視覺突出，中文＋粉紅色大字）、有效回答數。
+        average_paragraph = doc.add_paragraph()
+        average_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        average_paragraph.paragraph_format.space_after = Pt(2)
+        label_run = average_paragraph.add_run("平均分：")
+        _apply_docx_font(label_run, size_pt=11, bold=False)
+        average_text = f"{average:.1f} / 5" if average is not None else "尚無資料"
+        average_run = average_paragraph.add_run(average_text)
+        _apply_docx_font(average_run, size_pt=15, bold=True)
+        average_run.font.color.rgb = RGBColor(0xF4, 0x3F, 0x5E)  # rose-500
+
+        answered_paragraph = doc.add_paragraph()
+        answered_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        answered_paragraph.paragraph_format.space_after = Pt(4)
+        answered_run = answered_paragraph.add_run(f"有效回答：{answered_count} 份")
+        _apply_docx_font(answered_run, size_pt=11, bold=False)
+
+        # 0~5 分分布：濃縮成一行精簡文字（跟圖表互補、不是主要視覺），
+        # 0 分是合法答案，跟 1~5 分用同一種寫法，不做任何特殊處理。
+        distribution_text = "　".join(
+            f"{score} 分：{distribution.get(str(score), 0)} 人" for score in range(6)
+        )
+        distribution_paragraph = doc.add_paragraph()
+        distribution_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        distribution_paragraph.paragraph_format.space_after = Pt(0)
+        distribution_run = distribution_paragraph.add_run(distribution_text)
+        _apply_docx_font(distribution_run, size_pt=9.5, bold=False)
+        distribution_run.font.color.rgb = RGBColor(0x64, 0x74, 0x8B)  # slate-500，弱化成輔助說明
 
 
 def build_docx(rows: list, title: str = "分類結果", rating_stats: list | None = None) -> bytes:
@@ -449,11 +589,10 @@ def build_docx(rows: list, title: str = "分類結果", rating_stats: list | Non
 
     rating_stats 是【新增｜問卷 Chat 分析評分題統計】的可選參數，預設
     None，行為與呼叫端完全相容：
-      - 不傳／傳 None／傳空陣列 []：不會多輸出任何段落或表格，既有
-        分類結果輸出逐段落相同，既有呼叫端不受影響。
-      - 傳非空陣列：在既有分類結果標題／表格**之前**，先輸出一段
-        「評分題統計」標題＋表格，兩者之間用分頁隔開，不會把評分統計
-        跟分類結果擠在同一頁。
+      - 不傳／傳 None／傳空陣列 []：不會多輸出任何段落，既有分類結果
+        輸出逐段落相同，既有呼叫端不受影響。
+      - 傳非空陣列：在既有分類結果標題之前，先輸出「評分題統計」標題
+        ＋每題一個小區塊，跟分類結果之間用分頁隔開。
     """
     doc = Document()
 
@@ -475,8 +614,7 @@ def build_docx(rows: list, title: str = "分類結果", rating_stats: list | Non
         for run in rating_heading.runs:
             _apply_docx_font(run, size_pt=run.font.size.pt if run.font.size else 18, bold=True)
 
-        rating_col_widths = [Emu(int(usable_width * ratio)) for ratio in _RATING_STATS_COL_WIDTH_RATIOS]
-        _build_rating_stats_table(doc, rating_stats, rating_col_widths)
+        _write_rating_stats_blocks(doc, rating_stats)
         doc.add_page_break()
 
     heading = doc.add_heading(title or "分類結果", level=1)
