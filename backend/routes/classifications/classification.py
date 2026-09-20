@@ -59,6 +59,7 @@ from models import (
     Uploaded_Answer,
 )
 from services.classify_v2 import classify_response_multi_segment, is_text_response, resolve_published_taxonomy_prompt
+from services.confidence_gate import evaluate_confidence_gate
 from services.privacy_service import mask_pii, PiiMaskingError
 from services.question_routing_service import route_question_type
 from services.batch_classification_service import run_batch_analysis
@@ -311,6 +312,8 @@ def _persist_segmentation_result(
         if seg["status"] != "completed" and seg.get("error_detail"):
             reasoning = seg["error_detail"]
 
+        needs_human_review, review_flag_reason = evaluate_confidence_gate(seg)
+
         row = Response_Classification(
             response_id=response_id,
             upload_batch_id=upload_batch_id,
@@ -331,6 +334,9 @@ def _persist_segmentation_result(
             secondary_citation=seg["secondary_citation"],
             status=seg["status"],
             taxonomy_version_id=taxonomy_version_id,
+            confidence=seg["confidence"] if isinstance(seg["confidence"], (int, float)) and not isinstance(seg["confidence"], bool) else None,
+            needs_human_review=needs_human_review,
+            review_flag_reason=review_flag_reason,
         )
         db.session.add(row)
         classification_rows.append(row)

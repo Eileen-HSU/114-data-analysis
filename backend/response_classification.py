@@ -171,6 +171,26 @@ class Response_Classification(db.Model):
         nullable=True,
     )
 
+    # ── Confidence Gate（新增，additive-only）───────────────────
+    # 這三個欄位是「AI 分類當下的判斷與送審原因」的歷史紀錄，永久
+    # 保留：review_status 之後不管變成 confirmed / modified /
+    # excluded 哪一種，都不會清除或重算這三個欄位——它們回答的是
+    # 「AI 當時為什麼建議/不建議人工介入」，review_status 回答的是
+    # 「人工確認流程目前走到哪裡」，兩者是獨立、互不覆寫的概念。
+    #
+    # confidence：模型自陳信心分數（0.0～1.0），是 Gemini 主觀輸出的
+    # 數字，不是 calibrated probability，不代表「正確率」。缺失、
+    # 非數值、或超出 [0,1] 範圍一律視為 invalid_confidence（見
+    # services/confidence_gate.py），這裡刻意 nullable=True 存這些
+    # 異常情況的原始值（通常是 None），不偷偷補一個看起來正常的數字。
+    confidence = db.Column(db.Float, nullable=True)
+
+    # needs_human_review / review_flag_reason：由
+    # services.confidence_gate.evaluate_confidence_gate() 逐 segment
+    # 判斷產生，寫入當下就固定，之後不會因為人工審核流程而被改寫。
+    needs_human_review = db.Column(db.Boolean, nullable=False, default=False)
+    review_flag_reason = db.Column(db.String(50), nullable=True)
+
     # ── 驗證邏輯 ──────────────────────────────────────────
     def validate_source_relation(self) -> None:
         """驗證資料來源與 response_id / upload_batch_id 的關係是否合法。
@@ -238,6 +258,9 @@ class Response_Classification(db.Model):
             "status": self.status,
             "review_status": self.review_status,
             "taxonomy_version_id": self.taxonomy_version_id,
+            "confidence": self.confidence,
+            "needs_human_review": self.needs_human_review,
+            "review_flag_reason": self.review_flag_reason,
             "created_at": (
                 self.created_at.isoformat() if self.created_at else None
             ),

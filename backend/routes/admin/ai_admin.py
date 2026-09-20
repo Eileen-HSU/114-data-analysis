@@ -167,6 +167,8 @@ def reviewed_classifications():
         )
     elif topic:
         query = query.filter_by(question_id=topic)
+    if request.args.get("needs_human_review") == "true":
+        query = query.filter_by(needs_human_review=True)
     rows = query.order_by(Response_Classification.created_at.desc()).limit(200).all()
     results = []
     for row in rows:
@@ -464,3 +466,24 @@ def list_topic_taxonomy_versions(topic_key):
         return failure
     versions = taxo.list_versions_for_topic(topic_key)
     return jsonify({"versions": [v.to_dict() for v in versions]})
+
+
+@ai_admin_bp.delete("/topics/<topic_key>/taxonomy/<int:version_id>")
+def delete_taxonomy(topic_key, version_id):
+    """
+    刪除一個 draft 版本（含底下全部 category）。只有 draft 可刪，
+    published/archived/in_review 一律 409；已被
+    Response_Classification 引用的版本也一律 409（見
+    services/taxonomy_service.delete_taxonomy_version() 的完整說明）。
+    不做 version_number renumber，不影響同一 topic 底下其他版本。
+    """
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    try:
+        taxo.delete_taxonomy_version(topic_key, version_id)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 404
+    except taxo.TaxonomyEditNotAllowedError as exc:
+        return jsonify({"error": str(exc)}), 409
+    return jsonify({"deleted": True})
