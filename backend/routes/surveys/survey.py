@@ -1,21 +1,23 @@
 import logging
 import os
 import random
+import re
 import string
 import json
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import urlencode, urlsplit, quote
 from urllib.request import urlopen
 
 import jwt
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, Response
 from sqlalchemy import func
 from sqlalchemy.orm.attributes import flag_modified
 
 from extensions import db
 from models import Survey_Template, Survey_Response, Chat_History
 from services.question_routing_service import route_question_type
+from services.export_file_service import build_survey_xlsx, build_survey_docx
 
 survey_bp = Blueprint('survey', __name__)
 
@@ -515,3 +517,143 @@ def bind_survey_to_workspace(access_code):
         "message": "綁定成功",
         "project_id": project_id,
     }), 200
+
+
+# ═══════════════════════════════════════════════════════════════
+# 【新增｜問卷原始回覆匯出】GET /api/surveys/<access_code>/export
+#
+# 設計定案：即時產生、即時下載，不寫入 Export_File、不建立
+# Chat_History、不要求問卷先匯入 Workspace、不動 Export_File
+# schema、不新增 DB table/column。
+#
+# 原因：Export_File 目前的 ownership 鏈是
+#     Export_File -> Chat_History -> Workspace -> User
+# 但問卷原始回覆直接屬於 Survey_Template.user_id，跟上面那條鏈是不同
+# 的 domain。硬要共用 Export_File 只會製造不合理的資料關聯（例如
+# 為了塞進一筆 Export_File 而先建一個跟這次匯出無關的假 Chat_History），
+# 所以問卷匯出直接從 Survey_Template / Survey_Response 查詢後即時產生
+# 檔案回傳，不經過 Export_File 這張表。既有 /api/exports 系列 API、
+# Export_File 資料表、build_xlsx()/build_docx() 分類結果的輸出行為，
+# 這裡完全不動。
+# ═══════════════════════════════════════════════════════════════
+
+# 各格式對應的副檔名與 MIME type，下載時要用（獨立於
+# routes/exports/export.py 的 _FORMAT_META，避免這兩支互不相關的路由
+# 彼此 import 對方的私有實作細節）。
+_SURVEY_EXPORT_FORMAT_META = {
+    "xlsx": {
+        "ext": "xlsx",
+        "mimetype": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    },
+    "docx": {
+        "ext": "docx",
+        "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    },
+}
+
+# 檔名裡不能出現的字元：路徑分隔符號、Windows 保留字元、控制字元。
+_UNSAFE_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
+
+
+def _sanitize_survey_export_filename_part(name):
+    """把問卷標題清成可以安全放進檔名的字串。中文字元原樣保留——
+    下載時走 RFC 5987 filename* 的 UTF-8 percent-encoding，不受影響；
+    只需要濾掉會讓檔案系統或 HTTP header 出問題的符號。"""
+    cleaned = _UNSAFE_FILENAME_CHARS.sub("", str(name or "")).strip()
+    return cleaned or "問卷回覆"
+
+
+@survey_bp.route('/api/surveys/<access_code>/export', methods=['GET'])
+def export_survey_responses(access_code):
+    """
+    匯出「問卷原始回覆」成 Excel 或 Word，即時產生、即時下載。
+
+    權限完全比照既有 get_survey_responses()：只有問卷擁有者可以匯出，
+    公開填答者即使知道 access_code，也無法下載全部問卷回覆。
+    """
+    auth_user_id, auth_error = verify_token(request)
+    if auth_error:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    survey = find_survey_by_access_or_short_code(access_code)
+    if not survey:
+        return jsonify({"error": "找不到這份問卷"}), 404
+
+    if survey.user_id != auth_user_id:
+        return jsonify({"error": "無權限"}), 403
+
+    export_format = (request.args.get("format") or "").strip().lower()
+    format_meta = _SURVEY_EXPORT_FORMAT_META.get(export_format)
+    if not format_meta:
+        return jsonify({"error": "format 參數僅支援 xlsx 或 docx"}), 400
+
+    responses = Survey_Response.query.filter_by(
+        template_id=survey.template_id
+    ).order_by(Survey_Response.submitted_at.asc()).all()
+
+    if not responses:
+        return jsonify({"error": "目前尚無問卷回覆可供匯出"}), 400
+
+    question_json = survey.question_json or {}
+    # 題目順序必須完全依 question_json.items 原始順序，不能自行排序。
+    questions = question_json.get("items") or []
+    identity_mode = question_json.get("identity_mode") or (
+        "anonymous" if survey.is_anonymous else "identified"
+    )
+
+    # 這裡刻意不直接把 Survey_Response ORM 物件傳進 builder，而是先轉成
+    # 單純的 dict：builder（export_file_service.py）不需要、也不應該
+    # 知道 SQLAlchemy model 的存在，職責切乾淨、也方便之後單獨對 builder
+    # 寫不依賴資料庫的單元測試。res_iden 欄位是目前完全沒被使用的舊欄位
+    # （見分析報告），這裡刻意不讀它，一律用 answer_json.respondent_identity。
+    response_payload = [
+        {
+            "answers": (r.answer_json or {}).get("answers") or {},
+            "respondent_identity": (r.answer_json or {}).get("respondent_identity"),
+            "submitted_at": r.submitted_at,
+        }
+        for r in responses
+    ]
+
+    try:
+        if export_format == "xlsx":
+            file_bytes = build_survey_xlsx(
+                title=survey.title,
+                questions=questions,
+                responses=response_payload,
+                identity_mode=identity_mode,
+            )
+        else:
+            file_bytes = build_survey_docx(
+                title=survey.title,
+                questions=questions,
+                responses=response_payload,
+                identity_mode=identity_mode,
+            )
+    except Exception:
+        # 不把完整 exception/stack trace 暴露給前端，只記在後端 log。
+        logging.error(
+            f"問卷匯出檔案產生失敗：template_id={survey.template_id}, format={export_format}",
+            exc_info=True,
+        )
+        return jsonify({"error": "問卷匯出檔案產生失敗，請稍後再試"}), 500
+
+    safe_title = _sanitize_survey_export_filename_part(survey.title)
+    export_filename = f"{safe_title}_問卷回覆.{format_meta['ext']}"
+
+    # 中文檔名走 RFC 5987/6266：filename 放純英數保底檔名（給不支援新
+    # 標準的舊工具用），filename* 用 UTF-8 + percent-encoding 放真正的
+    # 中文檔名。比照 routes/exports/export.py 的 download_export() 既有
+    # 作法，避免中文檔名在 gunicorn 送出回應時因 Content-Disposition
+    # 只能是 Latin-1 字元而整個 worker 500。
+    encoded_filename = quote(export_filename)
+    content_disposition = (
+        f"attachment; filename=\"survey_export.{format_meta['ext']}\"; "
+        f"filename*=UTF-8''{encoded_filename}"
+    )
+
+    return Response(
+        file_bytes,
+        mimetype=format_meta["mimetype"],
+        headers={"Content-Disposition": content_disposition},
+    )
