@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { apiUrl } from "../../lib/api";
+import { useLanguage } from "../../context/LanguageContext";
 import conqightLogo from "../../assets/conqight-logo.png";
 import "./auth.css";
 
 export default function ResetPasswordPage() {
+  const { language } = useLanguage();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   
@@ -234,8 +236,8 @@ export default function ResetPasswordPage() {
             </div>
             <h3>密碼重設成功</h3>
             <p>請使用新密碼重新登入您的帳號。</p>
-            <button type="button" className="auth-success-action" onClick={() => navigate("/login", { replace: true })}>
-              回到登入頁
+            <button type="button" className="auth-success-action" data-localized onClick={() => navigate("/login", { replace: true })}>
+              {language === "en" ? "Back to login" : "回到登入頁"}
             </button>
           </div>
         </div>
