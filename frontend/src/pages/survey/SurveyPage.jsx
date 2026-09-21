@@ -600,37 +600,39 @@ export default function SurveyPage({ pptOnly = false }) {
                   <span>{t("支援 .ppt、.pptx 與 .pdf","Supports .ppt, .pptx and .pdf")}</span>
                 </label>
 
-                <div className="ppt-field-grid">
-                  <label className="ppt-field">
-                    <span>{t("題目數量","Question count")}</span>
-                    <input
-                      type="number"
-                      min="1"
-                      max="20"
-                      value={pptConfig.questionCount}
-                      onChange={(event) => updatePptConfig({ questionCount: event.target.value })}
-                    />
-                  </label>
-                </div>
+                <div className="ppt-quick-settings">
+                  <div className="ppt-field-grid">
+                    <label className="ppt-field">
+                      <span>{t("題目數量","Question count")}</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="20"
+                        value={pptConfig.questionCount}
+                        onChange={(event) => updatePptConfig({ questionCount: event.target.value })}
+                      />
+                    </label>
+                  </div>
 
-                <div className="ppt-type-limits">
-                  <span>{t("題型限制","Type limits")}</span>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={pptConfig.typeLimits.short}
-                      onChange={(event) => updateTypeLimit("short", event.target.checked)}
-                    />
-                    {t("問答題","Short answer")}
-                  </label>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={pptConfig.typeLimits.rating}
-                      onChange={(event) => updateTypeLimit("rating", event.target.checked)}
-                    />
-                    {t("評分題","Rating")}
-                  </label>
+                  <div className="ppt-type-limits">
+                    <span>{t("題型限制","Type limits")}</span>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={pptConfig.typeLimits.short}
+                        onChange={(event) => updateTypeLimit("short", event.target.checked)}
+                      />
+                      {t("問答題","Short answer")}
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={pptConfig.typeLimits.rating}
+                        onChange={(event) => updateTypeLimit("rating", event.target.checked)}
+                      />
+                      {t("評分題","Rating")}
+                    </label>
+                  </div>
                 </div>
 
                 <div className="ppt-generation-preferences">

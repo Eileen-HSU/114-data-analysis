@@ -866,6 +866,10 @@
   border-right: none;
   border-bottom: 1px solid #edf2f7;
   background: #fbfafb;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+  align-items: start;
+  gap: 22px 24px;
 }
 
 .ppt-upload-zone {
@@ -1333,13 +1337,37 @@
 }
 
 .ppt-config-panel > * {
-  width: min(720px, 100%);
+  width: 100%;
+}
+
+.ppt-config-panel .ppt-upload-zone {
+  min-height: 150px;
+  margin: 0;
+}
+
+.ppt-quick-settings {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.ppt-quick-settings .ppt-field-grid,
+.ppt-quick-settings .ppt-type-limits {
+  margin: 0;
 }
 
 .ppt-generation-preferences {
   display: grid;
   gap: 14px;
   margin: 20px 0;
+  grid-column: 1 / -1;
+  width: min(720px, 100%);
+}
+
+.ppt-config-panel > .ppt-primary-btn,
+.ppt-config-panel > .ppt-error {
+  grid-column: 1 / -1;
+  width: fit-content;
 }
 
 .ppt-generation-preferences select {
@@ -2688,6 +2716,16 @@
     width: calc(100vw - 20px);
     max-width: none;
     max-height: min(500px, calc(100vh - 20px));
+  }
+}
+
+@media (max-width: 720px) {
+  .ppt-config-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .ppt-generation-preferences {
+    width: 100%;
   }
 }
 
