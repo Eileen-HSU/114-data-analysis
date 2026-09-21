@@ -1377,10 +1377,11 @@
   z-index: 2;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  width: clamp(320px, 23vw, 420px);
+  /* Match the ConSight logo width exactly: two separate half-width actions. */
+  width: clamp(166px, 19vw, 248px);
   height: 44px;
   align-self: auto;
-  gap: 8px;
+  gap: 6px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -2261,11 +2262,17 @@
   }
 
   .sdp-tab-group-header {
-    position: static;
-    transform: none;
-    width: min(310px, 100%);
-    margin: 0 auto;
+    position: absolute;
+    left: 50vw;
+    bottom: 0;
+    transform: translateX(-50%);
+    width: clamp(166px, 19vw, 248px);
+    margin: 0;
   }
+}
+
+@media (max-width: 991px) {
+  .sdp-tab-group-header { width: 140px; }
 }
 
 @media (max-width: 768px) {
@@ -2298,7 +2305,7 @@
     justify-content: flex-start;
   }
 
-  .sdp-tab-group-header { width: auto; }
+  .sdp-tab-group-header { width: 120px; }
 
   .sdp-tab-group-header .sdp-tab {
     padding: 8px 9px;
