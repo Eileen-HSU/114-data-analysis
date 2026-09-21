@@ -233,6 +233,7 @@ with app.app_context():
 
     # 補回一個 user 供後面測試使用
     db.session.add(m.User(user_id=2, user_name="tester2", email="t2@example.com", password_hash="x"))
+    db.session.add(m.Admin(admin_id=1, admin_name="測試管理員", email="admin@example.com", password_hash="x"))
     db.session.commit()
 
 
@@ -243,7 +244,7 @@ print("\n========== Classification_Review 新表 ==========")
 
 with app.app_context():
     review = m.Classification_Review(
-        classification_id=rc_id, user_id=2, status="in_progress",
+        classification_id=rc_id, admin_id=1, status="in_progress",
     )
     db.session.add(review)
     db.session.commit()
