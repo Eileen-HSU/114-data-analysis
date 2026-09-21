@@ -77,6 +77,7 @@ export default function SurveyPage({ pptOnly = false }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isPptModalOpen, setIsPptModalOpen] = useState(isPptPage);
   const [pptFile, setPptFile] = useState(null);
+  const [pptFileName, setPptFileName] = useState("");
   const [pptConfig, setPptConfig] = useState(defaultPptConfig);
   const [checkedTopics, setCheckedTopics] = useState([]);
   const [checkedFocus, setCheckedFocus] = useState([]);
@@ -107,6 +108,7 @@ export default function SurveyPage({ pptOnly = false }) {
     try {
       const saved = JSON.parse(localStorage.getItem(pptDraftStorageKey) || "null");
       if (saved?.draft) setPptDraft(normalizeDraft(saved.draft));
+      setPptFileName(saved?.fileName || "");
       if (saved?.config) {
         setPptConfig({
           ...defaultPptConfig,
@@ -132,6 +134,7 @@ export default function SurveyPage({ pptOnly = false }) {
     try {
       localStorage.setItem(pptDraftStorageKey, JSON.stringify({
         draft: pptDraft,
+        fileName: pptFile?.name || pptFileName,
         config: pptConfig,
         checkedTopics,
         checkedFocus,
@@ -142,7 +145,7 @@ export default function SurveyPage({ pptOnly = false }) {
     } catch (error) {
       console.warn("Unable to save PPT survey draft:", error);
     }
-  }, [isPptPage, pptDraftStorageKey, isPptStorageReady, pptDraft, pptConfig, checkedTopics, checkedFocus, topicPreset, focusPreset, chatMessages]);
+  }, [isPptPage, pptDraftStorageKey, isPptStorageReady, pptDraft, pptFile, pptFileName, pptConfig, checkedTopics, checkedFocus, topicPreset, focusPreset, chatMessages]);
 
   useEffect(() => {
     if (!user?.token || isPptPage) {
@@ -184,6 +187,7 @@ export default function SurveyPage({ pptOnly = false }) {
 
   const resetPptModal = () => {
     setPptFile(null);
+    setPptFileName("");
     setPptConfig(defaultPptConfig);
     setCheckedTopics([]);
     setCheckedFocus([]);
@@ -202,10 +206,37 @@ export default function SurveyPage({ pptOnly = false }) {
     setShareLink("");
   };
 
-  const closePptModal = () => {
+  const hasUnimportedPptWork = () => Boolean(
+    pptFile || pptFileName || pptDraft || pptConfig.direction || pptConfig.focus ||
+    pptConfig.typeCounts.short !== "" || pptConfig.typeCounts.rating !== ""
+  );
+
+  const leavePptPage = () => {
+    if (!savedResult && hasUnimportedPptWork()) {
+      const shouldLeave = window.confirm(t(
+        "尚未匯入系統問卷。確定要離開嗎？離開後目前的 PPT 問卷草稿不會保存。",
+        "This survey has not been imported. Leave this page? Your current PPT survey draft will not be saved.",
+      ));
+      if (!shouldLeave) return;
+    }
+
+    try {
+      localStorage.removeItem(pptDraftStorageKey);
+    } catch (error) {
+      console.warn("Unable to clear PPT survey draft:", error);
+    }
     setIsPptModalOpen(false);
     resetPptModal();
     if (isPptPage) navigate("/survey");
+  };
+
+  const closePptModal = () => {
+    if (isPptPage) {
+      leavePptPage();
+      return;
+    }
+    setIsPptModalOpen(false);
+    resetPptModal();
   };
 
   const updatePptConfig = (patch) => {
@@ -499,6 +530,12 @@ export default function SurveyPage({ pptOnly = false }) {
     const savedSurvey = await handleSaveDraft();
     if (!savedSurvey) return;
 
+    try {
+      localStorage.removeItem(pptDraftStorageKey);
+    } catch (error) {
+      console.warn("Unable to clear imported PPT survey draft:", error);
+    }
+
     navigate("/survey", {
       replace: true,
       state: { importedSurvey: savedSurvey.title },
@@ -656,7 +693,7 @@ export default function SurveyPage({ pptOnly = false }) {
           <section className="ppt-modal" onClick={(event) => event.stopPropagation()}>
             {isPptPage && (
               <nav className="ppt-page-breadcrumb" aria-label={t("頁面導覽", "Page navigation")}>
-                <button type="button" onClick={() => navigate("/survey")}>
+                <button type="button" onClick={leavePptPage}>
                   <i className="ri-arrow-left-line"></i>
                   {t("返回問卷中心", "Back to survey center")}
                 </button>
@@ -681,10 +718,14 @@ export default function SurveyPage({ pptOnly = false }) {
                   <input
                     type="file"
                     accept=".ppt,.pptx,.pdf,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                    onChange={(event) => setPptFile(event.target.files?.[0] || null)}
+                    onChange={(event) => {
+                      const selectedFile = event.target.files?.[0] || null;
+                      setPptFile(selectedFile);
+                      setPptFileName(selectedFile?.name || "");
+                    }}
                   />
                   <i className="ri-upload-cloud-2-line"></i>
-                  <strong>{pptFile ? pptFile.name : t("選擇 PPT 或 PDF 檔案","Choose a PPT or PDF file")}</strong>
+                  <strong>{pptFile?.name || pptFileName || t("選擇 PPT 或 PDF 檔案","Choose a PPT or PDF file")}</strong>
                   <span>{t("支援 .ppt、.pptx 與 .pdf","Supports .ppt, .pptx and .pdf")}</span>
                 </label>
 
