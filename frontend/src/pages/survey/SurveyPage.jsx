@@ -580,7 +580,7 @@ export default function SurveyPage({ pptOnly = false }) {
               </button>
             </header>
 
-            <div className="ppt-modal-body">
+            <div className={`ppt-modal-body ${pptDraft ? "ppt-modal-body-with-chat" : ""}`}>
               <div className="ppt-config-panel">
                 <label className="ppt-upload-zone">
                   <input
@@ -783,6 +783,54 @@ export default function SurveyPage({ pptOnly = false }) {
                   </button>
                 </div>
               </div>
+              {pptDraft && (
+                <aside className={`ppt-floating-chat ${isAiChatMinimized ? "is-minimized" : ""}`}>
+                  <header className="ppt-floating-chat-header">
+                    <div>
+                      <strong>{t("AI 對話", "AI Chat")}</strong>
+                      <span>{t("調整問卷草稿", "Refine draft")}</span>
+                    </div>
+                    <button
+                      className="ppt-floating-chat-toggle"
+                      onClick={() => setIsAiChatMinimized((prev) => !prev)}
+                      type="button"
+                      aria-label={isAiChatMinimized ? t("展開對話", "Expand chat") : t("最小化對話", "Minimize chat")}
+                    >
+                      <i className={isAiChatMinimized ? "ri-add-line" : "ri-subtract-line"}></i>
+                    </button>
+                  </header>
+
+                  {!isAiChatMinimized && (
+                    <>
+                      <div className="ppt-floating-chat-log">
+                        {chatMessages.map((message, index) => (
+                          <div className={`ppt-chat-message ${message.role}`} key={`${message.role}-${index}`}>
+                            {message.text}
+                          </div>
+                        ))}
+                        {isChatting && (
+                          <div className="ppt-chat-message assistant loading">
+                            <i className="ri-loader-4-line"></i>
+                            {t("調整中...", "Adjusting...")}
+                          </div>
+                        )}
+                      </div>
+                      <div className="ppt-floating-chat-input">
+                        <textarea
+                          className="w-full resize-y break-words whitespace-normal overflow-y-auto p-3 leading-relaxed outline-none focus:ring"
+                          value={aiMessage}
+                          onChange={(event) => setAiMessage(event.target.value)}
+                          placeholder={t("輸入修改指令，例如：增加一題評分題、題目更精簡", "Enter an edit command, e.g.: add a rating question, shorten questions")}
+                        />
+                        <button className="ppt-primary-btn" onClick={handleAiRevise} disabled={isChatting || !aiMessage.trim()} type="button">
+                          <i className="ri-send-plane-line"></i>
+                          {t("送出", "Send")}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </aside>
+              )}
             </div>
 
             {pptDraft && (
@@ -806,54 +854,6 @@ export default function SurveyPage({ pptOnly = false }) {
         </div>
       )}
 
-      {isPptModalOpen && pptDraft && (
-        <aside className={`ppt-floating-chat fixed right-8 bottom-8 z-[100] max-w-sm w-[380px] h-[500px] rounded-lg shadow-2xl border border-gray-200 bg-white overflow-hidden flex flex-col ${isAiChatMinimized ? "is-minimized" : ""}`}>
-          <header className="ppt-floating-chat-header">
-            <div>
-              <strong>{t("AI 對話", "AI Chat")}</strong>
-              <span>{t("調整問卷草稿", "Refine draft")}</span>
-            </div>
-            <button
-              className="ppt-floating-chat-toggle"
-              onClick={() => setIsAiChatMinimized((prev) => !prev)}
-              type="button"
-              aria-label={isAiChatMinimized ? t("展開對話", "Expand chat") : t("最小化對話", "Minimize chat")}
-            >
-              <i className={isAiChatMinimized ? "ri-add-line" : "ri-subtract-line"}></i>
-            </button>
-          </header>
-
-          {!isAiChatMinimized && (
-            <>
-              <div className="ppt-floating-chat-log flex-grow overflow-y-auto p-4">
-                {chatMessages.map((message, index) => (
-                  <div className={`ppt-chat-message ${message.role}`} key={`${message.role}-${index}`}>
-                    {message.text}
-                  </div>
-                ))}
-                {isChatting && (
-                  <div className="ppt-chat-message assistant loading">
-                    <i className="ri-loader-4-line"></i>
-                    {t("調整中...", "Adjusting...")}
-                  </div>
-                )}
-              </div>
-              <div className="ppt-floating-chat-input">
-                <textarea
-                  className="w-full resize-y break-words whitespace-normal overflow-y-auto p-3 leading-relaxed outline-none focus:ring"
-                  value={aiMessage}
-                  onChange={(event) => setAiMessage(event.target.value)}
-                  placeholder={t("輸入修改指令，例如：增加一題評分題、題目更精簡", "Enter an edit command, e.g.: add a rating question, shorten questions")}
-                />
-                <button className="ppt-primary-btn" onClick={handleAiRevise} disabled={isChatting || !aiMessage.trim()} type="button">
-                  <i className="ri-send-plane-line"></i>
-                  {t("送出", "Send")}
-                </button>
-              </div>
-            </>
-          )}
-        </aside>
-      )}
     </>
   );
 }
