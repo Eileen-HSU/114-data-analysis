@@ -95,6 +95,7 @@ export default function SurveyPage({ pptOnly = false }) {
   const [savedResult, setSavedResult] = useState(null);
   const [shareLink, setShareLink] = useState("");
   const [isPptStorageReady, setIsPptStorageReady] = useState(false);
+  const [isLeavePptDialogOpen, setIsLeavePptDialogOpen] = useState(false);
   const pptDraftStorageKey = `${PPT_DRAFT_STORAGE_PREFIX}${user?.user_id || user?.email || "current"}`;
 
   useEffect(() => {
@@ -211,23 +212,24 @@ export default function SurveyPage({ pptOnly = false }) {
     pptConfig.typeCounts.short !== "" || pptConfig.typeCounts.rating !== ""
   );
 
-  const leavePptPage = () => {
-    if (!savedResult && hasUnimportedPptWork()) {
-      const shouldLeave = window.confirm(t(
-        "尚未匯入系統問卷。確定要離開嗎？離開後目前的 PPT 問卷草稿不會保存。",
-        "This survey has not been imported. Leave this page? Your current PPT survey draft will not be saved.",
-      ));
-      if (!shouldLeave) return;
-    }
-
+  const finishLeavingPptPage = () => {
     try {
       localStorage.removeItem(pptDraftStorageKey);
     } catch (error) {
       console.warn("Unable to clear PPT survey draft:", error);
     }
+    setIsLeavePptDialogOpen(false);
     setIsPptModalOpen(false);
     resetPptModal();
     if (isPptPage) navigate("/survey");
+  };
+
+  const leavePptPage = () => {
+    if (!savedResult && hasUnimportedPptWork()) {
+      setIsLeavePptDialogOpen(true);
+      return;
+    }
+    finishLeavingPptPage();
   };
 
   const closePptModal = () => {
@@ -959,6 +961,22 @@ export default function SurveyPage({ pptOnly = false }) {
                 </button>
               </footer>
             )}
+          </section>
+        </div>
+      )}
+
+      {isLeavePptDialogOpen && (
+        <div className="ppt-leave-dialog-backdrop" role="presentation">
+          <section className="ppt-leave-dialog" role="dialog" aria-modal="true" aria-labelledby="ppt-leave-dialog-title">
+            <div className="ppt-leave-dialog-icon"><i className="ri-draft-line"></i></div>
+            <div>
+              <h2 id="ppt-leave-dialog-title">{t("尚未匯入系統問卷", "Survey not imported yet")}</h2>
+              <p>{t("離開後目前的 PPT 問卷草稿將不會保存。確定要離開嗎？", "Leaving will discard the current PPT survey draft. Are you sure you want to leave?")}</p>
+            </div>
+            <div className="ppt-leave-dialog-actions">
+              <button className="ppt-secondary-btn" type="button" onClick={() => setIsLeavePptDialogOpen(false)}>{t("繼續編輯", "Keep editing")}</button>
+              <button className="ppt-danger-btn" type="button" onClick={finishLeavingPptPage}>{t("不保存並離開", "Discard and leave")}</button>
+            </div>
           </section>
         </div>
       )}
