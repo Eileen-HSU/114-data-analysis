@@ -1372,7 +1372,7 @@
   position: absolute;
   top: auto;
   bottom: 0;
-  left: 50vw;
+  left: calc(50vw + clamp(56px, 5vw, 100px));
   transform: translateX(-50%);
   z-index: 2;
   display: grid;
@@ -1812,6 +1812,15 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
   gap: 18px;
+}
+
+.sdp-rating-grid-single {
+  grid-template-columns: minmax(0, 560px);
+  justify-content: start;
+}
+
+.sdp-rating-grid-single .sdp-rating-stats {
+  justify-content: flex-start;
 }
 
 .sdp-rating-card {

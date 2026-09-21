@@ -492,7 +492,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
                     <p className="sdp-section-sub">{ratingQuestions.length}<InterfaceText>{"題評分題"}</InterfaceText></p>
                   </div>
                 </div>
-                <div className="sdp-rating-grid">
+                <div className={`sdp-rating-grid ${ratingQuestions.length === 1 ? "sdp-rating-grid-single" : ""}`}>
                   {ratingQuestions.map((question) => (
                     <RatingStats 
                       key={question.id || question.question_id} 
