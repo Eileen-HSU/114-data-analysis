@@ -574,6 +574,16 @@ export default function SurveyPage({ pptOnly = false }) {
       {isPptModalOpen && (
         <div className={`ppt-modal-backdrop ${isPptPage ? "ppt-page-backdrop" : ""}`} onClick={isPptPage ? undefined : closePptModal}>
           <section className="ppt-modal" onClick={(event) => event.stopPropagation()}>
+            {isPptPage && (
+              <nav className="ppt-page-breadcrumb" aria-label={t("頁面導覽", "Page navigation")}>
+                <button type="button" onClick={() => navigate("/survey")}>
+                  <i className="ri-arrow-left-line"></i>
+                  {t("返回問卷中心", "Back to survey center")}
+                </button>
+                <span aria-hidden="true">|</span>
+                <strong>{t("建立問卷", "Create survey")}</strong>
+              </nav>
+            )}
             <header className="ppt-modal-header">
               <div>
                 <span className="entry-card-kicker">{t("教材 AI 問卷草稿","PPT AI survey draft")}</span>
@@ -601,7 +611,7 @@ export default function SurveyPage({ pptOnly = false }) {
                 <div className="ppt-quick-settings">
                   <div className="ppt-field-grid">
                     <label className="ppt-field">
-                      <span>{t("問答題：幾題","Short answer: how many?")}</span>
+                      <span>{t("問答題：","Short answer:")}</span>
                       <input
                         type="number"
                         min="0"
@@ -611,7 +621,7 @@ export default function SurveyPage({ pptOnly = false }) {
                       />
                     </label>
                     <label className="ppt-field">
-                      <span>{t("評分題：幾題","Rating: how many?")}</span>
+                      <span>{t("評分題：","Rating:")}</span>
                       <input
                         type="number"
                         min="0"
