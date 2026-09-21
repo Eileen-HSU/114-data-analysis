@@ -1,7 +1,6 @@
 import InterfaceText from "../../components/feature/InterfaceText";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import Navbar from "../../components/feature/Navbar";
 import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
 import { useAuth } from "../../hooks/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
@@ -1697,7 +1696,6 @@ export default function WorkspacePage() {
   if (!isLoggedIn) {
     return (
       <>
-        <Navbar />
         <div className="workspace-page" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
           <LoginRequiredModal
             message="新增工作區需要登入帳號才能使用，登入後即可開始分析資料。"
@@ -1712,7 +1710,6 @@ export default function WorkspacePage() {
   if (isEntryLoading || historyLoadingSessionId) {
     return (
       <>
-        <Navbar />
         <main className="workspace-entry-loading-page">
           <div className="workspace-entry-loading-card" role="status" aria-live="polite">
             <div className="workspace-entry-loading-icon">
@@ -1728,7 +1725,6 @@ export default function WorkspacePage() {
 
   return (
     <>
-      <Navbar />
       {toastMsg && (
         <div style={{
           position: "fixed", bottom: 32, left: "50%", transform: "translateX(-50%)",

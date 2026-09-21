@@ -2,7 +2,6 @@ import InterfaceText from "../../components/feature/InterfaceText";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
-import Navbar from "../../components/feature/Navbar";
 import { useActivity } from "../../hooks/ActivityContext";
 import { useAuth } from "../../hooks/AuthContext";
 import { apiUrl } from "../../lib/api";
@@ -422,7 +421,6 @@ export default function SurveyPage({ pptOnly = false }) {
 
   return (
     <>
-      <Navbar />
       {(!isPptPage || !isPptModalOpen) && <main className="survey-page">
         <section className="survey-workspace">
           <div className="survey-intro">
