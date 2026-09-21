@@ -1980,6 +1980,58 @@
   color: var(--violet-600);
 }
 
+/* Rating summary: donut chart and score legend */
+.sdp-rating-stats {
+  justify-content: center;
+  gap: 24px;
+  align-items: center;
+  min-height: 156px;
+}
+
+.sdp-donut-panel { flex: 0 0 142px; display: flex; justify-content: center; }
+
+.sdp-rating-donut {
+  width: 138px;
+  height: 138px;
+  border-radius: 50%;
+  padding: 18px;
+  box-sizing: border-box;
+  box-shadow: 0 8px 18px rgba(210, 73, 145, 0.12);
+}
+
+.sdp-rating-donut-center {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.sdp-rating-donut .sdp-avg-num { color: #db5162; }
+.sdp-rating-donut .sdp-avg-sub { color: var(--slate-400); }
+
+.sdp-rating-legend {
+  width: 146px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.sdp-rating-answered {
+  padding-bottom: 2px;
+  color: var(--slate-500);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sdp-legend-row { display: grid; grid-template-columns: 12px 1fr auto; align-items: center; gap: 8px; }
+.sdp-legend-swatch { width: 12px; height: 12px; border-radius: 4px; }
+.sdp-legend-score { color: var(--slate-500); font-size: 12px; font-weight: 700; }
+.sdp-legend-count { color: var(--slate-700); font-size: 12px; font-weight: 800; }
+
 /* Text Q List */
 .sdp-text-q-list {
   display: flex;

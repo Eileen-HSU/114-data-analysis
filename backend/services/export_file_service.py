@@ -25,6 +25,7 @@ from zoneinfo import ZoneInfo
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
+from openpyxl.drawing.image import Image as OpenpyxlImage
 from PIL import Image, ImageDraw, ImageFont
 from docx import Document
 from docx.shared import Pt, Cm, Emu, RGBColor
@@ -239,7 +240,12 @@ def _write_rating_stats_sheet(wb, rating_stats: list, *, index: int = 0):
 
         # 題目之間留白：這幾列完全不套用任何樣式，區塊與區塊之間
         # 自然分開。
-        current_row = dist_value_row + 1 + BLANK_ROWS_BETWEEN
+        chart_image = OpenpyxlImage(io.BytesIO(_render_rating_donut_png(distribution, average)))
+        chart_image.width = 270
+        chart_image.height = 166
+        ws.add_image(chart_image, f"H{title_row}")
+
+        current_row = max(dist_value_row + 1 + BLANK_ROWS_BETWEEN, title_row + 10)
 
     # 欄數不多，但為了題目列有足夠寬度可以換行，欄寬加起來容易超出
     # 一頁列印寬度；設定縮放至一頁寬，使用者如果把這張 sheet 印出來，
@@ -475,11 +481,14 @@ def _render_rating_donut_png(distribution: dict, average, *, size: int = 480) ->
     counts = [int(distribution.get(str(score), 0) or 0) for score in range(6)]
     total = sum(counts)
 
-    image = Image.new("RGBA", (size, size), (255, 255, 255, 0))
+    canvas_width = int(size * 1.62)
+    chart_size = int(size * 0.72)
+    image = Image.new("RGBA", (canvas_width, size), (255, 255, 255, 0))
     draw = ImageDraw.Draw(image)
-    margin = size * 0.06
-    bbox = [margin, margin, size - margin, size - margin]
-    ring_width = size * 0.17
+    margin = chart_size * 0.06
+    chart_top = (size - chart_size) / 2
+    bbox = [margin, chart_top + margin, chart_size - margin, chart_top + chart_size - margin]
+    ring_width = chart_size * 0.17
 
     if total > 0:
         start_angle = -90.0  # 從正上方（12 點鐘方向）開始，順時針疊加
@@ -494,21 +503,32 @@ def _render_rating_donut_png(distribution: dict, average, *, size: int = 480) ->
         draw.pieslice(bbox, 0, 360, fill=_RATING_SCORE_COLORS_CSS[0])
 
     hole_margin = margin + ring_width
-    hole_bbox = [hole_margin, hole_margin, size - hole_margin, size - hole_margin]
+    hole_bbox = [hole_margin, chart_top + hole_margin, chart_size - hole_margin, chart_top + chart_size - hole_margin]
     draw.ellipse(hole_bbox, fill=(255, 255, 255, 255))
 
     center_text = f"{average:.1f}" if average is not None else "-"
     sub_text = "/ 5" if average is not None else "N/A"
     try:
-        font_big = ImageFont.load_default(size=int(size * 0.15))
-        font_small = ImageFont.load_default(size=int(size * 0.055))
+        font_big = ImageFont.load_default(size=int(chart_size * 0.15))
+        font_small = ImageFont.load_default(size=int(chart_size * 0.055))
     except TypeError:
         # 舊版 Pillow（< 10.1）的 load_default() 不支援 size 參數。
         font_big = ImageFont.load_default()
         font_small = font_big
-    cx, cy = size / 2, size / 2
-    draw.text((cx, cy - size * 0.05), center_text, font=font_big, fill="#F43F5E", anchor="mm")
-    draw.text((cx, cy + size * 0.09), sub_text, font=font_small, fill="#94A3B8", anchor="mm")
+    cx, cy = chart_size / 2, size / 2
+    draw.text((cx, cy - chart_size * 0.05), center_text, font=font_big, fill="#F43F5E", anchor="mm")
+    draw.text((cx, cy + chart_size * 0.09), sub_text, font=font_small, fill="#94A3B8", anchor="mm")
+
+    legend_x = int(chart_size + size * 0.10)
+    legend_y = int(size * 0.21)
+    try:
+        legend_font = ImageFont.load_default(size=int(size * 0.055))
+    except TypeError:
+        legend_font = ImageFont.load_default()
+    for score, count in enumerate(counts):
+        y = legend_y + int(score * size * 0.095)
+        draw.rounded_rectangle([legend_x, y, legend_x + 18, y + 18], radius=4, fill=_RATING_SCORE_COLORS_CSS[score])
+        draw.text((legend_x + 30, y + 9), f"{score}  {count}", font=legend_font, fill="#475569", anchor="lm")
 
     buf = io.BytesIO()
     image.save(buf, format="PNG")
