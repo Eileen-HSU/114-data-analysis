@@ -28,6 +28,9 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
       : { background: "rgba(255,255,255,0.97)", borderBottom: "1px solid var(--slate-100)", backdropFilter: "blur(10px)" };
 
   const isTransparentMode = transparent && !scrolled;
+  const readOnlyAssistantPath = readOnly
+    ? (sharedAssistantPath || `${location.pathname}${location.search}${location.hash}`)
+    : "";
 
   return (
     <nav
@@ -49,15 +52,14 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
           </a>
           <a
             className={`nav-link-btn ${(readOnly || location.pathname === "/workspace") ? "active" : ""}`}
-            href={sharedAssistantPath || "/workspace"}
+            href={readOnlyAssistantPath || "/workspace"}
             onClick={(event) => {
               event.preventDefault();
-              if (readOnly && sharedAssistantPath) {
-                navigate(sharedAssistantPath);
+              if (readOnly) {
+                navigate(readOnlyAssistantPath);
                 return;
               }
-              if (readOnly && !isLoggedIn) onRequireLogin?.("新增對話");
-              else navigate("/workspace");
+              navigate("/workspace");
             }}
             style={{ cursor: "pointer" }}
           >
