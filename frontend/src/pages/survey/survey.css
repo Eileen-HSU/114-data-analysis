@@ -867,7 +867,7 @@
   border-bottom: 1px solid #edf2f7;
   background: #fbfafb;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
   gap: 22px 24px;
 }

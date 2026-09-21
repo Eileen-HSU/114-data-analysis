@@ -763,7 +763,7 @@ export default function SurveyPage({ pptOnly = false }) {
                 <div className="ppt-preview-actions">
                   <button className="ppt-secondary-btn" type="button">
                     <i className="ri-download-2-line"></i>
-                    {t("匯出","Export")}
+                    {t("匯入系統問卷","Import into system surveys")}
                   </button>
                 </div>
               </div>
