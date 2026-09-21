@@ -1,6 +1,7 @@
 import InterfaceText from "../../components/feature/InterfaceText";
 import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import Navbar from "../../components/feature/Navbar";
 import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
 import DeadlineDateTimePicker from "../../components/feature/DeadlineDateTimePicker";
 import { useAuth } from "../../hooks/AuthContext";
@@ -94,6 +95,7 @@ export default function CreateSurveyPage() {
   if (!isLoggedIn) {
     return (
       <>
+        <Navbar />
         <div className="survey-page" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
           <LoginRequiredModal
             message="請先登入後再建立問卷。"
@@ -238,6 +240,7 @@ export default function CreateSurveyPage() {
 
   return (
     <>
+      <Navbar />
       <main className="create-survey-page">
         <div className="create-survey-header">
           <div className="container">

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { apiUrl } from "../../lib/api";
 import { MessageContent, WELCOME_MSG } from "./page";
+import Navbar from "../../components/feature/Navbar";
 import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
 import { useAuth } from "../../hooks/AuthContext";
 import "./workspace.css";
@@ -46,6 +47,7 @@ export default function SharedWorkspacePage() {
 
   return (
     <>
+      <Navbar readOnly onRequireLogin={setLoginFeature} />
       {loginFeature && <div className="shared-login-prompt"><LoginRequiredModal
         message={`請先登入才能使用${loginFeature}。`}
         onLogin={() => navigate("/login")}
