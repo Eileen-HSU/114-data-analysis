@@ -40,6 +40,8 @@ const defaultPptConfig = {
 const defaultTopicOptions = ["學習成效", "講師表達"];
 const defaultFocusOptions = ["實務應用", "情境模擬"];
 
+const PPT_DRAFT_STORAGE_PREFIX = "ppt-survey-draft:";
+
 function getSurveyTime(createdAt) {
   const time = new Date(createdAt || 0).getTime();
   return Number.isNaN(time) ? 0 : time;
@@ -91,10 +93,56 @@ export default function SurveyPage({ pptOnly = false }) {
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [savedResult, setSavedResult] = useState(null);
   const [shareLink, setShareLink] = useState("");
+  const [isPptStorageReady, setIsPptStorageReady] = useState(false);
+  const pptDraftStorageKey = user?.user_id ? `${PPT_DRAFT_STORAGE_PREFIX}${user.user_id}` : null;
 
   useEffect(() => {
     setIsPptModalOpen(isPptPage);
   }, [isPptPage]);
+
+  useEffect(() => {
+    setIsPptStorageReady(false);
+    if (!isPptPage || !pptDraftStorageKey) return;
+
+    try {
+      const saved = JSON.parse(localStorage.getItem(pptDraftStorageKey) || "null");
+      if (saved?.draft) setPptDraft(normalizeDraft(saved.draft));
+      if (saved?.config) {
+        setPptConfig({
+          ...defaultPptConfig,
+          ...saved.config,
+          typeCounts: { ...defaultPptConfig.typeCounts, ...saved.config.typeCounts },
+        });
+      }
+      setCheckedTopics(Array.isArray(saved?.checkedTopics) ? saved.checkedTopics : []);
+      setCheckedFocus(Array.isArray(saved?.checkedFocus) ? saved.checkedFocus : []);
+      setTopicPreset(saved?.topicPreset || "");
+      setFocusPreset(saved?.focusPreset || "");
+      setChatMessages(Array.isArray(saved?.chatMessages) ? saved.chatMessages : []);
+    } catch (error) {
+      console.warn("Unable to restore PPT survey draft:", error);
+    } finally {
+      setIsPptStorageReady(true);
+    }
+  }, [isPptPage, pptDraftStorageKey]);
+
+  useEffect(() => {
+    if (!isPptPage || !pptDraftStorageKey || !isPptStorageReady) return;
+
+    try {
+      localStorage.setItem(pptDraftStorageKey, JSON.stringify({
+        draft: pptDraft,
+        config: pptConfig,
+        checkedTopics,
+        checkedFocus,
+        topicPreset,
+        focusPreset,
+        chatMessages,
+      }));
+    } catch (error) {
+      console.warn("Unable to save PPT survey draft:", error);
+    }
+  }, [isPptPage, pptDraftStorageKey, isPptStorageReady, pptDraft, pptConfig, checkedTopics, checkedFocus, topicPreset, focusPreset, chatMessages]);
 
   useEffect(() => {
     if (!user?.token || isPptPage) {
