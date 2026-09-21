@@ -25,3 +25,433 @@ label { display:block; font-weight:800; margin:12px 0; } textarea,select { width
 .sandbox-result-row { border-top:1px solid #e2e8f0; padding:14px 0; }
 .sandbox-segment { background:#f8fafc; border-radius:8px; padding:10px 14px; margin:8px 0; }
 .review-flag-badge { color:#c2415a; font-weight:700; }
+
+/* ============================================================
+ * 【重新設計】Admin「分類審查」審核工作台
+ * 只影響 .review-* 系列 class（ClassificationList / ReviewConversation
+ * 專用），不改動其他頁面共用的 .admin-card / .topic-card / .filter-row
+ * 版面。視覺延續系統既有風格：白底、淡灰藍卡片邊框，rose/pink 只用在
+ * active tab 與警示重點，不做大面積高飽和粉紅。
+ * ============================================================ */
+
+.review-workbench { display: flex; flex-direction: column; gap: 16px; }
+.review-workbench-intro { color: #64748b; margin: 0; font-size: 14px; }
+
+/* ---- 狀態 tabs：主要導航，取代原本的 review_status 下拉選單 ---- */
+.review-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 2px;
+}
+.review-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: none;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: #64748b;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.review-tab--active {
+  color: #e11d48; /* rose，唯一用來標示「這是目前選的 tab」 */
+  border-bottom-color: #e11d48;
+}
+.review-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+}
+.review-tab--active .review-tab-count { background: #ffe4e6; color: #be123c; }
+
+/* ---- 次要 filter：needs_human_review，刻意做小、不搶視覺 ---- */
+.review-secondary-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  margin: 0;
+  width: auto;
+}
+.review-secondary-filter input { width: auto; margin: 0; }
+
+/* ---- 分類結果卡片：白底、淡灰藍邊框、明確留白 ---- */
+.review-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 18px 20px;
+  margin-bottom: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+.review-card-top {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.review-card-segment {
+  flex: 1 1 240px;
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  color: #334155;
+}
+.review-card-mid { display: flex; flex-direction: column; gap: 6px; }
+.review-card-mid p { margin: 0; word-break: break-word; overflow-wrap: anywhere; }
+.review-field-label {
+  display: inline-block;
+  min-width: 108px;
+  color: #94a3b8;
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin-right: 8px;
+}
+
+.review-status-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  background: #f1f5f9;
+  color: #475569;
+}
+.review-status-tag--pending_review { background: #fff1f2; color: #be123c; } /* rose 當警示，未做大面積 */
+.review-status-tag--confirmed { background: #f0fdf4; color: #15803d; }
+.review-status-tag--modified { background: #eff6ff; color: #1d4ed8; }
+.review-status-tag--excluded { background: #f8fafc; color: #64748b; }
+
+/* ---- action buttons：不可被壓成很窄，小螢幕改多欄 wrap ---- */
+.review-card-actions,
+.review-bottom-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.review-card-actions button,
+.review-bottom-actions button {
+  min-width: 140px;
+  flex: 1 1 auto;
+  box-sizing: border-box;
+  padding: 9px 14px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+  font-weight: 700;
+  cursor: pointer;
+}
+.review-card-actions button:disabled,
+.review-bottom-actions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.review-btn-primary {
+  border-color: #8355ee !important;
+  background: #5f7bd9 !important;
+  color: #fff !important;
+}
+.review-btn-danger {
+  border-color: #fecdd3 !important;
+  background: #fff1f2 !important;
+  color: #be123c !important;
+}
+
+/* ---- ReviewConversation：桌機兩欄，<=900px 收成單欄 ---- */
+.review-conversation {
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+.review-conversation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.review-conflict-banner {
+  background: #fff7ed;
+  color: #9a3412;
+  border: 1px solid #fed7aa;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.review-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+  margin-bottom: 20px;
+}
+.review-main, .review-side, .review-readonly {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.review-section { padding-bottom: 16px; border-bottom: 1px solid #e2e8f0; }
+.review-section:last-child { border-bottom: none; padding-bottom: 0; }
+.review-section h3 { margin: 0 0 10px; font-size: 15px; }
+
+.review-segment-text,
+.review-category-block p {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.review-category-block {
+  background: #f8fafc;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.review-category-block h4 { margin: 0 0 8px; }
+.review-category-block p { margin: 4px 0; }
+
+.review-message-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+.review-message {
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border-radius: 10px;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.review-message p { margin: 4px 0 0; white-space: pre-wrap; }
+.review-message--user { background: #eff6ff; }
+.review-message--assistant { background: #f8fafc; }
+
+.review-message-input { display: flex; flex-direction: column; gap: 10px; }
+.review-message-input textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+.review-message-input button {
+  align-self: flex-end;
+  min-width: 140px;
+  box-sizing: border-box;
+  padding: 9px 16px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+  font-weight: 700;
+  cursor: pointer;
+}
+.review-message-input button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* ---- 審核歷史：整段預設收合，展開後每個 session 各自也是收合的 ---- */
+.review-history-section {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.review-history-section > summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #334155;
+}
+.review-history-section[open] > summary { margin-bottom: 10px; }
+.review-history-entry {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-top: 10px;
+}
+.review-history-entry summary {
+  cursor: pointer;
+  font-weight: 700;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.review-empty-hint { color: #94a3b8; margin: 6px 0; }
+
+/* ---- Responsive breakpoints ---- */
+@media (max-width: 1200px) {
+  .review-card-actions button,
+  .review-bottom-actions button,
+  .review-message-input button { min-width: 130px; }
+}
+
+@media (max-width: 900px) {
+  .review-layout { grid-template-columns: 1fr; }
+  .review-tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .review-tab { flex: 0 0 auto; }
+}
+
+@media (max-width: 640px) {
+  .review-card { padding: 14px 14px; }
+  .review-card-top { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .review-card-actions,
+  .review-bottom-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .review-card-actions button,
+  .review-bottom-actions button { min-width: 0; width: 100%; }
+  .review-conversation-header { flex-direction: column; align-items: flex-start; }
+  .review-message-input button { align-self: stretch; width: 100%; }
+  .review-tabs { flex-wrap: wrap; overflow-x: visible; }
+}
+
+@media (max-width: 420px) {
+  .review-card-actions,
+  .review-bottom-actions { grid-template-columns: 1fr; }
+}
+
+/* ===== Classification Review：批次確認 ===== */
+
+.review-batch-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.review-batch-selection {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: #475569;
+}
+
+.review-batch-selection b {
+  color: #334155;
+  font-size: 14px;
+}
+
+.review-batch-selection span {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.review-batch-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.review-batch-actions button {
+  min-width: 0;
+}
+
+.review-batch-message {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 13px;
+}
+
+.review-card--selected {
+  border-color: #c4b5fd;
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.08);
+}
+
+.review-card-select {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.review-card-select input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: #8b5cf6;
+}
+
+.review-card-select input:disabled {
+  cursor: not-allowed;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 900px) {
+  .review-batch-bar {
+    align-items: stretch;
+  }
+
+  .review-batch-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .review-batch-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .review-batch-actions button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 420px) {
+  .review-batch-actions {
+    grid-template-columns: 1fr;
+  }
+}
