@@ -6,7 +6,7 @@ import { useLanguage } from "../../context/LanguageContext";
 
 const DEFAULT_AVATAR = "https://static.readdy.ai/image/db4f710102ca6cc45db44808c8658987/b181cfaad2165c1909b7c8fa8339cbe7.png";
 
-export default function Navbar({ transparent = false, readOnly = false, onRequireLogin, sharedAssistantPath, onSurveyNavigate }) {
+export default function Navbar({ transparent = false, readOnly = false, onRequireLogin, sharedAssistantPath, onSurveyNavigate, onLeaveSharedChat }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { isLoggedIn, user, logout } = useAuth();
@@ -148,10 +148,10 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
             </div>
           ) : (
             <>
-              <a className="nav-login-btn" href="/login" onClick={(event) => { event.preventDefault(); navigate("/login"); }} style={{ cursor: "pointer" }}>
+              <a className="nav-login-btn" href="/login" onClick={(event) => { event.preventDefault(); if (readOnly && onLeaveSharedChat) onLeaveSharedChat("/login"); else navigate("/login"); }} style={{ cursor: "pointer" }}>
                 {t("login")}
               </a>
-              <a className="nav-signup-btn" href="/signup" onClick={(event) => { event.preventDefault(); navigate("/signup"); }} style={{ cursor: "pointer" }}>
+              <a className="nav-signup-btn" href="/signup" onClick={(event) => { event.preventDefault(); if (readOnly && onLeaveSharedChat) onLeaveSharedChat("/signup"); else navigate("/signup"); }} style={{ cursor: "pointer" }}>
                 {t("signup")}
               </a>
             </>
