@@ -6,7 +6,7 @@ import { useLanguage } from "../../context/LanguageContext";
 
 const DEFAULT_AVATAR = "https://static.readdy.ai/image/db4f710102ca6cc45db44808c8658987/b181cfaad2165c1909b7c8fa8339cbe7.png";
 
-export default function Navbar({ transparent = false, readOnly = false, onRequireLogin, sharedAssistantPath }) {
+export default function Navbar({ transparent = false, readOnly = false, onRequireLogin, sharedAssistantPath, onSurveyNavigate }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { isLoggedIn, user, logout } = useAuth();
@@ -69,7 +69,11 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
           <a
             className={`nav-link-btn ${location.pathname.startsWith("/survey") ? "active" : ""}`}
             href="/survey"
-            onClick={(event) => { event.preventDefault(); navigate("/survey"); }}
+            onClick={(event) => {
+              event.preventDefault();
+              if (readOnly && onSurveyNavigate) onSurveyNavigate();
+              else navigate("/survey");
+            }}
             style={{ cursor: "pointer" }}
           >
             <i className="ri-survey-line"></i>
