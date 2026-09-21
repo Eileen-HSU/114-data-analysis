@@ -340,7 +340,7 @@ export default function SurveyPage({ pptOnly = false }) {
     return "";
   };
 
-  const handleSaveDraft = async ({ redirectToSurveyCenter = false } = {}) => {
+  const handleSaveDraft = async () => {
     if (!user?.token) {
       setPptError("請先登入後再儲存問卷。");
       return;
@@ -418,15 +418,23 @@ export default function SurveyPage({ pptOnly = false }) {
           setShareLink(buildSurveyFillPath(accessCode));
         });
 
-      if (redirectToSurveyCenter) {
-        navigate("/survey", { replace: true });
-      }
+      return savedSurvey;
     } catch (error) {
       console.error("Save PPT survey failed:", error);
       setPptError(error?.response?.data?.error || "儲存失敗，請稍後再試。");
     } finally {
       setIsSavingDraft(false);
     }
+  };
+
+  const handleImportToSystemSurvey = async () => {
+    const savedSurvey = await handleSaveDraft();
+    if (!savedSurvey) return;
+
+    navigate("/survey", {
+      replace: true,
+      state: { importedSurvey: savedSurvey.title },
+    });
   };
 
   if (isPptPage && !isLoggedIn) {
@@ -763,7 +771,7 @@ export default function SurveyPage({ pptOnly = false }) {
                 </div>
 
                 <div className="ppt-preview-actions">
-                  <button className="ppt-secondary-btn" onClick={() => handleSaveDraft({ redirectToSurveyCenter: true })} disabled={!pptDraft || isSavingDraft || Boolean(savedResult)} type="button">
+                  <button className="ppt-secondary-btn" onClick={handleImportToSystemSurvey} disabled={!pptDraft || isSavingDraft || Boolean(savedResult)} type="button">
                     <i className={isSavingDraft ? "ri-loader-4-line" : "ri-upload-2-line"}></i>
                     {t("匯入系統問卷","Import into system surveys")}
                   </button>
