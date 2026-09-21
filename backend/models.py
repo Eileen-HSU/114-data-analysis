@@ -3,10 +3,13 @@ import uuid
 from sqlalchemy.dialects.mysql import MEDIUMTEXT
 
 from extensions import db, taiwan_now
-from response_classification import Response_Classification 
-from response_segmentation_status import Response_Segmentation_Status
-from uploaded_answer import Uploaded_Answer
-from classification_review import Classification_Review, Classification_Review_Message
+from classification_models import (
+    Response_Classification,
+    Response_Segmentation_Status,
+    Uploaded_Answer,
+    Classification_Review,
+    Classification_Review_Message,
+)
 from report import Report, Report_Aggregation, Report_Aggregation_Item
 from taxonomy import Topic, Taxonomy_Version, Taxonomy_Category
 
@@ -62,7 +65,6 @@ class UserVerification(db.Model):
     __tablename__ = "User_Verification"
 
     verification_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    # 刪除使用者時保留驗證紀錄，僅將 user_id 設為 NULL（對齊資料庫 ON DELETE SET NULL）
     user_id = db.Column(
         db.Integer,
         db.ForeignKey("User.user_id", ondelete="SET NULL"),
@@ -219,11 +221,6 @@ class Export_File(db.Model):
     export_path = db.Column(db.Text, nullable=False)
     export_status = db.Column(db.String(20), default="processing")  # processing / completed / failed
     created_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
-
-    # 【新增｜分類結果 CSV 匯出】目前沒有真正的檔案儲存服務，CSV 內容直接
-    # 存這裡；export_path 沿用舊欄位、對這種情況填空字串，不強改它的語意。
-    # 用 MEDIUMTEXT（沿用專案裡 avatar_url 已經在用的型別），上限 16MB，
-    # 對 CSV 表格內容綽綽有餘。
     content = db.Column(MEDIUMTEXT, nullable=True)
     row_count = db.Column(db.Integer, nullable=True)
 
@@ -250,16 +247,10 @@ class Export_File(db.Model):
 class Prompt_Template(db.Model):
     __tablename__ = "Prompt_Template"
 
-    # 例如 "leadership_and_dept"、"career_and_feedback"
     prompt_key = db.Column(db.String(50), primary_key=True)
     draft_content = db.Column(db.Text, nullable=False)
     live_content = db.Column(db.Text, nullable=False)
-
-    # 草稿是否已通過「發布前驗證」（黃金測試組全部格式合法）。
-    # 每次編輯草稿後重設為 False，只有測試通過才會設回 True，
-    # 發布時檢查這個欄位，沒過驗證不准發布。
     draft_validated = db.Column(db.Boolean, default=False, nullable=False)
-
     updated_at = db.Column(
         db.DateTime(timezone=True), default=taiwan_now, onupdate=taiwan_now
     )
@@ -277,16 +268,9 @@ class Prompt_Template(db.Model):
 
 
 # ═══════════════════════════════════════════════════════════════
-# T11: Admin - 管理員帳號（獨立於 User，不依賴 User.role）
+# 管理員帳號（獨立於 User，不依賴 User.role）
 # ═══════════════════════════════════════════════════════════════
-#
-# 舊版註解掉的 Admin model（config_id / admin_entry_key /
-# prompt_template / system_error_log）其實不是帳號表：它沒有
-# email、沒有 password_hash，本質上是一張「AI 設定/日誌」表，
-# 跟這裡要做的「管理員登入帳號」是完全不同的語意，所以不能直接
-# 拿來當帳號表用，必須另外建一張新的。
-# prompt_template / system_error_log 這兩個欄位的職責已經由
-# Prompt_Template（T10）與應用程式日誌承接，這裡不重複保留。
+# T11: Admin - 管理員帳號
 class Admin(db.Model):
     __tablename__ = "Admin"
 
@@ -309,23 +293,16 @@ class Admin(db.Model):
 
 
 # T12: Admin_Verification - Admin 專用的驗證碼機制（2FA）
-#
-# 刻意不重複使用 User_Verification：那張表的 user_id 是
-# ForeignKey("User.user_id")，Admin 沒有 user_id，硬塞會產生指向
-# 錯誤資料表的 FK（例如拿 admin_id 冒充 user_id 寫進去），日後資料
-# 一多幾乎必然對不上。這裡另外開一張結構相同、但外鍵對到 Admin
-# 的新表，對既有 User 2FA 完全不動、風險最小。
 class AdminVerification(db.Model):
     __tablename__ = "Admin_Verification"
 
     verification_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    # 刪除管理員時保留驗證紀錄，僅將 admin_id 設為 NULL（比照 User_Verification 的作法）
     admin_id = db.Column(
         db.Integer,
         db.ForeignKey("Admin.admin_id", ondelete="SET NULL"),
         nullable=True,
     )
-    type = db.Column(db.String(50), nullable=False)  # 目前只會用到 2FA
+    type = db.Column(db.String(50), nullable=False)  
     code_hash = db.Column(db.String(255), nullable=False)
     is_used = db.Column(db.Boolean, default=False)
     attempts = db.Column(db.Integer, default=0, nullable=False)

@@ -26,13 +26,13 @@ from models import (
     Classification_Review,
     Classification_Review_Message,
 )
-from response_classification import (
+from classification_models import (
     REVIEW_STATUS_CONFIRMED,
     REVIEW_STATUS_MODIFIED,
     REVIEW_STATUS_EXCLUDED,
 )
 from services.review_ai_service import build_review_reply
-from services.report_outdated_service import mark_reports_outdated_for_classification
+from services.report_service import mark_reports_outdated_for_classification
 from services.source_lookup_service import get_owner_user_id, resolve_question_type
 
 

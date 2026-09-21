@@ -29,7 +29,7 @@ classification 最終要拿哪個版本的分類結果來用」判斷入口。
         呼叫端不小心把 pending/excluded 的 None 分類值也算進統計。
 """
 
-from response_classification import REVIEW_STATUS_CONFIRMED, REVIEW_STATUS_MODIFIED
+from classification_models import REVIEW_STATUS_CONFIRMED, REVIEW_STATUS_MODIFIED
 from services.source_lookup_service import resolve_question_type
 from services.subcategory_methodology import get_methodology
 

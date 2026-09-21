@@ -374,7 +374,7 @@ def _run_classification(answer_text: str, prompt_content: str, question_type: st
     底層分類函式（既有邏輯不變）：接受任意 prompt 內容（可能是正式版，
     也可能是沙盒草稿），內部自行遮罩整則 answer_text 後送 Gemini。
 
-    被 classify_response_v2()（批次分類，run_classification.py 用）
+    被 classify_response_v2()（批次分類，flask run-classification 用）
     與 prompt_admin_service.py 的沙盒測試直接呼叫，這兩個呼叫端
     這次都不修改，所以這個函式的行為必須維持跟修改前一致，
     只是內部改呼叫共用的 _call_gemini_and_parse()，避免跟新的
@@ -650,7 +650,7 @@ def classify_response_v2(answer_text: str, question_type: str) -> dict:
     if row is None:
         raise RuntimeError(
             f"資料庫裡找不到 prompt_key='{question_type}' 的 Prompt_Template，"
-            "請先執行 seed_prompt_templates.py 建立初始資料"
+            "請先執行 flask seed-prompts 建立初始資料"
         )
 
     return _run_classification(answer_text, row.live_content, question_type)

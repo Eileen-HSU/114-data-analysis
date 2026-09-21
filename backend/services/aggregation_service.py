@@ -29,7 +29,7 @@ aggregated_summary。
       item 數量。
 """
 
-from response_classification import REVIEW_STATUS_CONFIRMED, REVIEW_STATUS_MODIFIED
+from classification_models import REVIEW_STATUS_CONFIRMED, REVIEW_STATUS_MODIFIED
 from services.source_lookup_service import fetch_classifications_in_scope, response_dedup_key
 from services.effective_classification_service import get_effective_classification
 

@@ -44,7 +44,13 @@ Versioned Report Snapshot 產生流程（對應需求文件第十九～二十六
 from sqlalchemy.exc import IntegrityError
 
 from extensions import db
-from models import Report, Report_Aggregation, Report_Aggregation_Item
+from models import Report, Report_Aggregation, Report_Aggregation_Item, Survey_Response
+from classification_models import (
+    REVIEW_STATUS_PENDING,
+    REVIEW_STATUS_CONFIRMED,
+    REVIEW_STATUS_MODIFIED,
+    REVIEW_STATUS_EXCLUDED,
+)
 from report import (
     SOURCE_TYPE_SURVEY,
     SOURCE_TYPE_USER_UPLOAD,
@@ -52,12 +58,127 @@ from report import (
     REPORT_STATUS_COMPLETED,
     REPORT_STATUS_FAILED,
 )
-from services.source_lookup_service import get_source_owner
-from services.aggregation_readiness_service import get_readiness
+from services.source_lookup_service import get_source_owner, fetch_classifications_in_scope
 from services.aggregation_service import build_aggregation
 from services.aggregated_summary_service import build_aggregated_summary
 
 _MAX_VERSION_CLAIM_ATTEMPTS = 5
+
+
+# ═══════════════════════════════════════════════════════════════
+# Aggregation Readiness（原 services/aggregation_readiness_service.py，
+# 2026-09 合併於此：只有本檔案的 get_readiness_for() / generate_report()
+# 會呼叫，是報告產生流程的前置檢查，不再獨立成檔）
+# ═══════════════════════════════════════════════════════════════
+#
+# 讓 User 在還沒 review 完 100% 的情況下，也能清楚看到「目前有多少筆
+# 可以拿去產生報告」，並可以選擇「只用已確認結果產生」。後端本身不會
+# 偷偷把 pending_review 加進 Aggregation——can_generate 只反映
+# 「eligible > 0」，pending 存不存在完全不影響 eligible 的計算，前端
+# 要不要在 has_pending=True 時跳警告是前端的事，這裡只負責給出正確的
+# 數字。
+
+def get_readiness(source_type, template_id=None, upload_batch_id=None) -> dict:
+    rows = fetch_classifications_in_scope(
+        source_type=source_type, template_id=template_id, upload_batch_id=upload_batch_id,
+    )
+
+    counts = {
+        REVIEW_STATUS_PENDING: 0,
+        REVIEW_STATUS_CONFIRMED: 0,
+        REVIEW_STATUS_MODIFIED: 0,
+        REVIEW_STATUS_EXCLUDED: 0,
+    }
+    for row in rows:
+        # 理論上 review_status 只會是上面四個值之一（DB 層雖然沒有
+        # CheckConstraint 強制，但所有寫入路徑都只會寫這四個值）；
+        # 萬一出現意外值，不要讓整個 readiness 計算噴例外，計入
+        # total 但不歸入任何一類，eligible/pending 都不會算到它，
+        # 這樣的資料異常會反映成 total > 四類總和，方便事後排查。
+        if row.review_status in counts:
+            counts[row.review_status] += 1
+
+    confirmed = counts[REVIEW_STATUS_CONFIRMED]
+    modified = counts[REVIEW_STATUS_MODIFIED]
+    excluded = counts[REVIEW_STATUS_EXCLUDED]
+    pending = counts[REVIEW_STATUS_PENDING]
+    eligible = confirmed + modified
+
+    return {
+        "total": len(rows),
+        "confirmed": confirmed,
+        "modified": modified,
+        "excluded": excluded,
+        "pending_review": pending,
+        "eligible": eligible,
+        "has_pending": pending > 0,
+        "can_generate": eligible > 0,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# Report Outdated 判定（原 services/report_outdated_service.py，
+# 2026-09 合併於此：報告生命週期判定，跟本檔案其他函式屬於同一個
+# 職責範圍，不再獨立成檔）
+# ═══════════════════════════════════════════════════════════════
+#
+# 唯一對外函式：mark_reports_outdated_for_classification()。
+# services/review_service.py 在 confirm_original() / confirm_candidate() /
+# exclude() 三個會真正影響「有效分類」的動作各自呼叫一次，是這個
+# helper 唯一的呼叫時機——review conversation 過程中每一輪 AI candidate
+# （尚未 confirm）不會呼叫，因為那些還沒有變成任何 Report 可能用到的
+# 有效資料。
+#
+# 刻意不在這裡：
+#     - 不觸發任何重新計算、不呼叫 Gemini。
+#     - 不負責 Report 產生（那是本檔案 generate_report() 的職責，這裡
+#       只負責把已存在、status='completed' 的舊 Report 標記為
+#       is_outdated=True）。
+#     - 不由任何 route 各自判斷「這個 classification 屬於哪個 Report
+#       範圍」，統一走這裡，避免同一個規則散落在多個檔案裡各寫一次、
+#       未來改規則要到處改。
+
+def mark_reports_outdated_for_classification(classification) -> int:
+    """
+    Args:
+        classification: 已經 review_status 剛變成
+            confirmed/modified/excluded 的 Response_Classification
+            實例（呼叫端負責先完成那個變更，這裡只讀取它的
+            source_type/response_id/upload_batch_id 來判斷影響範圍，
+            不會再去改 classification 本身的任何欄位）。
+
+    Returns:
+        實際被標記為 outdated 的 Report 筆數（供呼叫端寫 log/測試用，
+        不影響行為）。
+
+    只負責 db.session.add()/屬性賦值，不呼叫 commit()，交給呼叫端
+    （services/review_service.py）跟其他變更一起統一 commit，確保
+    review_status 的變更跟 outdated 標記在同一個 transaction 裡。
+    """
+    if classification.source_type == SOURCE_TYPE_SURVEY:
+        survey_response = Survey_Response.query.get(classification.response_id)
+        if survey_response is None:
+            return 0
+        matching_reports = Report.query.filter_by(
+            source_type=SOURCE_TYPE_SURVEY,
+            template_id=survey_response.template_id,
+            status=REPORT_STATUS_COMPLETED,
+            is_outdated=False,
+        ).all()
+    elif classification.source_type == SOURCE_TYPE_USER_UPLOAD:
+        matching_reports = Report.query.filter_by(
+            source_type=SOURCE_TYPE_USER_UPLOAD,
+            upload_batch_id=classification.upload_batch_id,
+            status=REPORT_STATUS_COMPLETED,
+            is_outdated=False,
+        ).all()
+    else:
+        return 0
+
+    for report in matching_reports:
+        report.is_outdated = True
+
+    return len(matching_reports)
 
 
 class ReportError(Exception):
