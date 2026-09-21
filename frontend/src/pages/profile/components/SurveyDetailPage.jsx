@@ -254,6 +254,10 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [currentSurvey.code, currentSurvey.access_code, currentSurvey.shortCode, currentSurvey.short_code]);
+
   if (!survey) return null;
 
   const handleCopyCode = async () => {
