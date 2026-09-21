@@ -15,6 +15,7 @@ export default function SharedWorkspacePage() {
   const { language } = useLanguage();
   const [loginFeature, setLoginFeature] = useState("");
   const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false);
+  const [leaveDestination, setLeaveDestination] = useState("/survey");
   const [result, setResult] = useState(null);
   useEffect(() => {
     const controller = new AbortController();
@@ -42,8 +43,11 @@ export default function SharedWorkspacePage() {
       }))
     : [WELCOME_MSG];
   const isEnglish = language === "en";
-  const requestLeaveSharedChat = () => setIsLeaveConfirmOpen(true);
-  const confirmLeaveSharedChat = () => navigate("/survey", { replace: true });
+  const requestLeaveSharedChat = (destination = "/survey") => {
+    setLeaveDestination(["/survey", "/login", "/signup"].includes(destination) ? destination : "/survey");
+    setIsLeaveConfirmOpen(true);
+  };
+  const confirmLeaveSharedChat = () => navigate(leaveDestination, { replace: true });
 
   return (
     <>
@@ -52,6 +56,7 @@ export default function SharedWorkspacePage() {
         onRequireLogin={setLoginFeature}
         sharedAssistantPath={`/shared/${encodeURIComponent(shareCode)}`}
         onSurveyNavigate={requestLeaveSharedChat}
+        onLeaveSharedChat={requestLeaveSharedChat}
       />
       {loginFeature && <div className="shared-login-prompt"><LoginRequiredModal
         message={`請先登入才能使用${loginFeature}。`}
