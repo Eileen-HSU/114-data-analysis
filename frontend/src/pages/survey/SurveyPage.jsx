@@ -6,7 +6,7 @@ import Navbar from "../../components/feature/Navbar";
 import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
 import { useActivity } from "../../hooks/ActivityContext";
 import { useAuth } from "../../hooks/AuthContext";
-import { useLanguage } from "../../context/LanguageContext";
+import { translateInterfaceText, useLanguage } from "../../context/LanguageContext";
 import { apiUrl } from "../../lib/api";
 import { buildExternalSurveyShortUrl, buildSurveyFillPath } from "../../lib/surveyLinks";
 import {
@@ -363,7 +363,7 @@ export default function SurveyPage({ pptOnly = false }) {
       const message = error?.message || "生成草稿失敗，請稍後再試。";
       setPptTaskStatus("");
       setPptError(message);
-      window.alert(message);
+      window.alert(translateInterfaceText(message, language));
     } finally {
       setIsGenerating(false);
     }
@@ -778,7 +778,7 @@ export default function SurveyPage({ pptOnly = false }) {
                   {isGenerating ? t("生成中...","Generating...") : t("開始生成","Start generating")}
                 </button>
 
-                {pptError && <p className="ppt-error">{pptError}</p>}
+                {pptError && <p className="ppt-error"><InterfaceText>{pptError}</InterfaceText></p>}
               </div>
 
               <div className="ppt-preview-panel">

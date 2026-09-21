@@ -1,5 +1,6 @@
 // Fixed interface copy only. Never pass user answers or generated analysis here.
 export const interfaceEnglish = {
+  "請先上傳 PPT 或 PDF 檔案。": "Please upload a PPT or PDF file first.",
   "正在建立背景任務...": "Starting survey generation…",
   "任務已建立，等待背景處理。": "Your task is queued and waiting to be processed.",
   "AI 正在分析檔案並產生問卷草稿。": "AI is analyzing your file and generating a survey draft.",
