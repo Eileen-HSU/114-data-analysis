@@ -1,5 +1,13 @@
 // Fixed interface copy only. Never pass user answers or generated analysis here.
 export const interfaceEnglish = {
+  "正在建立背景任務...": "Starting survey generation…",
+  "任務已建立，等待背景處理。": "Your task is queued and waiting to be processed.",
+  "AI 正在分析檔案並產生問卷草稿。": "AI is analyzing your file and generating a survey draft.",
+  "AI 正在背景分析檔案並產生問卷草稿。": "AI is analyzing your file in the background and generating a survey draft.",
+  "問卷草稿已產生。": "Your survey draft is ready.",
+  "AI 問卷產生失敗。": "AI survey generation failed.",
+  "問卷產生失敗。": "Survey generation failed.",
+  "背景任務處理中，系統會自動查詢結果。": "Your task is running in the background. Results will appear automatically.",
   "個": " items", "與": " and ",
   "請輸入寄送至": "Enter the verification code sent to ",
   "的 6 位數驗證碼": " (6 digits)",
