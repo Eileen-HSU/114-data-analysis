@@ -6,7 +6,7 @@ import { useLanguage } from "../../context/LanguageContext";
 
 const DEFAULT_AVATAR = "https://static.readdy.ai/image/db4f710102ca6cc45db44808c8658987/b181cfaad2165c1909b7c8fa8339cbe7.png";
 
-export default function Navbar({ transparent = false, readOnly = false, onRequireLogin }) {
+export default function Navbar({ transparent = false, readOnly = false, onRequireLogin, sharedAssistantPath }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { isLoggedIn, user, logout } = useAuth();
@@ -49,8 +49,16 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
           </a>
           <a
             className={`nav-link-btn ${(readOnly || location.pathname === "/workspace") ? "active" : ""}`}
-            href="/workspace"
-            onClick={(event) => { event.preventDefault(); if (readOnly && !isLoggedIn) onRequireLogin?.("新增對話"); else navigate("/workspace"); }}
+            href={sharedAssistantPath || "/workspace"}
+            onClick={(event) => {
+              event.preventDefault();
+              if (readOnly && sharedAssistantPath) {
+                navigate(sharedAssistantPath);
+                return;
+              }
+              if (readOnly && !isLoggedIn) onRequireLogin?.("新增對話");
+              else navigate("/workspace");
+            }}
             style={{ cursor: "pointer" }}
           >
             <i className="ri-add-circle-line"></i>
