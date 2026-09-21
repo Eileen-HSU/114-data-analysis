@@ -81,7 +81,21 @@ function RatingStats({ question, responses, qNum }) {
   });
 
   const avg = answered ? (total / answered).toFixed(1) : "-";
-  const max = Math.max(...Object.values(counts), 1);
+  const ratingColors = ["#fde2e5", "#f8cad1", "#f1abb5", "#e77987", "#db5162", "#d24991"];
+  const donutSegments = [];
+  let runningPercent = 0;
+  if (answered) {
+    Object.entries(counts).forEach(([score, count]) => {
+      const nextPercent = runningPercent + (count / answered) * 100;
+      donutSegments.push(`${ratingColors[score]} ${runningPercent}% ${nextPercent}%`);
+      runningPercent = nextPercent;
+    });
+  }
+  const donutStyle = {
+    background: answered
+      ? `conic-gradient(${donutSegments.join(", ")})`
+      : "conic-gradient(#fde2e5 0 100%)",
+  };
 
   return (
     <div className="sdp-rating-card">
@@ -90,24 +104,21 @@ function RatingStats({ question, responses, qNum }) {
         <span className="sdp-rating-card-title">{question.title || question.question_title || "未命名題目"}</span>
       </div>
       <div className="sdp-rating-stats">
-        <div className="sdp-avg-block">
-          <div className="sdp-avg-circle">
-            <span className="sdp-avg-num">{avg}</span>
-            <span className="sdp-avg-sub">/ 5</span>
-          </div>
-          <div className="sdp-avg-info">
-            <div className="sdp-avg-label"><InterfaceText>{"平均分數"}</InterfaceText></div>
-            <div className="sdp-avg-count">{answered}<InterfaceText>{"份回答"}</InterfaceText></div>
+        <div className="sdp-donut-panel">
+          <div className="sdp-rating-donut" style={donutStyle}>
+            <div className="sdp-rating-donut-center">
+              <span className="sdp-avg-num">{avg}</span>
+              <span className="sdp-avg-sub">/ 5</span>
+            </div>
           </div>
         </div>
-        <div className="sdp-bars">
+        <div className="sdp-rating-legend">
+          <div className="sdp-rating-answered">{answered}<InterfaceText>{"份有效回答"}</InterfaceText></div>
           {[0, 1, 2, 3, 4, 5].map((score) => (
-            <div key={score} className={`sdp-bar-row ${counts[score] > 0 ? "has-responses" : ""}`}>
-              <div className="sdp-bar-score">{score}</div>
-              <div className="sdp-bar-track">
-                <div className="sdp-bar-fill" style={{ width: `${(counts[score] / max) * 100}%` }} />
-              </div>
-              <div className="sdp-bar-count">{counts[score]}<InterfaceText>{"人"}</InterfaceText></div>
+            <div key={score} className="sdp-legend-row">
+              <span className="sdp-legend-swatch" style={{ backgroundColor: ratingColors[score] }}></span>
+              <span className="sdp-legend-score">{score}<InterfaceText>{"分"}</InterfaceText></span>
+              <span className="sdp-legend-count">{counts[score]}<InterfaceText>{"人"}</InterfaceText></span>
             </div>
           ))}
         </div>
