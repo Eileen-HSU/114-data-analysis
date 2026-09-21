@@ -773,6 +773,39 @@ def _survey_respondent_label(response: dict, identity_mode: str, sequence_number
     return f"匿名受試者 {sequence_number}"
 
 
+def _build_survey_rating_stats(questions: list, responses: list) -> list:
+    """Create the same rating distribution payload used by the chat exporters."""
+    stats = []
+    for question_number, question in enumerate(questions or [], start=1):
+        if ((question or {}).get("type") or (question or {}).get("question_type")) != "rating":
+            continue
+
+        question_id = (question or {}).get("id", (question or {}).get("question_id"))
+        distribution = {str(score): 0 for score in range(6)}
+        total = 0
+        answered_count = 0
+        for response in responses or []:
+            answers = (response or {}).get("answers") or {}
+            value = answers.get(str(question_id), answers.get(question_id))
+            try:
+                score = int(value)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= score <= 5:
+                distribution[str(score)] += 1
+                total += score
+                answered_count += 1
+
+        stats.append({
+            "question_number": question_number,
+            "title": (question or {}).get("title") or (question or {}).get("question_title") or "",
+            "distribution": distribution,
+            "answered_count": answered_count,
+            "average": (total / answered_count) if answered_count else None,
+        })
+    return stats
+
+
 def build_survey_xlsx(*, title: str, questions: list, responses: list, identity_mode: str) -> bytes:
     """把問卷「原始回覆」產生成 .xlsx，wide format：一位受試者一列，
     欄位為「受試者 | 提交時間 | Q1：題目全文 | Q2：題目全文 | ...」。
@@ -842,6 +875,11 @@ def build_survey_xlsx(*, title: str, questions: list, responses: list, identity_
 
     ws.freeze_panes = "A2"
 
+    rating_stats = _build_survey_rating_stats(questions, responses)
+    if rating_stats:
+        _write_rating_stats_sheet(wb, rating_stats, index=0)
+        wb.active = 0
+
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -885,6 +923,16 @@ def build_survey_docx(*, title: str, questions: list, responses: list, identity_
     question_headers = [
         _survey_question_header(q, idx) for idx, q in enumerate(questions, start=1)
     ]
+    rating_stats = _build_survey_rating_stats(questions, responses)
+
+    if rating_stats:
+        doc.add_heading("Rating summary", level=2)
+        _write_rating_stats_blocks(doc, rating_stats)
+
+    if not responses:
+        doc.add_paragraph("Questions")
+        for question_header in question_headers:
+            doc.add_paragraph(question_header, style="List Number")
 
     for idx, response in enumerate(responses or [], start=1):
         answers = (response or {}).get("answers") or {}

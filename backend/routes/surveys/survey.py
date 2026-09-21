@@ -591,9 +591,6 @@ def export_survey_responses(access_code):
         template_id=survey.template_id
     ).order_by(Survey_Response.submitted_at.asc()).all()
 
-    if not responses:
-        return jsonify({"error": "目前尚無問卷回覆可供匯出"}), 400
-
     question_json = survey.question_json or {}
     # 題目順序必須完全依 question_json.items 原始順序，不能自行排序。
     questions = question_json.get("items") or []
