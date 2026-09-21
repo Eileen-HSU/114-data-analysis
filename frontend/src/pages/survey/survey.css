@@ -4,7 +4,7 @@
 .survey-page {
   min-height: 100vh;
   background: #fbfafb;
-  padding-top: 88px;
+  padding-top: 0;
 }
 
 .survey-workspace {
@@ -353,7 +353,7 @@
 .create-survey-page {
   min-height: 100vh;
   background: #fafafa;
-  padding-top: 88px;
+  padding-top: 0;
 }
 
 .create-survey-header {
@@ -1469,7 +1469,7 @@
 .fill-survey-page {
   min-height: 100vh;
   background: #f7f9fb;
-  padding-top: 88px;
+  padding-top: 0;
 }
 
 .fill-survey-hero {

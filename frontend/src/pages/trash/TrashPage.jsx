@@ -29,7 +29,7 @@ export default function TrashPage() {
   return (
     <>
       <Navbar />
-      <main style={{ minHeight: "100vh", background: "#faf8f8", paddingTop: 80 }}>
+      <main style={{ minHeight: "100vh", background: "#faf8f8" }}>
         <section style={{ background: "white", borderBottom: "1px solid #f0ebe9", padding: "28px 0" }}>
           <div className="container">
             <div className="d-flex align-items-center gap-3">

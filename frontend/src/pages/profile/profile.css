@@ -1,7 +1,7 @@
 .profile-page {
   background: white;
   min-height: 100vh;
-  padding-top: 88px;
+  padding-top: 0;
 }
 
 .profile-container {
@@ -1234,13 +1234,13 @@
     linear-gradient(180deg, #fff7fd 0%, #fbf7ff 48%, #faf7fb 100%);
   display: flex;
   flex-direction: column;
-  padding-top: 88px;
+  padding-top: 36px;
 }
 
 /* Fixed Header - pinned right below Navbar */
 .sdp-header-fixed {
   position: fixed;
-  top: 88px;
+  top: var(--navbar-height);
   left: 0;
   right: 0;
   z-index: 99;
@@ -2099,7 +2099,7 @@
   }
 
   .sdp-root {
-    padding-top: 88px;
+    padding-top: 36px;
   }
 
   .sdp-content {
