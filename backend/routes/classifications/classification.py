@@ -48,6 +48,8 @@ question_type 判斷不出來（None）時：
 """
 
 import uuid
+import re
+import unicodedata
 
 from flask import Blueprint, jsonify, request
 from extensions import db
@@ -70,6 +72,38 @@ from routes.surveys.survey import verify_token, find_survey_by_access_or_short_c
 import pandas as pd
 
 classification_bp = Blueprint("classification", __name__)
+
+_MAIN_CATEGORY_PREFIX_RE = re.compile(r"^大類別[:：]\s*")
+_WHITESPACE_RUN_RE = re.compile(r"[\s\t\n\r]+")
+
+
+def normalize_main_category(raw) -> str:
+    """把 main_category 正規化成唯一的 canonical 字串。
+
+    步驟（依序執行，順序會影響結果，不能任意調換）：
+      1. Unicode NFKC normalize（統一全形/半形符號，例如全形冒號「：」
+         正規化後會變成半形「:」）
+      2. strip 前後空白
+      3. 移除開頭的「大類別：」或「大類別:」前綴（NFKC 之後兩種冒號
+         寫法都會落在同一個 pattern，這裡仍明確列出兩種寫法以防這個
+         函式未來被單獨拿去處理沒有先做過 NFKC 的字串）
+      4. 把連續空白／tab／換行壓成單一半形空白
+      5. 再 strip 一次（防止步驟 3 移除前綴後，「大類別： 　題目」這種
+         前綴後面還帶空白的情況殘留前導空白）
+
+    只處理字串層級的正規化，不改變分類語意本身：不會把不同的大類別
+    名稱合併，只會把「同一個大類別的不同字串寫法」合併成同一種寫法。
+    raw 是 None 時回傳空字串，跟既有 `r.main_category or ""` 的行為
+    相容。
+    """
+    if raw is None:
+        return ""
+    text = unicodedata.normalize("NFKC", str(raw))
+    text = text.strip()
+    text = _MAIN_CATEGORY_PREFIX_RE.sub("", text)
+    text = _WHITESPACE_RUN_RE.sub(" ", text)
+    text = text.strip()
+    return text
 
 
 def _resolve_taxonomy_for_topic(question_type: str):
@@ -194,7 +228,7 @@ def _build_aggregated_groups(all_classification_rows, id_to_row_index, question_
         if "無具體建議" in sub_category:
             continue  # 這種萬用分類不該出現在彙整結果裡
 
-        key = (r.main_category or "", sub_category)
+        key = (normalize_main_category(r.main_category), sub_category)
         if key not in groups:
             groups[key] = {"items": []}
             order.append(key)
@@ -403,7 +437,7 @@ def _persist_segmentation_result(
             answer_text=answer_text,
             segment_start=seg["orig_start"],
             segment_end=seg["orig_end"],
-            main_category=seg["main_category"],
+            main_category=normalize_main_category(seg["main_category"]),
             sub_category=seg["sub_category"],
             secondary_sub_category=seg["secondary_sub_category"],
             reasoning=reasoning,
