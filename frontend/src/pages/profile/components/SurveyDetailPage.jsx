@@ -1,5 +1,5 @@
 import InterfaceText from "../../../components/feature/InterfaceText";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../../../components/feature/Navbar";
 import DeadlineDateTimePicker from "../../../components/feature/DeadlineDateTimePicker";
@@ -213,6 +213,22 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
   const [externalSurveyLink, setExternalSurveyLink] = useState("");
   const [isShorteningLink, setIsShorteningLink] = useState(false);
   const lang = getLang();
+  const detailRootRef = useRef(null);
+  const detailHeaderRef = useRef(null);
+  const hasSurvey = !!survey;
+
+  useLayoutEffect(() => {
+    const header = detailHeaderRef.current;
+    const root = detailRootRef.current;
+    if (!header || !root) return;
+    const updateHeaderHeight = () => {
+      root.style.setProperty("--survey-header-height", `${header.getBoundingClientRect().height}px`);
+    };
+    updateHeaderHeight();
+    const observer = new ResizeObserver(updateHeaderHeight);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, [hasSurvey]);
   
   // 避免 survey 為空時引發閃退白屏
   const currentSurvey = survey || {};
@@ -370,8 +386,8 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
   return (
     <>
       <Navbar />
-      <div className="sdp-root">
-        <div className="sdp-header-fixed">
+      <div className="sdp-root" ref={detailRootRef}>
+        <div className="sdp-header-fixed" ref={detailHeaderRef}>
           <div className="sdp-topbar">
             <button className="sdp-back-btn" onClick={onBack}>
               <i className="ri-arrow-left-line"></i><InterfaceText>{"返回問卷"}</InterfaceText></button>

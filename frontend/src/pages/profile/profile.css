@@ -1758,7 +1758,7 @@
 /* Content Area - padding-top set dynamically via JS */
 .sdp-content {
   flex: 1;
-  padding: 112px 38px 150px;
+  padding: calc(var(--survey-header-height, 112px) + 32px) 38px 150px;
   max-width: 1480px;
   width: 100%;
   margin: 0 auto;
