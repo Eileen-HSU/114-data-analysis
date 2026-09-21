@@ -583,9 +583,17 @@ class Classification_Review(db.Model):
         index=True,
     )
 
-    user_id = db.Column(
+    # 【Admin-only 定案】Human Review 是 Admin 專用功能，不保留 User
+    # 雙軌；這裡直接把欄位換成 admin_id（FK -> Admin.admin_id），不是
+    # 額外加一個欄位並存。同一時間 classification_id 下最多只能有一筆
+    # status="in_progress" 的 row——這個限制不是在這裡用 DB constraint
+    # 表達（MySQL 不支援 partial unique index），而是在
+    # services/review_service.py 的 start_review() 用
+    # `SELECT ... FOR UPDATE` 鎖住對應的 Response_Classification row
+    # 之後才查詢/建立，保證併發時不會有兩筆 in_progress 同時被建立。
+    admin_id = db.Column(
         db.Integer,
-        db.ForeignKey("User.user_id", ondelete="CASCADE"),
+        db.ForeignKey("Admin.admin_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -608,7 +616,7 @@ class Classification_Review(db.Model):
         data = {
             "review_id": self.review_id,
             "classification_id": self.classification_id,
-            "user_id": self.user_id,
+            "admin_id": self.admin_id,
             "status": self.status,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "confirmed_at": self.confirmed_at.isoformat() if self.confirmed_at else None,

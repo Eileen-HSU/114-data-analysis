@@ -10,6 +10,7 @@ from flask import Blueprint, jsonify, request
 from extensions import db
 from models import Admin, Prompt_Template
 from classification_models import Response_Classification, ALLOWED_REVIEW_STATUSES
+from taxonomy import Taxonomy_Version
 from routes.auth.admin_guard import verify_admin_token
 from services.classify_v2 import _run_classification
 from services.prompt_admin_service import (
@@ -170,7 +171,29 @@ def reviewed_classifications():
             )
         )
     elif topic:
-        query = query.filter_by(question_id=topic)
+        # 【修正】topic 是 Topic.topic_key（例如 "leadership_and_dept"），
+        # 不是 Response_Classification.question_id（那是問卷題目 UUID，
+        # 或外部上傳的欄位名稱/列號識別碼，兩者是完全不同的值域，直接
+        # 比較必然查不到）。正確路徑是透過寫入分類結果時就一併保存的
+        # taxonomy_version_id 反查 Taxonomy_Version.topic_key：
+        #     Response_Classification.taxonomy_version_id
+        #       -> Taxonomy_Version.version_id
+        #       -> Taxonomy_Version.topic_key
+        # 這個 join 天然同時涵蓋 survey 與 user_upload 兩種來源（兩邊
+        # 寫入時都是透過同一個 _resolve_taxonomy_for_topic() 取得
+        # taxonomy_version_id，不需要依 source_type 分開處理），也會
+        # 涵蓋這個 topic 底下所有版本（draft/published/archived）產生
+        # 的分類結果，不只是目前 published 的那一版。
+        #
+        # taxonomy_version_id 是 nullable（Phase B 之前的舊資料一律是
+        # NULL）：這裡刻意不做任何回填或臆測式歸類，這些舊資料在
+        # topic 篩選下就是查不到，跟 __unassigned__ 是兩件不同的事
+        # （__unassigned__ 對應的是 question_id 本身的狀態，不是
+        # taxonomy_version_id 缺失），不在這次修正的範圍內處理。
+        query = query.join(
+            Taxonomy_Version,
+            Response_Classification.taxonomy_version_id == Taxonomy_Version.version_id,
+        ).filter(Taxonomy_Version.topic_key == topic)
     if request.args.get("needs_human_review") == "true":
         query = query.filter_by(needs_human_review=True)
     rows = query.order_by(Response_Classification.created_at.desc()).limit(200).all()
