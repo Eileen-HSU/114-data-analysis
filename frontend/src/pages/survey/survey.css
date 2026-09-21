@@ -735,7 +735,10 @@
    the document instead of being constrained by a viewport-height modal. */
 .ppt-page-backdrop {
   position: static;
-  display: block;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+  align-items: start;
+  gap: 24px;
   min-height: 100vh;
   padding: 112px 32px 64px;
   overflow: visible;
@@ -743,11 +746,48 @@
 }
 
 .ppt-page-backdrop .ppt-modal {
-  width: min(1320px, 100%);
-  max-height: none;
-  min-height: min(720px, calc(100vh - 176px));
-  margin: 0 auto;
-  overflow: visible;
+  display: contents;
+}
+
+.ppt-page-backdrop .ppt-modal-header,
+.ppt-page-backdrop .ppt-main-editor-column,
+.ppt-page-backdrop .ppt-modal-footer {
+  grid-column: 1;
+  background: #ffffff;
+}
+
+.ppt-page-backdrop .ppt-modal-header {
+  border: 1px solid #e2e8f0;
+  border-bottom: 1px solid #edf2f7;
+  border-radius: 18px 18px 0 0;
+}
+
+.ppt-page-backdrop .ppt-main-editor-column {
+  border-left: 1px solid #e2e8f0;
+  border-right: 1px solid #e2e8f0;
+  min-height: min(640px, calc(100vh - 176px));
+}
+
+.ppt-page-backdrop .ppt-modal-footer {
+  border: 1px solid #e2e8f0;
+  border-top: 1px solid #edf2f7;
+  border-radius: 0 0 18px 18px;
+}
+
+.ppt-page-backdrop .ppt-modal-body {
+  display: contents;
+}
+
+.ppt-page-backdrop .ppt-floating-chat {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  position: sticky !important;
+  top: calc(var(--navbar-height) + 24px);
+  width: 100%;
+  height: min(620px, calc(100vh - var(--navbar-height) - 48px));
+  margin: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
 }
 
 .ppt-page-backdrop .ppt-modal-body,
@@ -822,7 +862,7 @@
 
 .ppt-config-panel {
   min-width: 0;
-  padding: 22px;
+  padding: 28px 32px;
   border-right: none;
   border-bottom: 1px solid #edf2f7;
   background: #fbfafb;
@@ -1292,6 +1332,27 @@
   height: auto;
 }
 
+.ppt-config-panel > * {
+  width: min(720px, 100%);
+}
+
+.ppt-generation-preferences {
+  display: grid;
+  gap: 14px;
+  margin: 20px 0;
+}
+
+.ppt-generation-preferences select {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1.5px solid #dbe3ec;
+  border-radius: 10px;
+  background: #ffffff;
+  color: var(--slate-800);
+  font: inherit;
+}
+
 @media (max-width: 1180px) {
   .ppt-modal-body-with-chat {
     grid-template-columns: minmax(0, 1fr) minmax(290px, 340px);
@@ -1299,6 +1360,34 @@
 }
 
 @media (max-width: 980px) {
+  .ppt-page-backdrop {
+    display: block;
+  }
+
+  .ppt-page-backdrop .ppt-modal {
+    display: flex;
+    width: min(1320px, 100%);
+    max-height: none;
+    margin: 0 auto;
+  }
+
+  .ppt-page-backdrop .ppt-modal-body {
+    display: grid;
+  }
+
+  .ppt-page-backdrop .ppt-modal-header,
+  .ppt-page-backdrop .ppt-main-editor-column,
+  .ppt-page-backdrop .ppt-modal-footer {
+    border-radius: 0;
+  }
+
+  .ppt-page-backdrop .ppt-floating-chat {
+    position: static !important;
+    width: auto;
+    height: 440px;
+    margin: 0 22px 22px;
+  }
+
   .ppt-modal-body-with-chat {
     grid-template-columns: 1fr;
   }
