@@ -79,6 +79,8 @@ export default function SurveyPage({ pptOnly = false }) {
   const [pptConfig, setPptConfig] = useState(defaultPptConfig);
   const [checkedTopics, setCheckedTopics] = useState([]);
   const [checkedFocus, setCheckedFocus] = useState([]);
+  const [topicPreset, setTopicPreset] = useState("");
+  const [focusPreset, setFocusPreset] = useState("");
   const [pptDraft, setPptDraft] = useState(null);
   const [pptError, setPptError] = useState("");
   const [pptTaskStatus, setPptTaskStatus] = useState("");
@@ -138,6 +140,8 @@ export default function SurveyPage({ pptOnly = false }) {
     setPptConfig(defaultPptConfig);
     setCheckedTopics([]);
     setCheckedFocus([]);
+    setTopicPreset("");
+    setFocusPreset("");
     setPptDraft(null);
     setPptError("");
     setPptTaskStatus("");
@@ -171,12 +175,14 @@ export default function SurveyPage({ pptOnly = false }) {
     });
   };
 
-  const toggleCheckedValue = (setter, value) => {
-    setter((prev) => (
-      prev.includes(value)
-        ? prev.filter((item) => item !== value)
-        : [...prev, value]
-    ));
+  const selectPptPreset = (kind, value) => {
+    const isTopic = kind === "topic";
+    const setPreset = isTopic ? setTopicPreset : setFocusPreset;
+    const setChecked = isTopic ? setCheckedTopics : setCheckedFocus;
+    const field = isTopic ? "direction" : "focus";
+    setPreset(value);
+    setChecked(value && value !== "other" ? [value] : []);
+    if (value !== "other") updatePptConfig({ [field]: "" });
   };
 
   const composeSemanticField = (inputText, checkedValues, inputLabel, presetLabel) => {
@@ -627,6 +633,27 @@ export default function SurveyPage({ pptOnly = false }) {
                   </label>
                 </div>
 
+                <div className="ppt-generation-preferences">
+                  <label className="ppt-field">
+                    <span>{t("題目方向", "Survey direction")}</span>
+                    <select value={topicPreset} onChange={(event) => selectPptPreset("topic", event.target.value)}>
+                      <option value="">{t("請選擇方向", "Choose a direction")}</option>
+                      {defaultTopicOptions.map((option) => <option value={option} key={option}>{option}</option>)}
+                      <option value="other">{t("其他（自行填寫）", "Other (enter your own)")}</option>
+                    </select>
+                  </label>
+                  {topicPreset === "other" && <label className="ppt-field"><span>{t("其他題目方向", "Other survey direction")}</span><textarea rows={2} value={pptConfig.direction} onChange={(event) => updatePptConfig({ direction: event.target.value })} placeholder={t("請輸入題目方向", "Enter a survey direction")} /></label>}
+                  <label className="ppt-field">
+                    <span>{t("生成重點", "Focus")}</span>
+                    <select value={focusPreset} onChange={(event) => selectPptPreset("focus", event.target.value)}>
+                      <option value="">{t("請選擇重點", "Choose a focus")}</option>
+                      {defaultFocusOptions.map((option) => <option value={option} key={option}>{option}</option>)}
+                      <option value="other">{t("其他（自行填寫）", "Other (enter your own)")}</option>
+                    </select>
+                  </label>
+                  {focusPreset === "other" && <label className="ppt-field"><span>{t("其他生成重點", "Other focus")}</span><textarea rows={2} value={pptConfig.focus} onChange={(event) => updatePptConfig({ focus: event.target.value })} placeholder={t("請輸入生成重點", "Enter a focus")} /></label>}
+                </div>
+
                 <button className="ppt-primary-btn" onClick={handleGenerateDraft} disabled={isGenerating} type="button">
                   <i className={isGenerating ? "ri-loader-4-line" : "ri-sparkling-line"}></i>
                   {isGenerating ? t("生成中...","Generating...") : t("開始生成","Start generating")}
@@ -731,52 +758,6 @@ export default function SurveyPage({ pptOnly = false }) {
                   )}
                 </div>
 
-                <div className="ppt-preview-settings">
-                  <label className="ppt-field">
-                    <span><InterfaceText>{"題目方向"}</InterfaceText></span>
-                    <textarea
-                      className="w-full resize-y break-words whitespace-normal overflow-y-auto p-3 leading-relaxed outline-none focus:ring"
-                      rows={2}
-                      value={pptConfig.direction}
-                      onChange={(event) => updatePptConfig({ direction: event.target.value })}
-                      placeholder="例如：課後滿意度、學習成效"
-                    />
-                  </label>
-                  <div className="ppt-option-check-grid">
-                    {defaultTopicOptions.map((option) => (
-                      <label className="ppt-option-check" key={option}>
-                        <input
-                          type="checkbox"
-                          checked={checkedTopics.includes(option)}
-                          onChange={() => toggleCheckedValue(setCheckedTopics, option)}
-                        />
-                        <span>{option}</span>
-                      </label>
-                    ))}
-                  </div>
-                  <label className="ppt-field">
-                    <span><InterfaceText>{"生成重點"}</InterfaceText></span>
-                    <textarea
-                      className="w-full resize-y break-words whitespace-normal overflow-y-auto p-3 leading-relaxed outline-none focus:ring"
-                      rows={3}
-                      value={pptConfig.focus}
-                      onChange={(event) => updatePptConfig({ focus: event.target.value })}
-                      placeholder="例如：聚焦課程內容、講師表達、實務應用"
-                    />
-                  </label>
-                  <div className="ppt-option-check-grid">
-                    {defaultFocusOptions.map((option) => (
-                      <label className="ppt-option-check" key={option}>
-                        <input
-                          type="checkbox"
-                          checked={checkedFocus.includes(option)}
-                          onChange={() => toggleCheckedValue(setCheckedFocus, option)}
-                        />
-                        <span>{option}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
                 <div className="ppt-preview-actions">
                   <button className="ppt-secondary-btn" type="button">
                     <i className="ri-download-2-line"></i>
