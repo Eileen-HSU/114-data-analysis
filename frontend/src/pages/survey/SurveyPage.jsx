@@ -27,6 +27,12 @@ const defaultPptConfig = {
 
 const defaultTopicOptions = ["學習成效", "講師表達"];
 const defaultFocusOptions = ["實務應用", "情境模擬"];
+const presetEnglishLabels = {
+  "學習成效": "Learning outcomes",
+  "講師表達": "Instructor delivery",
+  "實務應用": "Practical application",
+  "情境模擬": "Scenario simulation",
+};
 
 const PPT_DRAFT_STORAGE_PREFIX = "ppt-survey-draft:";
 
@@ -751,7 +757,7 @@ export default function SurveyPage({ pptOnly = false }) {
                     <span>{t("題目方向", "Survey direction")}</span>
                     <select value={topicPreset} onChange={(event) => selectPptPreset("topic", event.target.value)}>
                       <option value="">{t("請選擇方向", "Choose a direction")}</option>
-                      {defaultTopicOptions.map((option) => <option value={option} key={option}>{option}</option>)}
+                      {defaultTopicOptions.map((option) => <option value={option} key={option} data-localized>{t(option, presetEnglishLabels[option])}</option>)}
                       <option value="other">{t("其他（自行填寫）", "Other (enter your own)")}</option>
                     </select>
                   </label>
@@ -760,7 +766,7 @@ export default function SurveyPage({ pptOnly = false }) {
                     <span>{t("生成重點", "Focus")}</span>
                     <select value={focusPreset} onChange={(event) => selectPptPreset("focus", event.target.value)}>
                       <option value="">{t("請選擇重點", "Choose a focus")}</option>
-                      {defaultFocusOptions.map((option) => <option value={option} key={option}>{option}</option>)}
+                      {defaultFocusOptions.map((option) => <option value={option} key={option} data-localized>{t(option, presetEnglishLabels[option])}</option>)}
                       <option value="other">{t("其他（自行填寫）", "Other (enter your own)")}</option>
                     </select>
                   </label>
