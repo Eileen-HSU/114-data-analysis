@@ -31,10 +31,9 @@ const t = (zh, en) => (getLang() === "zh" ? zh : en);
 const defaultPptConfig = {
   direction: "",
   focus: "",
-  questionCount: 5,
-  typeLimits: {
-    short: true,
-    rating: true,
+  typeCounts: {
+    short: 3,
+    rating: 2,
   },
 };
 
@@ -165,14 +164,13 @@ export default function SurveyPage({ pptOnly = false }) {
     setPptConfig((prev) => ({ ...prev, ...patch }));
   };
 
-  const updateTypeLimit = (type, checked) => {
-    setPptConfig((prev) => {
-      const nextLimits = { ...prev.typeLimits, [type]: checked };
-      if (!nextLimits.short && !nextLimits.rating) {
-        nextLimits[type] = true;
-      }
-      return { ...prev, typeLimits: nextLimits };
-    });
+  const updateTypeCount = (type, value) => {
+    const parsed = Number.parseInt(value, 10);
+    const count = Number.isFinite(parsed) ? Math.max(0, Math.min(20, parsed)) : 0;
+    setPptConfig((prev) => ({
+      ...prev,
+      typeCounts: { ...prev.typeCounts, [type]: count },
+    }));
   };
 
   const selectPptPreset = (kind, value) => {
@@ -603,34 +601,24 @@ export default function SurveyPage({ pptOnly = false }) {
                 <div className="ppt-quick-settings">
                   <div className="ppt-field-grid">
                     <label className="ppt-field">
-                      <span>{t("題目數量","Question count")}</span>
+                      <span>{t("問答題：幾題","Short answer: how many?")}</span>
                       <input
                         type="number"
-                        min="1"
+                        min="0"
                         max="20"
-                        value={pptConfig.questionCount}
-                        onChange={(event) => updatePptConfig({ questionCount: event.target.value })}
+                        value={pptConfig.typeCounts.short}
+                        onChange={(event) => updateTypeCount("short", event.target.value)}
                       />
                     </label>
-                  </div>
-
-                  <div className="ppt-type-limits">
-                    <span>{t("題型限制","Type limits")}</span>
-                    <label>
+                    <label className="ppt-field">
+                      <span>{t("評分題：幾題","Rating: how many?")}</span>
                       <input
-                        type="checkbox"
-                        checked={pptConfig.typeLimits.short}
-                        onChange={(event) => updateTypeLimit("short", event.target.checked)}
+                        type="number"
+                        min="0"
+                        max="20"
+                        value={pptConfig.typeCounts.rating}
+                        onChange={(event) => updateTypeCount("rating", event.target.value)}
                       />
-                      {t("問答題","Short answer")}
-                    </label>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={pptConfig.typeLimits.rating}
-                        onChange={(event) => updateTypeLimit("rating", event.target.checked)}
-                      />
-                      {t("評分題","Rating")}
                     </label>
                   </div>
                 </div>

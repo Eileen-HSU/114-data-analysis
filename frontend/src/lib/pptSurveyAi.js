@@ -115,10 +115,9 @@ export async function startSurveyGenerationTask({ file, config, token }) {
   formData.append("config", JSON.stringify({
     direction: config?.direction || "",
     focus: config?.focus || "",
-    questionCount: config?.questionCount || 5,
-    typeLimits: {
-      short: config?.typeLimits?.short !== false,
-      rating: config?.typeLimits?.rating !== false,
+    typeCounts: {
+      short: config?.typeCounts?.short ?? 3,
+      rating: config?.typeCounts?.rating ?? 2,
     },
   }));
 
