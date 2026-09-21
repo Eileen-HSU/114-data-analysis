@@ -1,5 +1,6 @@
 import InterfaceText from "../../components/feature/InterfaceText";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Navbar from "../../components/feature/Navbar";
 import "./survey.css";
 import { useParams, useSearchParams } from 'react-router-dom';
 import { apiUrl } from "../../lib/api";
@@ -326,6 +327,7 @@ export default function FillSurveyPage() {
 
   return (
     <>
+      <Navbar />
       <main className="fill-survey-page">
         <section className="fill-survey-hero">
           <div className="container">

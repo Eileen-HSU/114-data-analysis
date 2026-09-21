@@ -1,6 +1,7 @@
 import InterfaceText from "../../components/feature/InterfaceText";
 import { useMemo, useRef, useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import Navbar from "../../components/feature/Navbar";
 import SurveyDetailPage from "./components/SurveyDetailPage";
 import { useAuth } from "../../hooks/AuthContext";
 import { useActivity } from "../../hooks/ActivityContext";
@@ -456,6 +457,7 @@ export default function ProfilePage() {
   if (isLoadingSurveyDetail || requestedSurveyCode) {
     return (
       <>
+        <Navbar />
         <main className="profile-page profile-loading-page">
           <div className="profile-survey-loading" role="status" aria-live="polite">
             <div className="profile-survey-loading-icon">
@@ -678,6 +680,7 @@ export default function ProfilePage() {
 
   return (
     <>
+      <Navbar />
       <main className="profile-page">
         <div className="profile-container py-4">
           <section className="profile-card mb-4">
