@@ -738,7 +738,8 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
   align-items: start;
-  gap: 24px;
+  column-gap: 24px;
+  row-gap: 20px;
   min-height: 100vh;
   padding: 112px 32px 64px;
   overflow: visible;
@@ -769,6 +770,10 @@
   border-radius: 18px;
   font-size: 16px;
   font-weight: 800;
+}
+
+.ppt-page-backdrop .ppt-modal-header {
+  border-radius: 18px;
 }
 
 .ppt-page-breadcrumb button {
@@ -1380,13 +1385,19 @@
 
 .ppt-quick-settings {
   display: grid;
-  gap: 16px;
+  gap: 22px;
   min-width: 0;
+  align-content: start;
 }
 
 .ppt-quick-settings .ppt-field-grid,
 .ppt-quick-settings .ppt-type-limits {
   margin: 0;
+}
+
+.ppt-quick-settings .ppt-field-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 22px;
 }
 
 .ppt-generation-preferences {
