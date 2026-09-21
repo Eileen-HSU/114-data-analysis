@@ -1,7 +1,6 @@
 import InterfaceText from "../../components/feature/InterfaceText";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import Navbar from "../../components/feature/Navbar";
 import { useCollection } from "../../hooks/CollectionContext";
 
 export default function TrashPage() {
@@ -28,8 +27,7 @@ export default function TrashPage() {
 
   return (
     <>
-      <Navbar />
-      <main style={{ minHeight: "100vh", background: "#faf8f8", paddingTop: 80 }}>
+      <main style={{ minHeight: "100vh", background: "#faf8f8" }}>
         <section style={{ background: "white", borderBottom: "1px solid #f0ebe9", padding: "28px 0" }}>
           <div className="container">
             <div className="d-flex align-items-center gap-3">

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import Navbar from "../../components/feature/Navbar";
 import { useAuth } from "../../hooks/AuthContext";
 import { api } from "./ai-admin/shared/apiClient";
 import { t, taxStatusText } from "./ai-admin/shared/taxStatus";
@@ -33,9 +32,9 @@ export default function AiAdminPage() {
     navigate(`/admin/ai/topics/${topicKey}`);
   };
 
-  if (!canAccess) return <><Navbar /><main className="ai-admin-empty"><h1>{t("僅管理者可存取 AI 管理介面", "AI admin access restricted to administrators")}</h1><button onClick={() => navigate("/workspace")}>{t("回到分析助理", "Back to Analysis Assistant")}</button></main></>;
+  if (!canAccess) return <main className="ai-admin-empty"><h1>{t("僅管理者可存取 AI 管理介面", "AI admin access restricted to administrators")}</h1><button onClick={() => navigate("/workspace")}>{t("回到分析助理", "Back to Analysis Assistant")}</button></main>;
 
-  return <><Navbar /><main className="ai-admin-page">
+  return <main className="ai-admin-page">
     <header>
       <p className="eyebrow">{t("系統管理", "INTERNAL ADMINISTRATION")}</p>
       <h1>{t("AI 分類管理", "AI Classification Administration")}</h1>
@@ -60,5 +59,5 @@ export default function AiAdminPage() {
     <p style={{ marginTop: 24 }}>
       <button onClick={() => navigate("/admin/ai/unassigned")}>{t("其他 / 未歸屬資料", "Other / Unassigned Data")}</button>
     </p>
-  </main></>;
+  </main>;
 }

@@ -1,7 +1,6 @@
 import InterfaceText from "../../../components/feature/InterfaceText";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import Navbar from "../../../components/feature/Navbar";
 import DeadlineDateTimePicker from "../../../components/feature/DeadlineDateTimePicker";
 import { buildExternalSurveyShortUrl, buildSurveyFillUrl } from "../../../lib/surveyLinks";
 // 【修正】原本這裡有 import buildSurveyChatContent，用來組出使用者訊息的完整文字內容，現在改成簡短一行不再需要這個函式，拿掉未使用的 import。
@@ -315,7 +314,6 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
 
   return (
     <>
-      <Navbar />
       <div className="sdp-root">
         <div className="sdp-header-fixed">
           <div className="sdp-topbar">

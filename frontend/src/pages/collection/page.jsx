@@ -1,7 +1,6 @@
 import InterfaceText from "../../components/feature/InterfaceText";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import Navbar from "../../components/feature/Navbar";
 import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
 import { useAuth } from "../../hooks/AuthContext";
 import { useCollection } from "../../hooks/CollectionContext";
@@ -178,7 +177,6 @@ export default function CollectionPage() {
   if (!isLoggedIn) {
     return (
       <>
-        <Navbar />
         <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f9f7f7" }}>
           <LoginRequiredModal
             message="請先登入後再查看專案管理。"
@@ -702,7 +700,6 @@ export default function CollectionPage() {
 
   return (
     <>
-      <Navbar />
       <main>
         <section className="collection-banner">
           <div className="collection-banner-overlay"></div>
