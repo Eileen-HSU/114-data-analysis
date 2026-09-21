@@ -34,7 +34,7 @@ status=published，因為這兩份目前本來就是正式在跑的分類架構�
     cd backend
     python3 migrate_taxonomy_from_legacy.py
 
-跟 seed_prompt_templates.py 同樣的風格：自己建最小 Flask app 取得
+跟 cli.py 的 seed-prompts 指令同樣的風格：自己建最小 Flask app 取得
 DB context，不 import 完整 app.py。
 """
 
@@ -70,11 +70,7 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL") or os.env
 db.init_app(app)
 
 
-# Topic 的人類可讀標題與問卷題目原文。question_text 逐字取自
-# run_classification.py 的 COLUMN_QUESTION_MAP（該腳本用來把 Excel
-# 欄位對應到分類架構），這裡不 import 該檔案本身，因為它會連帶載入
-# google.generativeai 等重依賴，只為了兩行字串不值得；但內容必須
-# 跟該檔案保持逐字一致，未來若該檔案的題目文字有修改，這裡也要同步更新。
+
 TOPIC_METADATA = {
     QUESTION_LEADERSHIP: {
         "title": "主管領導和部門合作",

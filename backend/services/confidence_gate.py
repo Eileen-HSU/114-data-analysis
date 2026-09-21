@@ -4,7 +4,7 @@ services/confidence_gate.py
 Confidence Gate：AI 分類完成後，逐 segment 判斷這筆結果是否需要
 特別標記給人工優先審查。
 
-跟既有 review_status（response_classification.py 的
+跟既有 review_status（classification_models.py 的
 pending_review/confirmed/modified/excluded）是兩個獨立概念，刻意
 不共用、不新增新的 review_status 值：
     - review_status   ：人工確認流程目前走到哪裡（User 自己的動作）

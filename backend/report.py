@@ -9,7 +9,6 @@ Versioned Report Snapshot。
            -> Report_Aggregation_Item （一列 = 該 group 當時納入的一筆
                                          classification/response snapshot）
 
-設計重點（對應需求文件第十九～二十一節）：
 
 1. Report 是「快照」，不是即時視圖。每次 Generate 都是新的一列
    （version 遞增），不會 overwrite 舊版本；已產生的 Report 內容
@@ -19,7 +18,7 @@ Versioned Report Snapshot。
    最新的 Response_Classification。
 
 2. is_outdated 是一個獨立的 flag，由
-   services/report_outdated_service.py（Phase 5）在 Human Review
+   services/report_service.py（Phase 5）在 Human Review
    確認/排除動作發生時集中更新，不是靠「每次打開都重新算」判斷。
 
 3. status（generating / completed / failed）避免「看起來成功但其實
@@ -135,7 +134,7 @@ class Report(db.Model):
         db.String(20), nullable=False, default=REPORT_STATUS_GENERATING
     )
     # Human Review 後續若有會影響報告內容的變更，由
-    # services/report_outdated_service.py 集中負責把這個欄位設成 True，
+    # services/report_service.py 集中負責把這個欄位設成 True，
     # 不會由任何 route 各自判斷、也不會觸發重新計算。
     is_outdated = db.Column(db.Boolean, nullable=False, default=False)
 

@@ -67,7 +67,7 @@ import os
 import re
 
 from models import Chat_History, Response_Classification, Survey_Response, Survey_Template, Uploaded_Answer
-from response_classification import (
+from classification_models import (
     SOURCE_TYPE_SURVEY,
     SOURCE_TYPE_USER_UPLOAD,
     REVIEW_STATUS_EXCLUDED,
