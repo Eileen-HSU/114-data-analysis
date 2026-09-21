@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
 import Navbar from "../../components/feature/Navbar";
+import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
 import { useActivity } from "../../hooks/ActivityContext";
 import { useAuth } from "../../hooks/AuthContext";
 import { apiUrl } from "../../lib/api";
@@ -69,7 +70,7 @@ export default function SurveyPage({ pptOnly = false }) {
   // Derive the page mode from the current URL so the PPT workspace always
   // renders, even when the previous survey-page state is retained.
   const isPptPage = pptOnly || location.pathname === "/survey/ppt";
-  const { user } = useAuth();
+  const { isLoggedIn, user } = useAuth();
   const { recordActivity } = useActivity();
   const [apiSurveys, setApiSurveys] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -419,6 +420,21 @@ export default function SurveyPage({ pptOnly = false }) {
       setIsSavingDraft(false);
     }
   };
+
+  if (isPptPage && !isLoggedIn) {
+    return (
+      <>
+        <Navbar />
+        <div className="survey-page" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <LoginRequiredModal
+            message="請先登入後再使用 PPT/PDF 產生問卷功能。"
+            onLogin={() => navigate("/login")}
+            onCancel={() => navigate("/survey")}
+          />
+        </div>
+      </>
+    );
+  }
 
   return (
     <>

@@ -5,19 +5,13 @@ import { apiUrl } from "../../lib/api";
 import { MessageContent, WELCOME_MSG } from "./page";
 import Navbar from "../../components/feature/Navbar";
 import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
-import { useAuth } from "../../hooks/AuthContext";
 import "./workspace.css";
 import "./sharing.css";
 
 export default function SharedWorkspacePage() {
   const { shareCode } = useParams();
   const navigate = useNavigate();
-  const { isLoggedIn } = useAuth();
   const [loginFeature, setLoginFeature] = useState("");
-  const requestNewChat = () => {
-    if (!isLoggedIn) setLoginFeature("新增對話");
-    else navigate("/workspace");
-  };
   const [result, setResult] = useState(null);
   useEffect(() => {
     const controller = new AbortController();
@@ -47,7 +41,11 @@ export default function SharedWorkspacePage() {
 
   return (
     <>
-      <Navbar readOnly onRequireLogin={setLoginFeature} />
+      <Navbar
+        readOnly
+        onRequireLogin={setLoginFeature}
+        sharedAssistantPath={`/shared/${encodeURIComponent(shareCode)}`}
+      />
       {loginFeature && <div className="shared-login-prompt"><LoginRequiredModal
         message={`請先登入才能使用${loginFeature}。`}
         onLogin={() => navigate("/login")}
@@ -72,7 +70,7 @@ export default function SharedWorkspacePage() {
               </div>}
             </div>
             <div className="sidebar-footer">
-              <button className="btn-new-session sidebar-bottom-add" type="button" onClick={requestNewChat} aria-label="新增對話"><i className="ri-add-line" /></button>
+              <button className="btn-new-session sidebar-bottom-add" type="button" disabled title="此分享連結僅供檢視目前對話" aria-label="無法在分享頁建立新對話"><i className="ri-add-line" /></button>
             </div>
           </aside>
           <main className="workspace-main" aria-label={result?.data?.project_name || "分享對話"}>
