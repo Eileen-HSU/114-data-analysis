@@ -1315,12 +1315,12 @@
 }
 
 .sdp-topbar-right {
-  width: min(540px, 100%);
-  flex: 0 1 540px;
+  width: min(1060px, 100%);
+  flex: 0 1 1060px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 12px;
+  gap: 8px;
   margin-left: auto;
   min-width: 0;
 }
@@ -1334,9 +1334,98 @@
   background: #fbf7ff;
   border: 1px solid #f3d5e4;
   border-radius: 12px;
-  min-width: 220px;
-  flex: 0 1 300px;
+  min-width: 180px;
+  flex: 0 1 240px;
 }
+
+.sdp-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 530px;
+}
+
+.sdp-tab-group-header {
+  flex: 0 1 auto;
+  min-width: 0;
+  border: 1px solid var(--violet-100);
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.sdp-tab-group-header .sdp-tab {
+  min-width: 0;
+  padding: 9px 11px;
+  font-size: 13px;
+}
+
+.sdp-copy-link-action,
+.sdp-export-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 38px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  flex: 0 1 auto;
+}
+
+.sdp-copy-link-action {
+  color: #b45d86;
+  border-color: #f3d5e4;
+}
+
+.sdp-export-menu-wrap { position: relative; flex: 0 1 auto; order: -1; }
+
+.sdp-export-btn {
+  border: 1px solid #c790ac;
+  border-radius: 10px;
+  background: #c790ac;
+  color: #fff;
+  cursor: pointer;
+}
+
+.sdp-export-btn:hover { background: #b87998; border-color: #b87998; }
+.sdp-export-btn:disabled { cursor: wait; opacity: 0.72; }
+.sdp-export-caret { font-size: 16px; margin-left: -3px; }
+
+.sdp-export-menu {
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 0;
+  z-index: 110;
+  min-width: 150px;
+  padding: 5px;
+  border: 1px solid var(--slate-200);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 14px 28px rgba(42, 64, 98, 0.16);
+}
+
+.sdp-export-menu button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--slate-700);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+}
+
+.sdp-export-menu button:hover { background: var(--violet-50); color: var(--violet-600); }
+.sdp-export-error { position: absolute; top: calc(100% + 8px); right: 0; width: 190px; color: #c2415a; font-size: 12px; font-weight: 700; }
 
 .sdp-link-card {
   display: flex;
@@ -1575,13 +1664,14 @@
 
 /* Tab Bar */
 .sdp-tabbar {
-  background: rgba(255,255,255,0.78);
-  border-bottom: 1px solid rgba(226,232,240,0.72);
-  padding: 12px 38px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  display: none;
+}
+
+.sdp-topbar-right > .sdp-import-btn {
+  height: 38px;
+  padding: 0 11px;
+  font-size: 12px;
+  flex: 0 1 auto;
 }
 
 .sdp-tab-group {
@@ -2115,6 +2205,11 @@
     width: 100%;
     flex-wrap: wrap;
   }
+
+  .sdp-header-actions {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
 }
 
 @media (max-width: 768px) {
@@ -2139,6 +2234,19 @@
   .sdp-topbar-right {
     width: 100%;
     flex-wrap: wrap;
+  }
+
+  .sdp-header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .sdp-tab-group-header { width: auto; }
+
+  .sdp-tab-group-header .sdp-tab {
+    padding: 8px 9px;
+    font-size: 12px;
   }
 
   .sdp-code-card,

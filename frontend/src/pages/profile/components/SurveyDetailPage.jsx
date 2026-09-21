@@ -4,6 +4,8 @@ import { useNavigate } from "react-router-dom";
 import Navbar from "../../../components/feature/Navbar";
 import DeadlineDateTimePicker from "../../../components/feature/DeadlineDateTimePicker";
 import { buildExternalSurveyShortUrl, buildSurveyFillUrl } from "../../../lib/surveyLinks";
+import { useAuth } from "../../../hooks/AuthContext";
+import { apiUrl } from "../../../lib/api";
 // 【修正】原本這裡有 import buildSurveyChatContent，用來組出使用者訊息的完整文字內容，現在改成簡短一行不再需要這個函式，拿掉未使用的 import。
 
 const TYPE_LABELS = {
@@ -189,8 +191,12 @@ function buildSurveyChatContent(survey, questions, responses) {
 
 export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onImportToChat }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("overview");
   const [importSuccess, setImportSuccess] = useState(false);
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
   const [copyCodeSuccess, setCopyCodeSuccess] = useState(false);
   const [copyLinkSuccess, setCopyLinkSuccess] = useState(false);
   const [externalSurveyLink, setExternalSurveyLink] = useState("");
@@ -292,6 +298,39 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
     }, 450);
   };
 
+  const handleExportSurvey = async (format) => {
+    const accessCode = currentSurvey.code || currentSurvey.access_code || currentSurvey.shortCode || currentSurvey.short_code;
+    if (!accessCode || !user?.token || isExporting) return;
+
+    setIsExporting(true);
+    setExportError("");
+    try {
+      const response = await fetch(
+        apiUrl(`/api/surveys/${encodeURIComponent(accessCode)}/export?format=${format}`),
+        { headers: { Authorization: `Bearer ${user.token}` } }
+      );
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error || "Unable to export survey");
+      }
+
+      const blob = await response.blob();
+      const downloadUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = downloadUrl;
+      anchor.download = `${currentSurvey.title || "survey"}.${format}`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(downloadUrl);
+      setIsExportMenuOpen(false);
+    } catch (error) {
+      setExportError(lang === "en" ? "Export failed. Please try again." : "匯出失敗，請稍後再試。");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const handleSaveDeadline = async () => {
     if (!deadlineValue) {
       setDeadlineStatus("請選擇截止日期與時間。");
@@ -365,9 +404,37 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
                 <i className={importSuccess ? "ri-checkbox-circle-line" : "ri-chat-upload-line"}></i>
                 {importSuccess ? (lang === "en" ? "Importing..." : "匯入中...") : (lang === "en" ? "Import to Chat" : "匯入 Chat 分析")}
               </button>
+              <div className="sdp-header-actions" aria-label={lang === "en" ? "Survey actions" : "問卷操作"}>
+                <div className="sdp-tab-group sdp-tab-group-header">
+                  <button className={`sdp-tab ${activeTab === "overview" ? "active" : ""}`} onClick={() => setActiveTab("overview")}>
+                    <i className="ri-bar-chart-line"></i><InterfaceText>{"總覽"}</InterfaceText>
+                  </button>
+                  <button className={`sdp-tab ${activeTab === "responses" ? "active" : ""}`} onClick={() => setActiveTab("responses")}>
+                    <i className="ri-table-line"></i><InterfaceText>{"回覆資料"}</InterfaceText>
+                  </button>
+                </div>
+                <button className="sdp-copy-code-btn sdp-copy-link-action" onClick={handleCopySurveyLink} disabled={isShorteningLink || !surveyLink} type="button">
+                  <i className={isShorteningLink ? "ri-loader-4-line" : copyLinkSuccess ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
+                  {isShorteningLink ? (lang === "en" ? "Generating..." : "產生中...") : copyLinkSuccess ? (lang === "en" ? "Copied" : "已複製") : (lang === "en" ? "Copy link" : "複製連結")}
+                </button>
+                <div className="sdp-export-menu-wrap">
+                  <button className="sdp-export-btn" type="button" onClick={() => setIsExportMenuOpen((open) => !open)} disabled={isExporting} aria-expanded={isExportMenuOpen}>
+                    <i className={isExporting ? "ri-loader-4-line" : "ri-download-2-line"}></i>
+                    {isExporting ? (lang === "en" ? "Exporting..." : "匯出中...") : (lang === "en" ? "Export survey" : "匯出問卷")}
+                    {!isExporting && <i className="ri-arrow-down-s-line sdp-export-caret"></i>}
+                  </button>
+                  {isExportMenuOpen && (
+                    <div className="sdp-export-menu" role="menu">
+                      <button type="button" onClick={() => handleExportSurvey("xlsx")} role="menuitem"><i className="ri-file-excel-2-line"></i>Excel (.xlsx)</button>
+                      <button type="button" onClick={() => handleExportSurvey("docx")} role="menuitem"><i className="ri-file-word-2-line"></i>Word (.docx)</button>
+                    </div>
+                  )}
+                  {exportError && <span className="sdp-export-error" role="status">{exportError}</span>}
+                </div>
+              </div>
             </div>
           </div>
-          <div className="sdp-tabbar">
+          <div className="sdp-tabbar" aria-hidden="true">
             <div className="sdp-tab-group">
               <button className={`sdp-tab ${activeTab === "overview" ? "active" : ""}`} onClick={() => setActiveTab("overview")}>
                 <i className="ri-bar-chart-line"></i><InterfaceText>{"總覽"}</InterfaceText></button>
