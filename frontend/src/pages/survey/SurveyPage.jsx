@@ -340,7 +340,7 @@ export default function SurveyPage({ pptOnly = false }) {
         config: buildPptAiConfig(),
         token: user?.token,
         onProgress: (task) => {
-          setPptTaskStatus(task?.message || `任務狀態：${task?.status || "processing"}`);
+          setPptTaskStatus(task?.message || "背景任務處理中，系統會自動查詢結果。");
         },
       });
       const normalizedDraft = normalizeDraft(draft);
@@ -784,10 +784,10 @@ export default function SurveyPage({ pptOnly = false }) {
               <div className="ppt-preview-panel">
                 <div className="ppt-preview-main">
                   {isGenerating ? (
-                  <div className="ppt-loading-state">
+                  <div className="ppt-loading-state" data-localized>
                     <i className="ri-loader-4-line"></i>
                     <strong>{t("AI 正在整理教材重點","AI is summarizing presentation highlights")}</strong>
-                    <span>{pptTaskStatus || t("背景任務處理中，系統會自動查詢結果。","Background task running; system will automatically fetch results.")}</span>
+                    <span><InterfaceText>{pptTaskStatus || "背景任務處理中，系統會自動查詢結果。"}</InterfaceText></span>
                   </div>
                 ) : pptDraft ? (
                   <div className="ppt-draft-layout">
