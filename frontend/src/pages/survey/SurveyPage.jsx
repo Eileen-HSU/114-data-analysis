@@ -32,8 +32,8 @@ const defaultPptConfig = {
   direction: "",
   focus: "",
   typeCounts: {
-    short: 3,
-    rating: 2,
+    short: "",
+    rating: "",
   },
 };
 
@@ -94,7 +94,7 @@ export default function SurveyPage({ pptOnly = false }) {
   const [savedResult, setSavedResult] = useState(null);
   const [shareLink, setShareLink] = useState("");
   const [isPptStorageReady, setIsPptStorageReady] = useState(false);
-  const pptDraftStorageKey = user?.user_id ? `${PPT_DRAFT_STORAGE_PREFIX}${user.user_id}` : null;
+  const pptDraftStorageKey = `${PPT_DRAFT_STORAGE_PREFIX}${user?.user_id || user?.email || "current"}`;
 
   useEffect(() => {
     setIsPptModalOpen(isPptPage);
@@ -102,7 +102,7 @@ export default function SurveyPage({ pptOnly = false }) {
 
   useEffect(() => {
     setIsPptStorageReady(false);
-    if (!isPptPage || !pptDraftStorageKey) return;
+    if (!isPptPage) return;
 
     try {
       const saved = JSON.parse(localStorage.getItem(pptDraftStorageKey) || "null");
@@ -127,7 +127,7 @@ export default function SurveyPage({ pptOnly = false }) {
   }, [isPptPage, pptDraftStorageKey]);
 
   useEffect(() => {
-    if (!isPptPage || !pptDraftStorageKey || !isPptStorageReady) return;
+    if (!isPptPage || !isPptStorageReady) return;
 
     try {
       localStorage.setItem(pptDraftStorageKey, JSON.stringify({
@@ -213,6 +213,13 @@ export default function SurveyPage({ pptOnly = false }) {
   };
 
   const updateTypeCount = (type, value) => {
+    if (value === "") {
+      setPptConfig((prev) => ({
+        ...prev,
+        typeCounts: { ...prev.typeCounts, [type]: "" },
+      }));
+      return;
+    }
     const parsed = Number.parseInt(value, 10);
     const count = Number.isFinite(parsed) ? Math.max(0, Math.min(20, parsed)) : 0;
     setPptConfig((prev) => ({
@@ -286,6 +293,12 @@ export default function SurveyPage({ pptOnly = false }) {
       return;
     }
 
+    const totalQuestionCount = Number(pptConfig.typeCounts.short || 0) + Number(pptConfig.typeCounts.rating || 0);
+    if (totalQuestionCount < 1) {
+      setPptError(t("請至少填寫一種題型的題數。", "Enter a question count for at least one type."));
+      return;
+    }
+
     setPptError("");
     setPptTaskStatus("正在建立背景任務...");
     setIsGenerating(true);
@@ -301,7 +314,14 @@ export default function SurveyPage({ pptOnly = false }) {
           setPptTaskStatus(task?.message || `任務狀態：${task?.status || "processing"}`);
         },
       });
-      setPptDraft(normalizeDraft(draft));
+      const normalizedDraft = normalizeDraft(draft);
+      setPptDraft(normalizedDraft);
+      try {
+        const existing = JSON.parse(localStorage.getItem(pptDraftStorageKey) || "{}");
+        localStorage.setItem(pptDraftStorageKey, JSON.stringify({ ...existing, draft: normalizedDraft }));
+      } catch (storageError) {
+        console.warn("Unable to save generated PPT survey draft:", storageError);
+      }
       setPptTaskStatus("");
       setChatMessages([
         {
@@ -641,7 +661,7 @@ export default function SurveyPage({ pptOnly = false }) {
                   {t("返回問卷中心", "Back to survey center")}
                 </button>
                 <span aria-hidden="true">|</span>
-                <strong>{t("建立問卷", "Create survey")}</strong>
+                <strong>{t("上傳 PPT/PDF 生成問卷", "Generate a survey from PPT/PDF")}</strong>
               </nav>
             )}
             <header className="ppt-modal-header">

@@ -189,10 +189,8 @@ def normalize_type_counts(raw_counts):
         except (TypeError, ValueError):
             return fallback
 
-    short_count = normalize(raw_counts.get("short"), 3)
-    rating_count = normalize(raw_counts.get("rating"), 2)
-    if short_count + rating_count == 0:
-        short_count = 1
+    short_count = normalize(raw_counts.get("short"), 0)
+    rating_count = normalize(raw_counts.get("rating"), 0)
     return {"short": short_count, "rating": rating_count}
 
 
