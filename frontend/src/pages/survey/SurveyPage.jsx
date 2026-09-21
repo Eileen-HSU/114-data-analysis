@@ -778,7 +778,7 @@ export default function SurveyPage({ pptOnly = false }) {
                   {isGenerating ? t("生成中...","Generating...") : t("開始生成","Start generating")}
                 </button>
 
-                {pptError && <p className="ppt-error"><InterfaceText>{pptError}</InterfaceText></p>}
+                {pptError && <p className="ppt-error" data-localized><InterfaceText>{pptError}</InterfaceText></p>}
               </div>
 
               <div className="ppt-preview-panel">

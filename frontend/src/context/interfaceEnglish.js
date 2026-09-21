@@ -1,5 +1,16 @@
 // Fixed interface copy only. Never pass user answers or generated analysis here.
 export const interfaceEnglish = {
+  "Gemini 服務目前忙碌或暫時不可用，已自動重試並切換備援模型但仍失敗，請稍後再試。": "Gemini is busy or temporarily unavailable. Automatic retries and fallback models were unsuccessful. Please try again later.",
+  "AI API 額度或頻率限制已達上限，請稍後再試。": "The AI usage or rate limit has been reached. Please try again later.",
+  "AI 分析逾時，請稍後再試或改用較小的檔案。": "AI analysis timed out. Please try again later or use a smaller file.",
+  "AI 服務暫時無法完成分析，請稍後再試。": "The AI service cannot complete the analysis right now. Please try again later.",
+  "檔案格式不支援，請上傳 .ppt、.pptx 或 .pdf。": "Unsupported file format. Please upload a .ppt, .pptx, or .pdf file.",
+  "檔案內容是空的，請重新上傳。": "The file is empty. Please upload it again.",
+  "檔案太大，請上傳 25MB 以下的 PPT/PDF。": "The file is too large. Please upload a PPT or PDF file under 25 MB.",
+  "AI 回傳格式不是 JSON，請重新生成。": "The AI response was not valid JSON. Please generate the survey again.",
+  "AI 回傳格式不正確，無法建立問卷草稿。": "The AI response format is invalid, so a survey draft could not be created.",
+  "AI 沒有產生有效題目，請調整生成重點後再試。": "AI did not generate valid questions. Adjust the focus and try again.",
+  "無法讀取檔案文字，請改用 .pptx 或可選取文字的 .pdf。": "Cannot read the file text. Please use a .pptx file or a PDF with selectable text.",
   "請先上傳 PPT 或 PDF 檔案。": "Please upload a PPT or PDF file first.",
   "正在建立背景任務...": "Starting survey generation…",
   "任務已建立，等待背景處理。": "Your task is queued and waiting to be processed.",
