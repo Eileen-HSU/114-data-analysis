@@ -580,7 +580,8 @@ export default function SurveyPage({ pptOnly = false }) {
               </button>
             </header>
 
-            <div className={`ppt-modal-body ${pptDraft ? "ppt-modal-body-with-chat" : ""}`}>
+            <div className={`ppt-modal-body ${(isPptPage || pptDraft) ? "ppt-modal-body-with-chat" : ""}`}>
+              <div className="ppt-main-editor-column">
               <div className="ppt-config-panel">
                 <label className="ppt-upload-zone">
                   <input
@@ -783,7 +784,8 @@ export default function SurveyPage({ pptOnly = false }) {
                   </button>
                 </div>
               </div>
-              {pptDraft && (
+              </div>
+              {(isPptPage || pptDraft) && (
                 <aside className={`ppt-floating-chat ${isAiChatMinimized ? "is-minimized" : ""}`}>
                   <header className="ppt-floating-chat-header">
                     <div>
@@ -803,11 +805,15 @@ export default function SurveyPage({ pptOnly = false }) {
                   {!isAiChatMinimized && (
                     <>
                       <div className="ppt-floating-chat-log">
-                        {chatMessages.map((message, index) => (
-                          <div className={`ppt-chat-message ${message.role}`} key={`${message.role}-${index}`}>
-                            {message.text}
+                        {!pptDraft ? (
+                          <div className="ppt-chat-message assistant">
+                            {t("完成生成問卷草稿後，即可使用 AI 對話協助修改題目。", "Generate a survey draft first, then use AI Chat to refine the questions.")}
                           </div>
-                        ))}
+                        ) : chatMessages.map((message, index) => (
+                            <div className={`ppt-chat-message ${message.role}`} key={`${message.role}-${index}`}>
+                              {message.text}
+                            </div>
+                          ))}
                         {isChatting && (
                           <div className="ppt-chat-message assistant loading">
                             <i className="ri-loader-4-line"></i>
@@ -821,8 +827,9 @@ export default function SurveyPage({ pptOnly = false }) {
                           value={aiMessage}
                           onChange={(event) => setAiMessage(event.target.value)}
                           placeholder={t("輸入修改指令，例如：增加一題評分題、題目更精簡", "Enter an edit command, e.g.: add a rating question, shorten questions")}
+                          disabled={!pptDraft}
                         />
-                        <button className="ppt-primary-btn" onClick={handleAiRevise} disabled={isChatting || !aiMessage.trim()} type="button">
+                        <button className="ppt-primary-btn" onClick={handleAiRevise} disabled={!pptDraft || isChatting || !aiMessage.trim()} type="button">
                           <i className="ri-send-plane-line"></i>
                           {t("送出", "Send")}
                         </button>
