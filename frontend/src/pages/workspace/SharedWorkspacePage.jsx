@@ -105,7 +105,7 @@ export default function SharedWorkspacePage() {
             </section>
             <div className="input-area">
               <div className="input-wrapper">
-                <button className="attach-btn survey-pick-btn" type="button" onClick={requestLeaveSharedChat} aria-label="問卷調查"><i className="ri-survey-line" /></button>
+                <button className="attach-btn survey-pick-btn" type="button" disabled aria-label="問卷調查（唯讀模式無法使用）"><i className="ri-survey-line" /></button>
                 <button className="attach-btn" type="button" disabled aria-label="上傳檔案（唯讀模式無法使用）"><i className="ri-attachment-line" /></button>
                 <textarea placeholder="此對話僅供檢視，無法輸入指令..." aria-label="對話輸入（唯讀）" rows={1} disabled />
                 <button className="send-btn" type="button" disabled aria-label="傳送訊息（唯讀模式無法使用）"><i className="ri-send-plane-line" /></button>
