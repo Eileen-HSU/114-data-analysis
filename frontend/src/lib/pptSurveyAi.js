@@ -116,8 +116,8 @@ export async function startSurveyGenerationTask({ file, config, token }) {
     direction: config?.direction || "",
     focus: config?.focus || "",
     typeCounts: {
-      short: config?.typeCounts?.short ?? 3,
-      rating: config?.typeCounts?.rating ?? 2,
+      short: config?.typeCounts?.short ?? 0,
+      rating: config?.typeCounts?.rating ?? 0,
     },
   }));
 
