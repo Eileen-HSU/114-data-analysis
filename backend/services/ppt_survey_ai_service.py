@@ -3,8 +3,6 @@ import logging
 import mimetypes
 import os
 import re
-import time
-import traceback
 import zipfile
 from io import BytesIO
 from xml.etree import ElementTree
@@ -21,29 +19,13 @@ class PptSurveyAiError(Exception):
 
 ALLOWED_EXTENSIONS = {".ppt", ".pptx", ".pdf"}
 ALLOWED_TYPES = {"short", "rating"}
-DEFAULT_MODEL = "gemini-3.6-flash"
-DEFAULT_FALLBACK_MODELS = ["gemini-1.5-flash", "gemini-1.5-pro"]
-RETIRED_FALLBACK_MODEL_REPLACEMENTS = {
-    "gemini-1.5-flash": "gemini-1.5-flash",
-    "gemini-1.5-pro": "gemini-1.5-pro",
-    "gemini-2.0-flash": "gemini-1.5-flash",
-    "gemini-2.0-flash-001": "gemini-1.5-flash",
-    "gemini-2.0-flash-lite": "gemini-1.5-flash",
-    "gemini-2.0-flash-lite-001": "gemini-1.5-flash",
-    "gemini-2.5-flash": "gemini-1.5-flash",
-    "gemini-2.5-pro": "gemini-1.5-pro",
-    "gemini-3.5-flash": "gemini-1.5-flash",
-    "gemini-3.6-pro": "gemini-1.5-pro",
-}
-GEMINI_RETRY_ATTEMPTS = 3
-GEMINI_RETRY_INITIAL_DELAY_SECONDS = 3
-GEMINI_RETRY_MAX_DELAY_SECONDS = 5
+GEMINI_MODEL = "gemini-3.5-flash"
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_EXTRACTED_CHARS = 18000
 
 
 def _get_api_key():
-    api_key = os.getenv("PPT_SURVEY_AI_API_KEY", "").strip()
+    api_key = _get_ppt_survey_api_keys()[0][1]
     if not api_key:
         logger.error("PPT_SURVEY_AI_API_KEY is missing")
         raise PptSurveyAiError("PPT/PDF 問卷 AI API key 尚未設定。", 503)
@@ -59,6 +41,30 @@ def _load_genai_client():
         raise PptSurveyAiError("後端缺少 google-genai 套件，請確認 requirements.txt。", 503) from exc
 
     return genai.Client(api_key=_get_api_key()), types
+
+
+def _get_ppt_survey_api_keys():
+    """Read the two keys dedicated exclusively to PPT survey generation."""
+    primary_key = os.getenv("PPT_SURVEY_AI_PRIMARY_API_KEY", "").strip()
+    fallback_key = os.getenv("PPT_SURVEY_AI_FALLBACK_API_KEY", "").strip()
+    if not primary_key or not fallback_key:
+        logger.error(
+            "PPT survey API key configuration is incomplete: primary=%s fallback=%s",
+            bool(primary_key),
+            bool(fallback_key),
+        )
+        raise PptSurveyAiError("PPT survey AI key configuration is incomplete.", 503)
+    return (("primary", primary_key), ("fallback", fallback_key))
+
+
+def _load_genai_types():
+    try:
+        from google import genai
+        from google.genai import types
+    except Exception as exc:
+        logger.exception("google-genai import failed")
+        raise PptSurveyAiError("google-genai is unavailable.", 503) from exc
+    return genai, types
 
 
 def _extension(filename):
@@ -283,7 +289,7 @@ def _handle_ai_exception(exc):
 
 def _call_gemini_legacy_unused(contents):
     client, types = _load_genai_client()
-    model = _normalize_gemini_model_name(os.getenv("PPT_SURVEY_AI_MODEL", DEFAULT_MODEL)) or DEFAULT_MODEL
+    model = GEMINI_MODEL
     logger.info("Calling Gemini model=%s", model)
     try:
         response = client.models.generate_content(
@@ -396,9 +402,9 @@ def _call_gemini_model(client, types, model, contents):
         _handle_ai_exception(exc)
 
 
-def _call_gemini(contents):
+def _call_gemini_with_model_fallback_legacy_unused(contents):
     client, types = _load_genai_client()
-    primary_model = _normalize_gemini_model_name(os.getenv("PPT_SURVEY_AI_MODEL", DEFAULT_MODEL)) or DEFAULT_MODEL
+    primary_model = GEMINI_MODEL
     models = _model_sequence(primary_model)
     last_unavailable_error = None
 
@@ -469,6 +475,61 @@ def _call_gemini(contents):
         "Gemini 服務目前忙碌或暫時不可用，已自動重試並切換備援模型但仍失敗，請稍後再試。",
         503,
     ) from last_unavailable_error
+
+
+def _call_gemini(contents):
+    """Call the fixed PPT model, retrying once with its dedicated fallback key.
+
+    A key is never passed to shared Gemini helpers, so this failover cannot
+    affect any other AI feature.
+    """
+    genai, types = _load_genai_types()
+    last_error = None
+
+    for key_role, api_key in _get_ppt_survey_api_keys():
+        logger.info("Calling PPT survey Gemini: model=%s key_role=%s", GEMINI_MODEL, key_role)
+        try:
+            client = genai.Client(api_key=api_key)
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    temperature=0.25,
+                    response_mime_type="application/json",
+                ),
+            )
+        except Exception as exc:
+            last_error = exc
+            if key_role == "primary":
+                # Includes 429, 403, and every other request-level API failure.
+                logger.warning(
+                    "PPT survey primary Gemini call failed; retrying with fallback: "
+                    "model=%s error_type=%s",
+                    GEMINI_MODEL,
+                    type(exc).__name__,
+                )
+                continue
+
+            logger.exception(
+                "PPT survey fallback Gemini call failed: model=%s error_type=%s",
+                GEMINI_MODEL,
+                type(exc).__name__,
+            )
+            _handle_ai_exception(exc)
+
+        text = getattr(response, "text", "") or ""
+        logger.info(
+            "PPT survey Gemini response received: model=%s key_role=%s chars=%s",
+            GEMINI_MODEL,
+            key_role,
+            len(text),
+        )
+        if not text.strip():
+            raise PptSurveyAiError("PPT survey AI returned an empty response.", 502)
+        return _parse_json_response(text)
+
+    # Defensive guard: the loop either returns or maps the fallback error above.
+    _handle_ai_exception(last_error or RuntimeError("PPT survey Gemini call failed"))
 
 
 def generate_survey_from_material(filename, file_bytes, config):
