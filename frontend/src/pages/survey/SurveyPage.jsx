@@ -6,6 +6,7 @@ import Navbar from "../../components/feature/Navbar";
 import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
 import { useActivity } from "../../hooks/ActivityContext";
 import { useAuth } from "../../hooks/AuthContext";
+import { useLanguage } from "../../context/LanguageContext";
 import { apiUrl } from "../../lib/api";
 import { buildExternalSurveyShortUrl, buildSurveyFillPath } from "../../lib/surveyLinks";
 import {
@@ -14,19 +15,6 @@ import {
   toCompatibleSurveyPayload,
 } from "../../lib/pptSurveyAi";
 import "./survey.css";
-
-const getLang = () => {
-  if (typeof window !== "undefined") {
-    try {
-      const stored = localStorage.getItem("dataanalysis_language");
-      if (stored) return stored.startsWith("zh") ? "zh" : "en";
-    } catch (e) {
-      /* ignore localStorage errors */
-    }
-  }
-  return (typeof navigator !== "undefined" && navigator.language && navigator.language.startsWith("zh")) ? "zh" : "en";
-};
-const t = (zh, en) => (getLang() === "zh" ? zh : en);
 
 const defaultPptConfig = {
   direction: "",
@@ -65,6 +53,8 @@ function normalizeDraft(draft) {
 }
 
 export default function SurveyPage({ pptOnly = false }) {
+  const { language } = useLanguage();
+  const t = (zh, en) => language === "en" ? en : zh;
   const navigate = useNavigate();
   const location = useLocation();
   // React may reuse this component while changing from /survey to /survey/ppt.
@@ -563,7 +553,7 @@ export default function SurveyPage({ pptOnly = false }) {
     <>
       <Navbar />
       {(!isPptPage || !isPptModalOpen) && <main className="survey-page">
-        <section className="survey-workspace">
+        <section className="survey-workspace" data-localized>
           <div className="survey-intro">
             <div className="survey-hero-badge">
               <i className="ri-survey-line"></i>
@@ -584,7 +574,7 @@ export default function SurveyPage({ pptOnly = false }) {
                 <div className="entry-card-icon create-icon">
                   <i className="ri-edit-box-line"></i>
                 </div>
-                <span className="entry-card-kicker">{t("手動建立","Manual create")}</span>
+                <span className="entry-card-kicker">{t("手動建立","Manual creation")}</span>
               </div>
               <div className="entry-card-copy">
                 <h2 className="entry-card-title">{t("建立問卷","Create survey")}</h2>
@@ -617,7 +607,7 @@ export default function SurveyPage({ pptOnly = false }) {
                     }
                   }, 0);
                 }}
-                aria-label="上傳 PPT/PDF 生成問卷"
+                aria-label={t("上傳 PPT/PDF 生成問卷", "Generate a survey from PPT/PDF")}
               >
                 <div className="entry-card-icon ppt-icon">
                   <i className="ri-slideshow-3-line"></i>
