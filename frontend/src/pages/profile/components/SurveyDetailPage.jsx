@@ -380,6 +380,10 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
                     {copyCodeSuccess ? (lang === "en" ? "Copied" : "已複製") : (lang === "en" ? "Copy code" : "複製代碼")}
                   </button>
                 </div>
+                <button className="sdp-copy-code-btn sdp-copy-link-in-code" onClick={handleCopySurveyLink} disabled={isShorteningLink || !surveyLink} type="button">
+                  <i className={isShorteningLink ? "ri-loader-4-line" : copyLinkSuccess ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
+                  {isShorteningLink ? (lang === "en" ? "Generating..." : "產生中...") : copyLinkSuccess ? (lang === "en" ? "Copied" : "已複製") : (lang === "en" ? "Copy link" : "複製連結")}
+                </button>
               </div>
               <div className="sdp-deadline-card sdp-deadline-card-top">
                 <label className="sdp-code-label" htmlFor="survey-deadline-input">
