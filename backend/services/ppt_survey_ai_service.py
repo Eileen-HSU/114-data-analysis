@@ -508,16 +508,20 @@ def _call_gemini(contents):
                 # Includes 429, 403, and every other request-level API failure.
                 logger.warning(
                     "PPT survey primary Gemini call failed; retrying with fallback: "
-                    "model=%s error_type=%s",
+                    "model=%s error_type=%s error=%s",
                     GEMINI_MODEL,
                     type(exc).__name__,
+                    str(exc),
+                    exc_info=True,
                 )
                 continue
 
-            logger.exception(
-                "PPT survey fallback Gemini call failed: model=%s error_type=%s",
+            logger.error(
+                "PPT survey fallback Gemini call failed: model=%s error_type=%s error=%s",
                 GEMINI_MODEL,
                 type(exc).__name__,
+                str(exc),
+                exc_info=True,
             )
             _handle_ai_exception(exc)
 
