@@ -45,7 +45,11 @@ def _load_genai_client():
 
 def _get_ppt_survey_api_keys():
     """Read the two keys dedicated exclusively to PPT survey generation."""
-    primary_key = os.getenv("PPT_SURVEY_AI_PRIMARY_API_KEY", "").strip()
+    primary_key = (
+        os.getenv("PPT_SURVEY_AI_PRIMARY_API_KEY", "").strip()
+        or os.getenv("PPT_SURVEY_AI_API_KEY", "").strip()
+        or os.getenv("GEMINI_API_KEY", "").strip()
+    )
     fallback_key = os.getenv("PPT_SURVEY_AI_FALLBACK_API_KEY", "").strip()
     if not primary_key or not fallback_key:
         logger.error(
