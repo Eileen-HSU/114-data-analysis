@@ -50,9 +50,7 @@ export default function CreateSurveyPage() {
   const [description, setDescription] = useState("");
   const [identityMode, setIdentityMode] = useState("anonymous");
   const [deadlineAt, setDeadlineAt] = useState("");
-  const [questions, setQuestions] = useState([
-    newQuestion("short")
-  ]);
+  const [questions, setQuestions] = useState([]);
   const [error, setError] = useState("");
   const [minDeadlineAt, setMinDeadlineAt] = useState(() => getNextDeadlineMin());
   const [generatedCode, setGeneratedCode] = useState("");
@@ -315,7 +313,7 @@ export default function CreateSurveyPage() {
                   <input type="checkbox" checked={question.required} onChange={(e) => updateQuestion(question.id, { required: e.target.checked })} />
                   <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 700, color: "var(--slate-500)" }}><InterfaceText>{"必填"}</InterfaceText></span>
                 </label>
-                <button className="question-delete-btn" onClick={() => duplicateQuestion(question)} title="複製題目" type="button">
+                <button className="question-delete-btn question-duplicate-btn" onClick={() => duplicateQuestion(question)} title="複製題目" type="button">
                   <i className="ri-file-copy-line"></i>
                 </button>
                 <button className="question-delete-btn" onClick={() => setQuestions((prev) => (prev.length === 1 ? prev : prev.filter((q) => q.id !== question.id)))} title="刪除題目" type="button">

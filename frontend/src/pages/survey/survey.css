@@ -501,6 +501,7 @@
 }
 
 .question-number {
+  grid-column: 1;
   width: 32px;
   height: 32px;
   display: flex;
@@ -515,6 +516,7 @@
 }
 
 .question-type-select {
+  grid-column: 2;
   width: 100%;
   min-width: 0;
   padding: 8px 14px;
@@ -532,6 +534,7 @@
 .question-type-select:focus { border-color: #c9a0a0; }
 
 .question-delete-btn {
+  grid-column: auto;
   margin-left: 0;
   width: 32px;
   height: 32px;
@@ -549,7 +552,12 @@
 
 .question-delete-btn:hover { border-color: #fca5a5; background: #fff1f2; color: #ef4444; }
 
+.question-duplicate-btn { grid-column: 5; }
+
+.question-card-header > .question-delete-btn:last-child { grid-column: 6; }
+
 .question-required-toggle {
+  grid-column: 3;
   display: flex;
   align-items: center;
   gap: 8px;
