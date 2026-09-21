@@ -371,19 +371,21 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
             </div>
             <div className="sdp-topbar-right">
               <div className="sdp-code-card">
-                <div className="sdp-code-label">
-                  <i className="ri-key-2-line"></i><InterfaceText>{"問卷代碼"}</InterfaceText></div>
-                <div className="sdp-code-row">
+                <div className="sdp-code-info">
+                  <div className="sdp-code-label">
+                    <i className="ri-key-2-line"></i><InterfaceText>{"問卷代碼"}</InterfaceText></div>
                   <span className="sdp-code-value">{currentSurvey.code}</span>
+                </div>
+                <div className="sdp-code-actions">
                   <button className="sdp-copy-code-btn" onClick={handleCopyCode} type="button">
                     <i className={copyCodeSuccess ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
                     {copyCodeSuccess ? (lang === "en" ? "Copied" : "已複製") : (lang === "en" ? "Copy code" : "複製代碼")}
                   </button>
+                  <button className="sdp-copy-code-btn sdp-copy-link-in-code" onClick={handleCopySurveyLink} disabled={isShorteningLink || !surveyLink} type="button">
+                    <i className={isShorteningLink ? "ri-loader-4-line" : copyLinkSuccess ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
+                    {isShorteningLink ? (lang === "en" ? "Generating..." : "產生中...") : copyLinkSuccess ? (lang === "en" ? "Copied" : "已複製") : (lang === "en" ? "Copy link" : "複製連結")}
+                  </button>
                 </div>
-                <button className="sdp-copy-code-btn sdp-copy-link-in-code" onClick={handleCopySurveyLink} disabled={isShorteningLink || !surveyLink} type="button">
-                  <i className={isShorteningLink ? "ri-loader-4-line" : copyLinkSuccess ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
-                  {isShorteningLink ? (lang === "en" ? "Generating..." : "產生中...") : copyLinkSuccess ? (lang === "en" ? "Copied" : "已複製") : (lang === "en" ? "Copy link" : "複製連結")}
-                </button>
               </div>
               <div className="sdp-deadline-card sdp-deadline-card-top">
                 <label className="sdp-code-label" htmlFor="survey-deadline-input">
