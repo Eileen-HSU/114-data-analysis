@@ -179,6 +179,23 @@ def normalize_question_count(value):
     return max(1, min(20, parsed))
 
 
+def normalize_type_counts(raw_counts):
+    if not isinstance(raw_counts, dict):
+        raw_counts = {}
+
+    def normalize(value, fallback):
+        try:
+            return max(0, min(20, int(value)))
+        except (TypeError, ValueError):
+            return fallback
+
+    short_count = normalize(raw_counts.get("short"), 3)
+    rating_count = normalize(raw_counts.get("rating"), 2)
+    if short_count + rating_count == 0:
+        short_count = 1
+    return {"short": short_count, "rating": rating_count}
+
+
 def _strip_code_fence(text):
     return re.sub(r"^```(?:json)?|```$", "", (text or "").strip(), flags=re.MULTILINE).strip()
 
@@ -457,8 +474,9 @@ def _call_gemini(contents):
 
 
 def generate_survey_from_material(filename, file_bytes, config):
-    question_count = normalize_question_count(config.get("questionCount"))
-    allowed_types = normalize_type_limits(config.get("typeLimits"))
+    type_counts = normalize_type_counts(config.get("typeCounts"))
+    question_count = type_counts["short"] + type_counts["rating"]
+    allowed_types = [name for name, count in type_counts.items() if count > 0]
     direction = str(config.get("direction") or "").strip()
     focus = str(config.get("focus") or "").strip()
     extracted_text = extract_document_text(filename, file_bytes)
@@ -479,6 +497,7 @@ def generate_survey_from_material(filename, file_bytes, config):
 題目方向：{direction or "學習成效"}
 生成重點：{focus or "課程內容"}
 {_survey_json_instruction(allowed_types, question_count)}
+Return exactly {type_counts['short']} questions with type "short" and exactly {type_counts['rating']} questions with type "rating".
 """
 
     if extracted_text:
