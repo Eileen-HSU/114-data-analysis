@@ -944,23 +944,6 @@ export default function SurveyPage({ pptOnly = false }) {
               )}
             </div>
 
-            {pptDraft && (
-              <footer className="ppt-modal-footer">
-                {savedResult ? (
-                  <div className="ppt-save-result">
-                    <strong>{t("已建立問卷：","Survey created:")}{savedResult.accessCode}</strong>
-                    <span>{shareLink || t("專屬連結產生中...","Generating share link...")}</span>
-                    <a href={buildSurveyFillPath(savedResult.accessCode)}>{t("測試填答","Test fill")}</a>
-                  </div>
-                ) : (
-                  <span><InterfaceText>{"儲存後會走原本問卷 API，自動取得邀請碼與專屬連結。"}</InterfaceText></span>
-                )}
-                <button className="ppt-primary-btn" onClick={handleSaveDraft} disabled={isSavingDraft || Boolean(savedResult)} type="button">
-                  <i className={isSavingDraft ? "ri-loader-4-line" : "ri-save-3-line"}></i>
-                  {isSavingDraft ? "儲存中..." : "完成並儲存"}
-                </button>
-              </footer>
-            )}
           </section>
         </div>
       )}

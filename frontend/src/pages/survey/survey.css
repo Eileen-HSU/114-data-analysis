@@ -1350,9 +1350,10 @@
 
 .ppt-question-head {
   display: grid;
-  grid-template-columns: auto minmax(110px, 150px) auto auto;
+  grid-template-columns: 42px 180px auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  justify-content: start;
+  gap: 8px;
 }
 
 .ppt-question-head > span {
@@ -1360,6 +1361,19 @@
   color: #4f927f;
   font-size: 13px;
   font-weight: 900;
+}
+
+.ppt-question-head select {
+  grid-column: 2;
+  width: 180px;
+  justify-self: start;
+}
+
+.ppt-question-head label { grid-column: 3; }
+
+.ppt-question-head .ppt-icon-btn {
+  grid-column: 5;
+  justify-self: end;
 }
 
 .ppt-rating-preview {
@@ -2833,12 +2847,14 @@
     padding: 16px;
   }
   .ppt-question-head {
-    grid-template-columns: auto 1fr;
+    grid-template-columns: 42px minmax(0, 1fr) auto auto;
   }
   .ppt-question-head label,
   .ppt-question-head .ppt-icon-btn {
     justify-self: start;
   }
+  .ppt-question-head label { grid-column: 3; }
+  .ppt-question-head .ppt-icon-btn { grid-column: 4; }
   .ppt-ai-chat {
     position: static;
   }
