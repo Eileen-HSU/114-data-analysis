@@ -1234,7 +1234,7 @@
     linear-gradient(180deg, #fff7fd 0%, #fbf7ff 48%, #faf7fb 100%);
   display: flex;
   flex-direction: column;
-  padding-top: 36px;
+  padding-top: 0;
 }
 
 /* Fixed Header - pinned right below Navbar */
@@ -1370,7 +1370,8 @@
 
 .sdp-tab-group-header {
   position: absolute;
-  top: 0;
+  top: auto;
+  bottom: 0;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2;
@@ -1756,7 +1757,7 @@
 /* Content Area - padding-top set dynamically via JS */
 .sdp-content {
   flex: 1;
-  padding: 218px 38px 150px;
+  padding: 112px 38px 150px;
   max-width: 1480px;
   width: 100%;
   margin: 0 auto;
