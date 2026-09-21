@@ -164,6 +164,10 @@ Object.assign(legacyEnglish, {
 const completeInterfaceEnglish = { ...legacyEnglish, ...Object.fromEntries(Object.entries(interfaceEnglish).filter(([key]) => key.length > 1)) };
 
 export function translateInterfaceText(text, language) {
+  if (language === "en") {
+    const attempts = /^帳號或密碼錯誤，剩餘\s*(\d+)\s*次機會$/.exec(text);
+    if (attempts) return `Incorrect email or password. ${attempts[1]} ${Number(attempts[1]) === 1 ? "attempt" : "attempts"} remaining.`;
+  }
   return language === "en" ? (interfaceEnglish[text] || legacyEnglish[text] || text) : text;
 }
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/AuthContext";
-import { useLanguage } from "../../context/LanguageContext";
+import { translateInterfaceText, useLanguage } from "../../context/LanguageContext";
 import { apiUrl } from "../../lib/api";
 import conqightLogo from "../../assets/conqight-logo.png";
 import "./auth.css";
@@ -230,9 +230,9 @@ export default function LoginPage() {
               </div>
 
               {loginError && (
-                <div className="auth-error-message" role="alert">
+                <div className="auth-error-message" role="alert" data-localized>
                   <i className="ri-error-warning-line"></i>
-                  <span>{loginError}</span>
+                  <span>{translateInterfaceText(loginError, language)}</span>
                 </div>
               )}
 

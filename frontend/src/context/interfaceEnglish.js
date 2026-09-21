@@ -1,5 +1,8 @@
 // Fixed interface copy only. Never pass user answers or generated analysis here.
 export const interfaceEnglish = {
+  "登入失敗次數過多，請稍後再試": "Too many failed login attempts. Please try again later.",
+  "登入失敗，請確認帳號或密碼是否正確。": "Login failed. Please check your email and password.",
+  "連線失敗，請確認後端服務是否正常。": "Unable to connect to the server. Please try again later.",
   "Gemini 服務目前忙碌或暫時不可用，已自動重試並切換備援模型但仍失敗，請稍後再試。": "Gemini is busy or temporarily unavailable. Automatic retries and fallback models were unsuccessful. Please try again later.",
   "AI API 額度或頻率限制已達上限，請稍後再試。": "The AI usage or rate limit has been reached. Please try again later.",
   "AI 分析逾時，請稍後再試或改用較小的檔案。": "AI analysis timed out. Please try again later or use a smaller file.",

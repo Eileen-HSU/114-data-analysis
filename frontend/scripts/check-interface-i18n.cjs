@@ -30,6 +30,9 @@ assert.equal(translate('正在載入問卷詳情…', 'en'), 'Loading survey det
 assert.equal(translate('正在整理題目、統計與回覆資料，請稍候。', 'en'), 'Preparing questions, statistics, and responses. Please wait.');
 assert.equal(translate('正在載入問卷詳情…', 'zh-TW'), '正在載入問卷詳情…');
 assert.equal(translate('自訂問卷名稱', 'en'), '自訂問卷名稱');
+assert.equal(translate('帳號或密碼錯誤，剩餘 4 次機會', 'en'), 'Incorrect email or password. 4 attempts remaining.');
+assert.equal(translate('帳號或密碼錯誤，剩餘 1 次機會', 'en'), 'Incorrect email or password. 1 attempt remaining.');
+assert.equal(translate('帳號或密碼錯誤，剩餘 4 次機會', 'zh-TW'), '帳號或密碼錯誤，剩餘 4 次機會');
 
 nodes = [node('正在整理題目、統計與回覆資料，請稍候。'), node('正在整理題目、統計與回覆資料，請稍候。', true), node('分'), node('王平均')];
 bridge('en');
