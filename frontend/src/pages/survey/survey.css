@@ -493,7 +493,8 @@
 .question-card:hover { border-color: #e8d8d8; }
 
 .question-card-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(160px, 240px) auto 1fr auto auto;
   align-items: center;
   gap: 12px;
   margin-bottom: 16px;
@@ -514,6 +515,8 @@
 }
 
 .question-type-select {
+  width: 100%;
+  min-width: 0;
   padding: 8px 14px;
   border: 1.5px solid var(--slate-200);
   border-radius: 10px;
@@ -529,7 +532,7 @@
 .question-type-select:focus { border-color: #c9a0a0; }
 
 .question-delete-btn {
-  margin-left: auto;
+  margin-left: 0;
   width: 32px;
   height: 32px;
   display: flex;
@@ -555,6 +558,17 @@
   color: var(--slate-500);
   cursor: pointer;
   user-select: none;
+}
+
+@media (max-width: 640px) {
+  .question-card-header {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+  }
+
+  .question-required-toggle {
+    grid-column: 2 / -1;
+    justify-self: start;
+  }
 }
 
 .toggle-switch {

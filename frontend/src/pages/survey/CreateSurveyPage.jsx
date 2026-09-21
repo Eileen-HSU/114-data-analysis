@@ -311,7 +311,7 @@ export default function CreateSurveyPage() {
                     <option key={type.value} value={type.value}>{type.label}</option>
                   ))}
                 </select>
-                <label className="question-required-toggle ms-auto me-2" style={{ cursor: "pointer" }}>
+                <label className="question-required-toggle">
                   <input type="checkbox" checked={question.required} onChange={(e) => updateQuestion(question.id, { required: e.target.checked })} />
                   <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 700, color: "var(--slate-500)" }}><InterfaceText>{"必填"}</InterfaceText></span>
                 </label>
