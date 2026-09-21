@@ -340,7 +340,7 @@ export default function SurveyPage({ pptOnly = false }) {
     return "";
   };
 
-  const handleSaveDraft = async () => {
+  const handleSaveDraft = async ({ redirectToSurveyCenter = false } = {}) => {
     if (!user?.token) {
       setPptError("請先登入後再儲存問卷。");
       return;
@@ -417,6 +417,10 @@ export default function SurveyPage({ pptOnly = false }) {
           console.warn("Short link creation failed:", error);
           setShareLink(buildSurveyFillPath(accessCode));
         });
+
+      if (redirectToSurveyCenter) {
+        navigate("/survey", { replace: true });
+      }
     } catch (error) {
       console.error("Save PPT survey failed:", error);
       setPptError(error?.response?.data?.error || "儲存失敗，請稍後再試。");
@@ -759,8 +763,8 @@ export default function SurveyPage({ pptOnly = false }) {
                 </div>
 
                 <div className="ppt-preview-actions">
-                  <button className="ppt-secondary-btn" type="button">
-                    <i className="ri-download-2-line"></i>
+                  <button className="ppt-secondary-btn" onClick={() => handleSaveDraft({ redirectToSurveyCenter: true })} disabled={!pptDraft || isSavingDraft || Boolean(savedResult)} type="button">
+                    <i className={isSavingDraft ? "ri-loader-4-line" : "ri-upload-2-line"}></i>
                     {t("匯入系統問卷","Import into system surveys")}
                   </button>
                 </div>
