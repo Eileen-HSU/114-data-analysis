@@ -1388,6 +1388,12 @@
   overflow: visible;
 }
 
+@media (min-width: 1101px) {
+  html[lang="en"] .sdp-tab-group.sdp-tab-group-header {
+    left: calc(50% + clamp(40px, 4vw, 72px));
+  }
+}
+
 .sdp-tab-group-header .sdp-tab {
   height: 44px;
   min-width: 0;
