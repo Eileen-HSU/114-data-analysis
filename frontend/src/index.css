@@ -526,3 +526,28 @@ a[class*="btn"] i {
   .mobile-nav-link i { font-size: 18px; }
   .mobile-nav-link.active { background: var(--violet-50); color: var(--violet-600); }
 }
+
+/* Compact tablet navigation; keep all destinations and account controls available. */
+@media (min-width: 1001px) and (max-width: 1400px) {
+  #mainNavbar .nav-link-btn { display: inline-flex !important; padding: 10px; font-size: 13px; }
+  #mainNavbar .navbar-logo-img { width: 150px; }
+  #mainNavbar .nav-user-name { max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+@media (max-width: 1000px) {
+  :root { --navbar-height: 124px; }
+  #mainNavbar { height: var(--navbar-height); padding: 8px 0; }
+  #mainNavbar .container-fluid { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 56px 44px; gap: 4px 8px; min-height: 0; }
+  #mainNavbar .navbar-brand { position: static !important; transform: none !important; margin: 0; grid-column: 1; grid-row: 1; }
+  #mainNavbar .navbar-logo-img { width: 130px; max-height: 52px; }
+  #mainNavbar .nav-account-actions { grid-column: 2; grid-row: 1; min-width: 0; }
+  #mainNavbar .nav-primary-links { grid-column: 1 / -1; grid-row: 2; width: 100%; min-width: 0; overflow-x: auto; justify-content: center; }
+  #mainNavbar .nav-link-btn { display: inline-flex !important; flex-shrink: 0; padding: 8px 10px; font-size: 12px; white-space: nowrap; }
+  #mainNavbar .nav-link-btn span { display: inline; }
+  #mainNavbar .nav-language-switcher { display: inline-flex !important; }
+  #mainNavbar .nav-user-btn, #mainNavbar .nav-login-btn, #mainNavbar .nav-signup-btn { display: inline-flex !important; padding: 6px 8px; font-size: 12px; }
+  #mainNavbar .nav-user-name { display: none; }
+}
+@media (max-width: 420px) {
+  #mainNavbar .container-fluid { padding-left: 12px !important; padding-right: 12px !important; }
+  #mainNavbar .nav-primary-links { justify-content: flex-start; }
+}
