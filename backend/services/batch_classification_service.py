@@ -98,6 +98,7 @@ def run_batch_analysis(
     prompt_content: str,
     question_type: str,
     category_lookup=None,
+    taxonomy_version_id=None,
 ) -> List[Dict[str, Any]]:
     """
     對外主要介面。輸入一批「已分析回答」（可作為沿用參考，但不會被
@@ -116,6 +117,9 @@ def run_batch_analysis(
         category_lookup: 見 classify_v2.classify_response_multi_segment()
             的同名參數，原樣透傳，不傳則維持 question_type 查
             SUBCATEGORY_METHODOLOGY 固定表的舊行為。
+        taxonomy_version_id: 見 classify_v2.classify_response_multi_segment()
+            的同名參數（Human Review feedback loop），原樣透傳，不傳
+            （None，預設）則維持既有行為。
 
     Returns:
         跟 pending_items 順序、數量一致的清單，每個元素形狀跟
@@ -164,7 +168,8 @@ def run_batch_analysis(
         combined_i = _combined_index(local_i)
         if combined_i in keep_indices_set:
             result = classify_response_multi_segment(
-                item["answer_text"], prompt_content, question_type, category_lookup=category_lookup
+                item["answer_text"], prompt_content, question_type,
+                category_lookup=category_lookup, taxonomy_version_id=taxonomy_version_id,
             )
             fresh_results[combined_i] = result
 
@@ -222,7 +227,8 @@ def run_batch_analysis(
         else:
             # 定位失敗，fallback 成完整處理，比照一般回答
             result = classify_response_multi_segment(
-                item["answer_text"], prompt_content, question_type, category_lookup=category_lookup
+                item["answer_text"], prompt_content, question_type,
+                category_lookup=category_lookup, taxonomy_version_id=taxonomy_version_id,
             )
             result = dict(result)
             result["reused_from"] = None

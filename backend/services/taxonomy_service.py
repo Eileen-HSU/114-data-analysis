@@ -146,6 +146,31 @@ _SECONDARY_CATEGORY_RULE = """每則回覆原則上輸出一個主要類別；�
 可額外輸出一個次要類別。次要類別必須是與主要類別不同的合法子類別（從上方清單中選）；
 若內容只涉及單一主題，secondary_sub_category 請輸出 null，不要為了填欄位而勉強生成。"""
 
+_CONFIDENCE_RUBRIC_BLOCK = """【分類信心評分規則】
+confidence 必須反映「這個文字依目前 Taxonomy 能否明確歸入此分類」，不可習慣性給高分。
+
+0.90–1.00：
+文字語意明確，與某一類別定義高度吻合，且與其他類別幾乎沒有合理競爭。
+
+0.75–0.89：
+主要分類有充分依據，但存在少量語意模糊或相近類別。
+
+0.50–0.74：
+存在兩個以上合理候選類別、落在類別邊界、文字過短、語意不足，或需要推論才能分類。
+這類必須進 Human Review。
+
+0.00–0.49：
+資訊明顯不足、與 Taxonomy 對不上、語意矛盾，或無法可靠判斷。
+
+補充規則（優先於上述級距，任一項成立時 confidence 必須 < 0.75）：
+- 不可因為「成功選出一個類別」就給 >= 0.75；選得出類別不代表選得準。
+- 若兩個（含）以上類別都合理、都說得通，confidence 必須 < 0.75。
+- 若必須自行補足原文未明確說出的資訊（推測、腦補）才能判斷，confidence 必須 < 0.75。
+- 極短、模糊、缺乏具體語意證據的回答，即使只想得到一個類別，confidence 必須 < 0.75。
+- confidence 代表的是「分類判斷的確定程度」，不是「JSON 格式是否成功產生」；格式輸出成功
+  跟分類判斷正確與否是兩件事，不能因為這次順利吐出合法 JSON 就直接給高分。"""
+
+
 _OUTPUT_FORMAT_BLOCK = """【輸出格式】
 絕對不可修改或改寫「問卷回覆內容」原文，僅作為判斷依據。
 只回傳以下 JSON 格式，不要加任何其他文字說明：
@@ -214,6 +239,14 @@ def build_classification_prompt(taxonomy_version) -> str:
 
     輸出格式（JSON schema）跟 legacy prompt 完全一致，因此下游
     _parse_json() / _build_classification_result() 不需要跟著改。
+
+    _CONFIDENCE_RUBRIC_BLOCK（新增）：明確的 confidence 評分級距與
+    補充規則，插在 _OUTPUT_FORMAT_BLOCK 之前——只調整「how Gemini 應該
+    自我評分」，不動 CONFIDENCE_THRESHOLD（0.75，見
+    services/confidence_gate.py，本次刻意不改）、不動 JSON schema 本身
+    的欄位結構。目的是矯正「只要成功選出一個類別就習慣性給 >=0.75」
+    的偏差，讓 Human Review Confidence Gate 能實際攔到需要人工複核的
+    邊界案例，而不是幾乎所有結果都落在高信心區間。
     """
     from services.classify_v2 import GLOBAL_RULES
 
@@ -249,6 +282,7 @@ def build_classification_prompt(taxonomy_version) -> str:
         rules_block,
         GLOBAL_RULES,
         "【次要類別規則】\n" + _SECONDARY_CATEGORY_RULE,
+        _CONFIDENCE_RUBRIC_BLOCK,
         _OUTPUT_FORMAT_BLOCK,
     ])
 

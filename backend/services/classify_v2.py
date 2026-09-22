@@ -72,14 +72,21 @@ BATCH_OUTPUT_FORMAT_OVERRIDE = """
 格式一次回傳所有片段的結果，不要加任何其他文字：
 
 {{"classifications": [
-  {{"index": 0, "main_category": "...", "sub_category": "...", "secondary_sub_category": null, "reasoning": "...", "summary": "...", "confidence": "..."}},
+  {{"index": 0, "main_category": "...", "sub_category": "...", "secondary_sub_category": null, "reasoning": "...", "summary": "...", "confidence": 0.0 到 1.0 之間的浮點數}},
   ...
 ]}}
 
 index 必須恰好包含 0 到 {n_minus_1}，每個各出現一次，不能遺漏也不能
 重複。除了「輸出格式從單筆物件改成 classifications 陣列」之外，
 分類邏輯、可選類別、次要類別規則、判斷標準完全比照上方規則，
-不需要另外調整；片段之間請各自獨立判斷，不要互相影響。"""
+不需要另外調整；片段之間請各自獨立判斷，不要互相影響。
+
+confidence 欄位一律是 0.0 到 1.0 之間的浮點數（例如 0.62、0.9），
+不是字串、不是 "high"/"low"、不可省略小數點。每個片段仍必須套用
+上方「分類信心評分規則」的級距與補充規則自行評分，不得因為改成
+陣列格式、或這一段只在講輸出結構，就把 confidence 隨口給高分；
+陣列裡每個片段的 confidence 都要各自獨立判斷，不能互相參考或取
+平均。"""
 
 
 # ── 系統層級總分類規則（0731_prompt訓練.md 最後一段，兩題共用）──────────
@@ -459,7 +466,9 @@ def _failed_classification_result(error_detail: str) -> dict:
     }
 
 
-def _call_gemini_batch_classification(masked_segments: list, prompt_content: str, category_lookup) -> list:
+def _call_gemini_batch_classification(
+    masked_segments: list, prompt_content: str, category_lookup, reviewed_examples_block: str = ""
+) -> list:
     """
     Gemini #2：一次把所有已驗證合法的 masked segments 送進去，
     一次回傳每個 segment 的分類結果（固定 2 次呼叫策略的第二次，
@@ -482,6 +491,21 @@ def _call_gemini_batch_classification(masked_segments: list, prompt_content: str
     明講要覆蓋前面的指示，所以不會產生「system_instruction 跟
     user message 兩邊互相矛盾、system 優先於 user」這種衝突。
     user message 只負責列出片段內容，不再重複格式規則。
+
+    reviewed_examples_block（Human Review feedback loop，新增）：
+    services.review_feedback_service.build_review_feedback_prompt()
+    組出來的「已審核範例」文字區塊，接在 prompt_content 之後、
+    BATCH_OUTPUT_FORMAT_OVERRIDE 之前：
+
+        system_instruction = prompt_content
+                              + reviewed_examples_block
+                              + BATCH_OUTPUT_FORMAT_OVERRIDE
+
+    BATCH_OUTPUT_FORMAT_OVERRIDE 必須維持在最後——它是唯一定義
+    classifications 陣列輸出格式的地方，放在它之後的任何文字都有
+    可能被 Gemini 誤認為輸出格式的一部分。預設空字串，字串串接後
+    完全等同沒有這段（"" 對字串串接是 no-op），確保沒有範例可用時
+    system_instruction 逐字元跟舊行為一致。
     """
     n = len(masked_segments)
 
@@ -489,7 +513,11 @@ def _call_gemini_batch_classification(masked_segments: list, prompt_content: str
         segments_block = "\n".join(f"[{i}] {text}" for i, text in enumerate(masked_segments))
         user_message = f"片段內容：\n{segments_block}"
 
-        batch_system_instruction = prompt_content + BATCH_OUTPUT_FORMAT_OVERRIDE.format(n=n, n_minus_1=n - 1)
+        batch_system_instruction = (
+            prompt_content
+            + reviewed_examples_block
+            + BATCH_OUTPUT_FORMAT_OVERRIDE.format(n=n, n_minus_1=n - 1)
+        )
 
         model = genai.GenerativeModel(
             model_name="gemini-3.1-flash-lite",
@@ -524,12 +552,46 @@ def _call_gemini_batch_classification(masked_segments: list, prompt_content: str
 
 
 def classify_response_multi_segment(
-    answer_text: str, prompt_content: str, question_type: str, category_lookup=None
+    answer_text: str,
+    prompt_content: str,
+    question_type: str,
+    category_lookup=None,
+    taxonomy_version_id=None,
 ) -> dict:
     """
     多意義單元分類協調函式：遮罩 → 拆分驗證（Gemini #1）→ 批次分類
     （Gemini #2，一次呼叫涵蓋所有 segment）。固定 2 次 Gemini 呼叫，
     不隨 segment 數量增加而增加呼叫次數。
+
+    taxonomy_version_id（Human Review feedback loop，新增，
+    keyword-only 慣例但不強制）：
+        這批分類實際使用哪一版 Published Taxonomy（跟
+        Response_Classification.taxonomy_version_id 寫入的值必須是
+        同一個，確保「用哪份 taxonomy 分類」跟「用哪份 taxonomy 的
+        已審核範例做 feedback」永遠一致）。
+            - 不傳（None，預設）：完全維持既有行為，不查詢、不呼叫
+              services.review_feedback_service，system_instruction
+              逐字元跟這個功能加入之前相同。既有呼叫端
+              （test_classify_v2_multi_segment.py、
+              test_taxonomy_classification.py、prompt_admin_service.py
+              的黃金測試路徑）完全不用修改。
+            - 有傳：呼叫
+              services.review_feedback_service.get_reviewed_examples()
+              撈出同一個 taxonomy_version_id 下，已經人工審核
+              （confirmed / modified）過的分類結果當範例，組成文字
+              區塊插進 Gemini #2 的 system_instruction。這裡刻意
+              lazy import（函式內才 import，不放在檔案頂層）：
+              services.review_feedback_service 需要匯入 models（含
+              DB engine 設定），維持 classify_v2.py 頂層不依賴
+              Flask app context / DB 連線的既有慣例（比照下方
+              resolve_published_taxonomy_prompt() 對
+              services.taxonomy_service 的做法）。
+              查詢或組字串本身如果出了非預期的例外，fail-open 成
+              「這次沒有範例」（reviewed_examples_block 保持空字串），
+              不讓一個加分功能的例外拖垮正式分類流程；範例查詢內部
+              單筆 PII 遮罩失敗則由
+              services.review_feedback_service 自行 skip，不會冒出
+              例外到這裡。
 
     category_lookup（Phase B 新增，keyword-only 慣例但不強制）：
         callable(sub_category) -> {"main_category", "methodology",
@@ -590,8 +652,27 @@ def classify_response_multi_segment(
 
     effective_category_lookup = category_lookup or _methodology_lookup_for_question_type(question_type)
 
+    reviewed_examples_block = ""
+    if taxonomy_version_id is not None:
+        try:
+            from services.review_feedback_service import (
+                get_reviewed_examples,
+                build_review_feedback_prompt,
+            )
+
+            reviewed_examples = get_reviewed_examples(taxonomy_version_id)
+            reviewed_examples_block = build_review_feedback_prompt(reviewed_examples)
+        except Exception as e:
+            # feedback loop 是既有分類流程之外的加分功能，任何非預期
+            # 錯誤（DB 連線問題等）都不應該讓正式分類卡住，fail-open
+            # 成「這次沒有範例」，效果等同 taxonomy_version_id 沒傳。
+            print("[CLASSIFY ERROR][REVIEW_FEEDBACK_FAILED]", repr(e))
+            reviewed_examples_block = ""
+
     masked_texts = [seg["masked_text"] for seg in valid_segments]
-    classifications = _call_gemini_batch_classification(masked_texts, prompt_content, effective_category_lookup)
+    classifications = _call_gemini_batch_classification(
+        masked_texts, prompt_content, effective_category_lookup, reviewed_examples_block=reviewed_examples_block
+    )
 
     classified_segments = [
         {"orig_start": seg["orig_start"], "orig_end": seg["orig_end"], **classification}
