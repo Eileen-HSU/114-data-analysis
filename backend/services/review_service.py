@@ -469,3 +469,29 @@ def get_history(classification_id, admin_id):
         data["admin_name"] = _admin_display_name(r.admin_id)
         result.append(data)
     return result
+
+def exclude_legacy_pending_classifications(admin_id) -> int:
+    """批次「排除舊版資料」：把符合以下全部條件的 Response_Classification
+    從 pending_review 標記為 excluded，不刪除資料、不改其他欄位。
+
+        taxonomy_version_id IS NULL
+        AND confidence IS NULL
+        AND review_status = 'pending_review'
+    """
+    from classification_models import REVIEW_STATUS_PENDING, REVIEW_STATUS_EXCLUDED
+
+    matched_rows = (
+        Response_Classification.query
+        .filter(
+            Response_Classification.taxonomy_version_id.is_(None),
+            Response_Classification.confidence.is_(None),
+            Response_Classification.review_status == REVIEW_STATUS_PENDING,
+        )
+        .all()
+    )
+
+    for row in matched_rows:
+        row.review_status = REVIEW_STATUS_EXCLUDED
+
+    db.session.commit()
+    return len(matched_rows)
