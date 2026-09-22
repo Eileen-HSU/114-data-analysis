@@ -504,7 +504,8 @@ def submit_survey_response():
 
         answer_text = str(answer)
         result = classify_response_multi_segment(
-            answer_text, prompt_content, question_type, category_lookup=category_lookup
+            answer_text, prompt_content, question_type,
+            category_lookup=category_lookup, taxonomy_version_id=taxonomy_version_id,
         )
         _, rows = _persist_segmentation_result(
             result,
@@ -615,6 +616,7 @@ def upload_excel_for_classification():
                 prompt_content=prompt_content_for_batch,
                 question_type=question_type,
                 category_lookup=category_lookup,
+                taxonomy_version_id=taxonomy_version_id,
             )
             for item, result in zip(pending_items, results):
                 _, rows = _persist_segmentation_result(
@@ -833,7 +835,7 @@ def analyze_survey(access_code):
 
         results = run_batch_analysis(
             existing_references, pending_items, prompt_content_for_batch, question_type,
-            category_lookup=category_lookup,
+            category_lookup=category_lookup, taxonomy_version_id=taxonomy_version_id,
         )
 
         for item, result in zip(pending_items, results):
