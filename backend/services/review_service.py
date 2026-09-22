@@ -38,6 +38,7 @@ from models import (
     Response_Classification,
     Classification_Review,
     Classification_Review_Message,
+    Taxonomy_Version,
 )
 from classification_models import (
     REVIEW_STATUS_PENDING,
@@ -140,6 +141,54 @@ def _has_ever_entered_conversation(classification_id):
         .count()
         > 0
     )
+
+
+def _has_entered_current_conversation(review_id):
+    return (
+        Classification_Review_Message.query
+        .filter_by(review_id=review_id, role="user")
+        .count()
+        > 0
+    )
+
+
+def _taxonomy_categories(classification):
+    if classification.taxonomy_version_id is None:
+        return []
+    version = db.session.get(Taxonomy_Version, classification.taxonomy_version_id)
+    if version is None:
+        return [
+            {
+                "main_category": classification.main_category,
+                "sub_category": classification.sub_category,
+                "methodology": classification.methodology,
+                "citation": classification.citation,
+            },
+            *(
+                [{
+                    "main_category": classification.secondary_main_category,
+                    "sub_category": classification.secondary_sub_category,
+                    "methodology": classification.secondary_methodology,
+                    "citation": classification.secondary_citation,
+                }]
+                if classification.secondary_sub_category
+                else []
+            ),
+        ]
+    return [
+        {
+            "main_category": category.main_category,
+            "sub_category": category.sub_category,
+            "methodology": category.methodology,
+            "citation": category.citation,
+        }
+        for category in version.categories
+    ]
+
+
+def _reject_failed_classification(classification):
+    if classification.status == "failed":
+        raise ReviewError("分類結果處理失敗，無法進行人工確認", 409)
 
 
 def _segment_text(classification):
@@ -260,6 +309,7 @@ def send_message(classification_id, admin_id, message_text):
         candidate_secondary_sub_category=candidate_secondary_sub,
         conversation_history=history,
         user_message=message_text,
+        taxonomy_categories=_taxonomy_categories(classification),
     )
 
     assistant_msg = Classification_Review_Message(
@@ -286,13 +336,15 @@ def confirm_original(classification_id, admin_id):
     review_status -> confirmed，不寫入任何 final_* 欄位（effective
     分類直接讀 AI original）。"""
     classification = _load_classification(classification_id)
+    _reject_failed_classification(classification)
 
     if classification.review_status in _LOCKED_REVIEW_STATUSES:
         raise ReviewError("這筆分類已經確認或排除過了", 409)
 
     _require_no_conflicting_reviewer(classification_id, admin_id)
 
-    if _has_ever_entered_conversation(classification_id):
+    active_review = _get_active_review(classification_id)
+    if active_review is not None and _has_entered_current_conversation(active_review.review_id):
         raise ReviewError(
             "這筆分類已經進入過 review conversation，請用 confirm-candidate 確認，"
             "不能再用 confirm-original",
@@ -315,14 +367,16 @@ def confirm_candidate(classification_id, admin_id):
     if classification.review_status in _LOCKED_REVIEW_STATUSES:
         raise ReviewError("這筆分類已經確認或排除過了", 409)
 
-    if not _has_ever_entered_conversation(classification_id):
+    _reject_failed_classification(classification)
+
+    review = _require_no_conflicting_reviewer(classification_id, admin_id)
+    if review is None or not _has_entered_current_conversation(review.review_id):
         raise ReviewError(
             "這筆分類還沒有進入過 review conversation，請用 confirm-original 確認，"
             "不能用 confirm-candidate",
             409,
         )
 
-    review = _require_no_conflicting_reviewer(classification_id, admin_id)
     if review is None:
         raise ReviewError("找不到進行中的 review session", 404)
 
@@ -370,6 +424,45 @@ def confirm_candidate(classification_id, admin_id):
     mark_reports_outdated_for_classification(classification)
     db.session.commit()
     return classification
+
+
+def reopen_review(classification_id, admin_id):
+    classification = (
+        Response_Classification.query
+        .filter_by(classification_id=classification_id)
+        .with_for_update()
+        .first()
+    )
+    if classification is None:
+        raise ReviewError("找不到這筆分類結果", 404)
+    _reject_failed_classification(classification)
+
+    active_review = _get_active_review(classification_id)
+    if active_review is not None:
+        if active_review.admin_id != admin_id:
+            raise ReviewError(
+                "這筆分類目前正由其他管理員審核中",
+                409,
+                extra={
+                    "reviewing_admin_id": active_review.admin_id,
+                    "reviewing_admin_name": _admin_display_name(active_review.admin_id),
+                },
+            )
+        return active_review
+
+    if classification.review_status != REVIEW_STATUS_CONFIRMED:
+        raise ReviewError("只有已確認的分類可以重新開啟 review", 409)
+
+    classification.review_status = REVIEW_STATUS_PENDING
+    review = Classification_Review(
+        classification_id=classification_id,
+        admin_id=admin_id,
+        status="in_progress",
+    )
+    db.session.add(review)
+    mark_reports_outdated_for_classification(classification)
+    db.session.commit()
+    return review
 
 
 def exclude(classification_id, admin_id):
@@ -465,4 +558,3 @@ def get_history(classification_id, admin_id):
         data["admin_name"] = _admin_display_name(r.admin_id)
         result.append(data)
     return result
-

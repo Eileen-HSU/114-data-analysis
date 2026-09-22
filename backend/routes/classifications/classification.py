@@ -461,6 +461,10 @@ def _persist_segmentation_result(
 # ---------- 1. 系統問卷送出 ----------
 @classification_bp.route("/api/survey-response", methods=["POST"])
 def submit_survey_response():
+    auth_user_id, auth_error = verify_token(request)
+    if auth_error:
+        return jsonify({"error": "Unauthorized"}), 401
+
     data = request.get_json(silent=True) or {}
     template_id = data.get("template_id")
     answers = (data.get("answer_json") or {}).get("answers", {})
@@ -468,13 +472,18 @@ def submit_survey_response():
     if not template_id or not answers:
         return jsonify({"error": "缺少 template_id 或 answers"}), 400
 
+    template = Survey_Template.query.get(template_id)
+    if template is None:
+        return jsonify({"error": "找不到這份問卷"}), 404
+    if template.user_id != auth_user_id:
+        return jsonify({"error": "無權限"}), 403
+
     survey = Survey_Response(template_id=template_id, answer_json=data.get("answer_json"))
     db.session.add(survey)
     db.session.flush()  # 先取得 response_id，還沒 commit
 
     # 建立 question_id -> question_type 對照（來自建立問卷時的 routing 結果）
     question_type_map = {}
-    template = Survey_Template.query.get(template_id)
     if template and template.question_json:
         for item in template.question_json.get("items", []):
             question_type_map[item.get("id")] = item.get("question_type")
@@ -878,6 +887,18 @@ def analyze_survey(access_code):
 # ---------- 4. 查詢分類結果 ----------
 @classification_bp.route("/api/classification/<int:response_id>", methods=["GET"])
 def get_classifications(response_id):
+    auth_user_id, auth_error = verify_token(request)
+    if auth_error:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    response = Survey_Response.query.get(response_id)
+    if response is None:
+        return jsonify({"error": "找不到這筆問卷回覆"}), 404
+
+    template = Survey_Template.query.get(response.template_id)
+    if template is None or template.user_id != auth_user_id:
+        return jsonify({"error": "無權限"}), 403
+
     records = Response_Classification.query.filter_by(response_id=response_id).all()
     return jsonify({
         "response_id": response_id,

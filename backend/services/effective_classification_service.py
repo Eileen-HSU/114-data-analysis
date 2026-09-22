@@ -16,8 +16,8 @@ classification 最終要拿哪個版本的分類結果來用」判斷入口。
         final_sub_category / final_secondary_* / final_reasoning）。
         methodology / citation 不是存在 final_* 欄位裡（Phase 2 沒有
         新增 final_methodology/final_citation 這兩個欄位），而是這裡
-        當場用 final_sub_category 查
-        services/subcategory_methodology.get_methodology() 表取得
+        當場用 classification.taxonomy_version_id 對應的
+        Taxonomy_Category 查取得
         ——因為 methodology/citation 本來就是 sub_category 的確定性
         函式，不需要重複存一份，也避免「查表規則之後改了，final_*
         裡存的舊 methodology 沒跟著更新」這種資料不一致風險。
@@ -30,8 +30,9 @@ classification 最終要拿哪個版本的分類結果來用」判斷入口。
 """
 
 from classification_models import REVIEW_STATUS_CONFIRMED, REVIEW_STATUS_MODIFIED
-from services.source_lookup_service import resolve_question_type
-from services.subcategory_methodology import get_methodology
+from extensions import db
+from models import Taxonomy_Version
+from services.taxonomy_service import methodology_lookup_for_taxonomy_version
 
 
 class EffectiveClassificationError(ValueError):
@@ -66,17 +67,25 @@ def get_effective_classification(classification) -> dict:
         }
 
     if classification.review_status == REVIEW_STATUS_MODIFIED:
-        question_type = resolve_question_type(classification)
-
         methodology = citation = None
-        if question_type and classification.final_sub_category:
-            info = get_methodology(question_type, classification.final_sub_category)
+        taxonomy_version = (
+            db.session.get(Taxonomy_Version, classification.taxonomy_version_id)
+            if classification.taxonomy_version_id is not None
+            else None
+        )
+        lookup = (
+            methodology_lookup_for_taxonomy_version(taxonomy_version)
+            if taxonomy_version is not None
+            else None
+        )
+        if lookup and classification.final_sub_category:
+            info = lookup(classification.final_sub_category)
             if info:
                 methodology, citation = info["methodology"], info["citation"]
 
         secondary_methodology = secondary_citation = None
-        if question_type and classification.final_secondary_sub_category:
-            secondary_info = get_methodology(question_type, classification.final_secondary_sub_category)
+        if lookup and classification.final_secondary_sub_category:
+            secondary_info = lookup(classification.final_secondary_sub_category)
             if secondary_info:
                 secondary_methodology = secondary_info["methodology"]
                 secondary_citation = secondary_info["citation"]

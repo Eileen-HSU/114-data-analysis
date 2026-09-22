@@ -77,6 +77,18 @@ def start_review(classification_id):
         return _error_response(e)
 
 
+@review_bp.route("/api/classification/<int:classification_id>/review/reopen", methods=["POST"])
+def reopen_review(classification_id):
+    admin_id, err = _require_admin(request)
+    if err:
+        return err
+    try:
+        review = review_service.reopen_review(classification_id, admin_id)
+        return jsonify(review.to_dict(include_messages=True)), 200
+    except ReviewError as e:
+        return _error_response(e)
+
+
 @review_bp.route("/api/classification/<int:classification_id>/review/message", methods=["POST"])
 def send_message(classification_id):
     admin_id, err = _require_admin(request)
@@ -149,5 +161,4 @@ def exclude_legacy_pending():
         return jsonify({"affected_count": affected_count}), 200
     except ReviewError as e:
         return _error_response(e)
-
 

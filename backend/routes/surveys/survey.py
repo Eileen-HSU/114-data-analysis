@@ -413,6 +413,8 @@ def update_survey_deadline(access_code):
         survey = find_survey_by_access_or_short_code(access_code)
         if not survey:
             return jsonify({"error": "找不到這份問卷"}), 404
+        if survey.user_id != auth_user_id:
+            return jsonify({"error": "無權限"}), 403
 
         question_json = dict(survey.question_json or {})
         question_json.pop("deadline_at", None)

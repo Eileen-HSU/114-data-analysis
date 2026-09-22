@@ -27,12 +27,6 @@ from routes.admin.ai_admin import ai_admin_bp
 
 load_dotenv()
 
-# 如果開發環境沒有設定 JWT_SECRET_KEY，提供一個安全性較低的預設值以利本地開發
-# 在生產環境請務必透過環境變數設定強密鑰
-if not os.environ.get('JWT_SECRET_KEY'):
-    os.environ['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'dev-secret')
-    print('[WARN] JWT_SECRET_KEY 未設定，已使用本機開發預設值（請勿用於生產環境）')
-
 app = Flask(__name__)
 ALLOWED_CORS_ORIGINS = {
     "https://site--frontend--d6tvmpswrhlp.code.run",
