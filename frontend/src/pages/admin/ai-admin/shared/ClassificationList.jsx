@@ -29,6 +29,12 @@ export default function ClassificationList({ topicParam, onOpenReview, refreshSi
   const [batchBusy, setBatchBusy] = useState(false);
   const [batchMessage, setBatchMessage] = useState("");
 
+  // 「排除舊版資料」：跟勾選/批次確認是完全不同的操作（不依賴
+  // selectedIds，一次處理全部符合條件的舊版資料），busy 狀態獨立
+  // 管理，但成功/失敗訊息沿用既有的 batchMessage / error，維持跟
+  // 其他批次操作一致的呈現方式。
+  const [excludeLegacyBusy, setExcludeLegacyBusy] = useState(false);
+
   const load = async () => {
     try {
       setError("");
@@ -249,6 +255,42 @@ export default function ClassificationList({ topicParam, onOpenReview, refreshSi
     setBatchBusy(false);
   };
 
+  const runExcludeLegacy = async () => {
+    if (excludeLegacyBusy) return;
+
+    const confirmed = window.confirm(
+      t(
+        "將排除所有沒有信心分數的舊版分類資料。原始分類紀錄會保留，但不再納入目前分析。是否繼續？",
+        "This will exclude all legacy classifications without a confidence score. The original classification records will be kept, but they will no longer be included in current analysis. Continue?",
+      ),
+    );
+
+    if (!confirmed) return;
+
+    setExcludeLegacyBusy(true);
+    setBatchMessage("");
+    setError("");
+
+    try {
+      const result = await api(
+        "/api/classification/review/exclude-legacy",
+        token,
+        { method: "POST" },
+      );
+      setBatchMessage(
+        t(
+          `已排除 ${result.affected_count} 筆舊版資料`,
+          `Excluded ${result.affected_count} legacy classification(s)`,
+        ),
+      );
+      await load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setExcludeLegacyBusy(false);
+    }
+  };
+
   return (
     <div className="review-workbench">
       {error && (
@@ -292,7 +334,7 @@ export default function ClassificationList({ topicParam, onOpenReview, refreshSi
         {t("只看需人工審查的項目", "Only show items needing human review")}
       </label>
 
-      {activeTab === "pending_review" && visiblePendingRows.length > 0 && (
+      {activeTab === "pending_review" && (
         <div className="review-batch-bar">
           <div className="review-batch-selection">
             <b>
@@ -312,7 +354,7 @@ export default function ClassificationList({ topicParam, onOpenReview, refreshSi
           <div className="review-batch-actions">
             <button
               type="button"
-              disabled={batchBusy}
+              disabled={batchBusy || excludeLegacyBusy}
               onClick={selectAllVisible}
             >
               {t("全選目前顯示", "Select visible")}
@@ -320,7 +362,7 @@ export default function ClassificationList({ topicParam, onOpenReview, refreshSi
 
             <button
               type="button"
-              disabled={batchBusy || highConfidenceRows.length === 0}
+              disabled={batchBusy || excludeLegacyBusy || highConfidenceRows.length === 0}
               onClick={selectHighConfidence}
               title={t(
                 `選取信心分數 ≥ ${HIGH_CONFIDENCE_THRESHOLD.toFixed(1)} 且不需人工審查的項目`,
@@ -335,7 +377,7 @@ export default function ClassificationList({ topicParam, onOpenReview, refreshSi
 
             <button
               type="button"
-              disabled={batchBusy || selectedCount === 0}
+              disabled={batchBusy || excludeLegacyBusy || selectedCount === 0}
               onClick={clearSelection}
             >
               {t("清除選取", "Clear")}
@@ -344,7 +386,7 @@ export default function ClassificationList({ topicParam, onOpenReview, refreshSi
             <button
               type="button"
               className="review-btn-primary"
-              disabled={batchBusy || selectedCount === 0}
+              disabled={batchBusy || excludeLegacyBusy || selectedCount === 0}
               onClick={runBatchConfirm}
             >
               {batchBusy
@@ -353,6 +395,17 @@ export default function ClassificationList({ topicParam, onOpenReview, refreshSi
                   `批次維持 AI 分類 (${selectedCount})`,
                   `Keep AI classification (${selectedCount})`,
                 )}
+            </button>
+
+            <button
+              type="button"
+              className="review-btn-danger"
+              disabled={batchBusy || excludeLegacyBusy}
+              onClick={runExcludeLegacy}
+            >
+              {excludeLegacyBusy
+                ? t("排除中…", "Excluding…")
+                : t("排除舊版資料", "Exclude Legacy Data")}
             </button>
           </div>
         </div>
