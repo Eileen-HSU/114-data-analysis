@@ -40,6 +40,7 @@ from models import (
     Classification_Review_Message,
 )
 from classification_models import (
+    REVIEW_STATUS_PENDING,
     REVIEW_STATUS_CONFIRMED,
     REVIEW_STATUS_MODIFIED,
     REVIEW_STATUS_EXCLUDED,
@@ -388,6 +389,63 @@ def exclude(classification_id, admin_id):
     mark_reports_outdated_for_classification(classification)
     db.session.commit()
     return classification
+
+
+def exclude_legacy_pending_classifications(admin_id) -> int:
+    """
+    批次「排除舊版資料」（Human Review 新增功能）：一次性把符合下列
+    全部條件的 Response_Classification 從 pending_review 標記為
+    excluded，讓它們不再納入目前分析，但不刪除任何資料、也不修改
+    review_status 以外的任何欄位：
+
+        taxonomy_version_id IS NULL      （Phase B 之前的舊資料，
+                                            沒有對應 Published
+                                            Taxonomy 版本）
+        AND confidence IS NULL           （沒有信心分數，本來就無法
+                                            套用 Confidence Gate 判斷，
+                                            也不可能有 needs_human_review
+                                            以外的正常分析路徑會用到）
+        AND review_status = 'pending_review'（還沒被人工確認/排除過；
+                                            confirmed/modified/excluded
+                                            已經是定案狀態，不動）
+
+    跟單筆 exclude() 的刻意差異：
+        - 不呼叫 mark_reports_outdated_for_classification()：
+          aggregation/report/export 不在這次功能範圍內，且這批本來
+          就是「沒有 taxonomy_version_id、沒有 confidence」的舊資料，
+          不會被現有 Confidence Gate / Phase B 分析路徑實際採用，
+          這裡刻意不去動 Report 相關狀態。
+        - 不檢查是否有 in_progress 的 Classification_Review session：
+          「舊版資料」的定義完全由上面三個條件決定，不额外收斂範圍；
+          這批資料本身也還沒有需求要支援針對它們開 review conversation。
+        - main_category / sub_category / reasoning / confidence /
+          taxonomy_version_id 等其餘欄位原樣保留，只改 review_status。
+
+    Args:
+        admin_id: 觸發這次批次操作的 Admin（跟其他 review_service
+            對外函式簽章一致，保留給未來加操作紀錄用；
+            Response_Classification 本身沒有「誰排除的」欄位，
+            目前沒有實際寫入任何地方，跟單筆 exclude() 的既有行為
+            一致）。
+
+    Returns:
+        實際被更新（pending_review -> excluded）的筆數。
+    """
+    matched_rows = (
+        Response_Classification.query
+        .filter(
+            Response_Classification.taxonomy_version_id.is_(None),
+            Response_Classification.confidence.is_(None),
+            Response_Classification.review_status == REVIEW_STATUS_PENDING,
+        )
+        .all()
+    )
+
+    for row in matched_rows:
+        row.review_status = REVIEW_STATUS_EXCLUDED
+
+    db.session.commit()
+    return len(matched_rows)
 
 
 def get_history(classification_id, admin_id):
