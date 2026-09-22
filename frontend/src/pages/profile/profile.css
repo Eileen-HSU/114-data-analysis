@@ -2515,3 +2515,72 @@
 .sdp-tr-odd:hover {
   background: #f8fcff;
 }
+
+/* Survey details share one content width; controls never overlay metadata. */
+.sdp-root { padding-top: 0; }
+.sdp-header-fixed {
+  position: sticky;
+  top: var(--navbar-height);
+  flex-shrink: 0;
+}
+.sdp-topbar {
+  width: 100%;
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 24px 32px 16px;
+  flex-wrap: wrap;
+}
+.sdp-topbar-center { min-width: 0; flex: 1 1 280px; }
+.sdp-topbar-title { white-space: normal; overflow-wrap: anywhere; }
+.sdp-topbar-meta { gap: 8px 16px; }
+.sdp-topbar-meta span { flex-wrap: wrap; }
+.sdp-topbar-right {
+  width: auto;
+  max-width: 100%;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.sdp-header-actions { display: contents; }
+.sdp-tabs-row { display: flex; justify-content: center; padding: 0 20px 12px; }
+.sdp-tabs-row .sdp-tab-group.sdp-tab-group-header,
+html[lang="en"] .sdp-tabs-row .sdp-tab-group.sdp-tab-group-header {
+  position: static;
+  transform: none;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  margin: 0;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.sdp-tabs-row .sdp-tab { min-width: 120px; padding: 0 16px; white-space: nowrap; }
+.sdp-content { padding: 32px 32px 48px; }
+.sdp-rating-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); }
+.sdp-rating-grid-single { grid-template-columns: minmax(0, 560px); }
+.sdp-rating-card { min-width: 0; }
+.sdp-rating-stats { flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; gap: 24px; }
+.sdp-rating-grid-single .sdp-rating-stats { justify-content: center; }
+.sdp-rating-legend { width: auto; flex: 1 1 210px; min-width: 0; max-width: 280px; }
+.sdp-legend-row { grid-template-columns: 12px max-content minmax(max-content, 1fr); }
+.sdp-legend-score, .sdp-legend-count { white-space: nowrap; }
+.sdp-legend-count { text-align: right; }
+.sdp-content .sdp-deadline-card-top {
+  position: static;
+  width: min(100%, 430px);
+  max-width: 100%;
+  margin: 28px 0 0 auto;
+  box-shadow: none;
+}
+@media (max-width: 1100px) {
+  .sdp-header-fixed { position: static; }
+  .sdp-topbar-right { flex: 1 1 100%; justify-content: flex-start; margin-left: 0; }
+}
+@media (max-width: 600px) {
+  .sdp-topbar { padding: 20px 16px 16px; gap: 12px; }
+  .sdp-topbar-center { flex-basis: 100%; }
+  .sdp-topbar-right .sdp-code-card { width: 100%; flex-basis: 100%; min-width: 0; justify-content: space-between; }
+  .sdp-content { padding: 24px 16px 32px; }
+  .sdp-rating-card { padding: 18px; }
+  .sdp-content .sdp-deadline-card-top { width: 100%; }
+}

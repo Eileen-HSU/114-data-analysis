@@ -1,5 +1,5 @@
 import InterfaceText from "../../../components/feature/InterfaceText";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../../../components/feature/Navbar";
 import DeadlineDateTimePicker from "../../../components/feature/DeadlineDateTimePicker";
@@ -213,22 +213,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
   const [externalSurveyLink, setExternalSurveyLink] = useState("");
   const [isShorteningLink, setIsShorteningLink] = useState(false);
   const lang = getLang();
-  const detailRootRef = useRef(null);
-  const detailHeaderRef = useRef(null);
-  const hasSurvey = !!survey;
 
-  useLayoutEffect(() => {
-    const header = detailHeaderRef.current;
-    const root = detailRootRef.current;
-    if (!header || !root) return;
-    const updateHeaderHeight = () => {
-      root.style.setProperty("--survey-header-height", `${header.getBoundingClientRect().height}px`);
-    };
-    updateHeaderHeight();
-    const observer = new ResizeObserver(updateHeaderHeight);
-    observer.observe(header);
-    return () => observer.disconnect();
-  }, [hasSurvey]);
   
   // 避免 survey 為空時引發閃退白屏
   const currentSurvey = survey || {};
@@ -386,8 +371,8 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
   return (
     <>
       <Navbar />
-      <div className="sdp-root" ref={detailRootRef}>
-        <div className="sdp-header-fixed" ref={detailHeaderRef}>
+      <div className="sdp-root">
+        <div className="sdp-header-fixed">
           <div className="sdp-topbar">
             <button className="sdp-back-btn" onClick={onBack}>
               <i className="ri-arrow-left-line"></i><InterfaceText>{"返回問卷"}</InterfaceText></button>
@@ -418,38 +403,11 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
                   </button>
                 </div>
               </div>
-              <div className="sdp-deadline-card sdp-deadline-card-top">
-                <label className="sdp-code-label" htmlFor="survey-deadline-input">
-                  <i className="ri-time-line"></i><InterfaceText>{"截止時間"}</InterfaceText></label>
-                <div className="sdp-deadline-row">
-                  <DeadlineDateTimePicker
-                    id="survey-deadline-input"
-                    className="sdp-deadline-picker"
-                    value={deadlineValue}
-                    min={minDeadlineValue}
-                    onChange={setDeadlineValue}
-                    compact
-                  />
-                  <button className="sdp-deadline-save-btn" onClick={handleSaveDeadline} disabled={isSavingDeadline} type="button">
-                    <i className={isSavingDeadline ? "ri-loader-4-line" : "ri-save-line"}></i>
-                    {isSavingDeadline ? "儲存中" : "儲存"}
-                  </button>
-                </div>
-                {deadlineStatus && <div className="sdp-deadline-status">{deadlineStatus}</div>}
-              </div>
               <button className={`sdp-import-btn ${importSuccess ? "sdp-import-btn-success" : ""}`} onClick={handleImportToChat} disabled={importSuccess}>
                 <i className={importSuccess ? "ri-checkbox-circle-line" : "ri-chat-upload-line"}></i>
                 {importSuccess ? (lang === "en" ? "Importing..." : "匯入中...") : (lang === "en" ? "Import to Chat" : "匯入 Chat 分析")}
               </button>
               <div className="sdp-header-actions" aria-label={lang === "en" ? "Survey actions" : "問卷操作"}>
-                <div className="sdp-tab-group sdp-tab-group-header">
-                  <button className={`sdp-tab ${activeTab === "overview" ? "active" : ""}`} onClick={() => setActiveTab("overview")}>
-                    <i className="ri-bar-chart-line"></i><InterfaceText>{"總覽"}</InterfaceText>
-                  </button>
-                  <button className={`sdp-tab ${activeTab === "responses" ? "active" : ""}`} onClick={() => setActiveTab("responses")}>
-                    <i className="ri-table-line"></i><InterfaceText>{"回覆資料"}</InterfaceText>
-                  </button>
-                </div>
                 <button className="sdp-copy-code-btn sdp-copy-link-action" onClick={handleCopySurveyLink} disabled={isShorteningLink || !surveyLink} type="button">
                   <i className={isShorteningLink ? "ri-loader-4-line" : copyLinkSuccess ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
                   {isShorteningLink ? (lang === "en" ? "Generating..." : "產生中...") : copyLinkSuccess ? (lang === "en" ? "Copied" : "已複製") : (lang === "en" ? "Copy link" : "複製連結")}
@@ -470,6 +428,16 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
                 </div>
               </div>
             </div>
+          </div>
+          <div className="sdp-tabs-row">
+                <div className="sdp-tab-group sdp-tab-group-header">
+                  <button className={`sdp-tab ${activeTab === "overview" ? "active" : ""}`} onClick={() => setActiveTab("overview")}>
+                    <i className="ri-bar-chart-line"></i><InterfaceText>{"總覽"}</InterfaceText>
+                  </button>
+                  <button className={`sdp-tab ${activeTab === "responses" ? "active" : ""}`} onClick={() => setActiveTab("responses")}>
+                    <i className="ri-table-line"></i><InterfaceText>{"回覆資料"}</InterfaceText>
+                  </button>
+                </div>
           </div>
           <div className="sdp-tabbar" aria-hidden="true">
             <div className="sdp-tab-group">
@@ -567,6 +535,25 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
               </div>
             </div>
           )}
+              <div className="sdp-deadline-card sdp-deadline-card-top">
+                <label className="sdp-code-label" htmlFor="survey-deadline-input">
+                  <i className="ri-time-line"></i><InterfaceText>{"截止時間"}</InterfaceText></label>
+                <div className="sdp-deadline-row">
+                  <DeadlineDateTimePicker
+                    id="survey-deadline-input"
+                    className="sdp-deadline-picker"
+                    value={deadlineValue}
+                    min={minDeadlineValue}
+                    onChange={setDeadlineValue}
+                    compact
+                  />
+                  <button className="sdp-deadline-save-btn" onClick={handleSaveDeadline} disabled={isSavingDeadline} type="button">
+                    <i className={isSavingDeadline ? "ri-loader-4-line" : "ri-save-line"}></i>
+                    {isSavingDeadline ? "儲存中" : "儲存"}
+                  </button>
+                </div>
+                {deadlineStatus && <div className="sdp-deadline-status">{deadlineStatus}</div>}
+              </div>
         </div>
       </div>
     </>
