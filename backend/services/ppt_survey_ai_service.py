@@ -322,10 +322,27 @@ def _call_gemini_legacy_unused(contents):
     return _parse_json_response(text)
 
 
+def _gemini_error_status_code(exc):
+    """Best-effort extraction across google-genai exception versions."""
+    code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+    if callable(code):
+        try:
+            code = code()
+        except Exception:
+            code = None
+    if hasattr(code, "value"):
+        code = code.value
+    try:
+        return int(code)
+    except (TypeError, ValueError):
+        match = re.search(r"\\b([1-5]\\d{2})\\b", str(exc))
+        return int(match.group(1)) if match else None
+
+
 def _is_gemini_unavailable_error(exc):
     message = str(exc)
     lower_message = message.lower()
-    code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+    code = _gemini_error_status_code(exc)
     status = str(getattr(exc, "status", "") or getattr(exc, "reason", "")).lower()
     return (
         code == 503
@@ -338,7 +355,8 @@ def _is_gemini_unavailable_error(exc):
 
 def _is_transient_gemini_error(exc):
     """Return whether an error is worth retrying with the same PPT API key."""
-    if _is_gemini_unavailable_error(exc):
+    status_code = _gemini_error_status_code(exc)
+    if _is_gemini_unavailable_error(exc) or status_code in {500, 502, 503, 504}:
         return True
 
     message = str(exc).lower()
