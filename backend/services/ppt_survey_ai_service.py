@@ -25,6 +25,7 @@ MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_EXTRACTED_CHARS = 18000
 PPT_SURVEY_GEMINI_RETRY_ATTEMPTS = 3
 PPT_SURVEY_GEMINI_RETRY_DELAYS_SECONDS = (2, 3)
+PPT_SURVEY_GEMINI_MODELS = (GEMINI_MODEL, "gemini-2.5-flash")
 
 
 def _get_api_key():
@@ -342,6 +343,7 @@ def _is_transient_gemini_error(exc):
         isinstance(exc, (TimeoutError, ConnectionError))
         or "servererror" in error_type
         or "server error" in message
+        or "overload" in message
         or "timeout" in message
         or "timed out" in message
         or "connection" in message
@@ -511,7 +513,7 @@ def _call_gemini_with_model_fallback_legacy_unused(contents):
 
 
 def _call_gemini(contents):
-    """Call the fixed PPT model with per-key retry and dedicated key failover.
+    """Call PPT Gemini with transient-error retry, key, and model failover.
 
     A key is never passed to shared Gemini helpers, so this failover cannot
     affect any other AI feature.
@@ -519,89 +521,102 @@ def _call_gemini(contents):
     genai, types = _load_genai_types()
     last_error = None
 
-    for key_role, api_key in _get_ppt_survey_api_keys():
-        client = genai.Client(api_key=api_key)
-        response = None
-        for attempt in range(1, PPT_SURVEY_GEMINI_RETRY_ATTEMPTS + 1):
-            logger.info(
-                "Calling PPT survey Gemini: model=%s key_role=%s attempt=%s/%s",
-                GEMINI_MODEL,
-                key_role,
-                attempt,
-                PPT_SURVEY_GEMINI_RETRY_ATTEMPTS,
-            )
-            try:
-                response = client.models.generate_content(
-                    model=GEMINI_MODEL,
-                    contents=contents,
-                    config=types.GenerateContentConfig(
-                        temperature=0.25,
-                        response_mime_type="application/json",
-                    ),
+    for model in PPT_SURVEY_GEMINI_MODELS:
+        for key_role, api_key in _get_ppt_survey_api_keys():
+            client = genai.Client(api_key=api_key)
+            response = None
+            transient_failure = False
+            for attempt in range(1, PPT_SURVEY_GEMINI_RETRY_ATTEMPTS + 1):
+                logger.info(
+                    "Calling PPT survey Gemini: model=%s key_role=%s attempt=%s/%s",
+                    model,
+                    key_role,
+                    attempt,
+                    PPT_SURVEY_GEMINI_RETRY_ATTEMPTS,
                 )
-                break
-            except Exception as exc:
-                last_error = exc
-                if not _is_transient_gemini_error(exc):
+                try:
+                    response = client.models.generate_content(
+                        model=model,
+                        contents=contents,
+                        config=types.GenerateContentConfig(
+                            temperature=0.25,
+                            response_mime_type="application/json",
+                        ),
+                    )
+                    break
+                except Exception as exc:
+                    last_error = exc
+                    transient_failure = _is_transient_gemini_error(exc)
+                    if not transient_failure:
+                        logger.warning(
+                            "PPT survey Gemini non-transient failure: model=%s key_role=%s "
+                            "error_type=%s error=%s",
+                            model,
+                            key_role,
+                            type(exc).__name__,
+                            str(exc),
+                            exc_info=True,
+                        )
+                        break
+
+                    if attempt < PPT_SURVEY_GEMINI_RETRY_ATTEMPTS:
+                        delay_seconds = _ppt_survey_retry_delay_seconds(attempt)
+                        logger.warning(
+                            "PPT survey Gemini transient failure; retrying same key: "
+                            "model=%s key_role=%s attempt=%s/%s delay_seconds=%s "
+                            "error_type=%s error=%s",
+                            model,
+                            key_role,
+                            attempt,
+                            PPT_SURVEY_GEMINI_RETRY_ATTEMPTS,
+                            delay_seconds,
+                            type(exc).__name__,
+                            str(exc),
+                            exc_info=True,
+                        )
+                        time.sleep(delay_seconds)
+                        continue
+
                     logger.warning(
-                        "PPT survey Gemini non-transient failure: model=%s key_role=%s "
-                        "error_type=%s error=%s",
-                        GEMINI_MODEL,
+                        "PPT survey Gemini retries exhausted; switching key or model: "
+                        "model=%s key_role=%s attempts=%s error_type=%s error=%s",
+                        model,
                         key_role,
+                        PPT_SURVEY_GEMINI_RETRY_ATTEMPTS,
                         type(exc).__name__,
                         str(exc),
                         exc_info=True,
                     )
                     break
 
-                if attempt < PPT_SURVEY_GEMINI_RETRY_ATTEMPTS:
-                    delay_seconds = _ppt_survey_retry_delay_seconds(attempt)
-                    logger.warning(
-                        "PPT survey Gemini transient failure; retrying same key: "
-                        "model=%s key_role=%s attempt=%s/%s delay_seconds=%s "
-                        "error_type=%s error=%s",
-                        GEMINI_MODEL,
-                        key_role,
-                        attempt,
-                        PPT_SURVEY_GEMINI_RETRY_ATTEMPTS,
-                        delay_seconds,
-                        type(exc).__name__,
-                        str(exc),
-                        exc_info=True,
-                    )
-                    time.sleep(delay_seconds)
-                    continue
-
-                logger.warning(
-                    "PPT survey Gemini retries exhausted; switching key if available: "
-                    "model=%s key_role=%s attempts=%s error_type=%s error=%s",
-                    GEMINI_MODEL,
+            if response is not None:
+                text = getattr(response, "text", "") or ""
+                logger.info(
+                    "PPT survey Gemini response received: model=%s key_role=%s chars=%s",
+                    model,
                     key_role,
-                    PPT_SURVEY_GEMINI_RETRY_ATTEMPTS,
-                    type(exc).__name__,
-                    str(exc),
-                    exc_info=True,
+                    len(text),
                 )
-                break
+                if not text.strip():
+                    raise PptSurveyAiError("PPT survey AI returned an empty response.", 502)
+                return _parse_json_response(text)
 
-        if response is None:
-            if key_role == "primary":
-                continue
-            _handle_ai_exception(last_error or RuntimeError("PPT survey Gemini call failed"))
+            if not transient_failure:
+                # A different key can recover from authentication or quota errors,
+                # but a model downgrade is only useful for temporary model overload.
+                if key_role == "primary":
+                    continue
+                _handle_ai_exception(last_error or RuntimeError("PPT survey Gemini call failed"))
 
-        text = getattr(response, "text", "") or ""
-        logger.info(
-            "PPT survey Gemini response received: model=%s key_role=%s chars=%s",
-            GEMINI_MODEL,
-            key_role,
-            len(text),
+        logger.warning(
+            "PPT survey Gemini model unavailable after both keys; trying next model: model=%s",
+            model,
         )
-        if not text.strip():
-            raise PptSurveyAiError("PPT survey AI returned an empty response.", 502)
-        return _parse_json_response(text)
 
-    # Defensive guard: the loop either returns or maps the fallback error above.
-    _handle_ai_exception(last_error or RuntimeError("PPT survey Gemini call failed"))
+    raise PptSurveyAiError(
+        "PPT survey Gemini is temporarily overloaded after retrying all models and keys.",
+        503,
+    ) from last_error
 
 
 def generate_survey_from_material(filename, file_bytes, config):
