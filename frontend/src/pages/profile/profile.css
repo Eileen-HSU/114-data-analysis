@@ -2526,10 +2526,21 @@
 .sdp-legend-score, .sdp-legend-count { white-space: nowrap; }
 .sdp-legend-count { text-align: right; }
 .sdp-header-fixed { background: #fff; }
-@media (max-width: 1100px) {
-  .sdp-topbar { padding-bottom: 60px; }
-  .sdp-tab-group.sdp-tab-group-header { bottom: 8px; width: 280px; max-width: calc(100% - 32px); }
+@media (max-width: 1400px) {
+  .sdp-header-fixed { position: static; }
+  .sdp-root { padding-top: 0; }
+  .sdp-topbar { padding: 20px 24px 68px; flex-wrap: wrap; gap: 14px; }
+  .sdp-tab-group.sdp-tab-group-header,
+  html[lang="en"] .sdp-tab-group.sdp-tab-group-header { left: 50%; bottom: 12px; width: 280px; max-width: calc(100% - 32px); }
   .sdp-topbar-center { min-width: 0; }
+  .sdp-topbar-meta { gap: 6px 12px; }
+  .sdp-topbar-right { width: 100%; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+  .sdp-header-actions { display: contents; }
+  .sdp-content { padding-top: 28px; padding-bottom: 180px; }
+}
+@media (max-width: 600px) {
+  .sdp-topbar { padding-left: 16px; padding-right: 16px; }
+  .sdp-topbar-center { flex-basis: 100%; }
   .sdp-topbar-right { justify-content: flex-start; }
-  .sdp-content { padding-bottom: 180px; }
+  .sdp-topbar-title { white-space: normal; overflow-wrap: anywhere; }
 }
