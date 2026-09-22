@@ -5,6 +5,7 @@ import Navbar from "../../../components/feature/Navbar";
 import DeadlineDateTimePicker from "../../../components/feature/DeadlineDateTimePicker";
 import { buildExternalSurveyShortUrl, buildSurveyFillUrl } from "../../../lib/surveyLinks";
 import { useAuth } from "../../../hooks/AuthContext";
+import { useLanguage } from "../../../context/LanguageContext";
 import { apiUrl } from "../../../lib/api";
 // 【修正】原本這裡有 import buildSurveyChatContent，用來組出使用者訊息的完整文字內容，現在改成簡短一行不再需要這個函式，拿掉未使用的 import。
 
@@ -212,7 +213,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
   const [copyLinkSuccess, setCopyLinkSuccess] = useState(false);
   const [externalSurveyLink, setExternalSurveyLink] = useState("");
   const [isShorteningLink, setIsShorteningLink] = useState(false);
-  const lang = getLang();
+  const { language: lang } = useLanguage();
   const detailRootRef = useRef(null);
   const detailHeaderRef = useRef(null);
   const hasSurvey = !!survey;
@@ -437,6 +438,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
                 </div>
                 {deadlineStatus && <div className="sdp-deadline-status">{deadlineStatus}</div>}
               </div>
+              <div className="sdp-transfer-actions" data-localized>
               <button className={`sdp-import-btn ${importSuccess ? "sdp-import-btn-success" : ""}`} onClick={handleImportToChat} disabled={importSuccess}>
                 <i className={importSuccess ? "ri-checkbox-circle-line" : "ri-chat-upload-line"}></i>
                 {importSuccess ? (lang === "en" ? "Importing..." : "匯入中...") : (lang === "en" ? "Import to Chat" : "匯入 Chat 分析")}
@@ -468,6 +470,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
                   )}
                   {exportError && <span className="sdp-export-error" role="status">{exportError}</span>}
                 </div>
+              </div>
               </div>
             </div>
           </div>
