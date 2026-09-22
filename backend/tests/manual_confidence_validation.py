@@ -34,18 +34,25 @@ backend/tests/test_*.py 全部用假 GenerativeModel、不打真實 API 的
 
 執行方式：
     cd backend
-    export SQLALCHEMY_DATABASE_URI="mysql+pymysql://user:pass@host/db_name"
+    export DATABASE_URL="mysql+pymysql://user:pass@host/db_name?ssl-mode=REQUIRED&ssl_ca=ca.pem"
     export GEMINI_API_KEY="..."
     export TOPIC_KEY="leadership_and_dept"   # 選填，預設 leadership_and_dept
     python3 tests/manual_confidence_validation.py
 
 需要的環境變數：
-    SQLALCHEMY_DATABASE_URI（或 DATABASE_URL 擇一）
+    DATABASE_URL（優先）或 SQLALCHEMY_DATABASE_URI（沒有 DATABASE_URL
+    時的 fallback，原樣使用、不 normalize）：
         —— 要能連到「有 published Taxonomy_Version」的資料庫
         （正式環境，或還原正式資料的對應環境）。這支腳本只會讀
         Taxonomy_Version / Taxonomy_Category，不會寫入任何資料，
         但仍然需要一個真實可連線的資料庫，不接受純記憶體假資料庫
         （那樣就驗證不到「目前 production 真正在用的 taxonomy」）。
+        DATABASE_URL 會先經過跟 backend/app.py 完全相同的正規化
+        邏輯（移除 query string 裡的 ssl-mode 參數、把
+        ssl_ca=ca.pem 換成 backend/ca.pem 的絕對路徑）再拿去連線，
+        這是為了跟 Northflank/Aiven 這類會在連線字串帶上
+        PyMySQL 不接受的 ssl-mode 參數的環境相容——這支腳本本身
+        不讀寫、也不印出這個環境變數的實際內容。
     GEMINI_API_KEY（或 GOOGLE_API_KEY / PPT_SURVEY_AI_API_KEY 三選一，
         跟 services/gemini_client.py 讀取 key 的優先序一致）
         —— 要能實際呼叫 Gemini API 的有效金鑰。
@@ -56,25 +63,89 @@ backend/tests/test_*.py 全部用假 GenerativeModel、不打真實 API 的
 import os
 import statistics
 import sys
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 
 def fail(message: str):
-    """Fail-fast：印出清楚缺少什麼，直接結束，不 fallback、不用假資料。"""
+    """Fail-fast：印出清楚缺什麼，直接結束，不 fallback、不用假資料。"""
     print(f"\n[FAIL-FAST] {message}")
     sys.exit(1)
+
+
+def _normalize_database_url(raw_url: str, basedir: str) -> str:
+    """
+    跟 backend/app.py 建立 Flask app 時對 DATABASE_URL 做的正規化邏輯
+    逐字對應（這裡是獨立複製一份，不 import app.py——app.py 一被
+    import 就會連帶執行建立 blueprint、啟動 scheduler
+    (routes/workspaces/trash.py 的 start_scheduler)、執行 runtime
+    schema migration 等一大串跟這支驗證腳本無關、甚至會造成副作用
+    的初始化流程，不適合只為了拿到一個 URL 正規化函式就整個載入）：
+
+        1. urlsplit 拆解 URL。
+        2. 用 parse_qsl 逐一檢查 query string 參數：
+           - 參數名稱轉小寫、底線換成連字號後若等於 "ssl-mode"，
+             整個參數丟棄（PyMySQL 的 Connection 不接受 ssl-mode
+             這個 kwarg，這正是 Northflank 上
+             `Connection.__init__() got an unexpected keyword
+             argument 'ssl-mode'` 的成因）。
+           - 參數名稱是 "ssl_ca" 且值是字面上的 "ca.pem" 時，換成
+             `os.path.join(basedir, "ca.pem")` 這個絕對路徑（Aiven
+             的連線字串常用相對檔名指定 CA 憑證，PyMySQL 需要能實際
+             解析到的路徑）。
+           - 其餘參數原樣保留。
+        3. 用整理後的 query_params 重新組回完整 URL 並回傳。
+
+    basedir 由呼叫端傳入（這支腳本裡是這個檔案所在目錄的上一層，即
+    backend/ 目錄，跟 app.py 用 `os.path.abspath(os.path.dirname(__file__))`
+    算出來的 backend/ 目錄一致，確保 ca.pem 絕對路徑指向同一個地方）。
+
+    不讀、不寫任何環境變數，也不印出這個函式處理過程中的任何內容
+    （呼叫端負責決定要印什麼、不能印什麼）。
+    """
+    parsed_url = urlsplit(raw_url)
+    query_params = []
+    for key, value in parse_qsl(parsed_url.query, keep_blank_values=True):
+        normalized_key = key.lower().replace("_", "-")
+        if normalized_key == "ssl-mode":
+            continue
+        if key == "ssl_ca" and value == "ca.pem":
+            value = os.path.join(basedir, "ca.pem")
+        query_params.append((key, value))
+
+    return urlunsplit((
+        parsed_url.scheme,
+        parsed_url.netloc,
+        parsed_url.path,
+        urlencode(query_params),
+        parsed_url.fragment,
+    ))
 
 
 # ═══════════════════════════════════════════════════════════════
 # 1. 環境檢查（fail-fast，沒有任何 fallback）
 # ═══════════════════════════════════════════════════════════════
 
-DB_URI = os.environ.get("SQLALCHEMY_DATABASE_URI") or os.environ.get("DATABASE_URL")
+_BASEDIR = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))  # backend/ 目錄
+
+# 跟 app.py 完全相同的優先序：DATABASE_URL 存在就用它（並且要
+# normalize），沒有才退而使用 SQLALCHEMY_DATABASE_URI（原樣使用，
+# 不 normalize——app.py 本身對這個 fallback 分支也沒有做 normalize，
+# 這裡刻意跟它保持一致，不擅自擴大處理範圍）。這裡完全不讀寫任何
+# 環境變數本身的值，只讀取既有變數、依既有規則組出最終要用的 URL。
+_raw_database_url = os.environ.get("DATABASE_URL")
+if _raw_database_url:
+    DB_URI = _normalize_database_url(_raw_database_url, _BASEDIR)
+else:
+    DB_URI = os.environ.get("SQLALCHEMY_DATABASE_URI")
+
 if not DB_URI:
     fail(
-        "缺少資料庫連線字串：請設定環境變數 SQLALCHEMY_DATABASE_URI"
-        "（或 DATABASE_URL），且必須能連到目前有 published"
+        "缺少資料庫連線字串：請設定環境變數 DATABASE_URL"
+        "（會依 app.py 相同規則正規化，例如移除 ssl-mode、把"
+        " ssl_ca=ca.pem 轉成絕對路徑）或 SQLALCHEMY_DATABASE_URI"
+        "（原樣使用，不 normalize），且必須能連到目前有 published"
         " Taxonomy_Version 的資料庫。本腳本不會用記憶體假資料庫"
         "代替，因為那樣驗證不到『目前 production 真正在用的"
         " taxonomy』。"
