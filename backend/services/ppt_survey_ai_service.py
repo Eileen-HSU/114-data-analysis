@@ -26,6 +26,10 @@ MAX_EXTRACTED_CHARS = 18000
 PPT_SURVEY_GEMINI_RETRY_ATTEMPTS = 3
 PPT_SURVEY_GEMINI_RETRY_DELAYS_SECONDS = (2, 3)
 PPT_SURVEY_GEMINI_MODELS = (GEMINI_MODEL, "gemini-2.5-flash")
+# google-genai HttpOptions.timeout uses milliseconds.  The generation endpoint
+# runs in a background task, so allow a full two minutes for a binary document
+# to be processed before treating an individual model request as timed out.
+PPT_SURVEY_GEMINI_TIMEOUT_MILLISECONDS = 120_000
 
 
 def _get_api_key():
@@ -523,7 +527,10 @@ def _call_gemini(contents):
 
     for model in PPT_SURVEY_GEMINI_MODELS:
         for key_role, api_key in _get_ppt_survey_api_keys():
-            client = genai.Client(api_key=api_key)
+            client = genai.Client(
+                api_key=api_key,
+                http_options={"timeout": PPT_SURVEY_GEMINI_TIMEOUT_MILLISECONDS},
+            )
             response = None
             transient_failure = False
             for attempt in range(1, PPT_SURVEY_GEMINI_RETRY_ATTEMPTS + 1):
