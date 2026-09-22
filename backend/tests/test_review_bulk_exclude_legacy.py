@@ -5,20 +5,20 @@
 POST /api/classification/review/exclude-legacy）。
 
 涵蓋：
-    1. 只排除同時符合 taxonomy_version_id IS NULL AND confidence IS
-       NULL AND review_status = 'pending_review' 三個條件的列
-    2. confirmed / modified / excluded 的列完全不動（即使同時符合
-       taxonomy_version_id IS NULL 跟 confidence IS NULL）
+    1. 只排除同時符合 confidence IS NULL AND review_status =
+       'pending_review' 兩個條件的列（taxonomy_version_id 不論是否
+       有值都不影響判斷）
+    2. confirmed / modified / excluded 的列完全不動（即使 confidence
+       IS NULL）
     3. 有 confidence（含 confidence=0.0 這個容易跟 NULL 搞混的邊界
        值）的列不動
-    4. 有 taxonomy_version_id 的列不動（即使 confidence 剛好是 NULL）
-    5. affected_count 精確等於實際被更新的筆數
-    6. 除了 review_status 以外，main_category / sub_category /
+    4. affected_count 精確等於實際被更新的筆數
+    5. 除了 review_status 以外，main_category / sub_category /
        reasoning / confidence / taxonomy_version_id 等欄位完全沒有
        被改動（不刪除資料、不覆寫其他欄位）
-    7. 重複呼叫（idempotent）：第二次呼叫時，已經被排除過的列不會
+    6. 重複呼叫（idempotent）：第二次呼叫時，已經被排除過的列不會
        再被算進 affected_count
-    8. HTTP endpoint 串接：POST /api/classification/review/exclude-legacy
+    7. HTTP endpoint 串接：POST /api/classification/review/exclude-legacy
        —— Admin token 正常回 200 + 正確 affected_count；沒帶 token
        回 401
 
@@ -116,32 +116,23 @@ with app.app_context():
 
     print("========== 建立測試資料 ==========")
 
-    # ── 應該被排除的：taxonomy_version_id=NULL + confidence=NULL + pending_review ──
     cid_legacy_1 = make_row(REVIEW_STATUS_PENDING, None, None, main_category="LEGACY1_MAIN", sub_category="LEGACY1_SUB", reasoning="LEGACY1_REASON")
     cid_legacy_2 = make_row(REVIEW_STATUS_PENDING, None, None, main_category="LEGACY2_MAIN", sub_category="LEGACY2_SUB", reasoning="LEGACY2_REASON")
+    cid_has_taxonomy_version = make_row(REVIEW_STATUS_PENDING, 1, None, main_category="HAS_TAXV_MAIN", sub_category="HAS_TAXV_SUB", reasoning="HAS_TAXV_REASON")
 
-    # ── 不應該被排除：review_status 不是 pending_review（即使同時符合另外兩個條件）──
     cid_confirmed = make_row(REVIEW_STATUS_CONFIRMED, None, None)
     cid_modified = make_row(REVIEW_STATUS_MODIFIED, None, None)
     cid_already_excluded = make_row(REVIEW_STATUS_EXCLUDED, None, None)
 
-    # ── 不應該被排除：有 confidence（不是 NULL）──
     cid_has_confidence = make_row(REVIEW_STATUS_PENDING, None, 0.55)
-    # 邊界情況：confidence=0.0 是合法數值，不是 NULL，不該被當成
-    # 「沒有信心分數」誤判排除。
     cid_confidence_zero = make_row(REVIEW_STATUS_PENDING, None, 0.0)
 
-    # ── 不應該被排除：有 taxonomy_version_id（即使 confidence 剛好是 NULL）──
-    cid_has_taxonomy_version = make_row(REVIEW_STATUS_PENDING, 999, None)
-
-    should_be_excluded_ids = {cid_legacy_1, cid_legacy_2}
+    should_be_excluded_ids = {cid_legacy_1, cid_legacy_2, cid_has_taxonomy_version}
     should_be_untouched_ids = {
         cid_confirmed, cid_modified, cid_already_excluded,
-        cid_has_confidence, cid_confidence_zero, cid_has_taxonomy_version,
+        cid_has_confidence, cid_confidence_zero,
     }
 
-    # 排除前先拍一份「除了 review_status 以外」欄位的快照，之後比對
-    # 這些欄位完全沒有被動過。
     def _snapshot(classification_id):
         row = m.Response_Classification.query.get(classification_id)
         return {
@@ -158,22 +149,22 @@ with app.app_context():
     before_snapshots = {
         cid: _snapshot(cid) for cid in (should_be_excluded_ids | should_be_untouched_ids)
     }
-    before_review_status = {
-        cid: m.Response_Classification.query.get(cid).review_status
-        for cid in should_be_untouched_ids
-    }
 
 
-    print("\n========== 1~4. 篩選條件：只排除三條件同時成立的列 ==========")
+    print("\n========== 1~3. 篩選條件：只看 confidence IS NULL + pending_review ==========")
 
     affected_count = review_service.exclude_legacy_pending_classifications(admin_id=1)
 
-    check("affected_count 精確等於 2（只有 2 筆同時符合三個條件）", affected_count == 2)
+    check("affected_count 精確等於 3（3 筆同時符合 confidence IS NULL + pending_review）", affected_count == 3)
 
     for cid in should_be_excluded_ids:
         row = m.Response_Classification.query.get(cid)
-        check(f"classification_id={cid}（舊版 pending）review_status 變成 excluded", row.review_status == REVIEW_STATUS_EXCLUDED)
+        check(f"classification_id={cid}（confidence NULL 的舊版 pending）review_status 變成 excluded", row.review_status == REVIEW_STATUS_EXCLUDED)
 
+    check(
+        "taxonomy_version_id 有值（=1）但 confidence=NULL + pending_review：review_status 仍會變成 excluded（taxonomy_version_id 不再是判斷條件）",
+        m.Response_Classification.query.get(cid_has_taxonomy_version).review_status == REVIEW_STATUS_EXCLUDED,
+    )
     check(
         "confirmed 的列 review_status 不變",
         m.Response_Classification.query.get(cid_confirmed).review_status == REVIEW_STATUS_CONFIRMED,
@@ -194,13 +185,9 @@ with app.app_context():
         "confidence=0.0（不是 NULL）的列 review_status 不變（仍是 pending_review）",
         m.Response_Classification.query.get(cid_confidence_zero).review_status == REVIEW_STATUS_PENDING,
     )
-    check(
-        "有 taxonomy_version_id 的列 review_status 不變（仍是 pending_review）",
-        m.Response_Classification.query.get(cid_has_taxonomy_version).review_status == REVIEW_STATUS_PENDING,
-    )
 
 
-    print("\n========== 6. 除了 review_status，其餘欄位完全沒被改動 ==========")
+    print("\n========== 5. 除了 review_status，其餘欄位完全沒被改動 ==========")
 
     for cid in should_be_excluded_ids | should_be_untouched_ids:
         after = _snapshot(cid)
@@ -211,7 +198,7 @@ with app.app_context():
         )
 
 
-    print("\n========== 7. 冪等性：再跑一次，已排除的不會重複計入 ==========")
+    print("\n========== 6. 冪等性：再跑一次，已排除的不會重複計入 ==========")
 
     affected_count_second_run = review_service.exclude_legacy_pending_classifications(admin_id=1)
     check("第二次呼叫 affected_count 為 0（沒有剩下符合條件的舊版 pending 資料）", affected_count_second_run == 0)
@@ -220,10 +207,9 @@ with app.app_context():
 print(f"\n服務層測試累計失敗：{len(FAILED)} 項")
 
 
-print("\n========== 8. HTTP endpoint 串接 ==========")
+print("\n========== 7. HTTP endpoint 串接 ==========")
 
 with app.app_context():
-    # 再放一筆新的舊版 pending 資料，驗證走 HTTP endpoint 也能正確排除。
     cid_via_http = make_row(REVIEW_STATUS_PENDING, None, None, main_category="HTTP_MAIN", sub_category="HTTP_SUB")
 
 admin_token = build_admin_token(admin_id=1)
