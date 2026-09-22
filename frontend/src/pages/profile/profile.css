@@ -2547,3 +2547,11 @@
   .sdp-header-fixed { overflow-x: auto; }
   .sdp-topbar { min-width: 850px; }
 }
+
+/* Stack transfer actions beside the survey code without widening the toolbar. */
+.sdp-transfer-actions { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; width: 150px; }
+.sdp-transfer-actions .sdp-header-actions { display: contents; }
+.sdp-transfer-actions .sdp-export-menu-wrap { width: 100%; }
+.sdp-transfer-actions .sdp-import-btn, .sdp-transfer-actions .sdp-export-btn { width: 100%; height: 32px; padding: 0 8px; font-size: 12px; justify-content: center; white-space: nowrap; }
+.sdp-transfer-actions .sdp-copy-link-action { display: none; }
+@media (max-width: 1400px) { .sdp-transfer-actions { width: 140px; } }
