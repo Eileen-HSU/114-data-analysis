@@ -195,7 +195,7 @@ def reviewed_classifications():
             Response_Classification.taxonomy_version_id == Taxonomy_Version.version_id,
         ).filter(Taxonomy_Version.topic_key == topic)
     if request.args.get("needs_human_review") == "true":
-        query = query.filter_by(needs_human_review=True)
+        query = query.filter(Response_Classification.needs_human_review.is_(True))
     rows = query.order_by(Response_Classification.created_at.desc()).limit(200).all()
     results = []
     for row in rows:

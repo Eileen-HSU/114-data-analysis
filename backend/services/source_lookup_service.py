@@ -92,7 +92,13 @@ def response_dedup_key(classification):
     return (SOURCE_TYPE_USER_UPLOAD, classification.uploaded_answer_id)
 
 
-def fetch_classifications_in_scope(source_type, template_id=None, upload_batch_id=None, review_statuses=None):
+def fetch_classifications_in_scope(
+    source_type,
+    template_id=None,
+    upload_batch_id=None,
+    review_statuses=None,
+    exclude_statuses=None,
+):
     """
     取出「同一個分析單位」（同一份 survey 的 template_id，或同一次
     upload 的 upload_batch_id）底下的所有 Response_Classification，
@@ -123,5 +129,7 @@ def fetch_classifications_in_scope(source_type, template_id=None, upload_batch_i
 
     if review_statuses is not None:
         query = query.filter(Response_Classification.review_status.in_(review_statuses))
+    if exclude_statuses:
+        query = query.filter(~Response_Classification.status.in_(exclude_statuses))
 
     return query.all()

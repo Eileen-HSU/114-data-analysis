@@ -119,6 +119,9 @@ with app.app_context():
         m.Survey_Response.__table__,
         m.Response_Classification.__table__,
         m.Uploaded_Answer.__table__,
+        m.Topic.__table__,
+        m.Taxonomy_Version.__table__,
+        m.Taxonomy_Category.__table__,
         m.Classification_Review.__table__,
         m.Classification_Review_Message.__table__,
         m.Report.__table__,
@@ -132,6 +135,38 @@ with app.app_context():
     db.session.add(m.Admin(admin_id=1, admin_name="審核員 Alice", email="alice@example.com", password_hash="x"))
     db.session.add(m.Admin(admin_id=2, admin_name="審核員 Bob", email="bob@example.com", password_hash="x"))
     db.session.commit()
+
+    topic = m.Topic(
+        topic_key="leadership_and_dept",
+        title="主管領導和部門合作",
+    )
+    taxonomy_version = m.Taxonomy_Version(
+        topic_key=topic.topic_key,
+        version_number=1,
+        status="published",
+        source="manual",
+    )
+    db.session.add(topic)
+    db.session.add(taxonomy_version)
+    db.session.flush()
+    for sort_order, (main_category, sub_category) in enumerate([
+        ("主管領導", "A1 工作與生活邊界"),
+        ("主管領導", "A2 回饋與溝通"),
+        ("主管領導", "A3 主管覺察力"),
+        ("部門合作", "B1 溝通與協調機制"),
+        ("部門合作", "B2 支援協作"),
+        ("部門合作", "B3 權責界定與規範落實"),
+    ]):
+        db.session.add(m.Taxonomy_Category(
+            version_id=taxonomy_version.version_id,
+            main_category=main_category,
+            sub_category=sub_category,
+            methodology=f"{sub_category} 方法論",
+            citation=f"{sub_category} 文獻",
+            sort_order=sort_order,
+        ))
+    db.session.commit()
+    taxonomy_version_id = taxonomy_version.version_id
 
     template = m.Survey_Template(
         title="測試問卷", access_code="RVIEW", user_id=1,
@@ -192,6 +227,7 @@ def make_classification(answer_text, main_category, sub_category, secondary_sub_
             methodology="互惠與責任承擔分析",
             citation="cite",
             status="completed",
+            taxonomy_version_id=taxonomy_version_id,
         )
         db.session.add(rc)
         db.session.commit()
@@ -380,6 +416,14 @@ result9 = build_review_reply(
     candidate_secondary_sub_category=None,
     conversation_history=[],
     user_message="test",
+    taxonomy_categories=[
+        {
+            "main_category": "部門合作",
+            "sub_category": "B2 支援協作",
+            "methodology": "互惠與責任承擔分析",
+            "citation": "cite",
+        },
+    ],
 )
 check("Primary == Secondary 時，secondary_sub_category 被正規化為 None", result9["candidate_secondary_sub_category"] is None)
 check("Primary == Secondary 時，secondary_main_category 也被正規化為 None", result9["candidate_secondary_main_category"] is None)

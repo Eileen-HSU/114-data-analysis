@@ -11,12 +11,11 @@ Human Review Conversation 專用的 Gemini 呼叫層。
 Phase 1 修正】
     Gemini 在這裡只允許輸出 sub_category / secondary_sub_category
     （跟 classify_v2.py 的正式分類輸出格式一致），main_category /
-    secondary_main_category / methodology / citation 一律由後端呼叫
-    services/subcategory_methodology.get_methodology() 查表取得，
+    secondary_main_category / methodology / citation 一律由    後端從該筆 classification 的 Taxonomy_Version/Taxonomy_Category 查表取得，
     不讓 Gemini 自己輸出或發明這些欄位。
 
-    Gemini 回傳的 sub_category 如果不在
-    subcategory_methodology.all_subcategories(question_type) 允許清單
+    Gemini 回傳的 sub_category 如果不在該筆 classification 綁定的
+    Taxonomy_Version categories 允許清單
     裡（Gemini 自創或打字不一致），視為「這輪沒有提出有效 candidate」
     ——不寫入 candidate_* 欄位（維持 None），但仍然保留 Gemini 的
     自然語言回覆文字，讓對話可以繼續、User 可以再澄清一次
@@ -30,8 +29,6 @@ import re
 from services import gemini_client as genai
 
 from services.privacy_service import mask_pii, PiiMaskingError
-from services.subcategory_methodology import all_subcategories, get_methodology
-
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
 
@@ -86,8 +83,8 @@ def _parse_json(raw_text: str) -> dict:
     return json.loads(cleaned)
 
 
-def _build_taxonomy_list_text(question_type: str) -> str:
-    subs = all_subcategories(question_type)
+def _build_taxonomy_list_text(taxonomy_categories: list[dict]) -> str:
+    subs = [category["sub_category"] for category in taxonomy_categories]
     return "\n".join(f"- {s}" for s in subs) if subs else "（目前查無這個題目的子類別清單）"
 
 
@@ -113,6 +110,7 @@ def build_review_reply(
     candidate_secondary_sub_category: str,
     conversation_history: list,
     user_message: str,
+    taxonomy_categories: list[dict] | None = None,
 ) -> dict:
     """
     對外主要介面。呼叫 Gemini、驗證 taxonomy、補上 main_category /
@@ -156,8 +154,28 @@ def build_review_reply(
             "error_detail": f"PII_MASKING_FAILED: {str(e)[:180]}",
         }
 
+    if taxonomy_categories is None:
+        taxonomy_categories = [
+            {
+                "main_category": ai_main_category,
+                "sub_category": ai_sub_category,
+                "methodology": None,
+                "citation": None,
+            },
+            *(
+                [{
+                    "main_category": None,
+                    "sub_category": ai_secondary_sub_category,
+                    "methodology": None,
+                    "citation": None,
+                }]
+                if ai_secondary_sub_category
+                else []
+            ),
+        ]
+
     system_instruction = REVIEW_SYSTEM_INSTRUCTION_TEMPLATE.format(
-        taxonomy_list=_build_taxonomy_list_text(question_type),
+        taxonomy_list=_build_taxonomy_list_text(taxonomy_categories),
         ai_main_category=ai_main_category,
         ai_sub_category=ai_sub_category,
         ai_secondary_sub_category=ai_secondary_sub_category or "無",
@@ -200,7 +218,10 @@ def build_review_reply(
     raw_secondary_sub = parsed.get("candidate_secondary_sub_category")
     raw_reasoning = parsed.get("candidate_reasoning")
 
-    allowed = set(all_subcategories(question_type))
+    category_by_sub = {
+        category["sub_category"]: category for category in taxonomy_categories
+    }
+    allowed = set(category_by_sub)
 
     taxonomy_rejected = False
 
@@ -209,7 +230,7 @@ def build_review_reply(
     if raw_sub:
         if raw_sub in allowed:
             resolved_sub = raw_sub
-            resolved_main = get_methodology(question_type, raw_sub)["main_category"]
+            resolved_main = category_by_sub[raw_sub]["main_category"]
         else:
             taxonomy_rejected = True
             print(f"[REVIEW AI WARNING] Gemini 回傳不在 taxonomy 裡的 sub_category: {raw_sub!r}")
@@ -219,7 +240,7 @@ def build_review_reply(
     if raw_secondary_sub:
         if raw_secondary_sub in allowed:
             resolved_secondary_sub = raw_secondary_sub
-            resolved_secondary_main = get_methodology(question_type, raw_secondary_sub)["main_category"]
+            resolved_secondary_main = category_by_sub[raw_secondary_sub]["main_category"]
         else:
             taxonomy_rejected = True
             print(f"[REVIEW AI WARNING] Gemini 回傳不在 taxonomy 裡的 secondary_sub_category: {raw_secondary_sub!r}")

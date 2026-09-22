@@ -71,6 +71,7 @@ def build_aggregation(source_type, template_id=None, upload_batch_id=None) -> li
         template_id=template_id,
         upload_batch_id=upload_batch_id,
         review_statuses=[REVIEW_STATUS_CONFIRMED, REVIEW_STATUS_MODIFIED],
+        exclude_statuses=["failed"],
     )
 
     groups = {}  # (main_category, sub_category) -> {"methodology","citation","items":[],"response_keys":set()}
