@@ -434,7 +434,6 @@ def exclude_legacy_pending_classifications(admin_id) -> int:
     matched_rows = (
         Response_Classification.query
         .filter(
-            Response_Classification.taxonomy_version_id.is_(None),
             Response_Classification.confidence.is_(None),
             Response_Classification.review_status == REVIEW_STATUS_PENDING,
         )
@@ -474,8 +473,7 @@ def exclude_legacy_pending_classifications(admin_id) -> int:
     """批次「排除舊版資料」：把符合以下全部條件的 Response_Classification
     從 pending_review 標記為 excluded，不刪除資料、不改其他欄位。
 
-        taxonomy_version_id IS NULL
-        AND confidence IS NULL
+        confidence IS NULL
         AND review_status = 'pending_review'
     """
     from classification_models import REVIEW_STATUS_PENDING, REVIEW_STATUS_EXCLUDED
