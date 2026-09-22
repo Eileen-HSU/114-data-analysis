@@ -5,6 +5,7 @@ import Navbar from "../../../components/feature/Navbar";
 import DeadlineDateTimePicker from "../../../components/feature/DeadlineDateTimePicker";
 import { buildExternalSurveyShortUrl, buildSurveyFillUrl } from "../../../lib/surveyLinks";
 import { useAuth } from "../../../hooks/AuthContext";
+import { useLanguage } from "../../../context/LanguageContext";
 import { apiUrl } from "../../../lib/api";
 // 【修正】原本這裡有 import buildSurveyChatContent，用來組出使用者訊息的完整文字內容，現在改成簡短一行不再需要這個函式，拿掉未使用的 import。
 
@@ -212,7 +213,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
   const [copyLinkSuccess, setCopyLinkSuccess] = useState(false);
   const [externalSurveyLink, setExternalSurveyLink] = useState("");
   const [isShorteningLink, setIsShorteningLink] = useState(false);
-  const lang = getLang();
+  const { language: lang } = useLanguage();
   const detailRootRef = useRef(null);
   const detailHeaderRef = useRef(null);
   const hasSurvey = !!survey;
@@ -400,6 +401,14 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
                 <span><i className="ri-question-line"></i>{questions.length}<InterfaceText>{"題"}</InterfaceText></span>
               </div>
             </div>
+            <div className="sdp-tab-group sdp-tab-group-header">
+              <button className={`sdp-tab ${activeTab === "overview" ? "active" : ""}`} onClick={() => setActiveTab("overview")}>
+                <i className="ri-bar-chart-line"></i><InterfaceText>{"總覽"}</InterfaceText>
+              </button>
+              <button className={`sdp-tab ${activeTab === "responses" ? "active" : ""}`} onClick={() => setActiveTab("responses")}>
+                <i className="ri-table-line"></i><InterfaceText>{"回覆資料"}</InterfaceText>
+              </button>
+            </div>
             <div className="sdp-topbar-right">
               <div className="sdp-code-card">
                 <div className="sdp-code-info">
@@ -437,19 +446,12 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
                 </div>
                 {deadlineStatus && <div className="sdp-deadline-status">{deadlineStatus}</div>}
               </div>
+              <div className="sdp-transfer-actions" data-localized>
               <button className={`sdp-import-btn ${importSuccess ? "sdp-import-btn-success" : ""}`} onClick={handleImportToChat} disabled={importSuccess}>
                 <i className={importSuccess ? "ri-checkbox-circle-line" : "ri-chat-upload-line"}></i>
                 {importSuccess ? (lang === "en" ? "Importing..." : "匯入中...") : (lang === "en" ? "Import to Chat" : "匯入 Chat 分析")}
               </button>
               <div className="sdp-header-actions" aria-label={lang === "en" ? "Survey actions" : "問卷操作"}>
-                <div className="sdp-tab-group sdp-tab-group-header">
-                  <button className={`sdp-tab ${activeTab === "overview" ? "active" : ""}`} onClick={() => setActiveTab("overview")}>
-                    <i className="ri-bar-chart-line"></i><InterfaceText>{"總覽"}</InterfaceText>
-                  </button>
-                  <button className={`sdp-tab ${activeTab === "responses" ? "active" : ""}`} onClick={() => setActiveTab("responses")}>
-                    <i className="ri-table-line"></i><InterfaceText>{"回覆資料"}</InterfaceText>
-                  </button>
-                </div>
                 <button className="sdp-copy-code-btn sdp-copy-link-action" onClick={handleCopySurveyLink} disabled={isShorteningLink || !surveyLink} type="button">
                   <i className={isShorteningLink ? "ri-loader-4-line" : copyLinkSuccess ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
                   {isShorteningLink ? (lang === "en" ? "Generating..." : "產生中...") : copyLinkSuccess ? (lang === "en" ? "Copied" : "已複製") : (lang === "en" ? "Copy link" : "複製連結")}
@@ -468,6 +470,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
                   )}
                   {exportError && <span className="sdp-export-error" role="status">{exportError}</span>}
                 </div>
+              </div>
               </div>
             </div>
           </div>

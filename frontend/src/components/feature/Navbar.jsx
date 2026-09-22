@@ -40,7 +40,7 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
     >
       <div className="container-fluid px-4" style={{ position: "relative" }}>
         {/* Left */}
-        <div className="d-flex align-items-center gap-2 me-auto">
+        <div className="nav-primary-links d-flex align-items-center gap-2 me-auto">
           <a
             className={`nav-link-btn ${location.pathname === "/collection" ? "active" : ""}`}
             href="/collection"
@@ -112,7 +112,7 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
         </a>
 
         {/* Right */}
-        <div className="d-flex align-items-center gap-2 ms-auto">
+        <div className="nav-account-actions d-flex align-items-center gap-2 ms-auto">
           <div className="nav-language-switcher" role="group" aria-label={t("language")}>
             <button type="button" className={language === "zh-TW" ? "active" : ""} onClick={() => setLanguage("zh-TW")}>中</button>
             <button type="button" className={language === "en" ? "active" : ""} onClick={() => setLanguage("en")}>EN</button>

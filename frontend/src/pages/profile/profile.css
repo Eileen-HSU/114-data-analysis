@@ -2515,3 +2515,63 @@
 .sdp-tr-odd:hover {
   background: #f8fcff;
 }
+
+/* Keep the compact toolbar and floating deadline; let chart labels fit. */
+.sdp-rating-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); }
+.sdp-rating-grid-single { grid-template-columns: minmax(0, 560px); }
+.sdp-rating-card { min-width: 0; }
+.sdp-rating-stats { flex-wrap: wrap; align-items: center; }
+.sdp-rating-legend { width: auto; flex: 1 1 210px; min-width: 0; max-width: 280px; }
+.sdp-legend-row { grid-template-columns: 12px max-content minmax(max-content, 1fr); }
+.sdp-legend-score, .sdp-legend-count { white-space: nowrap; }
+.sdp-legend-count { text-align: right; }
+.sdp-header-fixed { background: #fff; }
+@media (max-width: 1400px) {
+  .sdp-header-fixed { position: static; }
+  .sdp-root { padding-top: 0; }
+  .sdp-topbar { padding: 16px 20px 64px; flex-wrap: nowrap; gap: 12px; }
+  .sdp-tab-group.sdp-tab-group-header,
+  html[lang="en"] .sdp-tab-group.sdp-tab-group-header { left: 50%; bottom: 12px; width: 280px; max-width: calc(100% - 32px); }
+  .sdp-topbar-center { min-width: 120px; flex: 1 1 240px; }
+  .sdp-topbar-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sdp-topbar-meta { gap: 4px 8px; }
+  .sdp-topbar-meta span { font-size: 11px; }
+  .sdp-topbar-right { width: auto; flex: 0 0 auto; flex-wrap: nowrap; justify-content: flex-end; gap: 8px; }
+  .sdp-topbar-right .sdp-code-card { width: auto; min-width: 210px; flex: 0 0 auto; }
+  .sdp-back-btn { padding: 8px 10px; font-size: 12px; }
+  .sdp-topbar-right .sdp-import-btn, .sdp-export-btn { padding: 0 8px; font-size: 11px; white-space: nowrap; }
+  .sdp-header-actions { display: contents; }
+  .sdp-content { padding-top: 28px; padding-bottom: 180px; }
+}
+@media (max-width: 850px) {
+  .sdp-header-fixed { overflow-x: auto; }
+  .sdp-topbar { min-width: 850px; }
+}
+
+/* Stack transfer actions beside the survey code without widening the toolbar. */
+.sdp-transfer-actions { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; width: 150px; }
+.sdp-transfer-actions .sdp-header-actions { display: contents; }
+.sdp-transfer-actions .sdp-export-menu-wrap { width: 100%; }
+.sdp-transfer-actions .sdp-import-btn, .sdp-transfer-actions .sdp-export-btn { width: 100%; height: 32px; padding: 0 8px; font-size: 12px; justify-content: center; white-space: nowrap; }
+.sdp-transfer-actions .sdp-copy-link-action { display: none; }
+@media (max-width: 1400px) { .sdp-transfer-actions { width: 140px; } }
+
+/* Keep tabs in the toolbar flow, alongside the survey information. */
+.sdp-topbar { padding-bottom: 16px; }
+.sdp-topbar > .sdp-tab-group.sdp-tab-group-header,
+html[lang="en"] .sdp-topbar > .sdp-tab-group.sdp-tab-group-header {
+  position: static;
+  transform: none;
+  flex: 0 0 auto;
+  width: auto;
+  max-width: none;
+  height: auto;
+  align-self: center;
+  gap: 6px;
+}
+.sdp-topbar > .sdp-tab-group-header .sdp-tab { padding: 0 10px; white-space: nowrap; }
+.sdp-topbar-center { min-width: 120px; }
+@media (max-width: 1400px) {
+  .sdp-topbar { gap: 10px; }
+  .sdp-topbar > .sdp-tab-group-header .sdp-tab { font-size: 12px; }
+}
