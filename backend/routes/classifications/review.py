@@ -137,3 +137,15 @@ def get_history(classification_id):
         return jsonify({"reviews": history}), 200
     except ReviewError as e:
         return _error_response(e)
+
+
+@review_bp.route("/api/classification/review/exclude-legacy", methods=["POST"])
+def exclude_legacy_pending():
+    admin_id, err = _require_admin(request)
+    if err:
+        return err
+    try:
+        affected_count = review_service.exclude_legacy_pending_classifications(admin_id)
+        return jsonify({"affected_count": affected_count}), 200
+    except ReviewError as e:
+        return _error_response(e)
