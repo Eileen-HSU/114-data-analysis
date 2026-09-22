@@ -2555,3 +2555,23 @@
 .sdp-transfer-actions .sdp-import-btn, .sdp-transfer-actions .sdp-export-btn { width: 100%; height: 32px; padding: 0 8px; font-size: 12px; justify-content: center; white-space: nowrap; }
 .sdp-transfer-actions .sdp-copy-link-action { display: none; }
 @media (max-width: 1400px) { .sdp-transfer-actions { width: 140px; } }
+
+/* Keep tabs in the toolbar flow, alongside the survey information. */
+.sdp-topbar { padding-bottom: 16px; }
+.sdp-topbar > .sdp-tab-group.sdp-tab-group-header,
+html[lang="en"] .sdp-topbar > .sdp-tab-group.sdp-tab-group-header {
+  position: static;
+  transform: none;
+  flex: 0 0 auto;
+  width: auto;
+  max-width: none;
+  height: auto;
+  align-self: center;
+  gap: 6px;
+}
+.sdp-topbar > .sdp-tab-group-header .sdp-tab { padding: 0 10px; white-space: nowrap; }
+.sdp-topbar-center { min-width: 120px; }
+@media (max-width: 1400px) {
+  .sdp-topbar { gap: 10px; }
+  .sdp-topbar > .sdp-tab-group-header .sdp-tab { font-size: 12px; }
+}
