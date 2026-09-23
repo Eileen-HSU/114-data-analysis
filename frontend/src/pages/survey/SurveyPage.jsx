@@ -969,16 +969,14 @@ export default function SurveyPage({ pptOnly = false }) {
 
       {isSavingDraft && (
         <div className="ppt-import-progress-backdrop" role="presentation">
-          <section className="ppt-import-progress-card" role="status" aria-live="assertive" aria-label={t("正在匯入系統問卷", "Importing system survey")}>
-            <div className="ppt-import-progress-icon" aria-hidden="true">
+          <section className="ppt-leave-dialog ppt-import-progress-card" role="status" aria-live="assertive" aria-label={t("正在匯入系統問卷", "Importing system survey")}>
+            <div className="ppt-leave-dialog-icon ppt-import-progress-icon" aria-hidden="true">
               <i className="ri-loader-4-line"></i>
             </div>
             <div>
-              <span className="ppt-import-progress-eyebrow">{t("請稍待", "PLEASE WAIT")}</span>
               <h2>{t("正在匯入系統問卷", "Importing your survey")}</h2>
-              <p>{t("系統正在建立問卷並準備分享連結，請勿關閉此頁面。", "We are creating your survey and preparing its share link. Please keep this page open.")}</p>
+              <p>{t("系統正在建立問卷，請勿關閉此頁面。", "We are creating your survey. Please keep this page open.")}</p>
             </div>
-            <div className="ppt-import-progress-dots" aria-hidden="true"><span></span><span></span><span></span></div>
           </section>
         </div>
       )}
