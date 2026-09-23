@@ -90,7 +90,6 @@ export default function SurveyPage({ pptOnly = false }) {
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [savedResult, setSavedResult] = useState(null);
   const [shareLink, setShareLink] = useState("");
-  const [isPptStorageReady, setIsPptStorageReady] = useState(false);
   const [isLeavePptDialogOpen, setIsLeavePptDialogOpen] = useState(false);
   const pptDraftStorageKey = `${PPT_DRAFT_STORAGE_PREFIX}${user?.user_id || user?.email || "current"}`;
 
@@ -99,50 +98,38 @@ export default function SurveyPage({ pptOnly = false }) {
   }, [isPptPage]);
 
   useEffect(() => {
-    setIsPptStorageReady(false);
     if (!isPptPage) return;
 
     try {
       const saved = JSON.parse(localStorage.getItem(pptDraftStorageKey) || "null");
-      if (saved?.draft) setPptDraft(normalizeDraft(saved.draft));
-      setPptFileName(saved?.fileName || "");
-      if (saved?.config) {
+      // Restore only drafts the user explicitly chose to save.  Entries from
+      // the former auto-save behavior are ignored so completed surveys do not
+      // reappear in a fresh PPT workspace.
+      if (saved?.isDraftSaved && saved?.draft) {
+        setPptDraft(normalizeDraft(saved.draft));
+        setPptFileName(saved.fileName || "");
+      } else {
+        setPptDraft(null);
+        setPptFileName("");
+      }
+      if (saved?.isDraftSaved && saved?.config) {
         setPptConfig({
           ...defaultPptConfig,
           ...saved.config,
           typeCounts: { ...defaultPptConfig.typeCounts, ...saved.config.typeCounts },
         });
+      } else {
+        setPptConfig(defaultPptConfig);
       }
-      setCheckedTopics(Array.isArray(saved?.checkedTopics) ? saved.checkedTopics : []);
-      setCheckedFocus(Array.isArray(saved?.checkedFocus) ? saved.checkedFocus : []);
-      setTopicPreset(saved?.topicPreset || "");
-      setFocusPreset(saved?.focusPreset || "");
-      setChatMessages(Array.isArray(saved?.chatMessages) ? saved.chatMessages : []);
+      setCheckedTopics(saved?.isDraftSaved && Array.isArray(saved?.checkedTopics) ? saved.checkedTopics : []);
+      setCheckedFocus(saved?.isDraftSaved && Array.isArray(saved?.checkedFocus) ? saved.checkedFocus : []);
+      setTopicPreset(saved?.isDraftSaved ? saved?.topicPreset || "" : "");
+      setFocusPreset(saved?.isDraftSaved ? saved?.focusPreset || "" : "");
+      setChatMessages(saved?.isDraftSaved && Array.isArray(saved?.chatMessages) ? saved.chatMessages : []);
     } catch (error) {
       console.warn("Unable to restore PPT survey draft:", error);
-    } finally {
-      setIsPptStorageReady(true);
     }
   }, [isPptPage, pptDraftStorageKey]);
-
-  useEffect(() => {
-    if (!isPptPage || !isPptStorageReady) return;
-
-    try {
-      localStorage.setItem(pptDraftStorageKey, JSON.stringify({
-        draft: pptDraft,
-        fileName: pptFile?.name || pptFileName,
-        config: pptConfig,
-        checkedTopics,
-        checkedFocus,
-        topicPreset,
-        focusPreset,
-        chatMessages,
-      }));
-    } catch (error) {
-      console.warn("Unable to save PPT survey draft:", error);
-    }
-  }, [isPptPage, pptDraftStorageKey, isPptStorageReady, pptDraft, pptFile, pptFileName, pptConfig, checkedTopics, checkedFocus, topicPreset, focusPreset, chatMessages]);
 
   useEffect(() => {
     if (!user?.token || isPptPage) {
@@ -207,6 +194,30 @@ export default function SurveyPage({ pptOnly = false }) {
     pptFile || pptFileName || pptDraft || pptConfig.direction || pptConfig.focus ||
     pptConfig.typeCounts.short !== "" || pptConfig.typeCounts.rating !== ""
   );
+
+  const savePptDraftAndLeave = () => {
+    try {
+      localStorage.setItem(pptDraftStorageKey, JSON.stringify({
+        isDraftSaved: true,
+        draft: pptDraft,
+        // A browser cannot restore the original File object after reload, but
+        // keeping its name identifies the source for the restored draft.
+        fileName: pptFile?.name || pptFileName,
+        config: pptConfig,
+        checkedTopics,
+        checkedFocus,
+        topicPreset,
+        focusPreset,
+        chatMessages,
+      }));
+    } catch (error) {
+      console.warn("Unable to save PPT survey draft:", error);
+    }
+    setIsLeavePptDialogOpen(false);
+    setIsPptModalOpen(false);
+    resetPptModal();
+    if (isPptPage) navigate("/survey");
+  };
 
   const finishLeavingPptPage = () => {
     try {
@@ -345,12 +356,6 @@ export default function SurveyPage({ pptOnly = false }) {
       });
       const normalizedDraft = normalizeDraft(draft);
       setPptDraft(normalizedDraft);
-      try {
-        const existing = JSON.parse(localStorage.getItem(pptDraftStorageKey) || "{}");
-        localStorage.setItem(pptDraftStorageKey, JSON.stringify({ ...existing, draft: normalizedDraft }));
-      } catch (storageError) {
-        console.warn("Unable to save generated PPT survey draft:", storageError);
-      }
       setPptTaskStatus("");
       setChatMessages([
         {
@@ -534,6 +539,7 @@ export default function SurveyPage({ pptOnly = false }) {
       console.warn("Unable to clear imported PPT survey draft:", error);
     }
 
+    resetPptModal();
     navigate("/survey", {
       replace: true,
       state: { importedSurvey: savedSurvey.title },
@@ -954,6 +960,7 @@ export default function SurveyPage({ pptOnly = false }) {
             </div>
             <div className="ppt-leave-dialog-actions">
               <button className="ppt-secondary-btn" type="button" onClick={() => setIsLeavePptDialogOpen(false)}>{t("繼續編輯", "Keep editing")}</button>
+              <button className="ppt-secondary-btn" type="button" onClick={savePptDraftAndLeave}>{t("儲存草稿並離開", "Save draft and leave")}</button>
               <button className="ppt-danger-btn" type="button" onClick={finishLeavingPptPage}>{t("不保存並離開", "Discard and leave")}</button>
             </div>
           </section>
