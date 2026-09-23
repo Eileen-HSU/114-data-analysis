@@ -1348,18 +1348,21 @@
   flex-direction: column;
   justify-content: center;
   gap: 5px;
-  min-width: 92px;
+  min-width: max-content;
+  flex-shrink: 0;
 }
 
 .sdp-code-actions {
   display: grid;
   grid-template-columns: 1fr;
   gap: 4px;
-  width: 100px;
-  flex: 0 0 100px;
+  width: max-content;
+  min-width: 100px;
+  flex: 0 0 auto;
 }
 
 .sdp-code-actions .sdp-copy-code-btn {
+  white-space: nowrap;
   width: 100%;
   height: 26px;
   justify-content: center;
@@ -2574,4 +2577,14 @@ html[lang="en"] .sdp-topbar > .sdp-tab-group.sdp-tab-group-header {
 @media (max-width: 1400px) {
   .sdp-topbar { gap: 10px; }
   .sdp-topbar > .sdp-tab-group-header .sdp-tab { font-size: 12px; }
+}
+
+/* Leave breathing room below navigation and reserve the code's full text width. */
+.sdp-topbar-right .sdp-code-card {
+  flex: 0 0 auto;
+  width: max-content;
+  min-width: max-content;
+}
+@media (max-width: 1400px) {
+  .sdp-topbar { padding-top: 24px; padding-bottom: 20px; }
 }
