@@ -31,7 +31,9 @@ PPT_SURVEY_GEMINI_MODELS = (GEMINI_MODEL, "gemini-2.5-flash")
 # google-genai HttpOptions.timeout uses milliseconds.  The generation endpoint
 # runs in a background task, so allow a full two minutes for a binary document
 # to be processed before treating an individual model request as timed out.
-PPT_SURVEY_GEMINI_TIMEOUT_MILLISECONDS = 120_000
+PPT_SURVEY_GEMINI_TIMEOUT_MILLISECONDS = 90_000
+BINARY_UPLOAD_MAX_IMAGE_DIMENSION = 1600
+BINARY_UPLOAD_JPEG_QUALITY = 70
 
 
 def _get_api_key():
@@ -123,14 +125,18 @@ def _extract_pptx_text(file_bytes):
     texts = []
     try:
         with zipfile.ZipFile(BytesIO(file_bytes)) as archive:
-            slide_names = sorted(
+            content_names = sorted(
                 name for name in archive.namelist()
-                if name.startswith("ppt/slides/slide") and name.endswith(".xml")
+                if name.endswith(".xml")
+                and (
+                    name.startswith("ppt/slides/slide")
+                    or name.startswith("ppt/notesSlides/notesSlide")
+                )
             )
-            for slide_name in slide_names:
-                root = ElementTree.fromstring(archive.read(slide_name))
+            for content_name in content_names:
+                root = ElementTree.fromstring(archive.read(content_name))
                 for node in root.iter():
-                    if node.tag.endswith("}t") and node.text:
+                    if (node.tag.endswith("}t") or node.tag == "t") and node.text:
                         texts.append(node.text.strip())
     except Exception:
         logger.exception("PPTX text extraction failed")
@@ -141,6 +147,22 @@ def _extract_pptx_text(file_bytes):
     return text
 
 
+def _extract_pdf_page_text(page):
+    """Try the more resilient layout parser before pypdf's default parser."""
+    for options in ({"extraction_mode": "layout"}, {}):
+        try:
+            text = page.extract_text(**options) or ""
+        except (TypeError, ValueError):
+            # Older pypdf versions do not provide extraction_mode.
+            continue
+        except Exception:
+            logger.debug("PDF page text extraction attempt failed", exc_info=True)
+            continue
+        if text.strip():
+            return text.strip()
+    return ""
+
+
 def _extract_pdf_text(file_bytes):
     try:
         from pypdf import PdfReader
@@ -149,14 +171,20 @@ def _extract_pdf_text(file_bytes):
         raise PptSurveyAiError("後端缺少 pypdf 套件，請確認 requirements.txt 與新平台安裝流程。", 503) from exc
 
     try:
-        reader = PdfReader(BytesIO(file_bytes))
+        reader = PdfReader(BytesIO(file_bytes), strict=False)
         pages = []
-        for page in reader.pages[:80]:
-            text = page.extract_text() or ""
-            if text.strip():
-                pages.append(text.strip())
+        extracted_chars = 0
+        processed_pages = 0
+        for page_index, page in enumerate(reader.pages):
+            if page_index >= 80 or extracted_chars >= MAX_EXTRACTED_CHARS:
+                break
+            processed_pages += 1
+            text = _extract_pdf_page_text(page)
+            if text:
+                pages.append(text)
+                extracted_chars += len(text)
         extracted = "\n\n".join(pages)[:MAX_EXTRACTED_CHARS]
-        logger.info("PDF text extracted: pages=%s chars=%s", len(reader.pages), len(extracted))
+        logger.info("PDF text extracted: pages=%s chars=%s", processed_pages, len(extracted))
         return extracted
     except Exception:
         logger.exception("PDF text extraction failed")
@@ -171,6 +199,68 @@ def extract_document_text(filename, file_bytes):
         return _extract_pdf_text(file_bytes)
     logger.warning("Text extraction is not available for extension: %s", ext)
     return ""
+
+
+def _compress_pptx_image(image_bytes, filename):
+    """Downsize image media while retaining its original Office-compatible type."""
+    try:
+        from PIL import Image
+
+        with Image.open(BytesIO(image_bytes)) as image:
+            image.thumbnail(
+                (BINARY_UPLOAD_MAX_IMAGE_DIMENSION, BINARY_UPLOAD_MAX_IMAGE_DIMENSION)
+            )
+            output = BytesIO()
+            suffix = os.path.splitext(filename)[1].lower()
+            if suffix in {".jpg", ".jpeg"}:
+                if image.mode not in {"RGB", "L"}:
+                    image = image.convert("RGB")
+                image.save(
+                    output,
+                    format="JPEG",
+                    quality=BINARY_UPLOAD_JPEG_QUALITY,
+                    optimize=True,
+                )
+            elif suffix == ".png":
+                image.save(output, format="PNG", optimize=True, compress_level=9)
+            else:
+                return image_bytes
+            compressed = output.getvalue()
+            return compressed if len(compressed) < len(image_bytes) else image_bytes
+    except Exception:
+        logger.debug("PPTX image compression skipped: name=%s", filename, exc_info=True)
+        return image_bytes
+
+
+def _prepare_binary_upload(filename, file_bytes):
+    """Return a smaller PPTX payload when compression is safe; preserve other files."""
+    if _extension(filename) != ".pptx":
+        return file_bytes
+
+    try:
+        output = BytesIO()
+        image_count = 0
+        with zipfile.ZipFile(BytesIO(file_bytes)) as source:
+            with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as target:
+                for info in source.infolist():
+                    data = source.read(info.filename)
+                    if info.filename.startswith("ppt/media/"):
+                        compressed = _compress_pptx_image(data, info.filename)
+                        image_count += compressed != data
+                        data = compressed
+                    target.writestr(info, data, compress_type=zipfile.ZIP_DEFLATED)
+        prepared = output.getvalue()
+        if len(prepared) < len(file_bytes):
+            logger.info(
+                "Prepared compact PPTX binary upload: original_bytes=%s compressed_bytes=%s images=%s",
+                len(file_bytes),
+                len(prepared),
+                image_count,
+            )
+            return prepared
+    except Exception:
+        logger.debug("PPTX binary compression skipped", exc_info=True)
+    return file_bytes
 
 
 def normalize_type_limits(raw_limits):
@@ -681,8 +771,9 @@ Return exactly {type_counts['short']} questions with type "short" and exactly {t
         if ext in {".ppt", ".pptx", ".pdf"}:
             logger.warning("No text extracted; falling back to binary upload for filename=%s", filename)
             _, types = _load_genai_client()
+            binary_payload = _prepare_binary_upload(filename, file_bytes)
             raw = _call_gemini([
-                types.Part.from_bytes(data=file_bytes, mime_type=_guess_mime(filename)),
+                types.Part.from_bytes(data=binary_payload, mime_type=_guess_mime(filename)),
                 prompt,
             ])
         else:
