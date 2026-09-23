@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { interfaceEnglish } from "./interfaceEnglish";
+import { resolveLanguagePreference } from "./languagePreference";
 import { useAuth } from "../hooks/AuthContext";
 import { apiUrl, installLanguageAwareFetch } from "../lib/api";
 
@@ -221,9 +222,16 @@ const LanguageContext = createContext({ language: "zh-TW", setLanguage: () => {}
 
 export function LanguageProvider({ children }) {
   const { user, updateUser } = useAuth();
-  const [language, setLanguageState] = useState(() => localStorage.getItem(STORAGE_KEY) || "zh-TW");
+  const [language, setLanguageState] = useState(() => resolveLanguagePreference(localStorage.getItem(STORAGE_KEY), user?.language));
   useEffect(() => {
-    if (user?.language && ["zh-TW", "en"].includes(user.language)) setLanguageState(user.language);
+    const storedLanguage = localStorage.getItem(STORAGE_KEY);
+    const next = resolveLanguagePreference(storedLanguage, user?.language);
+    setLanguageState(next);
+    // Keep API request headers consistent when adopting an account preference.
+    // Do not persist the guest default before a profile has loaded.
+    if (["zh-TW", "en"].includes(storedLanguage) || ["zh-TW", "en"].includes(user?.language)) {
+      localStorage.setItem(STORAGE_KEY, next);
+    }
   }, [user?.language]);
   useEffect(() => { document.documentElement.lang = language; }, [language]);
   useEffect(() => {
