@@ -147,6 +147,17 @@ with app.app_context():
     except IntegrityError:
         db.session.rollback()
         check("同一 Topic 第二個 published 被 DB 拒絕", True)
-    check("索引建立結果冪等", boot.ensure_published_topic_unique_index() == "created")
+    # 第二次呼叫必須不報錯、不重複建立：MySQL 查得到既有索引 -> "exists"；
+    # SQLite 用 CREATE UNIQUE INDEX IF NOT EXISTS，函式回報 "created"（實際上是 no-op）。
+    expected = "exists" if db.engine.dialect.name == "mysql" else "created"
+    check(f"索引建立結果冪等（{db.engine.dialect.name}: {expected}）",
+          boot.ensure_published_topic_unique_index() == expected)
+    db.session.add(m.Taxonomy_Version(topic_key=QUESTION_LEADERSHIP, version_number=3, status="published", source="manual"))
+    try:
+        db.session.commit()
+        check("重複呼叫後唯一索引仍然有效", False)
+    except IntegrityError:
+        db.session.rollback()
+        check("重複呼叫後唯一索引仍然有效", True)
 
 finish()

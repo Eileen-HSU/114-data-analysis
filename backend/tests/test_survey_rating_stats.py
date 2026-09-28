@@ -500,8 +500,12 @@ check(
     "第一題區塊佔用第 1~6 列（題目、平均分、有效回答、空白、分布表頭、分布數值）",
     two_q_rows[0][0] == "Q1　課程整體滿意度" and two_q_rows[5][0] == "1 人",
 )
-check("第 7、8 列是空白列（題目之間留白，不套用任何內容）", two_q_rows[6] == [None] * 6 and two_q_rows[7] == [None] * 6)
-check("第二題區塊從第 9 列重新開始，兩題不會黏在一起", two_q_rows[8][0] == "Q2　講師表達能力")
+# 每題右側有一張甜甜圈圖（高 166px，約 8~9 列；見 commit fd9533af「restore donut
+# rating summaries」），區塊之間至少間隔 10 列，下一題的圖才不會疊在上一題上面。
+check("第 7~10 列是空白列（題目之間留白＋讓出圖表高度，不套用任何內容）",
+      all(two_q_rows[i] == [None] * 6 for i in range(6, 10)))
+check("第二題區塊從第 11 列重新開始（= 第一題 + 10 列），兩題與圖表都不會黏在一起",
+      two_q_rows[10][0] == "Q2　講師表達能力")
 
 print("\n--- D2：有 rating_stats，但 rows=[]（問卷只有 rating 題）不能壞 ---")
 try:
