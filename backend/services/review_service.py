@@ -49,6 +49,7 @@ from classification_models import (
 from services.review_ai_service import build_review_reply
 from services import audit_service
 from services.effective_classification_service import is_failed
+from services.secondary_classification_service import get_secondaries, set_final_secondaries
 from services.report_service import (
     OUTDATED_BULK_REVIEW_ACTION,
     OUTDATED_CLASSIFICATION_CONFIRMED,
@@ -217,9 +218,23 @@ def _taxonomy_categories(classification):
             "sub_category": category.sub_category,
             "methodology": category.methodology,
             "citation": category.citation,
+            "category_id": category.category_id,
         }
         for category in version.categories
     ]
+
+
+def _option_item(classification, sub_category, main_category=None):
+    """人工 final 次要分類：用這筆分類的合法清單補齊大類別 / methodology / identity。"""
+    options = {c["sub_category"]: c for c in _with_proposed_categories(classification, _taxonomy_categories(classification))}
+    info = options.get(sub_category) or {}
+    return {
+        "main_category": info.get("main_category") or main_category,
+        "sub_category": sub_category,
+        "methodology": info.get("methodology"),
+        "citation": info.get("citation"),
+        "taxonomy_category_id": info.get("category_id"),
+    }
 
 
 def _with_proposed_categories(classification, categories):
@@ -229,10 +244,12 @@ def _with_proposed_categories(classification, categories):
         return categories
     existing = {c["sub_category"] for c in categories}
     extra = []
-    for main, sub in (
-        (classification.main_category, classification.sub_category),
-        (classification.secondary_main_category, classification.secondary_sub_category),
-    ):
+    from services.secondary_classification_service import get_secondaries
+
+    pairs = [(classification.main_category, classification.sub_category)] + [
+        (s["main_category"], s["sub_category"]) for s in get_secondaries(classification)
+    ]
+    for main, sub in pairs:
         if sub and sub not in existing:
             extra.append({"main_category": main, "sub_category": sub, "methodology": None,
                           "citation": None, "proposed": True})
@@ -605,9 +622,15 @@ def confirm_candidate(classification_id, admin_id):
     before = audit_service.classification_state(classification)
     classification.final_main_category = final_main
     classification.final_sub_category = final_sub
-    classification.final_secondary_main_category = final_secondary_main
-    classification.final_secondary_sub_category = final_secondary_sub
     classification.final_reasoning = final_reasoning
+    if latest_candidate_msg is not None:
+        final_secondaries = (
+            [_option_item(classification, final_secondary_sub, final_secondary_main)] if final_secondary_sub else []
+        )
+    else:
+        # 沒有候選：沿用 AI 原始的次要分類（可能不只一個、只取在分類架構裡的）
+        final_secondaries = [s for s in get_secondaries(classification) if s["in_taxonomy"]]
+    set_final_secondaries(classification, final_secondaries, admin_id=admin_id)
     classification.review_status = REVIEW_STATUS_MODIFIED
     _stamp(classification, admin_id, now)
 
@@ -625,7 +648,8 @@ def confirm_candidate(classification_id, admin_id):
     return classification
 
 
-def confirm_manual(classification_id, admin_id, sub_category, secondary_sub_category=None, reasoning=None):
+def confirm_manual(classification_id, admin_id, sub_category, secondary_sub_category=None, reasoning=None,
+                   secondary_sub_categories=None):
     """Admin 不經過 AI 對話，直接從這筆分類的合法分類清單裡指定最終分類：
     pending / in_review -> modified（寫入 final_*）。
 
@@ -647,19 +671,29 @@ def confirm_manual(classification_id, admin_id, sub_category, secondary_sub_cate
     }
     if not sub_category or sub_category not in options:
         raise ReviewError("請從清單中選擇一個子類別", 400, code="INVALID_CATEGORY")
-    if secondary_sub_category and secondary_sub_category not in options:
-        raise ReviewError("次要子類別必須在清單中", 400, code="INVALID_CATEGORY")
-    if secondary_sub_category == sub_category:
-        secondary_sub_category = None
+    # 次要分類可以不只一個：secondary_sub_categories（清單）；舊的單一
+    # secondary_sub_category 參數仍接受。
+    requested = list(secondary_sub_categories or [])
+    if secondary_sub_category:
+        requested.insert(0, secondary_sub_category)
+    secondaries = []
+    for sub in requested:
+        if not sub or sub == sub_category or sub in secondaries:
+            continue
+        if sub not in options:
+            raise ReviewError("次要子類別必須在清單中", 400, code="INVALID_CATEGORY")
+        secondaries.append(sub)
 
     now = taiwan_now()
     before = audit_service.classification_state(classification)
     classification.final_main_category = options[sub_category]["main_category"]
     classification.final_sub_category = sub_category
-    classification.final_secondary_main_category = (
-        options[secondary_sub_category]["main_category"] if secondary_sub_category else None
-    )
-    classification.final_secondary_sub_category = secondary_sub_category or None
+    set_final_secondaries(classification, [
+        {"main_category": options[sub]["main_category"], "sub_category": sub,
+         "methodology": options[sub].get("methodology"), "citation": options[sub].get("citation"),
+         "taxonomy_category_id": options[sub].get("category_id")}
+        for sub in secondaries
+    ], admin_id=admin_id)
     classification.final_reasoning = (reasoning or "").strip() or "管理員直接指定分類"
     classification.review_status = REVIEW_STATUS_MODIFIED
     _stamp(classification, admin_id, now)

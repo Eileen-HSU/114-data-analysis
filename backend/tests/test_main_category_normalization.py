@@ -179,7 +179,7 @@ db.init_app(app)
 with app.app_context():
     db.metadata.create_all(
         bind=db.engine,
-        tables=[m.Response_Classification.__table__, m.Response_Segmentation_Status.__table__],
+        tables=[m.Response_Classification.__table__, m.Response_Classification_Secondary.__table__, m.Response_Segmentation_Status.__table__],
     )
 
     for i, raw_main_category in enumerate(RAW_VARIANTS, start=1):

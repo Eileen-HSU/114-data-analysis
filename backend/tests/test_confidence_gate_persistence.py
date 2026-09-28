@@ -55,6 +55,7 @@ with app.app_context():
         m.Survey_Template.__table__,
         m.Survey_Response.__table__,
         m.Response_Classification.__table__,
+        m.Response_Classification_Secondary.__table__,
         m.Response_Segmentation_Status.__table__,
     ]
     db.metadata.create_all(bind=db.engine, tables=tables)

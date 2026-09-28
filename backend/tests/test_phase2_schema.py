@@ -74,9 +74,12 @@ with app.app_context():
         m.Admin.__table__,
         m.Topic.__table__,
         m.Taxonomy_Version.__table__,
+        # Response_Classification_Secondary.taxonomy_category_id FK（次要分類子表）
+        m.Taxonomy_Category.__table__,
         m.Survey_Template.__table__,
         m.Survey_Response.__table__,
         m.Response_Classification.__table__,
+        m.Response_Classification_Secondary.__table__,
         m.Uploaded_Answer.__table__,
         m.Classification_Review.__table__,
         m.Classification_Review_Message.__table__,

@@ -17,11 +17,8 @@ aggregated_summary。
     - 每筆有效分類透過 effective_classification_service 取得
       effective 版本（confirmed 用 AI original，modified 用 final_*）。
     - Primary 一定貢獻一個 (main_category, sub_category) 分組；
-      Secondary 存在時（此時 secondary_sub_category 必然 != primary
-      的 sub_category，因為 classify_v2 / review_ai_service /
-      review_service 三處寫入時都已經做過「Primary==Secondary 時
-      Secondary 正規化為 None」的正規化，這裡不需要重複判斷）另外
-      貢獻一個分組。
+      每個 effective 次要分類（effective_view()["secondary_categories"]，
+      已排除跟 primary 相同、不在分類架構裡的）各自另外貢獻一個分組。
     - 同一個 (main_category, sub_category) 分組內，「同一份原始回答」
       （同一個 response_id 或同一個 uploaded_answer_id）只算一次
       response_count，但每個 segment 各自的 matched_segment_text /
@@ -89,13 +86,16 @@ def build_aggregation(source_type, template_id=None, upload_batch_id=None) -> li
                 effective["main_category"], effective["sub_category"],
                 effective["reasoning"], effective["methodology"], effective["citation"],
             ))
-        if effective["secondary_main_category"] and effective["secondary_sub_category"]:
-            contributions.append((
-                effective["secondary_main_category"], effective["secondary_sub_category"],
-                effective["reasoning"], effective["secondary_methodology"], effective["secondary_citation"],
-            ))
+        # 次要分類可能不只一個，每個各自貢獻一個分組（大類別 + 子類別都
+        # 有值才計入；舊資料缺大類別時已經由分類架構查回來）。
+        for secondary in effective.get("secondary_categories") or []:
+            if secondary.get("main_category") and secondary.get("sub_category"):
+                contributions.append((
+                    secondary["main_category"], secondary["sub_category"],
+                    effective["reasoning"], secondary.get("methodology"), secondary.get("citation"),
+                ))
 
-        for main_category, sub_category, reasoning, methodology, citation in contributions:
+        for index, (main_category, sub_category, reasoning, methodology, citation) in enumerate(contributions):
             key = (main_category, sub_category)
             group = groups.get(key)
             if group is None:
@@ -110,7 +110,9 @@ def build_aggregation(source_type, template_id=None, upload_batch_id=None) -> li
                 groups[key] = group
 
             group["response_keys"].add(dedup_key)
-            group["items"].append(_make_item(row, reasoning))
+            item = _make_item(row, reasoning)
+            item["is_secondary"] = index > 0  # 第 0 個是 primary，其餘是次要分類的貢獻
+            group["items"].append(item)
 
     result = []
     for group in groups.values():

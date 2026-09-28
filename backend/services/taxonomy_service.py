@@ -142,9 +142,11 @@ def get_published_taxonomy_version(topic_key: str):
 
 # ── runtime prompt 組成 ──────────────────────────────────────────
 
-_SECONDARY_CATEGORY_RULE = """每則回覆原則上輸出一個主要類別；若同時明確涉及兩個以上獨立主題，
-可額外輸出一個次要類別。次要類別必須是與主要類別不同的合法子類別（從上方清單中選）；
-若內容只涉及單一主題，secondary_sub_category 請輸出 null，不要為了填欄位而勉強生成。"""
+_SECONDARY_CATEGORY_RULE = """每則回覆原則上輸出一個主要類別；若同時明確涉及其他獨立主題，
+可在 secondary_categories 陣列中列出次要類別（可以不只一個，依重要性排序）。
+每個次要類別都要同時給 main_category 與 sub_category，必須是與主要類別不同的合法子類別
+（從上方清單中選，名稱逐字一致）；若內容只涉及單一主題，secondary_categories 請輸出空陣列 []，
+不要為了填欄位而勉強生成。"""
 
 _CONFIDENCE_RUBRIC_BLOCK = """【分類信心評分規則】
 confidence 必須反映「這個文字依目前 Taxonomy 能否明確歸入此分類」，不可習慣性給高分。
@@ -178,7 +180,7 @@ _OUTPUT_FORMAT_BLOCK = """【輸出格式】
 {
   "main_category": "大類別名稱",
   "sub_category": "完整子類別名稱",
-  "secondary_sub_category": "次要子類別名稱，若無則為 null",
+  "secondary_categories": [{"main_category": "次要大類別名稱", "sub_category": "次要子類別名稱"}]（沒有次要類別時為 []），
   "reasoning": "判斷原因與說明，1-2句話",
   "summary": "受試者建議摘要，1句話",
   "confidence": 0.0 到 1.0 之間的浮點數，代表你對這個分類判斷的自陳信心程度，不是機率或正確率，只是你自己覺得有多確定
@@ -310,6 +312,8 @@ def methodology_lookup_for_taxonomy_version(taxonomy_version):
             "main_category": category.main_category,
             "methodology": category.methodology,
             "citation": category.citation,
+            # 次要分類要保存 taxonomy category identity（不只顯示名稱）
+            "category_id": category.category_id,
         }
         for category in taxonomy_version.categories
     }

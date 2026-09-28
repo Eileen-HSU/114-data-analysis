@@ -1253,3 +1253,5 @@
 
 /* 開放式分類：AI 新提出、尚未確認的類別 */
 .new-category-badge { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 600; white-space: nowrap; }
+
+.secondary-count-note { display: inline-block; margin-left: 6px; font-size: 12px; color: #5b6475; background: #eef1f6; border-radius: 10px; padding: 1px 8px; }

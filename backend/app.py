@@ -373,6 +373,14 @@ def ensure_integrity_followup_schema():
             ensure_column("Response_Segmentation_Status", "last_attempt_at", "`last_attempt_at` DATETIME NULL")
             ensure_column("Response_Classification", "attempt_no", "`attempt_no` INT NULL")
             db.session.commit()
+
+            # 次要分類子表（一筆分類可以有多個次要分類，含 taxonomy category identity）
+            from models import Response_Classification_Secondary
+            ensure_table(Response_Classification_Secondary)
+            db.session.commit()
+            # 舊欄位 -> 子表（只處理還沒有子表列的分類，重複啟動不會重複寫入）
+            from services.secondary_classification_service import backfill_legacy_secondaries
+            backfill_legacy_secondaries(logger=app.logger)
         except Exception as exc:
             db.session.rollback()
             app.logger.exception("Integrity follow-up schema check failed: %s", exc)

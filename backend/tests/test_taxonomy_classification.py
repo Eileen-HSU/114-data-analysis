@@ -108,6 +108,7 @@ with app.app_context():
         m.Survey_Template.__table__,
         m.Survey_Response.__table__,
         m.Response_Classification.__table__,
+        m.Response_Classification_Secondary.__table__,
         m.Response_Segmentation_Status.__table__,
         m.Uploaded_Answer.__table__,
         # publish 會寫 audit、並把受影響的既有 Report 標記 outdated
@@ -275,7 +276,9 @@ with app.app_context():
     )
     check("prompt 包含 GLOBAL_RULES（系統層級總分類規則）", "系統層級總分類規則" in prompt)
     check("prompt 包含次要類別規則段落", "次要類別規則" in prompt)
-    check("prompt 包含輸出格式 JSON schema", '"secondary_sub_category"' in prompt)
+    # 次要分類改成陣列（可多個、大類別 + 子類別一起輸出），見 fix/classification-integrity-followup
+    check("prompt 包含輸出格式 JSON schema（次要分類為含大類別的陣列）",
+          '"secondary_categories"' in prompt and '"main_category": "次要大類別名稱"' in prompt)
 
     # definition/include/exclude/boundary 皆為 NULL、也沒有 source_raw_text
     # -> 無法組出判斷規則，必須 fail-closed，不能生出一個空類別去問 Gemini
@@ -479,6 +482,7 @@ with app2.app_context():
         m.Survey_Template.__table__,
         m.Survey_Response.__table__,
         m.Response_Classification.__table__,
+        m.Response_Classification_Secondary.__table__,
         m.Response_Segmentation_Status.__table__,
         m.Uploaded_Answer.__table__,
         m.Topic.__table__,

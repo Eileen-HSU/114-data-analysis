@@ -86,6 +86,7 @@ with app.app_context():
     for table, column in NEW_COLUMNS:
         db.session.execute(text(f"ALTER TABLE `{table}` DROP COLUMN `{column}`"))
     db.session.execute(text("DROP TABLE Admin_Audit_Log"))
+    db.session.execute(text("DROP TABLE Response_Classification_Secondary"))
     db.session.execute(text(
         "INSERT INTO User (user_id, user_name, email, password_hash) VALUES (1, 'u', 'u@example.com', 'x')"))
     db.session.execute(text(
@@ -95,6 +96,14 @@ with app.app_context():
         "INSERT INTO Response_Segmentation_Status (upload_batch_id, uploaded_answer_id, question_id, source_type, "
         "segmentation_status, created_at, updated_at) SELECT 'legacy-batch', id, 'c_row0', 'user_upload', 'completed', "
         "NOW(), NOW() FROM Uploaded_Answer WHERE upload_batch_id='legacy-batch'"))
+    # 舊資料：只有 secondary_sub_category（沒有大類別）、以及人工 final 次要分類
+    db.session.execute(text(
+        "INSERT INTO Response_Classification (source_type, upload_batch_id, uploaded_answer_id, question_id, "
+        "answer_text, segment_start, segment_end, main_category, sub_category, secondary_sub_category, status, "
+        "review_status, final_main_category, final_sub_category, final_secondary_sub_category, needs_human_review, created_at) "
+        "SELECT 'user_upload', 'legacy-batch', id, 'c_row0', '舊資料', 0, 3, '主管領導', 'A1 工作與生活邊界', "
+        "'A2 回饋與溝通', 'completed', 'modified', '主管領導', 'A1 工作與生活邊界', 'A3 主管覺察力', 0, NOW() "
+        "FROM Uploaded_Answer WHERE upload_batch_id='legacy-batch'"))
     db.session.commit()
     check("前置：新欄位確實不存在", not column_exists("Uploaded_Answer", "routing_status"))
 
@@ -113,6 +122,10 @@ with app.app_context():
         "SELECT COUNT(*) FROM Taxonomy_Version WHERE status='published' AND published_topic_key = topic_key")).scalar() == 2)
     check("既有 Response_Segmentation_Status 補上 attempt_no = 1", db.session.execute(text(
         "SELECT attempt_no FROM Response_Segmentation_Status WHERE upload_batch_id='legacy-batch'")).scalar() == 1)
+    check("次要分類子表已建立並回填舊資料（ai + final 各 1 列）", db.session.execute(text(
+        "SELECT COUNT(*) FROM Response_Classification_Secondary")).scalar() == 2)
+    check("舊欄位原值不變", db.session.execute(text(
+        "SELECT secondary_sub_category FROM Response_Classification WHERE upload_batch_id='legacy-batch'")).scalar() == "A2 回饋與溝通")
     check("既有資料不受影響", db.session.execute(text(
         "SELECT question_type FROM Uploaded_Answer WHERE upload_batch_id='legacy-batch'")).scalar() == "other")
     audit_count = db.session.execute(text("SELECT COUNT(*) FROM Admin_Audit_Log WHERE action='taxonomy_bootstrap'")).scalar()
@@ -124,6 +137,8 @@ check("第二次啟動成功", code == 0)
 with app.app_context():
     db.session.remove()
     check("版本數不變（2）", db.session.execute(text("SELECT COUNT(*) FROM Taxonomy_Version")).scalar() == 2)
+    check("次要分類回填冪等（仍是 2 列）", db.session.execute(text(
+        "SELECT COUNT(*) FROM Response_Classification_Secondary")).scalar() == 2)
     check("bootstrap audit 仍是 1 筆", db.session.execute(text(
         "SELECT COUNT(*) FROM Admin_Audit_Log WHERE action='taxonomy_bootstrap'")).scalar() == 1)
 

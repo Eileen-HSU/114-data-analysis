@@ -15,13 +15,29 @@ const STATUS_LABEL = {
   excluded: t("已排除", "Excluded"),
 };
 
-function CategoryBlock({ title, main, sub, secondary, reasoning }) {
+// 次要分類可能不只一個（後端 secondary_categories / final_secondary_categories）；
+// 舊版 API 只有 secondary_sub_category 字串時也能顯示。
+const secondaryListOf = (list, legacySub) => (
+  Array.isArray(list) && list.length ? list : (legacySub ? [{ sub_category: legacySub, in_taxonomy: true }] : [])
+);
+
+function CategoryBlock({ title, main, sub, secondaries, reasoning }) {
   return (
     <div className="review-category-block">
       <h4>{title}</h4>
       <p><b>{t("大類別", "Main category")}</b>：{main || "—"}</p>
       <p><b>{t("子類別", "Sub category")}</b>：{sub || "—"}</p>
-      <p><b>{t("次要子類別", "Secondary sub category")}</b>：{secondary || "—"}</p>
+      <p><b>{t("次要分類", "Secondary categories")}</b>：{secondaries?.length ? "" : "—"}</p>
+      {secondaries?.length > 0 && (
+        <ul className="review-secondary-list">
+          {secondaries.map((s) => (
+            <li key={s.sub_category}>
+              {s.main_category ? `${s.main_category} / ` : ""}{s.sub_category}
+              {s.in_taxonomy === false && <small className="review-secondary-note">{t("（不在分類架構內，不計入統計）", " (not in the taxonomy; not counted)")}</small>}
+            </li>
+          ))}
+        </ul>
+      )}
       <p><b>{t("判斷原因", "Reasoning")}</b>：{reasoning || "—"}</p>
     </div>
   );
@@ -86,7 +102,7 @@ export default function ReviewConversation({ classificationId, mode = "start", o
   const [pendingMessage, setPendingMessage] = useState("");
   const [aiNotice, setAiNotice] = useState(null); // { failure } | { rejected: true }
   const [manualSub, setManualSub] = useState("");
-  const [manualSecondary, setManualSecondary] = useState("");
+  const [manualSecondaries, setManualSecondaries] = useState([]);
   const [manualReason, setManualReason] = useState("");
   const [moved, setMoved] = useState(null); // { title, rows }：已移到其他主題
   const messageEndRef = useRef(null);
@@ -137,6 +153,7 @@ export default function ReviewConversation({ classificationId, mode = "start", o
 
   const classification = reviewState?.classification || null;
   const activeReview = reviewState?.active_review || null;
+  const aiSecondaries = secondaryListOf(classification?.secondary_categories, classification?.secondary_sub_category);
 
   const activeMessages = useMemo(() => {
     if (!activeReview) return [];
@@ -237,7 +254,7 @@ export default function ReviewConversation({ classificationId, mode = "start", o
           method: "POST",
           body: JSON.stringify({
             sub_category: classification.sub_category,
-            secondary_sub_category: classification.secondary_sub_category || undefined,
+            secondary_sub_categories: aiSecondaries.filter((s) => s.in_taxonomy !== false).map((s) => s.sub_category),
             reasoning: t("討論後維持 AI 原始分類", "Kept the AI's original classification after discussion"),
           }),
         });
@@ -259,7 +276,7 @@ export default function ReviewConversation({ classificationId, mode = "start", o
         method: "POST",
         body: JSON.stringify({
           sub_category: manualSub,
-          secondary_sub_category: manualSecondary || undefined,
+          secondary_sub_categories: manualSecondaries.filter((sub) => sub !== manualSub),
           reasoning: manualReason.trim() || undefined,
         }),
       });
@@ -330,6 +347,10 @@ export default function ReviewConversation({ classificationId, mode = "start", o
   useEffect(() => {
     if (!manualSub && candidate?.sub_category && options.some((o) => o.sub_category === candidate.sub_category)) {
       setManualSub(candidate.sub_category);
+      const preset = latestCandidateMessage
+        ? (candidate.secondary_sub_category ? [candidate.secondary_sub_category] : [])
+        : aiSecondaries.filter((sec) => sec.in_taxonomy !== false).map((sec) => sec.sub_category);
+      setManualSecondaries(preset.filter((sub) => options.some((o) => o.sub_category === sub)));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidate?.sub_category, options.length]);
@@ -406,7 +427,7 @@ export default function ReviewConversation({ classificationId, mode = "start", o
                 title={t("AI 原始判斷", "AI original classification")}
                 main={classification.main_category}
                 sub={classification.sub_category}
-                secondary={classification.secondary_sub_category}
+                secondaries={aiSecondaries}
                 reasoning={classification.reasoning}
               />
             </section>
@@ -418,7 +439,7 @@ export default function ReviewConversation({ classificationId, mode = "start", o
                 title={t("人工最終判斷", "Human final classification")}
                 main={classification.final_main_category}
                 sub={classification.final_sub_category}
-                secondary={classification.final_secondary_sub_category}
+                secondaries={secondaryListOf(classification.final_secondary_categories, classification.final_secondary_sub_category)}
                 reasoning={classification.final_reasoning}
               />
             </section>
@@ -460,7 +481,7 @@ export default function ReviewConversation({ classificationId, mode = "start", o
                   title={t("AI 原始判斷", "AI original classification")}
                   main={classification.main_category}
                   sub={classification.sub_category}
-                  secondary={classification.secondary_sub_category}
+                  secondaries={aiSecondaries}
                   reasoning={classification.reasoning}
                 />
                 <p>
@@ -491,17 +512,30 @@ export default function ReviewConversation({ classificationId, mode = "start", o
                         ))}
                       </select>
                     </label>
-                    <label>
-                      <span className="review-field-label">{t("次要子類別（選填）", "Secondary (optional)")}</span>
-                      <select value={manualSecondary} disabled={isConflict || busyAction !== ""} onChange={(e) => setManualSecondary(e.target.value)}>
-                        <option value="">{t("無", "None")}</option>
-                        {optionGroups.map(([main, subs]) => (
-                          <optgroup key={main} label={main}>
-                            {subs.filter((sub) => sub.value !== manualSub).map((sub) => <option key={sub.value} value={sub.value}>{sub.value}{sub.proposed ? t("（AI 新提出）", " (new, proposed by AI)") : ""}</option>)}
-                          </optgroup>
-                        ))}
-                      </select>
-                    </label>
+                    <fieldset className="review-secondary-pick" disabled={isConflict || busyAction !== ""}>
+                      <legend className="review-field-label">{t("次要分類（選填，可複選）", "Secondary categories (optional, multiple)")}</legend>
+                      {optionGroups.map(([main, subs]) => {
+                        const choices = subs.filter((sub) => sub.value !== manualSub);
+                        if (!choices.length) return null;
+                        return (
+                          <div key={main} className="review-secondary-group">
+                            <small>{main}</small>
+                            {choices.map((sub) => (
+                              <label key={sub.value} className="review-secondary-option">
+                                <input
+                                  type="checkbox"
+                                  checked={manualSecondaries.includes(sub.value)}
+                                  onChange={(e) => setManualSecondaries((prev) => (
+                                    e.target.checked ? [...prev, sub.value] : prev.filter((v) => v !== sub.value)
+                                  ))}
+                                />
+                                {sub.value}{sub.proposed ? t("（AI 新提出）", " (new, proposed by AI)") : ""}
+                              </label>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </fieldset>
                     <label>
                       <span className="review-field-label">{t("判斷原因（選填）", "Reason (optional)")}</span>
                       <textarea rows={2} value={manualReason} disabled={isConflict || busyAction !== ""}
@@ -546,7 +580,7 @@ export default function ReviewConversation({ classificationId, mode = "start", o
                           {t("AI 建議：", "AI suggests: ")}{m.candidate_main_category} / {m.candidate_sub_category}
                           {m.candidate_secondary_sub_category ? `（${t("次要", "secondary")}：${m.candidate_secondary_sub_category}）` : ""}
                           <button type="button" disabled={isConflict || busyAction !== ""}
-                            onClick={() => { setManualSub(m.candidate_sub_category); setManualSecondary(m.candidate_secondary_sub_category || ""); setManualReason(m.candidate_reasoning || ""); }}>
+                            onClick={() => { setManualSub(m.candidate_sub_category); setManualSecondaries(m.candidate_secondary_sub_category ? [m.candidate_secondary_sub_category] : []); setManualReason(m.candidate_reasoning || ""); }}>
                             {t("套用到選擇", "Use this")}
                           </button>
                         </p>

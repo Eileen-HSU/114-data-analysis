@@ -410,6 +410,11 @@ def _collect_items(source):
             "secondary_sub_category": view.get("secondary_sub_category"),
             "secondary_methodology": view.get("secondary_methodology"),
             "secondary_citation": view.get("secondary_citation"),
+            "secondary_categories": [
+                {"main_category": sc.get("main_category"), "sub_category": sc.get("sub_category"),
+                 "methodology": sc.get("methodology")}
+                for sc in view.get("secondary_categories") or []
+            ],
             "status": row.status,
             "excerpt": masked_excerpt,
             "reasoning": masked_reasoning,
@@ -510,12 +515,10 @@ def _build_context_text(items, user_message: str, aggregated_lookup: dict) -> st
             lines.append(f"  對應方法論：{it['methodology']}")
         if it.get("citation"):
             lines.append(f"  文獻依據：{it['citation']}")
-        if it.get("secondary_sub_category"):
-            lines.append(
-                f"  次要分類：{it.get('secondary_main_category') or ''}／{it['secondary_sub_category']}"
-            )
-            if it.get("secondary_methodology"):
-                lines.append(f"  次要分類對應方法論：{it['secondary_methodology']}")
+        for sc in it.get("secondary_categories") or []:
+            lines.append(f"  次要分類：{sc.get('main_category') or ''}／{sc['sub_category']}")
+            if sc.get("methodology"):
+                lines.append(f"  次要分類對應方法論：{sc['methodology']}")
 
         agg = aggregated_lookup.get((it["main_category"], it["sub_category"]))
         if agg and (agg.get("aggregated_reasoning") or agg.get("aggregated_summary")):

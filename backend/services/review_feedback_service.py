@@ -70,18 +70,24 @@ def _example_from_row(row: Response_Classification):
     segment_text 會先過 mask_pii()，遮罩失敗時回傳 None，呼叫端
     （get_reviewed_examples）負責 skip 這一筆，不中斷整批查詢。
     """
+    from classification_models import SECONDARY_KIND_AI, SECONDARY_KIND_FINAL
+    from services.secondary_classification_service import get_secondaries
+
     if row.review_status == REVIEW_STATUS_MODIFIED:
         main_category = row.final_main_category
         sub_category = row.final_sub_category
-        secondary_sub_category = row.final_secondary_sub_category
         reasoning = row.final_reasoning
     else:
         # 只有 confirmed 會走到這裡（get_reviewed_examples 已經先用
         # SQL 篩掉 pending_review / excluded），用 AI original 欄位。
         main_category = row.main_category
         sub_category = row.sub_category
-        secondary_sub_category = row.secondary_sub_category
         reasoning = row.reasoning
+    # 範例呈現「人工確認時看到的那組結果」：modified 用人工 final、confirmed 用 AI
+    # 原始次要分類（可能不只一個，同一份子表資料，舊資料由舊欄位推導）。
+    kind = SECONDARY_KIND_FINAL if row.review_status == REVIEW_STATUS_MODIFIED else SECONDARY_KIND_AI
+    secondaries = [s["sub_category"] for s in get_secondaries(row, kind) if s["sub_category"] != sub_category]
+    secondary_sub_category = "、".join(secondaries) if secondaries else None
 
     try:
         masked_segment_text = mask_pii(_segment_text(row))

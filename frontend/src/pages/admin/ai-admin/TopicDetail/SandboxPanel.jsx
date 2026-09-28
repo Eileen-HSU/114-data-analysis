@@ -129,7 +129,10 @@ export default function SandboxPanel() {
                 <p>
                   <b className={seg.status === "completed" ? "pass" : "fail"}>{seg.status}</b>
                   {" — "}{seg.main_category} / {seg.sub_category}
-                  {seg.secondary_sub_category ? ` (+ ${seg.secondary_sub_category})` : ""}
+                  {(seg.secondary_categories?.length
+                    ? seg.secondary_categories.map((sec) => sec.sub_category)
+                    : (seg.secondary_sub_category ? [seg.secondary_sub_category] : [])
+                  ).map((sub) => ` (+ ${sub})`).join("")}
                 </p>
                 <p>{t("推理", "Reasoning")}: {seg.reasoning}</p>
                 <p>{t("摘要", "Summary")}: {seg.summary} · {t("信心", "Confidence")}: {typeof seg.confidence === "number" ? seg.confidence.toFixed(2) : "—"}</p>

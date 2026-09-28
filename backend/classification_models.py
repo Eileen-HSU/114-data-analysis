@@ -582,10 +582,93 @@ class Response_Classification(db.Model):
             "reviewed_at": self.reviewed_at.isoformat() if self.reviewed_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "attempt_no": self.attempt_no,
+            "secondary_categories": secondary_list(self, SECONDARY_KIND_AI),
+            "final_secondary_categories": secondary_list(self, SECONDARY_KIND_FINAL),
             "created_at": (
                 self.created_at.isoformat() if self.created_at else None
             ),
         }
+
+
+def secondary_list(row, kind):
+    """to_dict 用：lazy import，避免 model 模組在 import 時依賴 services。"""
+    from services.secondary_classification_service import get_secondaries
+
+    return get_secondaries(row, kind)
+
+
+# ═══════════════════════════════════════════════════════════════
+# Response_Classification_Secondary：次要分類（一筆分類可以有 0~N 個）
+# ═══════════════════════════════════════════════════════════════
+#
+# 原本只有 secondary_sub_category 單一字串（Gemini 不輸出次要大類別，
+# secondary_main_category 也沒有被寫入），聚合時要求兩者都有值 -> AI
+# 的次要分類全部被略過。現在每個次要分類一列，大類別 / 子類別一起保存，
+# 並記錄 taxonomy category identity（taxonomy_version_id + category_id）。
+#
+#   kind = "ai"：AI 原始判斷（跟 main_category 等 AI ORIGINAL 欄位一樣，
+#       人工審核不會改寫）
+#   kind = "final"：人工修改（review_status=modified）後的最終次要分類
+#   in_taxonomy：AI 提出的次要子類別是否在當時使用的分類架構裡；不在的
+#       保留紀錄（Admin 看得到），但不計入彙整。人工選的 final 一律 True。
+#
+# 舊的 secondary_* / final_secondary_* 欄位保留，存「第一個」次要分類的
+# 鏡像值（向後相容舊的讀取端）；讀取一律走
+# services/secondary_classification_service.py（舊資料沒有子表列時由
+# 舊欄位推導）。
+SECONDARY_KIND_AI = "ai"
+SECONDARY_KIND_FINAL = "final"
+
+
+class Response_Classification_Secondary(db.Model):
+    __tablename__ = "Response_Classification_Secondary"
+    __table_args__ = (
+        db.UniqueConstraint("classification_id", "kind", "position", name="uq_rc_secondary_position"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    classification_id = db.Column(
+        db.Integer,
+        db.ForeignKey("Response_Classification.classification_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    kind = db.Column(db.String(10), nullable=False, default=SECONDARY_KIND_AI)
+    position = db.Column(db.Integer, nullable=False, default=0)
+    main_category = db.Column(db.String(100), nullable=True)
+    sub_category = db.Column(db.String(100), nullable=False)
+    taxonomy_version_id = db.Column(
+        db.Integer, db.ForeignKey("Taxonomy_Version.version_id", ondelete="SET NULL"), nullable=True,
+    )
+    taxonomy_category_id = db.Column(
+        db.Integer, db.ForeignKey("Taxonomy_Category.category_id", ondelete="SET NULL"), nullable=True,
+    )
+    methodology = db.Column(db.String(100), nullable=True)
+    citation = db.Column(db.Text, nullable=True)
+    in_taxonomy = db.Column(db.Boolean, nullable=False, default=False)
+    created_by_admin_id = db.Column(db.Integer, nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=taiwan_now)
+
+    def to_dict(self) -> dict:
+        return {
+            "main_category": self.main_category,
+            "sub_category": self.sub_category,
+            "taxonomy_version_id": self.taxonomy_version_id,
+            "taxonomy_category_id": self.taxonomy_category_id,
+            "methodology": self.methodology,
+            "citation": self.citation,
+            "in_taxonomy": bool(self.in_taxonomy),
+            "position": self.position,
+        }
+
+
+Response_Classification.secondaries = db.relationship(
+    Response_Classification_Secondary,
+    order_by=(Response_Classification_Secondary.kind, Response_Classification_Secondary.position),
+    cascade="all, delete-orphan",
+    passive_deletes=True,
+    lazy="selectin",
+)
 
 
 @event.listens_for(Response_Classification, "before_insert")

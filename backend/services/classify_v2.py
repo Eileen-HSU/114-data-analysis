@@ -82,12 +82,12 @@ BATCH_OUTPUT_FORMAT_OVERRIDE = """
 格式一次回傳所有片段的結果，不要加任何其他文字：
 
 {{"classifications": [
-  {{"index": 0, "main_category": "...", "sub_category": "...", "secondary_sub_category": null, "reasoning": "...", "summary": "...", "confidence": 0.0 到 1.0 之間的浮點數}},
+  {{"index": 0, "main_category": "...", "sub_category": "...", "secondary_categories": [{{"main_category": "...", "sub_category": "..."}}], "reasoning": "...", "summary": "...", "confidence": 0.0 到 1.0 之間的浮點數}},
   ...
 ]}}
 
 index 必須恰好包含 0 到 {n_minus_1}，每個各出現一次，不能遺漏也不能
-重複。除了「輸出格式從單筆物件改成 classifications 陣列」之外，
+重複。secondary_categories 沒有次要類別時輸出空陣列 []。除了「輸出格式從單筆物件改成 classifications 陣列」之外，
 分類邏輯、可選類別、次要類別規則、判斷標準完全比照上方規則，
 不需要另外調整；片段之間請各自獨立判斷，不要互相影響。
 
@@ -356,7 +356,6 @@ def _call_gemini_and_parse(masked_text: str, prompt_content: str, category_looku
 
         result["main_category"] = parsed["main_category"]
         result["sub_category"] = parsed["sub_category"]
-        result["secondary_sub_category"] = parsed.get("secondary_sub_category")
         result["reasoning"] = parsed["reasoning"]
         result["summary"] = parsed["summary"]
         result["confidence"] = parsed.get("confidence")
@@ -370,13 +369,9 @@ def _call_gemini_and_parse(masked_text: str, prompt_content: str, category_looku
             result["status"] = "methodology_not_found"
             result["error_detail"] = f"sub_category 不在固定清單裡：{result['sub_category']}"
 
-        # 次要類別是選填的，只有在 AI 真的有輸出、且是合法子類別時才查表補上；
-        # 查不到就靜默留空，不影響主要分類的 status
-        if result["secondary_sub_category"]:
-            secondary_info = category_lookup(result["secondary_sub_category"])
-            if secondary_info:
-                result["secondary_methodology"] = secondary_info["methodology"]
-                result["secondary_citation"] = secondary_info["citation"]
+        # 次要類別是選填的、可能不只一個；查不到分類架構的保留但不計入彙整，
+        # 不影響主要分類的 status（見 services/secondary_classification_service.py）
+        _apply_secondaries(result, parsed, category_lookup)
 
     except Exception as e:
         print("[CLASSIFY ERROR][GEMINI_API_FAILED]", repr(e))
@@ -429,7 +424,7 @@ def _build_classification_result(parsed: dict, category_lookup) -> dict:
     result = {
         "main_category": parsed["main_category"],
         "sub_category": parsed["sub_category"],
-        "secondary_sub_category": parsed.get("secondary_sub_category"),
+        "secondary_sub_category": None,
         "reasoning": parsed["reasoning"],
         "summary": parsed["summary"],
         "confidence": parsed.get("confidence"),
@@ -456,13 +451,19 @@ def _build_classification_result(parsed: dict, category_lookup) -> dict:
             result["status"] = "methodology_not_found"
             result["error_detail"] = f"sub_category 不在固定清單裡：{result['sub_category']}"
 
-    if result["secondary_sub_category"]:
-        secondary_info = category_lookup(result["secondary_sub_category"])
-        if secondary_info:
-            result["secondary_methodology"] = secondary_info["methodology"]
-            result["secondary_citation"] = secondary_info["citation"]
-
+    _apply_secondaries(result, parsed, category_lookup)
     return result
+
+
+def _apply_secondaries(result: dict, parsed: dict, category_lookup) -> None:
+    """解析 AI 的次要分類（新格式 secondary_categories 陣列 / 舊格式
+    secondary_sub_category 字串都接受）並查分類架構；舊欄位存第一個的鏡像。
+    lazy import：classify_v2 頂層維持不依賴 DB model。"""
+    from services.secondary_classification_service import legacy_fields, parse_ai_secondaries, resolve_secondaries
+
+    resolved = resolve_secondaries(parse_ai_secondaries(parsed), category_lookup, result.get("sub_category"))
+    result["secondary_categories"] = resolved
+    result.update(legacy_fields(resolved))
 
 
 def _failed_classification_result(error_detail: str) -> dict:

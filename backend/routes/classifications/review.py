@@ -141,7 +141,8 @@ def confirm_candidate(classification_id):
 
 @review_bp.route("/api/classification/<int:classification_id>/review/confirm-manual", methods=["POST"])
 def confirm_manual(classification_id):
-    """Body: {"sub_category": "...", "secondary_sub_category": 選填, "reasoning": 選填}
+    """Body: {"sub_category": "...", "secondary_sub_categories": [選填，可多個],
+    "secondary_sub_category": 選填（舊格式，單一）, "reasoning": 選填}
     Admin 直接從合法分類清單指定最終分類（不需要先跟 AI 對話）。"""
     admin_id, err = _require_admin(request)
     if err:
@@ -152,6 +153,8 @@ def confirm_manual(classification_id):
             classification_id, admin_id,
             sub_category=data.get("sub_category"),
             secondary_sub_category=data.get("secondary_sub_category") or None,
+            secondary_sub_categories=data.get("secondary_sub_categories") if isinstance(
+                data.get("secondary_sub_categories"), list) else None,
             reasoning=data.get("reasoning"),
         )
         return jsonify(classification.to_dict()), 200

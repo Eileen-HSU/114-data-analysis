@@ -134,6 +134,15 @@ def effective_view(row, include_methodology: bool = False) -> dict | None:
             "reasoning": getattr(row, "reasoning", None),
         }
 
+    # 次要分類：可能不只一個（見 services/secondary_classification_service.py）；
+    # secondary_main_category / secondary_sub_category 保留為第一個，向後相容。
+    from services.secondary_classification_service import effective_secondaries
+
+    secondaries = effective_secondaries(row, view["sub_category"])
+    view["secondary_categories"] = secondaries
+    view["secondary_main_category"] = secondaries[0]["main_category"] if secondaries else None
+    view["secondary_sub_category"] = secondaries[0]["sub_category"] if secondaries else None
+
     review_status = getattr(row, "review_status", None) or REVIEW_STATUS_PENDING
     view["summary"] = getattr(row, "summary", None)
     view["review_status"] = review_status
@@ -145,23 +154,28 @@ def effective_view(row, include_methodology: bool = False) -> dict | None:
 
 
 def _methodology_fields(row, view) -> dict:
-    if not _uses_final(row):
-        return {
-            "methodology": getattr(row, "methodology", None),
-            "citation": getattr(row, "citation", None),
-            "secondary_methodology": getattr(row, "secondary_methodology", None),
-            "secondary_citation": getattr(row, "secondary_citation", None),
+    lookup = None
+    if _uses_final(row):
+        lookup = _methodology_lookup_for(row)
+        primary = lookup(view["sub_category"]) if view["sub_category"] else None
+        fields = {
+            "methodology": primary["methodology"] if primary else None,
+            "citation": primary["citation"] if primary else None,
         }
+    else:
+        fields = {"methodology": getattr(row, "methodology", None), "citation": getattr(row, "citation", None)}
 
-    lookup = _methodology_lookup_for(row)
-    primary = lookup(view["sub_category"]) if view["sub_category"] else None
-    secondary = lookup(view["secondary_sub_category"]) if view["secondary_sub_category"] else None
-    return {
-        "methodology": primary["methodology"] if primary else None,
-        "citation": primary["citation"] if primary else None,
-        "secondary_methodology": secondary["methodology"] if secondary else None,
-        "secondary_citation": secondary["citation"] if secondary else None,
-    }
+    # 每個次要分類補齊 methodology / citation（子表有存就用，沒有就查該列當時的分類架構）
+    for item in view["secondary_categories"]:
+        if item.get("methodology") is None and item.get("sub_category"):
+            lookup = lookup or _methodology_lookup_for(row)
+            info = lookup(item["sub_category"]) or {}
+            item["methodology"] = info.get("methodology")
+            item["citation"] = info.get("citation")
+    first = view["secondary_categories"][0] if view["secondary_categories"] else {}
+    fields["secondary_methodology"] = first.get("methodology")
+    fields["secondary_citation"] = first.get("citation")
+    return fields
 
 
 def _methodology_lookup_for(row):
@@ -192,13 +206,17 @@ def _methodology_lookup_for(row):
     except Exception:  # SimpleNamespace / 缺 FK 的資料：退回跨表搜尋
         question_type = None
 
+    def _pick(info):
+        return {"main_category": info.get("main_category"), "methodology": info["methodology"],
+                "citation": info["citation"]}
+
     def _lookup(sub_category):
         if question_type in SUBCATEGORY_METHODOLOGY:
             info = SUBCATEGORY_METHODOLOGY[question_type].get(sub_category)
-            return {"methodology": info["methodology"], "citation": info["citation"]} if info else None
+            return _pick(info) if info else None
         matches = [t[sub_category] for t in SUBCATEGORY_METHODOLOGY.values() if sub_category in t]
         if len(matches) == 1:
-            return {"methodology": matches[0]["methodology"], "citation": matches[0]["citation"]}
+            return _pick(matches[0])
         return None
 
     return _lookup
@@ -231,7 +249,7 @@ def get_effective_classification(classification) -> dict:
             "main_category", "sub_category",
             "secondary_main_category", "secondary_sub_category",
             "reasoning", "methodology", "citation",
-            "secondary_methodology", "secondary_citation",
+            "secondary_methodology", "secondary_citation", "secondary_categories",
         )
     }
 
@@ -264,4 +282,11 @@ def display_fingerprint_entry(row, mode: str = "effective"):
     view = effective_view(row)
     if view is None:
         return (classification_id, None, None)
+    secondaries = tuple(
+        (item.get("main_category"), item.get("sub_category")) for item in view.get("secondary_categories") or []
+    )
+    if secondaries:
+        # 次要分類也會出現在畫面分組裡：改變時 Workspace 快照要重建。沒有次要
+        # 分類的列維持原本的 3-tuple，既有 Chat_History 的 review_revision 不受影響。
+        return (classification_id, view["main_category"], view["sub_category"], secondaries)
     return (classification_id, view["main_category"], view["sub_category"])

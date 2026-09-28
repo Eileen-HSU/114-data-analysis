@@ -55,6 +55,7 @@ with app.app_context():
         m.Survey_Template.__table__,
         m.Survey_Response.__table__,
         m.Response_Classification.__table__,
+        m.Response_Classification_Secondary.__table__,
         m.Classification_Review.__table__,
         m.Classification_Review_Message.__table__,
         m.Admin_Audit_Log.__table__,

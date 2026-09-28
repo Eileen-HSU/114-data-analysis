@@ -57,6 +57,7 @@ function buildClassificationMessageContent(aggregatedGroups, meta, ratingStats) 
     synthesis_status: g.synthesis_status || "ok",
     synthesis_error: g.synthesis_error || null,
     respondent_count: g.respondent_count ?? null,
+    secondary_count: g.secondary_count ?? 0,
     is_new_category: Boolean(g.is_new_category),
   }));
   const rating_stats = (ratingStats || []).map((r) => ({
@@ -662,6 +663,12 @@ function ClassificationTableView({ rows, ratingStats, meta, chatId, showToast, r
                         {row.sub_category}
                         {row.is_new_category && (
                           <span className="new-category-badge"><InterfaceText>{"AI 新類別・待確認"}</InterfaceText></span>
+                        )}
+                        {row.secondary_count > 0 && (
+                          <span className="secondary-count-note">
+                            <InterfaceText>{"含次要分類"}</InterfaceText>
+                            {` ${row.secondary_count}`}
+                          </span>
                         )}
                       </td>
 

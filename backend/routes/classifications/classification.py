@@ -60,6 +60,8 @@ from models import (
 )
 from services.classify_v2 import classify_existing_segments, classify_response_multi_segment, is_text_response, resolve_published_taxonomy_prompt
 from services import classification_attempt_service as attempt_service
+from services.secondary_classification_service import get_secondaries
+from classification_models import SECONDARY_KIND_AI
 from services.confidence_gate import evaluate_confidence_gate
 from services.effective_classification_service import effective_view, CLASSIFICATION_STATUS_SUPERSEDED
 from services.workspace_result_service import compute_review_revision
@@ -250,7 +252,26 @@ def _build_aggregated_groups(all_classification_rows, id_to_row_index, question_
             "excerpt": excerpt,
             "reasoning": view["reasoning"] or "",
             "summary": view["summary"] or "",
+            "is_secondary": False,
         })
+
+        # 次要分類（可能不只一個）：這個片段也列進次要類別的分組，標示為次要，
+        # 跟 Report（services/aggregation_service.py）的分組規則一致。
+        for secondary in view.get("secondary_categories") or []:
+            secondary_sub = secondary.get("sub_category") or ""
+            if not secondary.get("main_category") or not secondary_sub or "無具體建議" in secondary_sub:
+                continue
+            secondary_key = (normalize_main_category(secondary["main_category"]), secondary_sub)
+            if secondary_key not in groups:
+                groups[secondary_key] = {"items": [], "is_new_category": False}
+                order.append(secondary_key)
+            groups[secondary_key]["items"].append({
+                "respondent_number": (row_index + 1) if row_index is not None else None,
+                "excerpt": f"{excerpt}（次要分類）",
+                "reasoning": view["reasoning"] or "",
+                "summary": view["summary"] or "",
+                "is_secondary": True,
+            })
 
     
     renumbered_sub_category = compute_display_sub_categories(order, question_type)
@@ -310,6 +331,7 @@ def _build_aggregated_groups(all_classification_rows, id_to_row_index, question_
             "synthesis_status": synthesis_status,
             "synthesis_error": synthesis_error,
             "respondent_count": len(items),
+            "secondary_count": sum(1 for it in items if it.get("is_secondary")),
             "is_new_category": groups[key]["is_new_category"],
         })
 
@@ -877,6 +899,9 @@ def analyze_survey(access_code):
                             "main_category": r.main_category,
                             "sub_category": r.sub_category,
                             "secondary_sub_category": r.secondary_sub_category,
+                            "secondary_main_category": r.secondary_main_category,
+                            # 沿用時次要分類要完整帶過去（可能不只一個）
+                            "secondary_categories": get_secondaries(r, SECONDARY_KIND_AI),
                             "reasoning": r.reasoning,
                             "summary": r.summary,
                             "methodology": r.methodology,

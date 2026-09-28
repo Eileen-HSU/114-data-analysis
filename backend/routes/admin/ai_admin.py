@@ -277,6 +277,10 @@ def reviewed_classifications():
             "main_category": view["main_category"],
             "sub_category": view["sub_category"],
             "secondary_category": view["secondary_sub_category"],
+            "secondary_categories": [
+                {"main_category": sc["main_category"], "sub_category": sc["sub_category"]}
+                for sc in view["secondary_categories"]
+            ],
             "reasoning": view["reasoning"],
         }
         results.append(item)

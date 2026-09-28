@@ -495,3 +495,12 @@ label { display:block; font-weight:800; margin:12px 0; } textarea,select { width
 .topic-other-groups { margin-bottom: 14px; }
 .topic-other-group { margin-top: 10px; }
 .review-source-question { margin: 0 0 6px; }
+
+/* ── 次要分類（可多個） ─────────────────────────────────────── */
+.review-secondary-list { margin: 2px 0 8px 18px; padding: 0; }
+.review-secondary-note { color: #8a6d3b; margin-left: 4px; }
+.review-secondary-pick { border: 1px solid #e3e3ea; border-radius: 8px; padding: 8px 10px; margin: 8px 0; max-height: 220px; overflow-y: auto; }
+.review-secondary-pick legend { padding: 0 4px; }
+.review-secondary-group { margin-bottom: 6px; }
+.review-secondary-group > small { display: block; color: #666; margin: 4px 0 2px; }
+.review-secondary-option { display: flex; gap: 6px; align-items: center; font-size: 14px; margin: 2px 0; }
