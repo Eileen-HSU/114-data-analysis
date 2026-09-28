@@ -82,7 +82,6 @@ new_cat_cid = row["classification_id"]
 print("\n========== 2. 判斷不出主題：自動主題 + AI 歸納 ==========")
 GEMINI_QUEUE.clear()
 GEMINI_CALLS.clear()
-auto_key = auto_topic_key("雜項回饋")
 q({"question_type": None})
 q({"categories": [
     {"main_category": "工作環境", "sub_category": "辦公設備", "definition": "對辦公設備的意見"},
@@ -94,7 +93,14 @@ status, data = upload("雜項回饋", ["椅子坐久了會腰痛", "茶水間太
 check("upload 201", status == 201)
 check("不再是零結果：分類 2 筆", data["classified_count"] == 2)
 col = data["columns"][0]
-check("question_type=自動主題、routing_status=auto_topic", col["question_type"] == auto_key and col["routing_status"] == "auto_topic")
+# 自動主題 identity = 範圍 + 題意 + 內容特徵（不再只依欄位名稱）：key 由回應取得
+auto_key = col["question_type"]
+check("question_type=自動主題、routing_status=auto_topic",
+      (auto_key or "").startswith("auto_") and auto_key != auto_topic_key("雜項回饋") and col["routing_status"] == "auto_topic")
+with app.app_context():
+    topic = m.Topic.query.get(auto_key)
+    check("自動主題記錄範圍（user:1，沒有帶 project）與欄位名稱", topic.auto_scope == "user:1" and topic.auto_label == "雜項回饋"
+          and topic.auto_signature and "椅子" not in topic.auto_signature)
 check("標示暫定分類（provisional）", col["provisional_taxonomy"] is True and data["provisional_taxonomy"] is True)
 check("分類結果使用歸納出的類別", {r["sub_category"] for r in data["classifications"]} == {"辦公設備", "休息空間"})
 gen_prompt = next((c["system_instruction"] for c in GEMINI_CALLS if "categories" in (c["system_instruction"] or "")), "") or ""
@@ -122,6 +128,8 @@ with app.app_context():
     db.session.add(m.Survey_Response(template_id=tpl.template_id, answer_json={"answers": {"q1": "午餐選擇太少"}}))
     db.session.commit()
 GEMINI_QUEUE.clear()
+# 舊問卷沒有記錄 routing 原因：分析時先重新判斷主題；模型成功判斷「沒有適合主題」才走自動主題
+q({"question_type": None})
 q({"categories": [{"main_category": "餐飲", "sub_category": "菜色選擇", "definition": "對菜色多樣性的意見"}]})
 classify_q("午餐選擇太少", "餐飲", "菜色選擇")
 resp = client.post("/api/surveys/OPEN1/analyze", headers=user_header(1))
@@ -130,7 +138,10 @@ check("問卷 analyze 200、分類 1 筆", resp.status_code == 200 and body["new
 check("問卷標示暫定分類", body["provisional_taxonomy"] is True and body["provisional_question_ids"] == ["q1"])
 check("問卷結果出現歸納出的類別", any(g["sub_category"] == "菜色選擇" for g in body["aggregated_groups"]))
 with app.app_context():
-    check("問卷題目對應的自動主題已建立", m.Topic.query.get(auto_topic_key("對餐廳的建議")) is not None)
+    check("問卷題目對應的自動主題已建立（範圍 = 問卷擁有者）",
+          m.Topic.query.filter_by(auto_label="對餐廳的建議", auto_scope="user:1").count() == 1)
+    tpl_items = m.Survey_Template.query.filter_by(access_code="OPEN1").one().question_json["items"]
+    check("重新判斷的結果寫回問卷題目（下次不用再判斷）", tpl_items[0]["routing_status"] == "undetermined")
 
 
 print("\n========== 3. 類似資料沿用自動主題 ==========")
@@ -155,7 +166,9 @@ check("維持未分類並寫明原因", col["routing_status"] == "unrouted" and 
 with app.app_context():
     answer = m.Uploaded_Answer.query.filter_by(upload_batch_id=data["upload_batch_id"]).one()
     check("routing_detail 寫明 AI 歸納失敗", "AI 自動歸納分類架構失敗" in (answer.routing_detail or ""))
-    check("沒有留下半套的自動主題版本", m.Taxonomy_Version.query.filter_by(topic_key=auto_topic_key("完全不同的欄位")).count() == 0)
+    check("沒有留下半套的自動主題 / 版本", m.Topic.query.filter(m.Topic.title.like("%完全不同的欄位")).count() == 0
+          and m.Topic.query.filter_by(auto_label="完全不同的欄位").count() == 0)
+check("診斷：OPEN_CLASSIFICATION_FAILED", col["diagnostic_code"] == "OPEN_CLASSIFICATION_FAILED" and col["analysis_status"] == "failed")
 GEMINI_QUEUE.clear()
 
 
@@ -218,7 +231,9 @@ q({"question_type": None})
 status, data = upload("封閉模式欄位", ["封閉模式下判斷不出主題"])
 check("封閉模式：不自動歸納、分類 0 筆", data["classified_count"] == 0 and data["columns"][0]["routing_status"] == "unrouted")
 with app.app_context():
-    check("封閉模式：沒有建立自動主題", m.Topic.query.get(auto_topic_key("封閉模式欄位")) is None)
+    check("封閉模式：沒有建立自動主題", m.Topic.query.filter(m.Topic.title.like("%封閉模式欄位")).count() == 0)
+check("封閉模式診斷：ROUTING_UNDETERMINED", data["columns"][0]["diagnostic_code"] == "ROUTING_UNDETERMINED"
+      and data["diagnostic_code"] == "ROUTING_UNDETERMINED" and data["failed_count"] == 1)
 os.environ.pop("OPEN_CLASSIFICATION_ENABLED", None)
 GEMINI_QUEUE.clear()
 

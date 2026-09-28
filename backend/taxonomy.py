@@ -132,6 +132,19 @@ class Topic(db.Model):
     # 這個主題也不再列入 routing 候選。NULL = 沒有被合併。
     merged_into = db.Column(db.String(50), nullable=True)
 
+    # ── 自動主題 identity（開放式分類；admin 建立的主題全部是 NULL）──────
+    # 自動主題只在「同一個範圍（workspace/project 或使用者）+ 同一個欄位名稱
+    # / 題目文字 + 內容特徵相近」時沿用，不再只看欄位名稱（「意見」、「開放式
+    # 回答」這種通用欄位名會把不相干的資料併在一起）。見
+    # services/open_classification.py。
+    #   auto_scope：範圍，例如 "project:12" / "user:3"（不含任何回答內容）
+    #   auto_label：正規化後的欄位名稱 / 題目文字
+    #   auto_signature：內容特徵（遮罩後文字的字元 bigram 雜湊，JSON 陣列），
+    #       只用來比對相似度，無法還原成原文
+    auto_scope = db.Column(db.String(100), nullable=True, index=True)
+    auto_label = db.Column(db.String(255), nullable=True)
+    auto_signature = db.Column(db.Text, nullable=True)
+
     created_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
     updated_at = db.Column(
         db.DateTime(timezone=True), default=taiwan_now, onupdate=taiwan_now
@@ -148,6 +161,7 @@ class Topic(db.Model):
             "question_text": self.question_text,
             "description": self.description,
             "merged_into": self.merged_into,
+            "auto_scope": self.auto_scope,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

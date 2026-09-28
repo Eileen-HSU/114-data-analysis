@@ -28,7 +28,6 @@ from admin_test_support import (
 )
 import models as m
 from extensions import db
-from services.open_classification import auto_topic_key
 from services.privacy_service import mask_pii
 
 os.environ.pop("OPEN_CLASSIFICATION_ENABLED", None)
@@ -88,14 +87,14 @@ with app.app_context():
 
 
 print("\n========== 2. 整個自動主題併入既有主題 ==========")
-auto_key = auto_topic_key("訓練需求")
 GEMINI_QUEUE.clear()
 q({"question_type": None})
 q({"categories": [{"main_category": "學習", "sub_category": "課程需求", "definition": "對課程的需求"}]})
 classify_q("想上 Excel 課", "學習", "課程需求")
 classify_q("希望有英文課", "學習", "課程需求")
 data = upload("訓練需求", ["想上 Excel 課", "希望有英文課"])
-check("前置：建立自動主題並分類", data["columns"][0]["question_type"] == auto_key and data["classified_count"] == 2)
+auto_key = data["columns"][0]["question_type"]  # 自動主題 key 含範圍與內容特徵，由回應取得
+check("前置：建立自動主題並分類", (auto_key or "").startswith("auto_") and data["classified_count"] == 2)
 
 GEMINI_QUEUE.clear()
 classify_q("想上 Excel 課", "職涯發展", "A1 教育訓練")

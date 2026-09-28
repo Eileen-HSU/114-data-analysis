@@ -1,4 +1,5 @@
 import InterfaceText from "../../components/feature/InterfaceText";
+import AnalysisDiagnostics, { diagnosticMeta } from "./AnalysisDiagnostics";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Navbar from "../../components/feature/Navbar";
@@ -592,7 +593,10 @@ function ClassificationTableView({ rows, ratingStats, meta, chatId, showToast, r
       <div className="assistant-output-panel">
         <div className="assistant-output-intro"><InterfaceText>{"這批資料沒有產生任何分類結果。"}</InterfaceText></div>
 
-        {meta?.diagnostic_message && (
+        {/* 上傳：依後端診斷 code 顯示具體原因（存在 Chat_History，重新整理後仍在） */}
+        <AnalysisDiagnostics meta={meta} />
+
+        {meta?.diagnostic_message && !meta?.diagnostic_code && (
           <div className="assistant-output-diagnostic">
             {meta.diagnostic_message}
           </div>
@@ -611,6 +615,8 @@ function ClassificationTableView({ rows, ratingStats, meta, chatId, showToast, r
       {hasClassificationRows ? (
         <>
           <div className="assistant-output-intro"><InterfaceText>{"分類完成，共"}</InterfaceText>{rows.length}<InterfaceText>{"個類別。"}</InterfaceText></div>
+          {/* 多欄上傳：成功欄位照常顯示在表格，失敗 / 部分失敗的欄位在這裡分別說明 */}
+          <AnalysisDiagnostics meta={meta} />
           {meta?.provisional_taxonomy && (
             <div className="assistant-output-diagnostic">
               <InterfaceText>{"這批資料沒有既有的分類架構，類別由 AI 依內容自動歸納（暫定），管理員審核發布後會成為正式分類。"}</InterfaceText>
@@ -1440,6 +1446,10 @@ export default function WorkspacePage() {
     try {
       const form = new FormData();
       form.append("file", file);
+      // 自動主題的範圍：同一個 workspace/project 的資料才會沿用同一個自動主題
+      if (projectId && !String(projectId).startsWith("temp-") && !String(projectId).startsWith("survey-")) {
+        form.append("project_id", String(projectId));
+      }
       // 不附 text_column，交給後端自動判斷（見 backend/routes/classifications/classification.py
       // 的 _auto_detect_text_column）
 
@@ -1459,8 +1469,8 @@ export default function WorkspacePage() {
       }
 
       const assistantContent = buildClassificationMessageContent(data.aggregated_groups, {
-        classified_count: data.classified_count,
-        saved_answer_count: data.saved_answer_count,
+        // analysis_status / diagnostic_code / 三個計數 / 每欄診斷：跟 API 回應同一組數字
+        ...diagnosticMeta(data),
         upload_batch_id: data.upload_batch_id,
         source_type: "user_upload",
         review_revision: data.review_revision,

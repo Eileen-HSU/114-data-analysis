@@ -16,7 +16,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from extensions import db
 from models import Survey_Template, Survey_Response, Chat_History
-from services.question_routing_service import route_question_type
+from services.question_routing_service import ROUTING_REASON_API_FAILURE, route_question_type_detailed
 from services.export_file_service import build_survey_xlsx, build_survey_docx
 
 survey_bp = Blueprint('survey', __name__)
@@ -281,7 +281,14 @@ def create_survey():
         # 留 None，之後這題的回答會跳過自動分類（原始回答仍會完整保存）。
         for question in questions:
             if isinstance(question, dict) and question.get("type") == "short":
-                question["question_type"] = route_question_type(question.get("title") or "")
+                # 記下 routing 結果的原因：分析時只有「模型成功判斷沒有適合主題」
+                # （undetermined / no_candidates）才可以走自動主題；AI 呼叫失敗
+                # （routing_failed）時分析當下會重新判斷一次，不會直接建立自動主題。
+                outcome = route_question_type_detailed(question.get("title") or "", scope=f"user:{auth_user_id}")
+                question["question_type"] = outcome["topic_key"]
+                question["routing_status"] = (
+                    "routing_failed" if outcome["reason"] == ROUTING_REASON_API_FAILURE else outcome["reason"]
+                )
 
         survey_content = {
             "description": data.get('description'),

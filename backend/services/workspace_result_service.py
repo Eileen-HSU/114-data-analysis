@@ -23,7 +23,7 @@ import hashlib
 import json
 
 from extensions import db, taiwan_now
-from models import Survey_Response, Survey_Template, Uploaded_Answer
+from models import Response_Classification, Survey_Response, Survey_Template, Uploaded_Answer
 from classification_models import SOURCE_TYPE_SURVEY, SOURCE_TYPE_USER_UPLOAD
 from services.effective_classification_service import display_fingerprint_entry
 from services.source_lookup_service import fetch_classifications_in_scope
@@ -190,6 +190,45 @@ def _group_to_row(g):
     }
 
 
+def live_upload_diagnostics(upload_batch_id, previous_meta=None, displayed_groups=None) -> dict:
+    """依 DB 目前狀態重算上傳批次的計數與診斷（規則同上傳當下，見
+    services/analysis_diagnostics.py）：回答至少有一個 current、非 failed 的
+    分類列 = 分類成功；其餘 = 失敗。還在失敗的欄位沿用上一次的診斷 code。"""
+    from services import analysis_diagnostics as diag
+    from services.effective_classification_service import NON_COUNTABLE_STATUSES
+
+    previous = {c.get("column"): c for c in (previous_meta or {}).get("columns") or []}
+    answers = Uploaded_Answer.query.filter_by(upload_batch_id=upload_batch_id).all()
+    ok_answer_ids = {
+        r.uploaded_answer_id
+        for r in Response_Classification.query.filter_by(upload_batch_id=upload_batch_id).all()
+        if r.status not in NON_COUNTABLE_STATUSES
+    }
+    by_column = {}
+    for answer in answers:
+        stats = by_column.setdefault(answer.source_column, [0, 0])
+        stats[0] += 1
+        if answer.id in ok_answer_ids:
+            stats[1] += 1
+    columns = []
+    for column, (saved, classified) in by_column.items():
+        old = previous.get(column) or {}
+        failed = saved - classified
+        failure_code = old.get("diagnostic_code") if old.get("diagnostic_code") != diag.PARTIAL_CLASSIFICATION else None
+        entry = diag.build_column_diagnostic(
+            saved, classified, failed, failure_code=failure_code,
+            failure_detail={"code": old.get("failure_code")} if failed and old.get("failure_code") else None,
+        )
+        columns.append({
+            "column": column, "routing_status": old.get("routing_status"),
+            **{k: entry[k] for k in ("analysis_status", "diagnostic_code", "failure_code",
+                                     "saved_answer_count", "classified_count", "failed_count")},
+        })
+    batch = diag.build_batch_diagnostic(columns, displayed_groups if displayed_groups is not None else 1)
+    return {**{k: batch[k] for k in ("analysis_status", "diagnostic_code", "saved_answer_count",
+                                     "classified_count", "failed_count")}, "columns": columns}
+
+
 def refresh_chat_result(chat) -> dict:
     """重建並持久化這則分類結果訊息。只 add/修改，不 commit（交給呼叫端）。
 
@@ -202,6 +241,10 @@ def refresh_chat_result(chat) -> dict:
 
     groups = build_live_groups(source)
     meta = dict(parsed.get("meta") or {})
+    if source["source_type"] == SOURCE_TYPE_USER_UPLOAD and meta.get("analysis_status"):
+        # Admin 重新處理 / 重新判斷後，計數與診斷跟著 DB 更新（Chat History、UI、
+        # API 用同一組數字）
+        meta.update(live_upload_diagnostics(source["upload_batch_id"], meta, displayed_groups=len(groups)))
     meta["review_revision"] = compute_review_revision(source)
     meta["refreshed_at"] = taiwan_now().isoformat()
     meta["source_type"] = source["source_type"]

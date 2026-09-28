@@ -152,6 +152,22 @@ def ensure_column_length(table_name, column_name, column_definition, min_length)
         )
 
 
+def ensure_index(table_name, index_name, columns_sql):
+    """只在索引不存在時建立（非 UNIQUE）；不動既有索引與資料。"""
+    exists = db.session.execute(
+        text("""
+            SELECT COUNT(*)
+            FROM information_schema.STATISTICS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = :table_name
+              AND INDEX_NAME = :index_name
+        """),
+        {"table_name": table_name, "index_name": index_name},
+    ).scalar()
+    if not exists:
+        db.session.execute(text(f"CREATE INDEX `{index_name}` ON `{table_name}` ({columns_sql})"))
+
+
 def ensure_table(model):
     """
     只有這張表在資料庫裡完全不存在時才會建立，已存在的表（不論是
@@ -372,6 +388,14 @@ def ensure_integrity_followup_schema():
             ensure_column("Response_Segmentation_Status", "last_attempt_error", "`last_attempt_error` TEXT NULL")
             ensure_column("Response_Segmentation_Status", "last_attempt_at", "`last_attempt_at` DATETIME NULL")
             ensure_column("Response_Classification", "attempt_no", "`attempt_no` INT NULL")
+            db.session.commit()
+
+            # 自動主題 identity（範圍 + 題意 + 內容特徵）與上傳回答的範圍
+            ensure_column("Topic", "auto_scope", "`auto_scope` VARCHAR(100) NULL")
+            ensure_column("Topic", "auto_label", "`auto_label` VARCHAR(255) NULL")
+            ensure_column("Topic", "auto_signature", "`auto_signature` TEXT NULL")
+            ensure_column("Uploaded_Answer", "analysis_scope", "`analysis_scope` VARCHAR(100) NULL")
+            ensure_index("Topic", "ix_Topic_auto_scope", "`auto_scope`")
             db.session.commit()
 
             # 次要分類子表（一筆分類可以有多個次要分類，含 taxonomy category identity）

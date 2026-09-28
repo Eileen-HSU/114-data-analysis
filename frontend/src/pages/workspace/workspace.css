@@ -1255,3 +1255,13 @@
 .new-category-badge { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 600; white-space: nowrap; }
 
 .secondary-count-note { display: inline-block; margin-left: 6px; font-size: 12px; color: #5b6475; background: #eef1f6; border-radius: 10px; padding: 1px 8px; }
+
+/* 上傳 / 分析診斷（AnalysisDiagnostics.jsx） */
+.analysis-diagnostic { font-size: 14px; line-height: 1.6; border-radius: 10px; padding: 12px 16px; margin: 10px 0; border: 1px solid #fde68a; background: #fffbeb; color: #78350f; }
+.analysis-diagnostic--failed { border-color: #fecaca; background: #fef2f2; color: #7f1d1d; }
+.analysis-diagnostic--completed, .analysis-diagnostic--no_data { border-color: #e2e8f0; background: #f8fafc; color: #334155; }
+.analysis-diagnostic p { margin: 0 0 4px; }
+.analysis-diagnostic-title { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.analysis-diagnostic-counts { font-size: 13px; opacity: 0.85; }
+.analysis-diagnostic-columns { margin: 6px 0 0; padding-left: 18px; }
+.analysis-diagnostic-columns li { margin: 4px 0; }

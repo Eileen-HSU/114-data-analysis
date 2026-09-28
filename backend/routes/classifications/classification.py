@@ -47,6 +47,7 @@ question_type 判斷不出來（None）時：
     user_upload： 原始內容仍寫入 Uploaded_Answer，但不進 segmentation/classification
 """
 
+import re
 import uuid
 
 from flask import Blueprint, jsonify, request
@@ -66,7 +67,17 @@ from services.confidence_gate import evaluate_confidence_gate
 from services.effective_classification_service import effective_view, CLASSIFICATION_STATUS_SUPERSEDED
 from services.workspace_result_service import compute_review_revision
 from services.privacy_service import mask_pii, PiiMaskingError
-from services.question_routing_service import route_question_type_with_reason, ROUTING_REASON_API_FAILURE, ROUTING_REASON_NO_CANDIDATES
+from services.question_routing_service import (
+    route_question_type_detailed,
+    route_question_type_with_reason,
+    ROUTING_REASON_API_FAILURE,
+    ROUTING_REASON_EMPTY_INPUT,
+    ROUTING_REASON_NO_CANDIDATES,
+    ROUTING_REASON_UNDETERMINED,
+)
+from services import analysis_diagnostics as diag
+from services.failure_explainer import explain_failure
+from services.safe_error import safe_error_summary
 from services.batch_classification_service import run_batch_analysis
 from services.aggregated_summary_service import build_aggregated_summary, build_aggregated_summary_pair, AggregatedSummaryError
 from services.subcategory_methodology import QUESTION_OTHER, compute_display_sub_categories
@@ -105,7 +116,39 @@ def _resolve_taxonomy_for_topic(question_type: str):
         return None, None, None
 
 
-def _resolve_taxonomy_open(routed_topic, label, sample_texts, question_text=None):
+def _upload_scope(user_id, project_id=None):
+    """自動主題範圍：帶了自己的 workspace/project -> "project:<id>"，否則 "user:<id>"。
+    不是自己的 project 就忽略（不可以用別人的範圍沿用別人的自動主題）。"""
+    from models import Workspace
+
+    try:
+        pid = int(project_id) if project_id not in (None, "", "null", "undefined") else None
+    except (TypeError, ValueError):
+        pid = None
+    if pid is not None:
+        workspace = db.session.get(Workspace, pid)
+        if workspace is not None and workspace.user_id == user_id:
+            return f"project:{pid}"
+    return f"user:{user_id}"
+
+
+def _looks_like_ai_error(text):
+    return bool(text) and bool(re.search(r"429|5\d\d|RESOURCE_EXHAUSTED|UNAVAILABLE|timeout|API key|api_key|JSON|失敗", str(text), re.I))
+
+
+def _taxonomy_failure_code(routed_topic, routing_reason, taxonomy):
+    """沒有可用分類架構時的診斷 code。"""
+    from services.open_classification import open_mode_enabled
+
+    if open_mode_enabled():
+        # 開放式分類下走到這裡 = AI 自動歸納分類架構失敗（或主題資料有問題）
+        return diag.OPEN_CLASSIFICATION_FAILED
+    if routed_topic is None and routing_reason == ROUTING_REASON_UNDETERMINED:
+        return diag.ROUTING_UNDETERMINED
+    return diag.NO_PUBLISHED_TAXONOMY
+
+
+def _resolve_taxonomy_open(routed_topic, label, sample_texts, question_text=None, scope=None):
     """開放式分類的統一入口（見 services/open_classification.py）：
 
     - 判斷出主題：用該主題的已發布分類架構（開放式 prompt，可提出新類別）；
@@ -118,7 +161,7 @@ def _resolve_taxonomy_open(routed_topic, label, sample_texts, question_text=None
     if routed_topic and routed_topic != QUESTION_OTHER:
         return resolve_taxonomy(routed_topic, sample_texts=sample_texts, title=label, question_text=question_text or label)
     if open_mode_enabled():
-        return resolve_for_unrouted(label, sample_texts, question_text=question_text)
+        return resolve_for_unrouted(label, sample_texts, question_text=question_text, scope=scope)
     return {"prompt": None, "lookup": None, "version_id": None, "topic_key": None,
             "provisional": False, "generated": False, "error": "判斷不出主題"}
 
@@ -562,26 +605,43 @@ def upload_excel_for_classification():
         return jsonify({"error": "無法自動判斷文字欄位，請確認 Excel 內容是否包含開放式文字回答"}), 400
 
     upload_batch_id = str(uuid.uuid4())
+    # 自動主題的範圍：同一個 workspace/project（前端帶 project_id）或同一個使用者
+    scope = _upload_scope(auth_user_id, request.form.get("project_id"))
 
-    saved_answer_count = 0
-    classified_count = 0
     all_classification_rows = []
-    
+
     answer_id_to_row_index = {}
     aggregated_groups = []   # 攤平版本：向後相容，只看這個欄位的舊呼叫端不用改
     columns_summary = []     # 新增：每個欄位各自的統計 + 各自的 aggregated_groups
 
     for text_column in text_columns:
-        
+        column_texts = [str(v) for v in df[text_column] if is_text_response(v)]
         samples = _collect_masked_routing_samples(df, text_column)
         routing_context = _build_routing_context(text_column, samples)
-        routed_question_type, routing_reason = route_question_type_with_reason(routing_context)
+        if column_texts:
+            routing = route_question_type_detailed(routing_context, scope=scope)
+        else:
+            routing = {"topic_key": None, "reason": ROUTING_REASON_EMPTY_INPUT, "error_kind": None, "error_summary": None}
+        routed_question_type, routing_reason = routing["topic_key"], routing["reason"]
 
-        column_texts = [str(v) for v in df[text_column] if is_text_response(v)]
         # 自動歸納分類架構會自己 commit / 失敗時 rollback；先把前面欄位已經
         # 寫好的資料 commit，避免被這一欄的 rollback 一起丟掉。
         db.session.commit()
-        taxonomy = _resolve_taxonomy_open(routed_question_type, str(text_column), column_texts)
+        failure_code = None
+        failure_detail = None
+
+        if routing_reason == ROUTING_REASON_API_FAILURE:
+            # 判斷主題的 AI 呼叫失敗（429 / 5xx / timeout / 金鑰 / 回應格式）：
+            # 不是「判斷沒有適合的主題」，不能走開放式分類 / 建立自動主題。
+            # 原始回答照常保存，標記 routing_failed，Admin 未分類頁可以稍後重新判斷。
+            safe_detail = f"routing_error={routing['error_kind']}; {routing['error_summary']}"
+            taxonomy = {"prompt": None, "lookup": None, "version_id": None, "topic_key": None,
+                        "provisional": False, "generated": False, "error": safe_detail}
+            failure_code = diag.ROUTING_API_FAILED
+            failure_detail = explain_failure(safe_detail)
+        else:
+            taxonomy = _resolve_taxonomy_open(routed_question_type, str(text_column), column_texts, scope=scope)
+
         prompt_content_for_batch = taxonomy["prompt"]
         category_lookup = taxonomy["lookup"]
         taxonomy_version_id = taxonomy["version_id"]
@@ -589,17 +649,22 @@ def upload_excel_for_classification():
         question_type = (taxonomy["topic_key"] if not taxonomy_unavailable else None) or routed_question_type or QUESTION_OTHER
 
         # 【未分類資料來源統一】routing 判斷不出來時，Uploaded_Answer.question_type
-        # 存 NULL（這張表的既定語意：NULL = 尚未判斷出來、待處理），不再把
-        # 內部 fallback 值 "other" 寫進 DB；原因另外存在 routing_status /
+        # 存 NULL（NULL = 尚未判斷出來、待處理），原因存在 routing_status /
         # routing_detail，Admin 未分類頁據此顯示並提供指派 Topic / 重新 routing。
-        # 開放式分類：判斷不出主題時改用「自動主題」（auto_topic）；只有連
-        # AI 自動歸納都失敗時，才是未分類（原因寫進 routing_detail）。
-        if not taxonomy_unavailable and routed_question_type is None:
+        # 開放式分類：模型「成功判斷沒有適合的主題」時改用自動主題（auto_topic）；
+        # 只有連 AI 自動歸納都失敗時，才是未分類（原因寫進 routing_detail）。
+        if routing_reason == ROUTING_REASON_API_FAILURE:
+            stored_question_type = None
+            routing_status = "routing_failed"
+            routing_detail = taxonomy["error"]
+        elif not taxonomy_unavailable and routed_question_type is None:
             stored_question_type = taxonomy["topic_key"]
             routing_status = "auto_topic"
+            identity = taxonomy.get("auto_identity") or {}
             routing_detail = (
                 f"routing_reason={routing_reason}；使用自動主題 {taxonomy['topic_key']}"
-                f"（{'本次 AI 新歸納' if taxonomy['generated'] else '沿用'}暫定分類架構）"
+                f"（{'本次 AI 新歸納' if taxonomy['generated'] else '沿用'}暫定分類架構；"
+                f"範圍 {identity.get('scope')}，內容相似度 {identity.get('similarity')}）"
             )
         elif not taxonomy_unavailable:
             stored_question_type = routed_question_type
@@ -608,7 +673,6 @@ def upload_excel_for_classification():
         elif routed_question_type is None:
             stored_question_type = None
             routing_status = {
-                ROUTING_REASON_API_FAILURE: "routing_failed",
                 ROUTING_REASON_NO_CANDIDATES: "no_topic_candidates",
             }.get(routing_reason, "unrouted")
             routing_detail = f"routing_reason={routing_reason}" + (f"；{taxonomy['error']}" if taxonomy["error"] else "")
@@ -616,6 +680,10 @@ def upload_excel_for_classification():
             stored_question_type = routed_question_type
             routing_status = "taxonomy_unavailable"
             routing_detail = taxonomy["error"] or f"topic_key={routed_question_type} 沒有可用的 published taxonomy"
+
+        if taxonomy_unavailable and failure_code is None:
+            failure_code = _taxonomy_failure_code(routed_question_type, routing_reason, taxonomy)
+            failure_detail = explain_failure(taxonomy["error"]) if _looks_like_ai_error(taxonomy["error"]) else None
 
         pending_items = []  # 每個元素額外帶一個 _question_id，DB 寫入時才用得到
         column_saved_count = 0
@@ -636,11 +704,11 @@ def upload_excel_for_classification():
                 question_type=stored_question_type,
                 routing_status=routing_status,
                 routing_detail=routing_detail,
+                analysis_scope=scope,
             )
             db.session.add(uploaded_answer)
             db.session.flush()  # 取得 uploaded_answer.id，供下面 FK 使用
             answer_id_to_row_index[uploaded_answer.id] = idx
-            saved_answer_count += 1
             column_saved_count += 1
 
             pending_items.append({
@@ -651,6 +719,12 @@ def upload_excel_for_classification():
             })
 
         column_classification_rows = []
+        # 計數以「回答」為單位：至少一個有效（非 failed）片段 = 分類成功；
+        # 其他（routing / 分類架構 / 拆分 / 分類失敗）一律算失敗。
+        column_classified = 0
+        column_failed = 0 if not taxonomy_unavailable else column_saved_count
+        segmentation_failures = []
+        classification_failures = []
         if pending_items and not taxonomy_unavailable:
             results = run_batch_analysis(
                 existing_references=[],
@@ -674,14 +748,23 @@ def upload_excel_for_classification():
                     taxonomy_version_id=taxonomy_version_id,
                 )
                 column_classification_rows.extend(rows)
-                classified_count += 1
-                if result.get("segmentation_status") == "failed" or (
-                    rows and all(r.status == "failed" for r in rows)
-                ):
-                    item["_uploaded_answer"].routing_status = "classification_failed"
-                    item["_uploaded_answer"].routing_detail = (
-                        result.get("segmentation_error_detail") or "all segments failed"
-                    )[:2000]
+                if any(r.status != "failed" for r in rows):
+                    column_classified += 1
+                    continue
+                column_failed += 1
+                if not rows:
+                    segmentation_failures.append(result.get("segmentation_error_detail") or "no valid segment")
+                else:
+                    classification_failures.append(rows[0].reasoning or result.get("segmentation_error_detail"))
+                item["_uploaded_answer"].routing_status = "classification_failed"
+                item["_uploaded_answer"].routing_detail = safe_error_summary(
+                    result.get("segmentation_error_detail") or (rows[0].reasoning if rows else None) or "all segments failed",
+                    limit=2000,
+                )
+            if column_failed:
+                failure_code = diag.SEGMENTATION_FAILED if not classification_failures else diag.CLASSIFICATION_FAILED
+                first_error = (classification_failures or segmentation_failures or [None])[0]
+                failure_detail = explain_failure(first_error)
 
         all_classification_rows.extend(column_classification_rows)
 
@@ -693,23 +776,29 @@ def upload_excel_for_classification():
             g["question_type"] = question_type
         aggregated_groups.extend(column_groups)
 
+        column_diagnostic = diag.build_column_diagnostic(
+            column_saved_count, column_classified, column_failed,
+            failure_code=failure_code, failure_detail=failure_detail, displayed_groups=len(column_groups),
+        )
         columns_summary.append({
             "column": text_column,
             "question_type": stored_question_type,
             "routing_status": routing_status,
+            "routing_error_kind": routing.get("error_kind"),
             "provisional_taxonomy": bool(taxonomy["provisional"]) and not taxonomy_unavailable,
             "auto_topic": routing_status == "auto_topic",
             "taxonomy_version_id": taxonomy_version_id,
-            "saved_answer_count": column_saved_count,
-            "classified_count": len(column_classification_rows),
+            "segment_count": sum(1 for r in column_classification_rows if r.status != "failed"),
             "aggregated_groups": column_groups,
-            # Phase B 新增：這一欄沒有 Published Taxonomy 時，原始文字
-            # 仍已寫入 Uploaded_Answer（saved_answer_count 不受影響），
-            # 只是完全不會有分類結果（不 fallback 動態分類）。
+            # 這一欄沒有可用的分類架構時，原始文字仍已寫入 Uploaded_Answer
+            # （saved_answer_count 不受影響），只是沒有分類結果。
             "taxonomy_unavailable": taxonomy_unavailable,
+            **column_diagnostic,
         })
 
     db.session.commit()
+
+    batch_diagnostic = diag.build_batch_diagnostic(columns_summary, len(aggregated_groups))
 
     classifications_payload = []
     for r in all_classification_rows:
@@ -730,8 +819,9 @@ def upload_excel_for_classification():
         "source_type": "user_upload",
         "review_revision": review_revision,
         "provisional_taxonomy": any(c["provisional_taxonomy"] for c in columns_summary),
-        "saved_answer_count": saved_answer_count,
-        "classified_count": classified_count,
+        # 整批的 analysis_status / diagnostic / 計數（= 各欄位加總，見
+        # services/analysis_diagnostics.py）
+        **batch_diagnostic,
         "classifications": classifications_payload,
         "aggregated_groups": aggregated_groups,
         "columns": columns_summary,
@@ -741,6 +831,21 @@ def upload_excel_for_classification():
         "text_column": text_columns[0] if text_columns else None,
         "question_type": columns_summary[0]["question_type"] if columns_summary else None,
     }), 201
+
+
+def _remember_question_routing(survey, question_id, outcome):
+    """分析時重新判斷出的主題 / 原因寫回問卷題目（下次分析不用再判斷）。"""
+    from sqlalchemy.orm.attributes import flag_modified
+
+    question_json = dict(survey.question_json or {})
+    items = [dict(item) for item in question_json.get("items", [])]
+    for item in items:
+        if item.get("id") == question_id:
+            item["question_type"] = outcome["topic_key"]
+            item["routing_status"] = outcome["reason"]
+    question_json["items"] = items
+    survey.question_json = question_json
+    flag_modified(survey, "question_json")
 
 
 # ---------- 3. 觸發整份問卷的批次分析 ----------
@@ -799,6 +904,11 @@ def analyze_survey(access_code):
         if item.get("type") == "short"
     }
     provisional_question_ids = []
+    question_routing_status = {
+        item.get("id"): item.get("routing_status") for item in items if item.get("type") == "short"
+    }
+    # 自動主題範圍：問卷擁有者
+    scope = f"user:{survey.user_id}"
 
     if not question_type_map:
         
@@ -841,18 +951,37 @@ def analyze_survey(access_code):
             if is_text_response((r.answer_json or {}).get("answers", {}).get(question_id))
         ]
         db.session.commit()  # 同上：保護前面題目已寫入的結果
-        taxonomy = _resolve_taxonomy_open(
-            question_type if question_type != QUESTION_OTHER else None,
-            question_title_map.get(question_id) or str(question_id),
-            question_answers,
-        )
+        routed = question_type if question_type != QUESTION_OTHER else None
+        title = question_title_map.get(question_id) or str(question_id)
+        routing_status = question_routing_status.get(question_id)
+        if routed is None and question_answers and routing_status not in (
+            ROUTING_REASON_UNDETERMINED, ROUTING_REASON_NO_CANDIDATES,
+        ):
+            # 建立問卷時 routing 的 AI 呼叫失敗（或舊問卷沒有記錄原因）：現在重新判斷
+            # 一次；只有模型成功判斷「沒有適合主題」才可以走自動主題。
+            outcome = route_question_type_detailed(title, scope=scope)
+            if outcome["reason"] == ROUTING_REASON_API_FAILURE:
+                per_question_diagnostic[question_id] = {
+                    "taxonomy_unavailable": True,
+                    "diagnostic_code": diag.ROUTING_API_FAILED,
+                    "reason": f"routing_error={outcome['error_kind']}; {outcome['error_summary']}",
+                }
+                continue
+            routed = outcome["topic_key"]
+            _remember_question_routing(survey, question_id, outcome)
+        taxonomy = _resolve_taxonomy_open(routed, title, question_answers, scope=scope)
         prompt_content_for_batch = taxonomy["prompt"]
         category_lookup = taxonomy["lookup"]
         taxonomy_version_id = taxonomy["version_id"]
         if prompt_content_for_batch is None:
             # 開放式分類下只有在「連 AI 自動歸納都失敗」或關閉開放模式時
             # 才會走到這裡：整題跳過，原始回答仍完整存在 answer_json。
-            per_question_diagnostic[question_id] = {"taxonomy_unavailable": True, "reason": taxonomy["error"]}
+            per_question_diagnostic[question_id] = {
+                "taxonomy_unavailable": True,
+                "diagnostic_code": _taxonomy_failure_code(
+                    routed, routing_status or ROUTING_REASON_UNDETERMINED, taxonomy),
+                "reason": taxonomy["error"],
+            }
             continue
         question_type = taxonomy["topic_key"] or question_type
         if taxonomy["provisional"]:
@@ -861,7 +990,7 @@ def analyze_survey(access_code):
         existing_references = []
         pending_items = []      # 第一次分析 / 整則重新分析（MODE_NEW / MODE_FULL）
         segment_retries = []    # 有人工審核結果：只重新分類失敗片段（MODE_RETRY_SEGMENTS）
-        diag = {
+        qdiag = {
             "total_responses": len(responses), "missing_key": 0, "invalid_text": 0, "valid": 0,
             "reanalyzed": 0, "segment_retries": 0, "blocked_by_review": 0,
             "kept_previous": 0, "attempt_conflicts": 0,
@@ -870,14 +999,14 @@ def analyze_survey(access_code):
         for response in responses:
             answers = (response.answer_json or {}).get("answers", {})
             if question_id not in answers:
-                diag["missing_key"] += 1
+                qdiag["missing_key"] += 1
                 continue
             answer_value = answers[question_id]
             if not is_text_response(answer_value):
-                diag["invalid_text"] += 1
+                qdiag["invalid_text"] += 1
                 continue
             answer_text = str(answer_value)
-            diag["valid"] += 1
+            qdiag["valid"] += 1
 
             # 重新分析不再 hard-delete 舊結果：見 services/classification_attempt_service.py
             scope = attempt_service.survey_scope(response.response_id, question_id, answer_text)
@@ -915,12 +1044,12 @@ def analyze_survey(access_code):
                     ],
                 })
             elif plan["mode"] == attempt_service.MODE_SKIP:
-                diag["blocked_by_review"] += 1
+                qdiag["blocked_by_review"] += 1
             elif plan["mode"] == attempt_service.MODE_RETRY_SEGMENTS:
                 segment_retries.append((scope, plan))
             else:
                 if plan["mode"] == attempt_service.MODE_FULL:
-                    diag["reanalyzed"] += 1
+                    qdiag["reanalyzed"] += 1
                 pending_items.append({
                     "identifier": response.response_id,
                     "answer_text": answer_text,
@@ -928,7 +1057,7 @@ def analyze_survey(access_code):
                     "_plan": plan,
                 })
 
-        per_question_diagnostic[question_id] = diag
+        per_question_diagnostic[question_id] = qdiag
 
         if not pending_items and not segment_retries:
             continue  # 這題沒有需要處理的回答
@@ -948,7 +1077,7 @@ def analyze_survey(access_code):
                 prompt_content_for_batch, question_type, category_lookup=category_lookup,
             )
             work.append((scope, plan, result, [r.classification_id for r in retry_rows]))
-            diag["segment_retries"] += 1
+            qdiag["segment_retries"] += 1
 
         rerun_happened = False
         for scope, plan, result, retry_ids in work:
@@ -968,13 +1097,13 @@ def analyze_survey(access_code):
                 else:
                     rows_by_question_type.setdefault(question_type, []).extend(outcome.rows)
             elif outcome.outcome == attempt_service.OUTCOME_KEPT_PREVIOUS:
-                diag["kept_previous"] += 1
+                qdiag["kept_previous"] += 1
                 if plan["mode"] == attempt_service.MODE_FULL:
                     rows_by_question_type.setdefault(question_type, []).extend(plan["rows"])
             elif outcome.outcome == attempt_service.OUTCOME_CONFLICT:
-                diag["attempt_conflicts"] += 1
+                qdiag["attempt_conflicts"] += 1
             elif outcome.outcome == attempt_service.OUTCOME_BLOCKED:
-                diag["blocked_by_review"] += 1
+                qdiag["blocked_by_review"] += 1
                 rows_by_question_type.setdefault(question_type, []).extend(plan["rows"])
 
         # 每題一個 transaction：這題的所有 attempt 一起生效

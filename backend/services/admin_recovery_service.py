@@ -52,6 +52,7 @@ from classification_models import (
 )
 from services import audit_service
 from services.failure_explainer import explain_failure, routing_failure
+from services.safe_error import safe_error_summary
 from services.effective_classification_service import (
     CLASSIFICATION_STATUS_FAILED,
     CLASSIFICATION_STATUS_SUPERSEDED,
@@ -356,13 +357,13 @@ def _reprocess(scope, topic_key, admin_id, action, taxonomy_version_id=None, rea
         if answer is not None:
             answer = db.session.get(Uploaded_Answer, answer.id)
             answer.routing_status = "classification_failed"
-            answer.routing_detail = f"{action}: {repr(exc)[:1500]}"
+            answer.routing_detail = f"{action}: {safe_error_summary(exc, limit=1500)}"
             audit_service.record(
                 action, audit_service.ENTITY_UPLOADED_ANSWER, answer.id, admin_id,
-                before=before, after={"error": repr(exc)[:500], "topic_key": topic_key}, reason=reason,
+                before=before, after={"error": safe_error_summary(exc, limit=500), "topic_key": topic_key}, reason=reason,
             )
             db.session.commit()
-        explained = explain_failure(repr(exc))
+        explained = explain_failure(safe_error_summary(exc, limit=1000))
         raise RecoveryError(
             explained["code"], explained["message"], 502, extra={"raw_error": explained["raw"]},
         )
@@ -472,42 +473,82 @@ def assign_topic_to_answer(answer_id, admin_id, topic_key, taxonomy_version_id=N
 
 
 def reroute_answer(answer_id, admin_id):
-    """重新 routing：用同一欄位名稱 + 同批次遮罩樣本重新判斷 Topic；判斷
-    出來就直接分類，判斷不出來就更新 routing_status / 原因。"""
+    """重新 routing：用同一欄位名稱 + 同批次遮罩樣本重新判斷 Topic。
+
+    - 判斷出主題 -> 直接分類
+    - 模型成功判斷「沒有適合主題」（undetermined / no_candidates）且開放式
+      分類開啟 -> 依同一個範圍（Uploaded_Answer.analysis_scope）建立 / 沿用
+      自動主題後分類
+    - AI 呼叫失敗（429 / 5xx / timeout / 金鑰 / 回應格式）-> 維持
+      routing_failed，記錄安全的錯誤摘要，不建立自動主題
+    """
     from routes.classifications.classification import _build_routing_context
+    from services.open_classification import open_mode_enabled, resolve_for_unrouted
     from services.privacy_service import PiiMaskingError, mask_pii
     from services.question_routing_service import (
         ROUTING_REASON_API_FAILURE,
         ROUTING_REASON_NO_CANDIDATES,
-        route_question_type_with_reason,
+        ROUTING_REASON_UNDETERMINED,
+        route_question_type_detailed,
     )
 
     answer = _lock_answer(answer_id)
+    scope = answer.analysis_scope or f"user:{answer.user_id}"
     samples = []
     peers = (
         Uploaded_Answer.query.filter_by(upload_batch_id=answer.upload_batch_id, source_column=answer.source_column)
-        .order_by(Uploaded_Answer.row_index.asc()).limit(5).all()
+        .order_by(Uploaded_Answer.row_index.asc()).all()
     )
-    for peer in peers:
+    for peer in peers[:5]:
         try:
             samples.append(mask_pii(peer.answer_text))
         except PiiMaskingError:
             continue
-    topic_key, routing_reason = route_question_type_with_reason(_build_routing_context(answer.source_column, samples))
+    outcome = route_question_type_detailed(_build_routing_context(answer.source_column, samples), scope=scope)
+    topic_key, routing_reason = outcome["topic_key"], outcome["reason"]
+    before = {"routing_status": answer.routing_status, "question_type": answer.question_type}
 
-    if topic_key is None:
-        before = {"routing_status": answer.routing_status, "question_type": answer.question_type}
-        answer.routing_status = {
-            ROUTING_REASON_API_FAILURE: "routing_failed",
-            ROUTING_REASON_NO_CANDIDATES: "no_topic_candidates",
-        }.get(routing_reason, "unrouted")
-        answer.routing_detail = f"reroute: routing_reason={routing_reason}"
+    if topic_key is None and routing_reason in (ROUTING_REASON_UNDETERMINED, ROUTING_REASON_NO_CANDIDATES) \
+            and open_mode_enabled():
+        db.session.commit()  # 自動歸納會自己 commit / rollback：先釋放這筆的鎖
+        taxonomy = resolve_for_unrouted(answer.source_column, [p.answer_text for p in peers], scope=scope)
+        if taxonomy["prompt"] is not None:
+            answer = _lock_answer(answer_id)
+            result = _reprocess(
+                _scope_for_answer(answer), taxonomy["topic_key"], admin_id, audit_service.ACTION_REROUTE,
+                reason=f"reroute -> auto topic {taxonomy['topic_key']}", require_unclassified=True,
+            )
+            answer = db.session.get(Uploaded_Answer, answer_id)
+            if answer.routing_status == "routed":
+                answer.routing_status = "auto_topic"
+                db.session.commit()
+            return {"routed": True, "auto_topic": True, "routing_reason": routing_reason, **result}
+        answer = _lock_answer(answer_id)
+        answer.routing_status = "unrouted"
+        answer.routing_detail = f"reroute: routing_reason={routing_reason}; {taxonomy['error']}"[:2000]
         audit_service.record(
             audit_service.ACTION_REROUTE, audit_service.ENTITY_UPLOADED_ANSWER, answer.id, admin_id,
             before=before, after={"routing_status": answer.routing_status, "routing_reason": routing_reason},
         )
         db.session.commit()
-        return {"routed": False, "routing_reason": routing_reason, "routing_status": answer.routing_status}
+        return {"routed": False, "routing_reason": routing_reason, "routing_status": answer.routing_status,
+                "error": taxonomy["error"]}
+
+    if topic_key is None:
+        if routing_reason == ROUTING_REASON_API_FAILURE:
+            answer.routing_status = "routing_failed"
+            answer.routing_detail = f"reroute: routing_error={outcome['error_kind']}; {outcome['error_summary']}"[:2000]
+        else:
+            answer.routing_status = {ROUTING_REASON_NO_CANDIDATES: "no_topic_candidates"}.get(routing_reason, "unrouted")
+            answer.routing_detail = f"reroute: routing_reason={routing_reason}"
+        audit_service.record(
+            audit_service.ACTION_REROUTE, audit_service.ENTITY_UPLOADED_ANSWER, answer.id, admin_id,
+            before=before, after={"routing_status": answer.routing_status, "routing_reason": routing_reason,
+                                  "routing_error": outcome["error_kind"]},
+        )
+        db.session.commit()
+        return {"routed": False, "routing_reason": routing_reason, "routing_status": answer.routing_status,
+                "routing_error": outcome["error_kind"]}
 
     result = _reprocess(
         _scope_for_answer(answer), topic_key, admin_id, audit_service.ACTION_REROUTE,

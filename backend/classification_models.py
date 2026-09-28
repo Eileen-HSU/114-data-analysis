@@ -87,6 +87,9 @@ class Uploaded_Answer(db.Model):
     #   classification_failed：已送分類但整則失敗（見 Response_Segmentation_Status）
     # routing_detail 保存對應的診斷訊息（錯誤原因、指派備註）。
     routing_status = db.Column(db.String(30), nullable=True)
+    # 自動主題範圍（"project:<id>" / "user:<id>"）：Admin 重新判斷主題時沿用同一個
+    # 範圍，不會把這筆資料歸到別的 workspace / 使用者的自動主題。
+    analysis_scope = db.Column(db.String(100), nullable=True)
     routing_detail = db.Column(db.Text, nullable=True)
     assigned_by_admin_id = db.Column(db.Integer, nullable=True)
     assigned_at = db.Column(db.DateTime(timezone=True), nullable=True)

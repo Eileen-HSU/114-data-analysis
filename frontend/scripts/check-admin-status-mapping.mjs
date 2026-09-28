@@ -50,4 +50,29 @@ for (const tab of frontendArray("STATE_TABS")) {
   assert.ok(backendStates.includes(tab), `STATE_TABS contains unknown state ${tab}`);
 }
 
-console.log(`Admin status mapping OK: ${backendStates.length} states, ${frontendArray("OUTDATED_REASONS").length} outdated reasons, ${frontendArray("UNASSIGNED_KINDS").length} unassigned kinds.`);
+// 6. 上傳 / 分析診斷 code（services/analysis_diagnostics.py <-> workspace/AnalysisDiagnostics.jsx）
+const diagSource = read(path.join(root, "src/pages/workspace/AnalysisDiagnostics.jsx"));
+const jsxArray = (name) => {
+  const match = diagSource.match(new RegExp(`export const ${name} = \\[([\\s\\S]*?)\\];`));
+  assert.ok(match, `frontend ${name} not found`);
+  return [...match[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+};
+const diagPy = read(path.join(backend, "services/analysis_diagnostics.py"));
+const pyTuple = (name) => {
+  const match = diagPy.match(new RegExp(`^${name} = \\(([\\s\\S]*?)\\)`, "m"));
+  assert.ok(match, `backend ${name} not found`);
+  return [...match[1].matchAll(/([A-Z_]+)/g)].map((m) => m[1]);
+};
+const pyValue = (name) => diagPy.match(new RegExp(`^${name} = "([^"]+)"`, "m"))[1];
+const backendCodes = pyTuple("DIAGNOSTIC_CODES").map(pyValue);
+assert.deepEqual(sorted(jsxArray("DIAGNOSTIC_CODES")), sorted(backendCodes), "DIAGNOSTIC_CODES mismatch");
+const backendAnalysisStatuses = pyTuple("ANALYSIS_STATUSES").map(pyValue);
+assert.deepEqual(sorted(jsxArray("ANALYSIS_STATUSES")), sorted(backendAnalysisStatuses), "ANALYSIS_STATUSES mismatch");
+for (const code of backendCodes) {
+  assert.ok(diagSource.includes(`case "${code}":`), `missing display text for diagnostic ${code}`);
+}
+for (const status of backendAnalysisStatuses) {
+  assert.ok(diagSource.includes(`case "${status}":`), `missing label for analysis status ${status}`);
+}
+
+console.log(`Admin status mapping OK: ${backendStates.length} states, ${frontendArray("OUTDATED_REASONS").length} outdated reasons, ${frontendArray("UNASSIGNED_KINDS").length} unassigned kinds, ${backendCodes.length} diagnostic codes.`);

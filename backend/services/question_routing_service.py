@@ -120,7 +120,7 @@ def _is_rate_limit_error(exc: Exception) -> bool:
     )
 
 
-def _get_routing_candidates() -> list:
+def _get_routing_candidates(scope=None) -> list:
     """
     動態組出這次 route_question_type() 呼叫可以選的候選 Topic 清單。
 
@@ -202,14 +202,18 @@ def _get_routing_candidates() -> list:
 
     # 開放式分類：之前遇過、由系統自動歸納的「自動主題」（只有暫定草稿、
     # 還沒被管理員發布）也列為候選，類似的新資料才會沿用同一個主題，
-    # 不會每次都重新歸納一份。
+    # 不會每次都重新歸納一份。只列「同一個範圍」（同 workspace/project 或
+    # 同一使用者）的自動主題：它們的暫定分類架構是從那個範圍的回答歸納出來
+    # 的，不能拿去分類別人的資料（範圍外、或舊版沒有範圍的自動主題都不列入；
+    # 管理員發布之後才會變成上面的全域候選）。
     from services.open_classification import is_auto_topic, open_mode_enabled, usable_version_for
 
     if open_mode_enabled():
         from models import Topic
 
         known = {c["topic_key"] for c in candidates}
-        for topic in Topic.query.filter(Topic.topic_key.like("auto\\_%", escape="\\")).all():
+        auto_topics = Topic.query.filter(Topic.auto_scope == scope).all() if scope else []
+        for topic in auto_topics:
             if topic.topic_key in known or not is_auto_topic(topic.topic_key) or topic.merged_into:
                 continue
             try:
@@ -284,41 +288,81 @@ def route_question_type(context_text: str) -> Optional[str]:
     return route_question_type_with_reason(context_text)[0]
 
 
-def route_question_type_with_reason(context_text: str):
-    """回傳 (topic_key 或 None, reason)。reason 讓呼叫端可以把「為什麼
-    沒有 routing 結果」持久化（Uploaded_Answer.routing_status），Admin
-    未分類頁才能區分「判斷不出 Topic（含信心不足）」、「routing API 失敗」、
-    「目前沒有任何 published Topic」。
+# routing 失敗的種類（ROUTING_REASON_API_FAILURE 的細分）。只有「模型成功
+# 回應、判斷沒有適合 Topic」（ROUTING_REASON_UNDETERMINED）才可以走開放式
+# 分類 / 自動主題；這些失敗一律標記 routing_failed、保留原始回答、不建立
+# 自動主題，等 Admin 稍後重新判斷。
+ROUTING_ERROR_RATE_LIMITED = "rate_limited"          # 429 / quota
+ROUTING_ERROR_SERVICE_UNAVAILABLE = "service_unavailable"  # 5xx / overloaded
+ROUTING_ERROR_TIMEOUT = "timeout"
+ROUTING_ERROR_AUTH_OR_CONFIG = "auth_or_config"      # API key 缺漏 / 無效、權限、本機設定
+ROUTING_ERROR_PARSE = "parse_error"                  # 回傳內容不是預期的 JSON
+ROUTING_ERROR_UNKNOWN = "unknown"
 
-    原本的說明：
-    對外主要介面，函式簽章維持不變。輸入已經組好的判斷用文字
-    （呼叫端負責組裝、以及必要的 PII masking，這裡不做遮罩），
-    回傳判斷結果（某個目前有 published taxonomy 的 Topic.topic_key）
-    或 None。
 
-    最多呼叫 Gemini _MAX_ATTEMPTS 次，只有真的撞到限流才會重試；
-    其餘情況（內容判斷不出來、非限流錯誤）都只呼叫一次就回傳。
+def classify_routing_error(exc) -> str:
+    text = f"{type(exc).__name__}: {exc}"
+    # 設定 / 金鑰問題優先判斷：google-genai 沒有金鑰時丟的是 ValueError
+    # （"Missing key inputs argument ... provide (`api_key`)"），不能被當成解析失敗。
+    if re.search(r"API key|api_key|Missing key|GEMINI_API_KEY|PERMISSION_DENIED|UNAUTHENTICATED|\b401\b|\b403\b|not configured|未設定", text, re.I):
+        return ROUTING_ERROR_AUTH_OR_CONFIG
+    if _is_rate_limit_error(exc) or re.search(r"\b429\b|RESOURCE_EXHAUSTED|quota", text, re.I):
+        return ROUTING_ERROR_RATE_LIMITED
+    if re.search(r"timeout|timed out|DEADLINE_EXCEEDED|\b504\b", text, re.I):
+        return ROUTING_ERROR_TIMEOUT
+    if genai.is_transient_unavailable_error(exc) or re.search(r"\b5\d\d\b|INTERNAL", text):
+        return ROUTING_ERROR_SERVICE_UNAVAILABLE
+    if isinstance(exc, (ValueError, AttributeError, TypeError, KeyError)):
+        return ROUTING_ERROR_PARSE  # 含 json.JSONDecodeError（ValueError 子類別）
+    return ROUTING_ERROR_UNKNOWN
 
-    候選清單在函式一開始查一次、整個函式（含重試）共用同一份，
-    不會每次重試都重新查 DB、也不會讓同一次判斷內的多次嘗試看到
-    不一致的候選清單。
+
+def route_question_type_with_reason(context_text: str, scope=None):
+    """回傳 (topic_key 或 None, reason)；細節（失敗種類、安全錯誤摘要）見
+    route_question_type_detailed()。"""
+    outcome = route_question_type_detailed(context_text, scope=scope)
+    return outcome["topic_key"], outcome["reason"]
+
+
+def route_question_type_detailed(context_text: str, scope=None) -> dict:
+    """回傳 {"topic_key", "reason", "error_kind", "error_summary"}。
+
+    reason：
+        routed        模型判斷出 Topic
+        undetermined  模型成功回應，判斷沒有適合的 Topic（唯一可以走自動主題的情況）
+        no_candidates 目前沒有任何有 published taxonomy 的 Topic（沒有可選的答案，
+                      不需要呼叫模型就確定沒有適合的 Topic）
+        empty_input   沒有可判斷的內容
+        api_failure   模型呼叫 / 回應失敗；error_kind 細分 429、5xx、timeout、
+                      API key / 設定、回應解析失敗；error_summary 已去除敏感資訊
     """
-    if not context_text or not context_text.strip():
-        return None, ROUTING_REASON_EMPTY_INPUT
+    from services.safe_error import safe_error_summary
 
-    candidates = _get_routing_candidates()
+    def outcome(topic_key, reason, error=None):
+        return {
+            "topic_key": topic_key,
+            "reason": reason,
+            "error_kind": classify_routing_error(error) if error is not None else None,
+            "error_summary": safe_error_summary(error) if error is not None else None,
+        }
+
+    if not context_text or not context_text.strip():
+        return outcome(None, ROUTING_REASON_EMPTY_INPUT)
+
+    candidates = _get_routing_candidates(scope)
     if not candidates:
         # 目前完全沒有任何 Topic 有 published taxonomy，沒有任何
         # 合法答案可選，連 Gemini 都不用呼叫。
         print("[ROUTING_FALLBACK]", "reason=no_candidates")
-        return None, ROUTING_REASON_NO_CANDIDATES
+        return outcome(None, ROUTING_REASON_NO_CANDIDATES)
 
     allowed_topic_keys = {c["topic_key"] for c in candidates}
     routing_prompt = _build_routing_prompt(candidates)
 
     last_error: Optional[Exception] = None
+    unavailable_retries = 0
 
-    for attempt in range(_MAX_ATTEMPTS):
+    for attempt in range(_MAX_ATTEMPTS + len(genai.UNAVAILABLE_RETRY_DELAYS_SECONDS)):
         try:
             model = genai.GenerativeModel(
                 model_name="gemini-3.1-flash-lite",
@@ -328,48 +372,41 @@ def route_question_type_with_reason(context_text: str):
                 context_text,
                 generation_config={"temperature": 0},
             )
-            cleaned = re.sub(r"```json|```", "", response.text).strip()
-            parsed = json.loads(cleaned)
-            result = parsed.get("question_type")
-
-            if result in allowed_topic_keys:
-                return result, ROUTING_REASON_ROUTED
-
-            # Gemini 有成功回應，只是判斷結果是 null、或不在這次
-            # 候選清單裡（例如候選改變了、或 Gemini 自己編了一個不
-            # 存在的 key）——這是「內容真的判斷不出來」，不是 API
-            # 錯誤，不重試。
-            print("[ROUTING_UNDETERMINED]", f"raw_result={result!r}", f"allowed={sorted(allowed_topic_keys)}")
-            print("[ROUTING_FALLBACK]", "reason=undetermined")
-            return None, ROUTING_REASON_UNDETERMINED
-
         except Exception as e:
             last_error = e
-
-            if _is_rate_limit_error(e):
-                remaining_attempts = _MAX_ATTEMPTS - attempt - 1
-                if remaining_attempts > 0:
-                    delay = _extract_retry_delay_seconds(e) or _DEFAULT_RETRY_DELAY_SECONDS
-                    print(
-                        "[ROUTING_RATE_LIMIT]",
-                        f"attempt={attempt + 1}/{_MAX_ATTEMPTS}",
-                        f"retry_in={delay}s",
-                        repr(e),
-                    )
-                    time.sleep(delay + 1.0)
-                    continue
-                print(
-                    "[ROUTING_RATE_LIMIT]",
-                    f"attempt={attempt + 1}/{_MAX_ATTEMPTS}",
-                    "retries_exhausted",
-                    repr(e),
-                )
-                break
-
-            # 非限流錯誤（prompt 有問題、JSON 解析失敗等）：維持原本
-            # 行為，不重試，直接視為這次判斷失敗。
-            print("[ROUTING_API_ERROR]", f"attempt={attempt + 1}", repr(e))
+            if _is_rate_limit_error(e) and attempt < _MAX_ATTEMPTS - 1:
+                delay = _extract_retry_delay_seconds(e) or _DEFAULT_RETRY_DELAY_SECONDS
+                print("[ROUTING_RATE_LIMIT]", f"attempt={attempt + 1}", f"retry_in={delay}s", safe_error_summary(e))
+                time.sleep(delay + 1.0)
+                continue
+            if genai.is_transient_unavailable_error(e) and unavailable_retries < len(genai.UNAVAILABLE_RETRY_DELAYS_SECONDS):
+                delay = genai.UNAVAILABLE_RETRY_DELAYS_SECONDS[unavailable_retries]
+                unavailable_retries += 1
+                print("[ROUTING_UNAVAILABLE]", f"retry_in={delay}s", safe_error_summary(e))
+                time.sleep(delay)
+                continue
+            print("[ROUTING_API_ERROR]", f"attempt={attempt + 1}", safe_error_summary(e))
             break
 
-    print("[ROUTING_FALLBACK]", "reason=api_failure", repr(last_error))
-    return None, ROUTING_REASON_API_FAILURE
+        # 模型有回應：解析失敗也是「失敗」，不是「判斷不出來」
+        try:
+            cleaned = re.sub(r"```json|```", "", response.text or "").strip()
+            parsed = json.loads(cleaned)
+            if not isinstance(parsed, dict) or "question_type" not in parsed:
+                raise ValueError(f"routing 回應缺少 question_type 欄位：{cleaned[:120]!r}")
+            result = parsed.get("question_type")
+        except Exception as e:
+            last_error = e
+            print("[ROUTING_PARSE_ERROR]", safe_error_summary(e))
+            break
+
+        if result in allowed_topic_keys:
+            return outcome(result, ROUTING_REASON_ROUTED)
+
+        # Gemini 有成功回應，只是判斷結果是 null、或不在這次候選清單裡
+        # ——這是「內容真的判斷不出來」，不是 API 錯誤，不重試。
+        print("[ROUTING_UNDETERMINED]", f"raw_result={result!r}", f"allowed={sorted(allowed_topic_keys)}")
+        return outcome(None, ROUTING_REASON_UNDETERMINED)
+
+    print("[ROUTING_FALLBACK]", "reason=api_failure", safe_error_summary(last_error))
+    return outcome(None, ROUTING_REASON_API_FAILURE, last_error or RuntimeError("routing failed"))

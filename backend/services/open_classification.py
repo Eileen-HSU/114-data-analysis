@@ -62,10 +62,143 @@ def _normalize_label(label: str) -> str:
 
 
 def auto_topic_key(label: str) -> str:
-    """同樣的欄位名稱 / 題目文字（忽略空白、標點、大小寫）永遠得到同一個
-    自動主題，之後遇到類似資料會沿用，不會每次都產生新主題。"""
+    """【舊版】只依欄位名稱產生的全域 key。新資料改用 auto_topic_identity()
+    （含範圍與內容特徵）；保留給舊的自動主題辨識 / 相容用。"""
     digest = hashlib.sha1(_normalize_label(label).encode("utf-8")).hexdigest()[:12]
     return f"{AUTO_TOPIC_PREFIX}{digest}"
+
+
+# ═══════════════════════════════════════════════════════════════
+# 自動主題 identity：範圍 + 題意 + 內容特徵
+# ═══════════════════════════════════════════════════════════════
+#
+# 只用欄位名稱當全域 identity 會把「意見」、「開放式回答」這種通用欄位名
+# 的不相干資料併在一起，也會讓不同使用者 / workspace 的資料共用同一份由
+# 別人回答歸納出來的分類架構。規則：
+#   1. 自動主題一律有範圍（scope）：Excel 上傳 = "project:<id>"（沒有帶
+#      project 時 "user:<id>"）；問卷 = "user:<owner id>"。不同範圍永遠不沿用。
+#   2. 同範圍、同一個正規化後的欄位名稱 / 題目文字，而且內容特徵相似度
+#      >= REUSE_SIMILARITY_THRESHOLD 才沿用；否則建立新的暫定（provisional）主題。
+#   3. topic key = auto_ + sha1(scope | label | 內容特徵摘要)[:12]：穩定、可重現，
+#      不含任何原始回答或個資；內容特徵只存雜湊值（Topic.auto_signature）。
+#   4. 重複的自動主題可以在 Admin「整個主題併入其他主題」合併。
+
+GENERIC_LABELS = frozenset(
+    _label for _label in (
+        "意見", "建議", "其他建議", "回饋", "開放式回答", "其他", "備註", "其他意見", "意見回饋",
+        "comment", "comments", "feedback", "suggestion", "suggestions", "other", "others", "remark", "remarks",
+        "note", "notes", "openended", "openendedresponse", "response", "answer",
+    )
+)
+REUSE_SIMILARITY_THRESHOLD = 0.25
+_SIGNATURE_SIZE = 120
+
+
+def is_generic_label(label) -> bool:
+    return _normalize_label(label) in GENERIC_LABELS
+
+
+# 問卷回答裡到處都會出現、不能代表主題的字元 bigram（語氣、程度、常見動詞）
+_STOP_BIGRAMS = frozenset((
+    "希望", "增加", "太少", "太多", "不多", "很多", "可以", "應該", "覺得", "沒有", "一點", "多一", "點的",
+    "我們", "公司", "非常", "比較", "目前", "一些", "有些", "不會", "不是", "還是", "而且", "但是", "因為",
+    "所以", "如果", "能夠", "提供", "更多", "改善", "問題", "的話", "一下", "時候", "什麼", "這個", "那個",
+))
+
+
+def _features(text):
+    """內容特徵：英文單字 + 每個片語內的中文字元 bigram（不跨標點），去掉
+    常見虛詞 bigram。NFKC、小寫。"""
+    normalized = unicodedata.normalize("NFKC", str(text or "")).lower()
+    words = re.findall(r"[a-z0-9]{3,}", normalized)
+    features = list(words)
+    for chunk in re.split(r"[\s\W_a-z0-9]+", normalized):
+        for i in range(len(chunk) - 1):
+            bigram = chunk[i:i + 2]
+            if bigram not in _STOP_BIGRAMS and not bigram.endswith("的") and not bigram.startswith("的"):
+                features.append(bigram)
+    return features
+
+
+def content_signature(texts) -> list:
+    """內容特徵：出現最多的 bigram / 單字，各自雜湊成 8 碼 hex（排序後的清單）。
+    輸入應該是已遮罩的文字；即使如此也只存雜湊，不存原文。"""
+    counts = {}
+    for text in texts or []:
+        for feature in _features(text):
+            counts[feature] = counts.get(feature, 0) + 1
+    top = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:_SIGNATURE_SIZE]
+    return sorted(hashlib.sha1(f.encode("utf-8")).hexdigest()[:8] for f, _ in top)
+
+
+def signature_similarity(a, b) -> float:
+    """overlap coefficient：|A∩B| / min(|A|, |B|)。回答數量不同的兩批資料
+    （一批 3 則、一批 100 則）也能比較，不會因為特徵數量差很多而永遠偏低。"""
+    set_a, set_b = set(a or []), set(b or [])
+    if not set_a or not set_b:
+        return 0.0
+    return len(set_a & set_b) / min(len(set_a), len(set_b))
+
+
+def _masked(texts):
+    from services.privacy_service import PiiMaskingError, mask_pii
+
+    masked = []
+    for text in _generation_samples(texts):
+        try:
+            masked.append(mask_pii(text))
+        except PiiMaskingError:
+            continue
+    return masked
+
+
+def auto_topic_identity(label, scope, sample_texts) -> dict:
+    """決定這批資料要沿用哪個自動主題、或建立新的。
+
+    Returns {"topic_key", "reused", "similarity", "scope", "label", "signature", "generic"}
+    """
+    import json
+
+    from models import Topic
+
+    label_norm = _normalize_label(label)[:255]
+    scope = (scope or "global")[:100]
+    signature = content_signature(_masked(sample_texts))
+
+    best_key, best_score = None, 0.0
+    candidates = Topic.query.filter_by(auto_scope=scope, auto_label=label_norm).all()
+    for topic in candidates:
+        try:
+            other = json.loads(topic.auto_signature or "[]")
+        except ValueError:
+            other = []
+        score = signature_similarity(signature, other)
+        if score > best_score:
+            best_key, best_score = topic.topic_key, score
+
+    if best_key is not None and best_score >= REUSE_SIMILARITY_THRESHOLD:
+        return {"topic_key": best_key, "reused": True, "similarity": round(best_score, 3), "scope": scope,
+                "label": label_norm, "signature": signature, "generic": label_norm in GENERIC_LABELS}
+
+    digest_source = f"{scope}|{label_norm}|{','.join(signature)}"
+    key = f"{AUTO_TOPIC_PREFIX}{hashlib.sha1(digest_source.encode('utf-8')).hexdigest()[:12]}"
+    return {"topic_key": key, "reused": False, "similarity": round(best_score, 3), "scope": scope,
+            "label": label_norm, "signature": signature, "generic": label_norm in GENERIC_LABELS}
+
+
+def _record_identity(identity):
+    """自動主題建立 / 沿用後，補上 identity 欄位（只在還沒有時寫入）。"""
+    import json
+
+    from models import Topic
+
+    topic = db.session.get(Topic, identity["topic_key"])
+    if topic is None or topic.auto_scope:
+        return
+    topic.auto_scope = identity["scope"]
+    topic.auto_label = identity["label"]
+    topic.auto_signature = json.dumps(identity["signature"])
+    db.session.commit()
 
 
 def usable_version_for(topic_key):
@@ -218,8 +351,14 @@ def resolve_taxonomy(topic_key, *, sample_texts=None, title=None, question_text=
     return result
 
 
-def resolve_for_unrouted(label, sample_texts, question_text=None) -> dict:
-    """判斷不出主題的資料：建立 / 沿用自動主題。"""
-    topic_key = auto_topic_key(label)
+def resolve_for_unrouted(label, sample_texts, question_text=None, scope=None) -> dict:
+    """判斷不出主題的資料：依「範圍 + 題意 + 內容特徵」建立 / 沿用自動主題
+    （見 auto_topic_identity()）。"""
+    identity = auto_topic_identity(question_text or label, scope, sample_texts)
     title = f"自動歸納：{str(label).strip()[:180]}"
-    return resolve_taxonomy(topic_key, sample_texts=sample_texts, title=title, question_text=question_text or label)
+    result = resolve_taxonomy(identity["topic_key"], sample_texts=sample_texts, title=title,
+                              question_text=question_text or label)
+    if result["prompt"] is not None:
+        _record_identity(identity)
+    result["auto_identity"] = {k: identity[k] for k in ("reused", "similarity", "scope", "generic")}
+    return result

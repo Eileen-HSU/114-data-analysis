@@ -62,7 +62,10 @@ def explain_failure(raw) -> dict | None:
     """Returns {"code", "message", "message_en", "raw"}；沒有錯誤文字時回傳 None。"""
     if not raw:
         return None
-    text = str(raw)
+    from services.safe_error import safe_error_summary
+
+    # raw 會回傳給前端：先去除可能夾帶的 API key / token（見 services/safe_error.py）
+    text = safe_error_summary(raw, limit=2000)
     for code, pattern, zh, en in _RULES:
         if pattern.search(text):
             return {"code": code, "message": zh, "message_en": en, "raw": text[:500]}
@@ -81,11 +84,15 @@ def routing_failure(routing_status, routing_detail) -> dict | None:
         return explain_failure(routing_detail)
     if routing_status == "routing_failed":
         detail = routing_detail or ""
-        explained = explain_failure(detail) if re.search(r"429|503|UNAVAILABLE|RESOURCE_EXHAUSTED", detail, re.I) else None
+        kind = re.search(r"routing_error=(\w+)", detail)
+        explained = explain_failure(detail) if (
+            (kind and kind.group(1) != "unknown")
+            or re.search(r"429|503|UNAVAILABLE|RESOURCE_EXHAUSTED", detail, re.I)
+        ) else None
         return explained or {
             "code": "ROUTING_SERVICE_FAILED",
             "message": "判斷主題時 AI 服務呼叫失敗（常見原因是額度不足或模型忙碌）。可以按「重新判斷主題」或直接指派主題。",
             "message_en": "The AI call failed while determining the topic (often quota or overload). Re-route or assign a topic.",
-            "raw": detail[:500],
+            "raw": explain_failure(detail)["raw"] if detail else "",
         }
     return None

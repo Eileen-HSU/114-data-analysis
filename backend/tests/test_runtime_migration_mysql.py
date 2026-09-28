@@ -54,6 +54,11 @@ NEW_COLUMNS = [
     ("Response_Segmentation_Status", "last_attempt_error"),
     ("Response_Segmentation_Status", "last_attempt_at"),
     ("Response_Classification", "attempt_no"),
+    # 自動主題範圍（通用欄位名不跨 workspace 共用）
+    ("Topic", "auto_scope"),
+    ("Topic", "auto_label"),
+    ("Topic", "auto_signature"),
+    ("Uploaded_Answer", "analysis_scope"),
 ]
 
 
