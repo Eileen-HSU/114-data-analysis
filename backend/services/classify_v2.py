@@ -703,6 +703,50 @@ def classify_response_multi_segment(
 
 
 
+def classify_existing_segments(
+    answer_text: str,
+    spans: list,
+    prompt_content: str,
+    question_type: str,
+    category_lookup=None,
+) -> dict:
+    """
+    只重新「分類」既有片段（不重新拆分）：重新分析一則已有人工審核結果的
+    回答時使用——重新拆分會產生跟人工確認過的片段重疊的新片段，所以只把
+    原本處理失敗的片段，用原文位置 (orig_start, orig_end) 重新送分類。
+
+    spans: [(orig_start, orig_end), ...]
+    回傳格式同 classify_response_multi_segment()，segments 跟 spans 一一對應。
+    """
+    effective_category_lookup = category_lookup or _methodology_lookup_for_question_type(question_type)
+    masked, failed_masks = [], {}
+    for i, (start, end) in enumerate(spans):
+        try:
+            masked.append(mask_pii(answer_text[start:end]))
+        except PiiMaskingError as e:
+            failed_masks[i] = f"PII_MASKING_FAILED: {str(e)[:180]}"
+            masked.append(None)
+
+    to_send = [text for text in masked if text is not None]
+    classified = iter(
+        _call_gemini_batch_classification(to_send, prompt_content, effective_category_lookup) if to_send else []
+    )
+    segments = []
+    for i, (start, end) in enumerate(spans):
+        classification = (
+            _failed_classification_result(failed_masks[i]) if i in failed_masks else next(classified)
+        )
+        segments.append({"orig_start": start, "orig_end": end, **classification})
+
+    failed = [seg for seg in segments if seg["status"] == "failed"]
+    status = "completed" if not failed else ("failed" if len(failed) == len(segments) else "partial_failed")
+    return {
+        "segmentation_status": status,
+        "segmentation_error_detail": failed[0].get("error_detail") if failed else None,
+        "segments": segments,
+    }
+
+
 def resolve_published_taxonomy_prompt(topic_key: str):
     """
     Phase B production classification 的標準入口：topic_key -> 

@@ -212,6 +212,18 @@ class Response_Segmentation_Status(db.Model):
     # 供前端提示與除錯使用；不是完整歷史 log，只存「最新一次」的狀況。
     error_detail = db.Column(db.Text, nullable=True)
 
+    # ── Attempt（重新分析）追蹤（additive-only）──────────────────
+    # 這則回答目前生效的是第幾次分析結果。重新分析不刪除舊結果：
+    # 舊的 Response_Classification 標記 superseded、新結果的 attempt_no
+    # = 這裡 +1，並在同一個 transaction（savepoint）裡更新這個欄位。
+    # 重新分析前先記下 attempt_no，寫入時鎖住這一列再比對，不一致代表
+    # 另一個請求已經完成重新分析 -> 放棄這次結果（冪等，不會出現兩份
+    # current attempt）。見 services/classification_attempt_service.py。
+    attempt_no = db.Column(db.Integer, nullable=False, default=1, server_default="1")
+    # 最近一次「沒有被採用」的重新分析（例如 AI 失敗，舊結果仍可用）
+    last_attempt_error = db.Column(db.Text, nullable=True)
+    last_attempt_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
     created_at = db.Column(
         db.DateTime(timezone=True), nullable=False, default=taiwan_now
     )
@@ -270,6 +282,9 @@ class Response_Segmentation_Status(db.Model):
             "source_type": self.source_type,
             "segmentation_status": self.segmentation_status,
             "error_detail": self.error_detail,
+            "attempt_no": self.attempt_no,
+            "last_attempt_error": self.last_attempt_error,
+            "last_attempt_at": self.last_attempt_at.isoformat() if self.last_attempt_at else None,
             "created_at": (
                 self.created_at.isoformat() if self.created_at else None
             ),
@@ -487,6 +502,12 @@ class Response_Classification(db.Model):
     reviewed_at = db.Column(db.DateTime(timezone=True), nullable=True)
     updated_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
+    # ── Attempt（additive-only）─────────────────────────────────
+    # 這筆結果是這則回答的第幾次分析產生的（NULL = attempt 功能上線前
+    # 的舊資料，視同第 1 次）。舊 attempt 的列保留（status=superseded），
+    # 不 hard-delete，review / audit / final_* 全部留著。
+    attempt_no = db.Column(db.Integer, nullable=True)
+
     # ── 驗證邏輯 ──────────────────────────────────────────
     def validate_source_relation(self) -> None:
         """驗證資料來源與 response_id / upload_batch_id 的關係是否合法。
@@ -560,6 +581,7 @@ class Response_Classification(db.Model):
             "reviewed_by_admin_id": self.reviewed_by_admin_id,
             "reviewed_at": self.reviewed_at.isoformat() if self.reviewed_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "attempt_no": self.attempt_no,
             "created_at": (
                 self.created_at.isoformat() if self.created_at else None
             ),

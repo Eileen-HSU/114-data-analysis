@@ -49,6 +49,11 @@ NEW_COLUMNS = [
     ("Uploaded_Answer", "assigned_by_admin_id"),
     ("Uploaded_Answer", "assigned_at"),
     ("Taxonomy_Version", "published_topic_key"),
+    # fix/classification-integrity-followup：重新分析 attempt 模型
+    ("Response_Segmentation_Status", "attempt_no"),
+    ("Response_Segmentation_Status", "last_attempt_error"),
+    ("Response_Segmentation_Status", "last_attempt_at"),
+    ("Response_Classification", "attempt_no"),
 ]
 
 
@@ -86,12 +91,17 @@ with app.app_context():
     db.session.execute(text(
         "INSERT INTO Uploaded_Answer (upload_batch_id, user_id, source_column, row_index, answer_text, question_type, created_at) "
         "VALUES ('legacy-batch', 1, 'c', 0, '舊資料', 'other', NOW())"))
+    db.session.execute(text(
+        "INSERT INTO Response_Segmentation_Status (upload_batch_id, uploaded_answer_id, question_id, source_type, "
+        "segmentation_status, created_at, updated_at) SELECT 'legacy-batch', id, 'c_row0', 'user_upload', 'completed', "
+        "NOW(), NOW() FROM Uploaded_Answer WHERE upload_batch_id='legacy-batch'"))
     db.session.commit()
     check("前置：新欄位確實不存在", not column_exists("Uploaded_Answer", "routing_status"))
 
 code, output = run_app_startup()
 check("app 啟動成功（import app exit 0）", code == 0)
 check("啟動 log 沒有 Runtime schema check failed", "Runtime schema check failed" not in output)
+check("啟動 log 沒有 follow-up schema 失敗", "follow-up schema check failed" not in output)
 with app.app_context():
     db.session.remove()
     check("所有新欄位都已補上", all(column_exists(t, c) for t, c in NEW_COLUMNS))
@@ -101,6 +111,8 @@ with app.app_context():
     check("legacy taxonomy bootstrap：2 個 published", [t[0] for t in topics] == ["career_and_feedback", "leadership_and_dept"])
     check("published_topic_key 已回填", db.session.execute(text(
         "SELECT COUNT(*) FROM Taxonomy_Version WHERE status='published' AND published_topic_key = topic_key")).scalar() == 2)
+    check("既有 Response_Segmentation_Status 補上 attempt_no = 1", db.session.execute(text(
+        "SELECT attempt_no FROM Response_Segmentation_Status WHERE upload_batch_id='legacy-batch'")).scalar() == 1)
     check("既有資料不受影響", db.session.execute(text(
         "SELECT question_type FROM Uploaded_Answer WHERE upload_batch_id='legacy-batch'")).scalar() == "other")
     audit_count = db.session.execute(text("SELECT COUNT(*) FROM Admin_Audit_Log WHERE action='taxonomy_bootstrap'")).scalar()

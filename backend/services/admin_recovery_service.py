@@ -377,20 +377,31 @@ def _reprocess(scope, topic_key, admin_id, action, taxonomy_version_id=None, rea
             review.status = "closed"
             review.closed_at = now
             review.closed_reason = "superseded"
-        if status_row is not None:
-            db.session.delete(status_row)
         db.session.flush()
 
-        _, new_rows = _persist_segmentation_result(
-            result,
-            source_type=scope["source_type"],
-            answer_text=scope["answer_text"],
-            question_id=scope["question_id"],
-            response_id=scope["response_id"],
-            upload_batch_id=scope["upload_batch_id"],
-            uploaded_answer_id=scope["uploaded_answer_id"],
-            taxonomy_version_id=version.version_id,
-        )
+        # 舊結果保留（superseded），Response_Segmentation_Status 原地更新成新的 attempt，
+        # 不刪除重建（見 services/classification_attempt_service.py）。
+        if status_row is None:
+            _, new_rows = _persist_segmentation_result(
+                result,
+                source_type=scope["source_type"],
+                answer_text=scope["answer_text"],
+                question_id=scope["question_id"],
+                response_id=scope["response_id"],
+                upload_batch_id=scope["upload_batch_id"],
+                uploaded_answer_id=scope["uploaded_answer_id"],
+                taxonomy_version_id=version.version_id,
+            )
+        else:
+            from services.classification_persistence import build_classification_rows
+
+            next_attempt = (status_row.attempt_no or 1) + 1
+            status_row.segmentation_status = result["segmentation_status"]
+            status_row.error_detail = result.get("segmentation_error_detail")
+            status_row.attempt_no = next_attempt
+            status_row.last_attempt_error = None
+            status_row.last_attempt_at = now
+            new_rows = build_classification_rows(scope, result["segments"], version.version_id, attempt_no=next_attempt)
         db.session.flush()
 
         succeeded = any(r.status != CLASSIFICATION_STATUS_FAILED for r in new_rows)

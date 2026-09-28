@@ -48,8 +48,6 @@ question_type 判斷不出來（None）時：
 """
 
 import uuid
-import re
-import unicodedata
 
 from flask import Blueprint, jsonify, request
 from extensions import db
@@ -60,7 +58,8 @@ from models import (
     Response_Segmentation_Status,
     Uploaded_Answer,
 )
-from services.classify_v2 import classify_response_multi_segment, is_text_response, resolve_published_taxonomy_prompt
+from services.classify_v2 import classify_existing_segments, classify_response_multi_segment, is_text_response, resolve_published_taxonomy_prompt
+from services import classification_attempt_service as attempt_service
 from services.confidence_gate import evaluate_confidence_gate
 from services.effective_classification_service import effective_view, CLASSIFICATION_STATUS_SUPERSEDED
 from services.workspace_result_service import compute_review_revision
@@ -75,37 +74,9 @@ import pandas as pd
 
 classification_bp = Blueprint("classification", __name__)
 
-_MAIN_CATEGORY_PREFIX_RE = re.compile(r"^大類別[:：]\s*")
-_WHITESPACE_RUN_RE = re.compile(r"[\s\t\n\r]+")
-
-
-def normalize_main_category(raw) -> str:
-    """把 main_category 正規化成唯一的 canonical 字串。
-
-    步驟（依序執行，順序會影響結果，不能任意調換）：
-      1. Unicode NFKC normalize（統一全形/半形符號，例如全形冒號「：」
-         正規化後會變成半形「:」）
-      2. strip 前後空白
-      3. 移除開頭的「大類別：」或「大類別:」前綴（NFKC 之後兩種冒號
-         寫法都會落在同一個 pattern，這裡仍明確列出兩種寫法以防這個
-         函式未來被單獨拿去處理沒有先做過 NFKC 的字串）
-      4. 把連續空白／tab／換行壓成單一半形空白
-      5. 再 strip 一次（防止步驟 3 移除前綴後，「大類別： 　題目」這種
-         前綴後面還帶空白的情況殘留前導空白）
-
-    只處理字串層級的正規化，不改變分類語意本身：不會把不同的大類別
-    名稱合併，只會把「同一個大類別的不同字串寫法」合併成同一種寫法。
-    raw 是 None 時回傳空字串，跟既有 `r.main_category or ""` 的行為
-    相容。
-    """
-    if raw is None:
-        return ""
-    text = unicodedata.normalize("NFKC", str(raw))
-    text = text.strip()
-    text = _MAIN_CATEGORY_PREFIX_RE.sub("", text)
-    text = _WHITESPACE_RUN_RE.sub(" ", text)
-    text = text.strip()
-    return text
+# normalize_main_category 搬到 services/classification_persistence.py（重新分析的
+# attempt service 也要用），這裡保留同名匯入，既有呼叫端 / 測試不用改。
+from services.classification_persistence import normalize_main_category  # noqa: E402,F401
 
 
 def _resolve_taxonomy_for_topic(question_type: str):
@@ -426,21 +397,22 @@ def _persist_segmentation_result(
     upload_batch_id: str = None,
     uploaded_answer_id: int = None,
     taxonomy_version_id: int = None,
+    attempt_no: int = 1,
 ):
     """
-    把 classify_response_multi_segment() 的回傳結果寫進 DB：
-    1 筆 Response_Segmentation_Status（回答層級現況）+
+    第一次分析一則回答：把 classify_response_multi_segment() 的回傳結果寫進 DB，
+    1 筆 Response_Segmentation_Status（回答層級現況，attempt_no）+
     0~N 筆 Response_Classification（每個驗證通過的 segment 各一筆）。
 
-    taxonomy_version_id（Phase B 新增）：這批分類實際使用哪一版
-    Published Taxonomy 產生的，原樣寫進每一筆 Response_Classification；
-    不傳（None）時維持舊行為（legacy path 或無 taxonomy 可用時的
-    未分類回答，欄位保持 NULL）。
+    重新分析（已經有 status 列）不要用這個函式，改用
+    services.classification_attempt_service.apply_attempt()——那邊會保留舊
+    attempt、保護人工審核結果、確保冪等。
 
     只負責 db.session.add()，不呼叫 commit()，交給呼叫端統一 commit。
-
-    回傳 (status_row, classification_rows)，供呼叫端組 API 回應用。
+    回傳 (status_row, classification_rows)。
     """
+    from services.classification_persistence import build_classification_rows
+
     status_row = Response_Segmentation_Status(
         response_id=response_id,
         upload_batch_id=upload_batch_id,
@@ -449,45 +421,14 @@ def _persist_segmentation_result(
         source_type=source_type,
         segmentation_status=result["segmentation_status"],
         error_detail=result["segmentation_error_detail"],
+        attempt_no=attempt_no,
     )
     db.session.add(status_row)
-
-    classification_rows = []
-    for seg in result["segments"]:
-        
-        reasoning = seg["reasoning"]
-        if seg["status"] != "completed" and seg.get("error_detail"):
-            reasoning = seg["error_detail"]
-
-        needs_human_review, review_flag_reason = evaluate_confidence_gate(seg)
-
-        row = Response_Classification(
-            response_id=response_id,
-            upload_batch_id=upload_batch_id,
-            uploaded_answer_id=uploaded_answer_id,
-            source_type=source_type,
-            question_id=question_id,
-            answer_text=answer_text,
-            segment_start=seg["orig_start"],
-            segment_end=seg["orig_end"],
-            main_category=normalize_main_category(seg["main_category"]),
-            sub_category=seg["sub_category"],
-            secondary_sub_category=seg["secondary_sub_category"],
-            reasoning=reasoning,
-            summary=seg["summary"],
-            methodology=seg["methodology"],
-            citation=seg["citation"],
-            secondary_methodology=seg["secondary_methodology"],
-            secondary_citation=seg["secondary_citation"],
-            status=seg["status"],
-            taxonomy_version_id=taxonomy_version_id,
-            confidence=seg.get("confidence") if isinstance(seg.get("confidence"), (int, float)) and not isinstance(seg.get("confidence"), bool) else None,
-            needs_human_review=needs_human_review,
-            review_flag_reason=review_flag_reason,
-        )
-        db.session.add(row)
-        classification_rows.append(row)
-
+    scope = {
+        "source_type": source_type, "response_id": response_id, "question_id": question_id,
+        "upload_batch_id": upload_batch_id, "uploaded_answer_id": uploaded_answer_id, "answer_text": answer_text,
+    }
+    classification_rows = build_classification_rows(scope, result["segments"], taxonomy_version_id, attempt_no=attempt_no)
     return status_row, classification_rows
 
 
@@ -785,9 +726,16 @@ def upload_excel_for_classification():
 def analyze_survey(access_code):
     """
     使用者主動觸發，對整份問卷（同一 template_id）依 question_id 分組，
-    每組各自去重 + 批次分類。已經有 Response_Segmentation_Status 紀錄
-    的回答（不論狀態）一律視為已處理，不重新送 Gemini，但仍可作為
-    duplicate reference；只有真正沒有紀錄的回答才會被送進批次協調服務。
+    每組各自去重 + 批次分類。
+
+    每則回答依 services/classification_attempt_service.plan_reanalysis()：
+      - 從沒分析過：第一次分析（attempt 1）
+      - 已完成（completed）：沿用，可作為 duplicate reference
+      - failed / partial_failed / 卡住，且沒有人工審核結果：整則重新分析，
+        新 attempt 生效、舊列標記 superseded（不刪除）
+      - 有人工審核結果：只把失敗片段用原位置重新分類；沒有失敗片段就不動
+      - 新 attempt AI 失敗：舊結果維持生效
+    每題在同一個 transaction 寫入；重複按不會產生多份 current attempt。
     """
     auth_user_id, auth_error = verify_token(request)
     if auth_error:
@@ -889,10 +837,12 @@ def analyze_survey(access_code):
             provisional_question_ids.append(question_id)
 
         existing_references = []
-        pending_items = []
+        pending_items = []      # 第一次分析 / 整則重新分析（MODE_NEW / MODE_FULL）
+        segment_retries = []    # 有人工審核結果：只重新分類失敗片段（MODE_RETRY_SEGMENTS）
         diag = {
             "total_responses": len(responses), "missing_key": 0, "invalid_text": 0, "valid": 0,
-            "reset_stuck_records": 0,
+            "reanalyzed": 0, "segment_retries": 0, "blocked_by_review": 0,
+            "kept_previous": 0, "attempt_conflicts": 0,
         }
 
         for response in responses:
@@ -907,21 +857,16 @@ def analyze_survey(access_code):
             answer_text = str(answer_value)
             diag["valid"] += 1
 
-            existing_status = Response_Segmentation_Status.query.filter_by(
-                response_id=response.response_id, question_id=question_id
-            ).first()
+            # 重新分析不再 hard-delete 舊結果：見 services/classification_attempt_service.py
+            scope = attempt_service.survey_scope(response.response_id, question_id, answer_text)
+            plan = attempt_service.plan_reanalysis(scope)
+            current = plan["rows"]
 
-            if existing_status is not None and existing_status.segmentation_status == "completed":
-                
-                # 被 Admin retry / reclassify 取代的舊 attempt（superseded）只保留
-                # 作為歷史，不能再當成 duplicate reference 或計入彙整。
-                existing_rows = Response_Classification.query.filter(
-                    Response_Classification.response_id == response.response_id,
-                    Response_Classification.question_id == question_id,
-                    Response_Classification.status != CLASSIFICATION_STATUS_SUPERSEDED,
-                ).all()
-                
-                rows_by_question_type.setdefault(question_type, []).extend(existing_rows)
+            if plan["mode"] in (attempt_service.MODE_REUSE, attempt_service.MODE_SKIP, attempt_service.MODE_RETRY_SEGMENTS):
+                # 目前生效的結果（含人工審核過的片段）照常計入彙整
+                rows_by_question_type.setdefault(question_type, []).extend(current)
+            if plan["mode"] == attempt_service.MODE_REUSE:
+                # 已完成的回答可以當 duplicate reference（superseded 不列入）
                 existing_references.append({
                     "identifier": response.response_id,
                     "answer_text": answer_text,
@@ -941,43 +886,78 @@ def analyze_survey(access_code):
                             "status": r.status,
                             "confidence": r.confidence,
                         }
-                        for r in existing_rows
+                        for r in current
                     ],
                 })
+            elif plan["mode"] == attempt_service.MODE_SKIP:
+                diag["blocked_by_review"] += 1
+            elif plan["mode"] == attempt_service.MODE_RETRY_SEGMENTS:
+                segment_retries.append((scope, plan))
             else:
-                if existing_status is not None:
-                    diag["reset_stuck_records"] += 1
-                    Response_Classification.query.filter_by(
-                        response_id=response.response_id, question_id=question_id
-                    ).delete()
-                    db.session.delete(existing_status)
-                    db.session.flush()
+                if plan["mode"] == attempt_service.MODE_FULL:
+                    diag["reanalyzed"] += 1
                 pending_items.append({
                     "identifier": response.response_id,
                     "answer_text": answer_text,
+                    "_scope": scope,
+                    "_plan": plan,
                 })
 
         per_question_diagnostic[question_id] = diag
 
-        if not pending_items:
-            continue  # 這題沒有新回答需要處理
+        if not pending_items and not segment_retries:
+            continue  # 這題沒有需要處理的回答
 
         results = run_batch_analysis(
-            existing_references, pending_items, prompt_content_for_batch, question_type,
+            existing_references,
+            [{"identifier": item["identifier"], "answer_text": item["answer_text"]} for item in pending_items],
+            prompt_content_for_batch, question_type,
             category_lookup=category_lookup, taxonomy_version_id=taxonomy_version_id,
-        )
+        ) if pending_items else []
 
-        for item, result in zip(pending_items, results):
-            _, new_rows = _persist_segmentation_result(
-                result,
-                source_type="survey",
-                answer_text=item["answer_text"],
-                question_id=question_id,
-                response_id=item["identifier"],
-                taxonomy_version_id=taxonomy_version_id,
+        work = [(item["_scope"], item["_plan"], result, None) for item, result in zip(pending_items, results)]
+        for scope, plan in segment_retries:
+            retry_rows = plan["retry_rows"]
+            result = classify_existing_segments(
+                scope["answer_text"], [(r.segment_start, r.segment_end) for r in retry_rows],
+                prompt_content_for_batch, question_type, category_lookup=category_lookup,
             )
-            rows_by_question_type.setdefault(question_type, []).extend(new_rows)
-            newly_classified_count += 1
+            work.append((scope, plan, result, [r.classification_id for r in retry_rows]))
+            diag["segment_retries"] += 1
+
+        rerun_happened = False
+        for scope, plan, result, retry_ids in work:
+            outcome = attempt_service.apply_attempt(
+                scope, result, taxonomy_version_id, plan["expected_attempt_no"], plan["mode"],
+                retry_row_ids=retry_ids,
+            )
+            if outcome.applied:
+                newly_classified_count += 1
+                rerun_happened = rerun_happened or plan["mode"] != attempt_service.MODE_NEW
+                if plan["mode"] == attempt_service.MODE_RETRY_SEGMENTS:
+                    # 目前生效的列：重新查一次（被取代的失敗片段已經 superseded）
+                    fresh = attempt_service.current_rows(scope)
+                    bucket = rows_by_question_type.setdefault(question_type, [])
+                    stale = {r.classification_id for r in plan["rows"]}
+                    bucket[:] = [r for r in bucket if r.classification_id not in stale] + fresh
+                else:
+                    rows_by_question_type.setdefault(question_type, []).extend(outcome.rows)
+            elif outcome.outcome == attempt_service.OUTCOME_KEPT_PREVIOUS:
+                diag["kept_previous"] += 1
+                if plan["mode"] == attempt_service.MODE_FULL:
+                    rows_by_question_type.setdefault(question_type, []).extend(plan["rows"])
+            elif outcome.outcome == attempt_service.OUTCOME_CONFLICT:
+                diag["attempt_conflicts"] += 1
+            elif outcome.outcome == attempt_service.OUTCOME_BLOCKED:
+                diag["blocked_by_review"] += 1
+                rows_by_question_type.setdefault(question_type, []).extend(plan["rows"])
+
+        # 每題一個 transaction：這題的所有 attempt 一起生效
+        db.session.commit()
+        if rerun_happened:
+            from services.report_service import OUTDATED_CLASSIFICATION_RERUN, mark_reports_outdated_for_sources
+            mark_reports_outdated_for_sources([("survey", template_id, None)], OUTDATED_CLASSIFICATION_RERUN)
+            db.session.commit()
 
         analyzed_question_ids.append(question_id)
 

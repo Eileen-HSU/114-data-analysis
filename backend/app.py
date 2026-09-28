@@ -361,6 +361,26 @@ def ensure_runtime_schema():
 ensure_runtime_schema()
 
 
+def ensure_integrity_followup_schema():
+    """分類資料正確性修正（fix/classification-integrity-followup）的
+    additive-only schema：只在欄位 / 表不存在時補上，不改動既有資料；
+    獨立一個 try，前面的 schema 步驟失敗不會連帶跳過這裡。"""
+    with app.app_context():
+        try:
+            # 重新分析 attempt 模型（services/classification_attempt_service.py）
+            ensure_column("Response_Segmentation_Status", "attempt_no", "`attempt_no` INT NOT NULL DEFAULT 1")
+            ensure_column("Response_Segmentation_Status", "last_attempt_error", "`last_attempt_error` TEXT NULL")
+            ensure_column("Response_Segmentation_Status", "last_attempt_at", "`last_attempt_at` DATETIME NULL")
+            ensure_column("Response_Classification", "attempt_no", "`attempt_no` INT NULL")
+            db.session.commit()
+        except Exception as exc:
+            db.session.rollback()
+            app.logger.exception("Integrity follow-up schema check failed: %s", exc)
+
+
+ensure_integrity_followup_schema()
+
+
 def bootstrap_taxonomy_on_startup():
     """新 DB / taxonomy 表為空時，安全、冪等地把 legacy taxonomy 帶入
     （見 services/taxonomy_bootstrap_service.py）。失敗會明確 log，但不
