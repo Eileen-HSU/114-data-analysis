@@ -35,6 +35,7 @@ command 之後，這些指令本來就是透過 `flask` 指令、以完整 app.p
     FLASK_APP=cli.py flask fix-access-codes
     FLASK_APP=cli.py flask create-admin --enable-2fa
     FLASK_APP=cli.py flask run-classification
+    FLASK_APP=cli.py flask bootstrap-taxonomy
 
 用 `FLASK_APP=cli.py flask --help` 可以列出全部子指令。
 """
@@ -454,3 +455,22 @@ def run_classification():
     for r in results:
         status_counts[r["status"]] = status_counts.get(r["status"], 0) + 1
     click.echo(f"狀態統計：{status_counts}")
+
+
+# ═══════════════════════════════════════════════════════════════
+# flask bootstrap-taxonomy（部署 / 手動執行 legacy taxonomy bootstrap）
+# ═══════════════════════════════════════════════════════════════
+@app.cli.command("bootstrap-taxonomy")
+def bootstrap_taxonomy():
+    """taxonomy 表為空時，冪等地帶入 legacy taxonomy（已有任何版本就略過）。"""
+    from services.taxonomy_bootstrap_service import (
+        bootstrap_legacy_taxonomy,
+        ensure_published_topic_unique_index,
+    )
+
+    with app.app_context():
+        result = bootstrap_legacy_taxonomy(logger=app.logger)
+        click.echo(f"bootstrap：{result}")
+        click.echo(f"published guard index：{ensure_published_topic_unique_index(app.logger)}")
+        if result["status"] == "lock_timeout":
+            sys.exit(1)

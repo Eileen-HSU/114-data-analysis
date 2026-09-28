@@ -7,6 +7,11 @@ Human Review API（Admin-only）：
   POST /api/classification/<id>/review/confirm-candidate
   POST /api/classification/<id>/review/exclude
   GET  /api/classification/<id>/review/history
+  POST /api/classification/<id>/review/reopen            confirmed/modified/excluded -> pending（+ 新 session）
+  GET  /api/classification/<id>/review/audit              Admin 操作稽核紀錄
+  POST /api/classification/review/batch-confirm           批次維持 AI 分類（單一 transaction、可重試）
+  GET  /api/classification/review/exclude-legacy/preview  bulk exclude 預覽（eligible / skipped 原因）
+  POST /api/classification/review/exclude-legacy          bulk exclude 執行（batch_id 冪等）
 
 【Admin-only 定案】這裡改用 routes/auth/admin_guard.py 既有的
 verify_admin_token()，跟 routes/admin/ai_admin.py 用同一套驗證邏輯
@@ -48,9 +53,15 @@ def _require_admin(req):
 
 
 def _error_response(e: ReviewError):
-    body = {"error": e.message}
+    body = {"code": e.code, "message": e.message, "error": e.message}
     body.update(e.extra)
     return jsonify(body), e.http_status
+
+
+def _reason_from_body():
+    data = request.get_json(silent=True) or {}
+    reason = data.get("reason")
+    return reason.strip()[:1000] if isinstance(reason, str) and reason.strip() else None
 
 
 @review_bp.route("/api/classification/<int:classification_id>/review", methods=["GET"])
@@ -83,7 +94,7 @@ def reopen_review(classification_id):
     if err:
         return err
     try:
-        review = review_service.reopen_review(classification_id, admin_id)
+        review = review_service.reopen_review(classification_id, admin_id, reason=_reason_from_body())
         return jsonify(review.to_dict(include_messages=True)), 200
     except ReviewError as e:
         return _error_response(e)
@@ -133,7 +144,7 @@ def exclude_classification(classification_id):
     if err:
         return err
     try:
-        classification = review_service.exclude(classification_id, admin_id)
+        classification = review_service.exclude(classification_id, admin_id, reason=_reason_from_body())
         return jsonify(classification.to_dict()), 200
     except ReviewError as e:
         return _error_response(e)
@@ -151,14 +162,55 @@ def get_history(classification_id):
         return _error_response(e)
 
 
-@review_bp.route("/api/classification/review/exclude-legacy", methods=["POST"])
-def exclude_legacy_pending():
+@review_bp.route("/api/classification/<int:classification_id>/review/audit", methods=["GET"])
+def get_audit(classification_id):
     admin_id, err = _require_admin(request)
     if err:
         return err
     try:
-        affected_count = review_service.exclude_legacy_pending_classifications(admin_id)
-        return jsonify({"affected_count": affected_count}), 200
+        return jsonify({"audit": review_service.get_audit_history(classification_id)}), 200
     except ReviewError as e:
         return _error_response(e)
 
+
+@review_bp.route("/api/classification/review/batch-confirm", methods=["POST"])
+def batch_confirm():
+    """Body: {"classification_ids": [...], "batch_id": "選填，重試時帶同一個"}"""
+    admin_id, err = _require_admin(request)
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    try:
+        result = review_service.batch_confirm(data.get("classification_ids"), admin_id, batch_id=data.get("batch_id"))
+        return jsonify(result), 200
+    except ReviewError as e:
+        return _error_response(e)
+
+
+@review_bp.route("/api/classification/review/exclude-legacy/preview", methods=["GET"])
+def exclude_legacy_preview():
+    admin_id, err = _require_admin(request)
+    if err:
+        return err
+    return jsonify(review_service.preview_legacy_bulk_exclude()), 200
+
+
+@review_bp.route("/api/classification/review/exclude-legacy", methods=["POST"])
+def exclude_legacy_pending():
+    """Body（皆選填）: {"batch_id": "...", "expected_ids": [...]}
+    回應保留 affected_count（向後相容），另外回傳 batch_id / affected_ids /
+    skipped 明細。"""
+    admin_id, err = _require_admin(request)
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    expected_ids = data.get("expected_ids")
+    if expected_ids is not None and not isinstance(expected_ids, list):
+        return jsonify({"code": "INVALID_IDS", "message": "expected_ids 必須是陣列", "error": "expected_ids 必須是陣列"}), 400
+    try:
+        result = review_service.execute_legacy_bulk_exclude(
+            admin_id, batch_id=data.get("batch_id"), expected_ids=expected_ids,
+        )
+        return jsonify(result), 200
+    except ReviewError as e:
+        return _error_response(e)

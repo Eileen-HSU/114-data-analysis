@@ -327,12 +327,60 @@ def ensure_runtime_schema():
                 "`review_flag_reason` VARCHAR(50) NULL",
             )
             db.session.commit()
+
+            # ── Admin review lifecycle / audit / report / routing（additive-only）──
+            ensure_column("Response_Classification", "reviewed_by_admin_id", "`reviewed_by_admin_id` INT NULL")
+            ensure_column("Response_Classification", "reviewed_at", "`reviewed_at` DATETIME NULL")
+            ensure_column("Response_Classification", "updated_at", "`updated_at` DATETIME NULL")
+            ensure_column("Classification_Review", "closed_at", "`closed_at` DATETIME NULL")
+            ensure_column("Classification_Review", "closed_reason", "`closed_reason` VARCHAR(30) NULL")
+            ensure_column("Report", "outdated_reason", "`outdated_reason` VARCHAR(50) NULL")
+            ensure_column("Report", "outdated_at", "`outdated_at` DATETIME NULL")
+            ensure_column("Report", "updated_at", "`updated_at` DATETIME NULL")
+            ensure_column("Report", "generated_by_admin_id", "`generated_by_admin_id` INT NULL")
+            ensure_column("Report", "taxonomy_version_ids", "`taxonomy_version_ids` VARCHAR(255) NULL")
+            ensure_column("Uploaded_Answer", "routing_status", "`routing_status` VARCHAR(30) NULL")
+            ensure_column("Uploaded_Answer", "routing_detail", "`routing_detail` TEXT NULL")
+            ensure_column("Uploaded_Answer", "assigned_by_admin_id", "`assigned_by_admin_id` INT NULL")
+            ensure_column("Uploaded_Answer", "assigned_at", "`assigned_at` DATETIME NULL")
+            from models import Admin_Audit_Log
+            ensure_table(Admin_Audit_Log)
+            db.session.commit()
+
+            # ── Taxonomy publish 併發保護：每個 Topic 最多一個 published ──
+            ensure_column("Taxonomy_Version", "published_topic_key", "`published_topic_key` VARCHAR(50) NULL")
+            db.session.commit()
+            from services.taxonomy_bootstrap_service import ensure_published_topic_unique_index
+            ensure_published_topic_unique_index(app.logger)
         except Exception as exc:
             db.session.rollback()
             app.logger.exception("Runtime schema check failed: %s", exc)
 
 
 ensure_runtime_schema()
+
+
+def bootstrap_taxonomy_on_startup():
+    """新 DB / taxonomy 表為空時，安全、冪等地把 legacy taxonomy 帶入
+    （見 services/taxonomy_bootstrap_service.py）。失敗會明確 log，但不
+    阻擋 app 啟動——production classification 維持 fail-closed（沒有
+    published taxonomy 就不分類），不會 fallback 到 hardcoded 分類。
+    可用 TAXONOMY_BOOTSTRAP_ON_STARTUP=0 關閉，改用
+    `python3 cli.py bootstrap-taxonomy` 在部署流程中手動執行。"""
+    if os.environ.get("TAXONOMY_BOOTSTRAP_ON_STARTUP", "1") == "0":
+        app.logger.info("[TAXONOMY_BOOTSTRAP] disabled by TAXONOMY_BOOTSTRAP_ON_STARTUP=0")
+        return
+    with app.app_context():
+        from services.taxonomy_bootstrap_service import bootstrap_legacy_taxonomy
+        try:
+            result = bootstrap_legacy_taxonomy(logger=app.logger)
+            app.logger.info("[TAXONOMY_BOOTSTRAP] %s", result)
+        except Exception as exc:
+            db.session.rollback()
+            app.logger.exception("[TAXONOMY_BOOTSTRAP] failed: %s", exc)
+
+
+bootstrap_taxonomy_on_startup()
 
 app.register_blueprint(register_bp)
 app.register_blueprint(login_bp)

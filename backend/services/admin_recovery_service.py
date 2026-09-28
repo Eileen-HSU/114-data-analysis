@@ -1,0 +1,524 @@
+"""
+Admin 未分類 / 失敗資料的恢復流程（assign topic / reroute / reclassify /
+retry failed）。
+
+【「未分類」的 domain definition】（Admin 未分類頁的三個分頁，彼此不混用）
+
+    unrouted      ：Uploaded_Answer 已保存原文，但從來沒有產生分類結果
+                    （沒有 Response_Segmentation_Status）。原因依
+                    routing_status 細分：
+                        unrouted             routing 判斷不出 Topic（含信心不足）
+                        routing_failed       routing API 失敗
+                        no_topic_candidates  當下沒有任何 published Topic
+                        taxonomy_unavailable 有 Topic 但沒有可用 published taxonomy
+                    舊資料（routing_status IS NULL）依 question_type 推導：
+                    NULL / "other" -> unrouted，其他 -> taxonomy_unavailable。
+    legacy_other  ：舊流程寫下、question_id IS NULL 或 = "other" 的
+                    Response_Classification（尚未被取代、尚未排除）。
+    failed        ：Response_Classification.status = failed（尚未排除）。
+                    failed 是「分類失敗」，不是「未 routing」，兩者分開顯示。
+
+【重新處理（reprocess）規則】——同一則回答不會產生重複計數：
+    - 一則回答（survey：response_id + question_id；user_upload：
+      uploaded_answer_id）底下，只要有任何一筆「人工定案」的列
+      （confirmed / modified，或非 failed 的 excluded），就拒絕重新處理
+      （409 REPROCESS_BLOCKED_BY_REVIEW），請先 reopen。
+    - 允許重新處理時，舊的 pending / failed 列一律標記為
+      status=superseded（保留作為 attempt history，永遠不計入統計），
+      舊的 Response_Segmentation_Status（只存最新一次）刪除後重建。
+    - 新 attempt 寫入新的 Response_Classification；每次 attempt 都有一筆
+      Admin_Audit_Log（before / after / taxonomy version / 結果）。
+    - taxonomy：預設使用 Topic 目前的 published version；也可以指定
+      version_id，但只接受 published / archived（fail-closed：draft /
+      in_review 不能拿來做正式分類，也絕不 fallback 到 hardcoded 分類）。
+"""
+
+from extensions import db, taiwan_now
+from models import (
+    Response_Classification,
+    Response_Segmentation_Status,
+    Survey_Response,
+    Taxonomy_Version,
+    Topic,
+    Uploaded_Answer,
+)
+from classification_models import (
+    REVIEW_STATUS_CONFIRMED,
+    REVIEW_STATUS_EXCLUDED,
+    REVIEW_STATUS_MODIFIED,
+    REVIEW_STATUS_PENDING,
+    SOURCE_TYPE_SURVEY,
+    SOURCE_TYPE_USER_UPLOAD,
+)
+from services import audit_service
+from services.effective_classification_service import (
+    CLASSIFICATION_STATUS_FAILED,
+    CLASSIFICATION_STATUS_SUPERSEDED,
+    NON_COUNTABLE_STATUSES,
+)
+
+KIND_UNROUTED = "unrouted"
+KIND_LEGACY_OTHER = "legacy_other"
+KIND_FAILED = "failed"
+UNASSIGNED_KINDS = (KIND_UNROUTED, KIND_FAILED, KIND_LEGACY_OTHER)
+
+MAX_PAGE_SIZE = 100
+
+
+class RecoveryError(Exception):
+    def __init__(self, code, message, http_status=400, extra=None):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.http_status = http_status
+        self.extra = extra or {}
+
+
+# ═══════════════════════════════════════════════════════════════
+# 查詢
+# ═══════════════════════════════════════════════════════════════
+
+def _unrouted_answers_query():
+    return (
+        Uploaded_Answer.query
+        .outerjoin(Response_Segmentation_Status, Response_Segmentation_Status.uploaded_answer_id == Uploaded_Answer.id)
+        .filter(Response_Segmentation_Status.id.is_(None))
+    )
+
+
+def _failed_query():
+    return Response_Classification.query.filter(
+        Response_Classification.status == CLASSIFICATION_STATUS_FAILED,
+        Response_Classification.review_status != REVIEW_STATUS_EXCLUDED,
+    )
+
+
+def _legacy_other_query():
+    return Response_Classification.query.filter(
+        db.or_(Response_Classification.question_id.is_(None), Response_Classification.question_id == "other"),
+        Response_Classification.review_status != REVIEW_STATUS_EXCLUDED,
+        db.or_(
+            Response_Classification.status.is_(None),
+            Response_Classification.status != CLASSIFICATION_STATUS_SUPERSEDED,
+        ),
+    )
+
+
+def derive_unrouted_reason(answer) -> str:
+    if answer.routing_status and answer.routing_status not in ("routed", "assigned"):
+        return answer.routing_status
+    if answer.question_type in (None, "", "other"):
+        return "unrouted"
+    return "taxonomy_unavailable"
+
+
+def _answer_item(answer):
+    data = answer.to_dict()
+    data["kind"] = KIND_UNROUTED
+    data["reason"] = derive_unrouted_reason(answer)
+    data["processing_status"] = "not_classified"
+    return data
+
+
+def _classification_item(row, kind):
+    data = row.to_dict()
+    data["kind"] = kind
+    data["segment"] = row.answer_text[row.segment_start:row.segment_end] if row.answer_text else ""
+    data["reason"] = (row.reasoning or "")[:500] if kind == KIND_FAILED else "legacy_question_other"
+    data["processing_status"] = row.status
+    return data
+
+
+def unassigned_counts() -> dict:
+    return {
+        KIND_UNROUTED: _unrouted_answers_query().count(),
+        KIND_FAILED: _failed_query().count(),
+        KIND_LEGACY_OTHER: _legacy_other_query().count(),
+    }
+
+
+def list_unassigned(kind, page=1, page_size=50) -> dict:
+    if kind not in UNASSIGNED_KINDS:
+        raise RecoveryError("INVALID_KIND", f"kind 只能是 {list(UNASSIGNED_KINDS)}", 400)
+    page = max(int(page or 1), 1)
+    page_size = min(max(int(page_size or 50), 1), MAX_PAGE_SIZE)
+
+    if kind == KIND_UNROUTED:
+        query = _unrouted_answers_query().order_by(Uploaded_Answer.created_at.desc(), Uploaded_Answer.id.desc())
+        total = query.count()
+        items = [_answer_item(a) for a in query.offset((page - 1) * page_size).limit(page_size).all()]
+    else:
+        base = _failed_query() if kind == KIND_FAILED else _legacy_other_query()
+        query = base.order_by(Response_Classification.created_at.desc(), Response_Classification.classification_id.desc())
+        total = query.count()
+        items = [_classification_item(r, kind) for r in query.offset((page - 1) * page_size).limit(page_size).all()]
+
+    return {
+        "kind": kind,
+        "items": items,
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "counts": unassigned_counts(),
+    }
+
+
+def answer_detail(answer_id) -> dict:
+    answer = db.session.get(Uploaded_Answer, answer_id)
+    if answer is None:
+        raise RecoveryError("ANSWER_NOT_FOUND", "找不到這筆上傳回答", 404)
+    rows = Response_Classification.query.filter_by(uploaded_answer_id=answer_id).order_by(
+        Response_Classification.classification_id.asc()
+    ).all()
+    status_row = Response_Segmentation_Status.query.filter_by(uploaded_answer_id=answer_id).first()
+    data = answer.to_dict()
+    data["reason"] = derive_unrouted_reason(answer) if status_row is None else answer.routing_status
+    data["segmentation"] = status_row.to_dict() if status_row else None
+    data["classifications"] = [r.to_dict() for r in rows]
+    data["audit"] = [a.to_dict() for a in audit_service.list_for_entity(audit_service.ENTITY_UPLOADED_ANSWER, answer_id)]
+    return data
+
+
+# ═══════════════════════════════════════════════════════════════
+# taxonomy 解析（fail-closed）
+# ═══════════════════════════════════════════════════════════════
+
+def _resolve_taxonomy(topic_key, taxonomy_version_id=None):
+    from services.taxonomy_service import (
+        PublishedTaxonomyIntegrityError,
+        PublishedTaxonomyNotFoundError,
+        build_classification_prompt,
+        get_published_taxonomy_version,
+        methodology_lookup_for_taxonomy_version,
+    )
+
+    if not topic_key or db.session.get(Topic, topic_key) is None:
+        raise RecoveryError("TOPIC_NOT_FOUND", f"找不到 Topic：{topic_key!r}", 404)
+
+    if taxonomy_version_id is not None:
+        version = db.session.get(Taxonomy_Version, int(taxonomy_version_id))
+        if version is None or version.topic_key != topic_key:
+            raise RecoveryError("TAXONOMY_VERSION_NOT_FOUND", "taxonomy version 不存在或不屬於這個 Topic", 404)
+        if version.status not in ("published", "archived"):
+            raise RecoveryError(
+                "TAXONOMY_VERSION_NOT_USABLE",
+                f"只有 published / archived 版本可以用於正式分類（目前 status={version.status}）",
+                422,
+            )
+        if not version.categories:
+            raise RecoveryError("TAXONOMY_VERSION_EMPTY", "這個 taxonomy version 沒有任何分類", 422)
+    else:
+        try:
+            version = get_published_taxonomy_version(topic_key)
+        except PublishedTaxonomyNotFoundError as exc:
+            raise RecoveryError("TAXONOMY_UNAVAILABLE", str(exc), 422)
+        except PublishedTaxonomyIntegrityError as exc:
+            raise RecoveryError("TAXONOMY_INTEGRITY_ERROR", str(exc), 409)
+
+    return build_classification_prompt(version), methodology_lookup_for_taxonomy_version(version), version
+
+
+# ═══════════════════════════════════════════════════════════════
+# reprocess 核心
+# ═══════════════════════════════════════════════════════════════
+
+def _scope_for_answer(answer):
+    return {
+        "source_type": SOURCE_TYPE_USER_UPLOAD,
+        "answer_text": answer.answer_text,
+        "question_id": f"{answer.source_column}_row{answer.row_index}",
+        "response_id": None,
+        "upload_batch_id": answer.upload_batch_id,
+        "uploaded_answer_id": answer.id,
+        "answer": answer,
+    }
+
+
+def _scope_for_classification(row):
+    if row.source_type == SOURCE_TYPE_USER_UPLOAD:
+        answer = (
+            Uploaded_Answer.query.filter_by(id=row.uploaded_answer_id).with_for_update().first()
+        )
+        if answer is None:
+            raise RecoveryError("ANSWER_NOT_FOUND", "找不到這筆分類對應的上傳回答", 404)
+        return _scope_for_answer(answer)
+    return {
+        "source_type": SOURCE_TYPE_SURVEY,
+        "answer_text": row.answer_text,
+        "question_id": row.question_id,
+        "response_id": row.response_id,
+        "upload_batch_id": None,
+        "uploaded_answer_id": None,
+        "answer": None,
+    }
+
+
+def _existing_rows(scope):
+    query = Response_Classification.query
+    if scope["source_type"] == SOURCE_TYPE_USER_UPLOAD:
+        query = query.filter_by(uploaded_answer_id=scope["uploaded_answer_id"])
+    else:
+        query = query.filter_by(response_id=scope["response_id"], question_id=scope["question_id"])
+    return query.with_for_update().all()
+
+
+def _existing_status(scope):
+    if scope["source_type"] == SOURCE_TYPE_USER_UPLOAD:
+        return Response_Segmentation_Status.query.filter_by(uploaded_answer_id=scope["uploaded_answer_id"]).first()
+    return Response_Segmentation_Status.query.filter_by(
+        response_id=scope["response_id"], question_id=scope["question_id"],
+    ).first()
+
+
+def _is_human_finalized(row):
+    if row.status in NON_COUNTABLE_STATUSES:
+        return False
+    return row.review_status in (REVIEW_STATUS_CONFIRMED, REVIEW_STATUS_MODIFIED, REVIEW_STATUS_EXCLUDED)
+
+
+def _row_source(scope):
+    if scope["source_type"] == SOURCE_TYPE_USER_UPLOAD:
+        return (SOURCE_TYPE_USER_UPLOAD, None, scope["upload_batch_id"])
+    response = db.session.get(Survey_Response, scope["response_id"])
+    return (SOURCE_TYPE_SURVEY, response.template_id, None) if response else None
+
+
+def _reprocess(scope, topic_key, admin_id, action, taxonomy_version_id=None, reason=None,
+               require_unclassified=False):
+    """重新分類一則回答（見檔案開頭規則）。成功或 AI 回傳失敗都會 commit；
+    非預期例外會 rollback 後把失敗原因持久化再往外拋 RecoveryError。"""
+    from routes.classifications.classification import _persist_segmentation_result
+    from services.classify_v2 import classify_response_multi_segment
+    from services.report_service import OUTDATED_CLASSIFICATION_RERUN, mark_reports_outdated_for_sources
+
+    existing = _existing_rows(scope)
+    status_row = _existing_status(scope)
+
+    if require_unclassified and status_row is not None and any(
+        r.status not in NON_COUNTABLE_STATUSES for r in existing
+    ):
+        raise RecoveryError(
+            "ALREADY_CLASSIFIED", "這筆回答已經有分類結果，不會重複建立；如需重跑請使用重新分類", 409,
+        )
+    blocked = [r.classification_id for r in existing if _is_human_finalized(r)]
+    if blocked:
+        raise RecoveryError(
+            "REPROCESS_BLOCKED_BY_REVIEW",
+            "這則回答已有人工確認 / 修改 / 排除的分類結果，請先重新開啟審核後再重新處理",
+            409,
+            extra={"classification_ids": blocked},
+        )
+
+    prompt_content, category_lookup, version = _resolve_taxonomy(topic_key, taxonomy_version_id)
+
+    answer = scope["answer"]
+    before = {
+        "question_type": answer.question_type if answer else None,
+        "routing_status": answer.routing_status if answer else None,
+        "classification_ids": [r.classification_id for r in existing],
+        "statuses": [r.status for r in existing],
+    }
+
+    try:
+        result = classify_response_multi_segment(
+            scope["answer_text"], prompt_content, topic_key,
+            category_lookup=category_lookup, taxonomy_version_id=version.version_id,
+        )
+    except Exception as exc:  # AI 服務本身失敗：把原因持久化，不留半套資料
+        db.session.rollback()
+        if answer is not None:
+            answer = db.session.get(Uploaded_Answer, answer.id)
+            answer.routing_status = "classification_failed"
+            answer.routing_detail = f"{action}: {repr(exc)[:1500]}"
+            audit_service.record(
+                action, audit_service.ENTITY_UPLOADED_ANSWER, answer.id, admin_id,
+                before=before, after={"error": repr(exc)[:500], "topic_key": topic_key}, reason=reason,
+            )
+            db.session.commit()
+        raise RecoveryError("CLASSIFICATION_SERVICE_FAILED", f"分類服務呼叫失敗：{str(exc)[:300]}", 502)
+
+    try:
+        now = taiwan_now()
+        for row in existing:
+            if row.review_status == REVIEW_STATUS_PENDING or row.status in NON_COUNTABLE_STATUSES:
+                row.status = CLASSIFICATION_STATUS_SUPERSEDED
+                row.updated_at = now
+        if status_row is not None:
+            db.session.delete(status_row)
+        db.session.flush()
+
+        _, new_rows = _persist_segmentation_result(
+            result,
+            source_type=scope["source_type"],
+            answer_text=scope["answer_text"],
+            question_id=scope["question_id"],
+            response_id=scope["response_id"],
+            upload_batch_id=scope["upload_batch_id"],
+            uploaded_answer_id=scope["uploaded_answer_id"],
+            taxonomy_version_id=version.version_id,
+        )
+        db.session.flush()
+
+        succeeded = any(r.status != CLASSIFICATION_STATUS_FAILED for r in new_rows)
+        if answer is not None:
+            answer.question_type = topic_key
+            if action in (audit_service.ACTION_ASSIGN_TOPIC,):
+                answer.assigned_by_admin_id = admin_id
+                answer.assigned_at = now
+            if succeeded:
+                answer.routing_status = "assigned" if action == audit_service.ACTION_ASSIGN_TOPIC else "routed"
+                answer.routing_detail = reason
+            else:
+                answer.routing_status = "classification_failed"
+                answer.routing_detail = (result.get("segmentation_error_detail") or "all segments failed")[:2000]
+
+        after = {
+            "topic_key": topic_key,
+            "taxonomy_version_id": version.version_id,
+            "segmentation_status": result.get("segmentation_status"),
+            "new_classification_ids": [r.classification_id for r in new_rows],
+            "new_statuses": [r.status for r in new_rows],
+            "superseded_ids": [r.classification_id for r in existing if r.status == CLASSIFICATION_STATUS_SUPERSEDED],
+        }
+        entity_type = audit_service.ENTITY_UPLOADED_ANSWER if answer is not None else audit_service.ENTITY_CLASSIFICATION
+        entity_id = answer.id if answer is not None else (existing[0].classification_id if existing else scope["question_id"])
+        audit_service.record(action, entity_type, entity_id, admin_id, before=before, after=after, reason=reason)
+        mark_reports_outdated_for_sources([_row_source(scope)], OUTDATED_CLASSIFICATION_RERUN)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+
+    return {
+        "succeeded": succeeded,
+        "topic_key": topic_key,
+        "taxonomy_version_id": version.version_id,
+        "segmentation_status": result.get("segmentation_status"),
+        "segmentation_error_detail": result.get("segmentation_error_detail"),
+        "classifications": [r.to_dict() for r in new_rows],
+        "superseded_ids": after["superseded_ids"],
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# 對外操作
+# ═══════════════════════════════════════════════════════════════
+
+def _lock_answer(answer_id):
+    answer = Uploaded_Answer.query.filter_by(id=answer_id).with_for_update().first()
+    if answer is None:
+        raise RecoveryError("ANSWER_NOT_FOUND", "找不到這筆上傳回答", 404)
+    return answer
+
+
+def assign_topic_to_answer(answer_id, admin_id, topic_key, taxonomy_version_id=None, reason=None):
+    """未分類的上傳回答：Admin 指派 Topic -> 立即以該 Topic 的 taxonomy 分類。
+    已經有成功分類結果的回答會被拒絕（防止重複建立 classification）。"""
+    answer = _lock_answer(answer_id)
+    return _reprocess(
+        _scope_for_answer(answer), topic_key, admin_id, audit_service.ACTION_ASSIGN_TOPIC,
+        taxonomy_version_id=taxonomy_version_id, reason=reason, require_unclassified=True,
+    )
+
+
+def reroute_answer(answer_id, admin_id):
+    """重新 routing：用同一欄位名稱 + 同批次遮罩樣本重新判斷 Topic；判斷
+    出來就直接分類，判斷不出來就更新 routing_status / 原因。"""
+    from routes.classifications.classification import _build_routing_context
+    from services.privacy_service import PiiMaskingError, mask_pii
+    from services.question_routing_service import (
+        ROUTING_REASON_API_FAILURE,
+        ROUTING_REASON_NO_CANDIDATES,
+        route_question_type_with_reason,
+    )
+
+    answer = _lock_answer(answer_id)
+    samples = []
+    peers = (
+        Uploaded_Answer.query.filter_by(upload_batch_id=answer.upload_batch_id, source_column=answer.source_column)
+        .order_by(Uploaded_Answer.row_index.asc()).limit(5).all()
+    )
+    for peer in peers:
+        try:
+            samples.append(mask_pii(peer.answer_text))
+        except PiiMaskingError:
+            continue
+    topic_key, routing_reason = route_question_type_with_reason(_build_routing_context(answer.source_column, samples))
+
+    if topic_key is None:
+        before = {"routing_status": answer.routing_status, "question_type": answer.question_type}
+        answer.routing_status = {
+            ROUTING_REASON_API_FAILURE: "routing_failed",
+            ROUTING_REASON_NO_CANDIDATES: "no_topic_candidates",
+        }.get(routing_reason, "unrouted")
+        answer.routing_detail = f"reroute: routing_reason={routing_reason}"
+        audit_service.record(
+            audit_service.ACTION_REROUTE, audit_service.ENTITY_UPLOADED_ANSWER, answer.id, admin_id,
+            before=before, after={"routing_status": answer.routing_status, "routing_reason": routing_reason},
+        )
+        db.session.commit()
+        return {"routed": False, "routing_reason": routing_reason, "routing_status": answer.routing_status}
+
+    result = _reprocess(
+        _scope_for_answer(answer), topic_key, admin_id, audit_service.ACTION_REROUTE,
+        reason=f"reroute -> {topic_key}", require_unclassified=True,
+    )
+    return {"routed": True, "routing_reason": routing_reason, **result}
+
+
+def reclassify_classification(classification_id, admin_id, topic_key=None, taxonomy_version_id=None, reason=None,
+                              action=None):
+    """legacy_other / failed 分類結果：指定（或沿用）Topic 重新分類整則回答。"""
+    row = Response_Classification.query.filter_by(classification_id=classification_id).with_for_update().first()
+    if row is None:
+        raise RecoveryError("CLASSIFICATION_NOT_FOUND", "找不到這筆分類結果", 404)
+    if row.status == CLASSIFICATION_STATUS_SUPERSEDED:
+        raise RecoveryError("ALREADY_SUPERSEDED", "這筆分類已經被新的處理結果取代", 409)
+
+    if topic_key is None:
+        topic_key = _infer_topic(row)
+        if topic_key is None:
+            raise RecoveryError("TOPIC_REQUIRED", "無法判斷這筆資料的 Topic，請指定 topic_key", 422)
+
+    return _reprocess(
+        _scope_for_classification(row), topic_key, admin_id, action or audit_service.ACTION_RECLASSIFY,
+        taxonomy_version_id=taxonomy_version_id, reason=reason,
+    )
+
+
+def retry_failed_classification(classification_id, admin_id, reason=None):
+    row = db.session.get(Response_Classification, classification_id)
+    if row is None:
+        raise RecoveryError("CLASSIFICATION_NOT_FOUND", "找不到這筆分類結果", 404)
+    if row.status != CLASSIFICATION_STATUS_FAILED:
+        raise RecoveryError("NOT_FAILED", "只有 failed 的分類結果可以使用重新處理", 409)
+    return reclassify_classification(
+        classification_id, admin_id, reason=reason, action=audit_service.ACTION_RETRY_FAILED,
+    )
+
+
+def _infer_topic(row):
+    if row.taxonomy_version_id is not None:
+        version = db.session.get(Taxonomy_Version, row.taxonomy_version_id)
+        if version is not None:
+            return version.topic_key
+    from services.source_lookup_service import resolve_question_type
+    topic = resolve_question_type(row)
+    return topic if topic and topic != "other" else None
+
+
+def attempt_history(classification_id):
+    """同一則回答的所有 attempt（含 superseded）＋ 相關 audit。"""
+    row = db.session.get(Response_Classification, classification_id)
+    if row is None:
+        raise RecoveryError("CLASSIFICATION_NOT_FOUND", "找不到這筆分類結果", 404)
+    if row.source_type == SOURCE_TYPE_USER_UPLOAD:
+        rows = Response_Classification.query.filter_by(uploaded_answer_id=row.uploaded_answer_id)
+        audit = audit_service.list_for_entity(audit_service.ENTITY_UPLOADED_ANSWER, row.uploaded_answer_id)
+    else:
+        rows = Response_Classification.query.filter_by(response_id=row.response_id, question_id=row.question_id)
+        audit = audit_service.list_for_entity(audit_service.ENTITY_CLASSIFICATION, classification_id)
+    return {
+        "attempts": [r.to_dict() for r in rows.order_by(Response_Classification.classification_id.asc()).all()],
+        "audit": [a.to_dict() for a in audit],
+    }

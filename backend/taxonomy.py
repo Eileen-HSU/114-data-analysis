@@ -196,6 +196,21 @@ class Taxonomy_Version(db.Model):
     published_at = db.Column(db.DateTime(timezone=True), nullable=True)
     archived_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
+    # 【DB 層保證「每個 Topic 最多一個 published 版本」】MySQL 沒有
+    # partial unique index，改用這個欄位模擬：status='published' 時自動
+    # 等於 topic_key，其他狀態一律 NULL（由下方 before_insert/before_update
+    # event 維護，呼叫端不需要、也不應該自己設定）。UNIQUE 約束允許多個
+    # NULL，但兩個 published 版本會有相同的非 NULL 值而被 DB 直接拒絕——
+    # 兩位 Admin 同時 publish 時，就算應用層檢查都通過，也只會有一個
+    # transaction 成功。
+    #
+    # UNIQUE INDEX（uq_taxonomy_version_published_topic）刻意不宣告在
+    # model 上，而是由 app.py 的 runtime migration 在「確認既有資料沒有
+    # 重複 published」之後才建立（既有資料若已經損毀成多個 published，
+    # 直接宣告 unique 會讓啟動失敗或無法載入資料；migration 會明確 log
+    # 並保留 fail-closed 的 PublishedTaxonomyIntegrityError 行為）。
+    published_topic_key = db.Column(db.String(50), nullable=True)
+
     categories = db.relationship(
         "Taxonomy_Category",
         backref="taxonomy_version",
@@ -224,6 +239,9 @@ class Taxonomy_Version(db.Model):
 @event.listens_for(Taxonomy_Version, "before_insert")
 @event.listens_for(Taxonomy_Version, "before_update")
 def _validate_taxonomy_version(mapper, connection, target):
+    target.published_topic_key = (
+        target.topic_key if target.status == TAXONOMY_VERSION_STATUS_PUBLISHED else None
+    )
     if target.status not in ALLOWED_TAXONOMY_VERSION_STATUSES:
         raise ValueError(f"status 只能是 {sorted(ALLOWED_TAXONOMY_VERSION_STATUSES)} 其中之一")
     if target.source not in ALLOWED_TAXONOMY_VERSION_SOURCES:

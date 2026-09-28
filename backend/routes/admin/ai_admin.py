@@ -9,9 +9,14 @@ from flask import Blueprint, jsonify, request
 
 from extensions import db
 from models import Admin, Prompt_Template
-from classification_models import Response_Classification, ALLOWED_REVIEW_STATUSES
+from classification_models import Response_Classification, Classification_Review, ALLOWED_REVIEW_STATUSES
+from services.review_service import derive_review_state
 from taxonomy import Taxonomy_Version
 from routes.auth.admin_guard import verify_admin_token
+from services.effective_classification_service import effective_view
+from routes.api_errors import api_error
+from services import admin_recovery_service as recovery
+from services import report_service
 from services.classify_v2 import _run_classification
 from services.prompt_admin_service import (
     GOLDEN_TEST_SET,
@@ -138,77 +143,355 @@ def publish_candidate(prompt_key):
         return jsonify({"error": str(exc)}), 409
 
 
+CLASSIFICATION_STATES = ("pending_review", "in_review", "failed", "confirmed", "modified", "excluded")
+_DEFAULT_PAGE_SIZE = 50
+_MAX_PAGE_SIZE = 200
+
+
+def _active_review_exists():
+    return db.session.query(Classification_Review.review_id).filter(
+        Classification_Review.classification_id == Response_Classification.classification_id,
+        Classification_Review.status == "in_progress",
+    ).exists()
+
+
+def _state_clause(state):
+    """前後端共用的狀態定義（跟 review_service.derive_review_state 一致）：
+    failed         ：status=failed 且未排除（不論 review_status）
+    pending_review ：review_status=pending_review 且非 failed（含 in_review）
+    in_review      ：pending_review 中、有 in_progress session 的子集合
+    confirmed / modified / excluded：對應 review_status
+    """
+    not_failed = db.or_(Response_Classification.status.is_(None), Response_Classification.status != "failed")
+    if state == "failed":
+        return db.and_(Response_Classification.status == "failed", Response_Classification.review_status != "excluded")
+    if state == "pending_review":
+        return db.and_(Response_Classification.review_status == "pending_review", not_failed)
+    if state == "in_review":
+        return db.and_(Response_Classification.review_status == "pending_review", not_failed, _active_review_exists())
+    return Response_Classification.review_status == state
+
+
 @ai_admin_bp.get("/classifications")
 def reviewed_classifications():
     """
-    review_status 可選；topic 可選——不傳＝查全部（既有行為，不可改壞）。
+    Admin 分類審查清單（server-side pagination）。
 
-    topic="__unassigned__" 是這次 Topic-centric IA 重構新增的特殊值
-    （internal-only，前端 UI 不會顯示這個字串，只顯示「其他 / 未歸屬
-    資料」），對應「不屬於任何目前 Topic 的分類結果」：
-      - question_id IS NULL（schema 允許但目前寫入路徑不會產生，
-        可能是更早期的歷史資料）
-      - question_id == "other"（QUESTION_OTHER，routing 判斷不出來，
-        不是一個真正的 Topic，Topic 表裡不會有這個 topic_key）
-    這條路徑存在的目的：Topic-centric 首頁拿掉「全部 Topic 混看」的
-    下拉選單後，這類資料不能因此變得完全不可達（見需求文件第五節）。
+    Query 參數（全部選填，可 AND 疊加）：
+        state             ：pending_review / in_review / failed / confirmed /
+                            modified / excluded（見 _state_clause）
+        review_status     ：舊參數，直接比對 review_status（向後相容）
+        topic             ：Topic.topic_key，或 "__unassigned__"
+                            （question_id IS NULL / "other" 的舊資料）
+        needs_human_review：true 只看被 Confidence Gate flag 的列
+        page / page_size  ：預設 1 / 50，page_size 上限 200
+
+    回應：
+        classifications：這一頁的資料（穩定排序：created_at DESC,
+                         classification_id DESC）
+        total          ：符合全部條件的總筆數
+        status_counts  ：套用 topic / needs_human_review 之後、各狀態的
+                         總筆數（不受 state/review_status/page 影響），
+                         前端分頁籤數字直接用這個，不再用目前頁面自行計算。
+    被 retry / reclassify 取代的舊 attempt（status=superseded）不會出現在清單。
     """
     _, failure = _admin_or_error()
     if failure:
         return failure
     review_status = request.args.get("review_status")
+    state = request.args.get("state")
     topic = request.args.get("topic")
-    query = Response_Classification.query
-    if review_status:
-        if review_status not in ALLOWED_REVIEW_STATUSES:
-            return jsonify({"error": "Invalid review_status"}), 400
-        query = query.filter_by(review_status=review_status)
+    page = max(request.args.get("page", 1, type=int) or 1, 1)
+    page_size = min(max(request.args.get("page_size", _DEFAULT_PAGE_SIZE, type=int) or _DEFAULT_PAGE_SIZE, 1), _MAX_PAGE_SIZE)
+
+    base = Response_Classification.query.filter(
+        db.or_(Response_Classification.status.is_(None), Response_Classification.status != "superseded")
+    )
     if topic == "__unassigned__":
-        query = query.filter(
+        base = base.filter(
             db.or_(
                 Response_Classification.question_id.is_(None),
                 Response_Classification.question_id == "other",
             )
         )
     elif topic:
-        # 【修正】topic 是 Topic.topic_key（例如 "leadership_and_dept"），
-        # 不是 Response_Classification.question_id（那是問卷題目 UUID，
-        # 或外部上傳的欄位名稱/列號識別碼，兩者是完全不同的值域，直接
-        # 比較必然查不到）。正確路徑是透過寫入分類結果時就一併保存的
-        # taxonomy_version_id 反查 Taxonomy_Version.topic_key：
-        #     Response_Classification.taxonomy_version_id
-        #       -> Taxonomy_Version.version_id
-        #       -> Taxonomy_Version.topic_key
-        # 這個 join 天然同時涵蓋 survey 與 user_upload 兩種來源（兩邊
-        # 寫入時都是透過同一個 _resolve_taxonomy_for_topic() 取得
-        # taxonomy_version_id，不需要依 source_type 分開處理），也會
-        # 涵蓋這個 topic 底下所有版本（draft/published/archived）產生
-        # 的分類結果，不只是目前 published 的那一版。
-        #
-        # taxonomy_version_id 是 nullable（Phase B 之前的舊資料一律是
-        # NULL）：這裡刻意不做任何回填或臆測式歸類，這些舊資料在
-        # topic 篩選下就是查不到，跟 __unassigned__ 是兩件不同的事
-        # （__unassigned__ 對應的是 question_id 本身的狀態，不是
-        # taxonomy_version_id 缺失），不在這次修正的範圍內處理。
-        query = query.join(
+        # topic 是 Topic.topic_key，透過寫入分類時保存的 taxonomy_version_id
+        # 反查 Taxonomy_Version.topic_key（同時涵蓋 survey 與 user_upload、
+        # 以及這個 topic 底下所有版本產生的分類結果）。
+        base = base.join(
             Taxonomy_Version,
             Response_Classification.taxonomy_version_id == Taxonomy_Version.version_id,
         ).filter(Taxonomy_Version.topic_key == topic)
     if request.args.get("needs_human_review") == "true":
-        query = query.filter(Response_Classification.needs_human_review.is_(True))
-    rows = query.order_by(Response_Classification.created_at.desc()).limit(200).all()
+        base = base.filter(Response_Classification.needs_human_review.is_(True))
+
+    status_counts = {s: base.filter(_state_clause(s)).count() for s in CLASSIFICATION_STATES}
+
+    query = base
+    if review_status:
+        if review_status not in ALLOWED_REVIEW_STATUSES:
+            return api_error("INVALID_REVIEW_STATUS", "Invalid review_status", 400)
+        query = query.filter(Response_Classification.review_status == review_status)
+    if state:
+        if state not in CLASSIFICATION_STATES:
+            return api_error("INVALID_STATE", f"state 只能是 {list(CLASSIFICATION_STATES)}", 400)
+        query = query.filter(_state_clause(state))
+
+    total = query.count()
+    rows = (
+        query.order_by(Response_Classification.created_at.desc(), Response_Classification.classification_id.desc())
+        .offset((page - 1) * page_size).limit(page_size).all()
+    )
+
+    active_by_classification = {}
+    if rows:
+        for review in Classification_Review.query.filter(
+            Classification_Review.classification_id.in_([r.classification_id for r in rows]),
+            Classification_Review.status == "in_progress",
+        ).all():
+            active_by_classification.setdefault(review.classification_id, review)
+    admin_names = {}
+    if active_by_classification:
+        admin_names = {
+            a.admin_id: a.admin_name for a in Admin.query.filter(
+                Admin.admin_id.in_({r.admin_id for r in active_by_classification.values()})
+            ).all()
+        }
+
     results = []
     for row in rows:
         item = row.to_dict()
         item["segment"] = row.answer_text[row.segment_start:row.segment_end]
-        item["effective_result"] = {
-            "main_category": row.final_main_category if row.review_status == "modified" else row.main_category,
-            "sub_category": row.final_sub_category if row.review_status == "modified" else row.sub_category,
-            "secondary_category": row.final_secondary_sub_category if row.review_status == "modified" else row.secondary_sub_category,
-            "reasoning": row.final_reasoning if row.review_status == "modified" else row.reasoning,
+        active = active_by_classification.get(row.classification_id)
+        item["review_state"] = derive_review_state(row, active)
+        item["active_review"] = None if active is None else {
+            "review_id": active.review_id,
+            "admin_id": active.admin_id,
+            "admin_name": admin_names.get(active.admin_id),
+        }
+        view = effective_view(row)
+        item["effective_result"] = None if view is None else {
+            "main_category": view["main_category"],
+            "sub_category": view["sub_category"],
+            "secondary_category": view["secondary_sub_category"],
+            "reasoning": view["reasoning"],
         }
         results.append(item)
-    return jsonify({"classifications": results})
+    return jsonify({
+        "classifications": results,
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "total_pages": (total + page_size - 1) // page_size,
+        "status_counts": status_counts,
+    })
+
+
+# ── 未分類 / 失敗資料恢復（見 services/admin_recovery_service.py）──────
+
+def _recovery_error(exc):
+    return api_error(exc.code, exc.message, exc.http_status, **exc.extra)
+
+
+def _optional_int(value):
+    if value in (None, ""):
+        return None
+    return int(value)
+
+
+@ai_admin_bp.get("/unassigned")
+def list_unassigned():
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    try:
+        return jsonify(recovery.list_unassigned(
+            request.args.get("kind", recovery.KIND_UNROUTED),
+            page=request.args.get("page", 1, type=int),
+            page_size=request.args.get("page_size", 50, type=int),
+        ))
+    except recovery.RecoveryError as exc:
+        return _recovery_error(exc)
+
+
+@ai_admin_bp.get("/unassigned/answers/<int:answer_id>")
+def unassigned_answer_detail(answer_id):
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    try:
+        return jsonify(recovery.answer_detail(answer_id))
+    except recovery.RecoveryError as exc:
+        return _recovery_error(exc)
+
+
+@ai_admin_bp.post("/unassigned/answers/<int:answer_id>/assign")
+def assign_unassigned_answer(answer_id):
+    """Body: {"topic_key": "...", "taxonomy_version_id": 選填, "reason": 選填}"""
+    admin, failure = _admin_or_error()
+    if failure:
+        return failure
+    data = request.get_json(silent=True) or {}
+    try:
+        result = recovery.assign_topic_to_answer(
+            answer_id, admin.admin_id, data.get("topic_key"),
+            taxonomy_version_id=_optional_int(data.get("taxonomy_version_id")),
+            reason=data.get("reason"),
+        )
+        return jsonify(result), 200
+    except (TypeError, ValueError):
+        return api_error("INVALID_TAXONOMY_VERSION_ID", "taxonomy_version_id 必須是整數", 400)
+    except recovery.RecoveryError as exc:
+        return _recovery_error(exc)
+
+
+@ai_admin_bp.post("/unassigned/answers/<int:answer_id>/reroute")
+def reroute_unassigned_answer(answer_id):
+    admin, failure = _admin_or_error()
+    if failure:
+        return failure
+    try:
+        return jsonify(recovery.reroute_answer(answer_id, admin.admin_id)), 200
+    except recovery.RecoveryError as exc:
+        return _recovery_error(exc)
+
+
+@ai_admin_bp.post("/classifications/<int:classification_id>/reclassify")
+def reclassify_classification(classification_id):
+    """legacy_other / failed：指定 Topic（或沿用原 Topic）重新分類整則回答。"""
+    admin, failure = _admin_or_error()
+    if failure:
+        return failure
+    data = request.get_json(silent=True) or {}
+    try:
+        result = recovery.reclassify_classification(
+            classification_id, admin.admin_id,
+            topic_key=data.get("topic_key") or None,
+            taxonomy_version_id=_optional_int(data.get("taxonomy_version_id")),
+            reason=data.get("reason"),
+        )
+        return jsonify(result), 200
+    except (TypeError, ValueError):
+        return api_error("INVALID_TAXONOMY_VERSION_ID", "taxonomy_version_id 必須是整數", 400)
+    except recovery.RecoveryError as exc:
+        return _recovery_error(exc)
+
+
+@ai_admin_bp.post("/classifications/<int:classification_id>/retry")
+def retry_failed_classification(classification_id):
+    admin, failure = _admin_or_error()
+    if failure:
+        return failure
+    try:
+        return jsonify(recovery.retry_failed_classification(classification_id, admin.admin_id)), 200
+    except recovery.RecoveryError as exc:
+        return _recovery_error(exc)
+
+
+@ai_admin_bp.get("/classifications/<int:classification_id>/attempts")
+def classification_attempts(classification_id):
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    try:
+        return jsonify(recovery.attempt_history(classification_id))
+    except recovery.RecoveryError as exc:
+        return _recovery_error(exc)
+
+
+# ── Admin Report 管理（lifecycle / regenerate / export）──────────────
+
+def _report_error(exc):
+    return api_error(exc.code, exc.message, exc.http_status)
+
+
+def _parse_report_source(source_type, identifier):
+    if source_type == "survey":
+        try:
+            return int(identifier), None
+        except (TypeError, ValueError):
+            raise report_service.ReportError("survey 的 identifier 必須是 template_id（整數）", 400, code="INVALID_IDENTIFIER")
+    if source_type == "user_upload":
+        return None, identifier
+    raise report_service.ReportError("source_type 只能是 survey 或 user_upload", 400, code="INVALID_SOURCE_TYPE")
+
+
+@ai_admin_bp.get("/reports")
+def admin_list_reports():
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    return jsonify(report_service.admin_list_report_units(
+        page=request.args.get("page", 1, type=int),
+        page_size=request.args.get("page_size", 20, type=int),
+        only_needs_regeneration=request.args.get("needs_regeneration") == "true",
+    ))
+
+
+@ai_admin_bp.get("/reports/<source_type>/<identifier>")
+def admin_report_unit(source_type, identifier):
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    try:
+        template_id, upload_batch_id = _parse_report_source(source_type, identifier)
+        return jsonify(report_service.admin_unit_detail(source_type, template_id, upload_batch_id))
+    except report_service.ReportError as exc:
+        return _report_error(exc)
+
+
+@ai_admin_bp.post("/reports/<source_type>/<identifier>/generate")
+def admin_generate_report(source_type, identifier):
+    admin, failure = _admin_or_error()
+    if failure:
+        return failure
+    try:
+        template_id, upload_batch_id = _parse_report_source(source_type, identifier)
+        report = report_service.admin_generate_report(
+            source_type, admin.admin_id, template_id=template_id, upload_batch_id=upload_batch_id,
+        )
+    except report_service.ReportError as exc:
+        return _report_error(exc)
+    if report.status != "completed":
+        return api_error(
+            "REPORT_GENERATION_FAILED", f"報告產生失敗：{report.error_detail or '未知原因'}", 500,
+            report=report.to_dict(),
+        )
+    return jsonify({"report": report.to_dict()}), 201
+
+
+@ai_admin_bp.get("/reports/detail/<int:report_id>")
+def admin_report_detail(report_id):
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    try:
+        return jsonify(report_service.admin_report_detail(report_id))
+    except report_service.ReportError as exc:
+        return _report_error(exc)
+
+
+@ai_admin_bp.get("/reports/detail/<int:report_id>/export")
+def admin_export_report(report_id):
+    from urllib.parse import quote
+    from flask import Response
+
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    fmt = request.args.get("format", "xlsx")
+    try:
+        data, title = report_service.admin_export_report(report_id, fmt)
+    except report_service.ReportError as exc:
+        return _report_error(exc)
+    mimetype = (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if fmt == "xlsx"
+        else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+    filename = quote(f"{title}.{fmt}")
+    return Response(data, mimetype=mimetype, headers={
+        "Content-Disposition": f"attachment; filename*=UTF-8''{filename}",
+    })
 
 
 @ai_admin_bp.get("/taxonomy")
@@ -434,15 +717,17 @@ def publish_taxonomy(topic_key, version_id):
     （同一 transaction：舊 published -> archived，新版 -> published）。
     production classification 下一次呼叫 get_published_taxonomy_version()
     立即讀到新版，這裡不維護任何第二份「目前 taxonomy id」欄位。"""
-    _, failure = _admin_or_error()
+    admin, failure = _admin_or_error()
     if failure:
         return failure
     try:
-        version = taxo.publish_taxonomy_version_with_validation(topic_key, version_id)
+        version = taxo.publish_taxonomy_version_with_validation(topic_key, version_id, admin_id=admin.admin_id)
     except taxo.TaxonomyPublishValidationError as exc:
-        return jsonify({"error": str(exc)}), 422
+        return api_error("TAXONOMY_PUBLISH_INVALID", str(exc), 422)
+    except taxo.TaxonomyVersionConflictError as exc:
+        return api_error("TAXONOMY_PUBLISH_CONFLICT", str(exc), 409)
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 404
+        return api_error("TAXONOMY_VERSION_NOT_FOUND", str(exc), 404)
     return jsonify({"taxonomy_version": version.to_dict(include_categories=True)})
 
 

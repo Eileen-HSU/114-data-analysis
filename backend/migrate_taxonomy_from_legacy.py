@@ -63,11 +63,32 @@ from taxonomy import (
     TAXONOMY_VERSION_SOURCE_MIGRATED_LEGACY,
 )
 
-app = Flask(__name__)
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL") or os.environ.get(
-    "SQLALCHEMY_DATABASE_URI"
-)
-db.init_app(app)
+_cli_app = None
+
+
+def _build_cli_app():
+    cli_app = Flask(__name__)
+    cli_app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL") or os.environ.get(
+        "SQLALCHEMY_DATABASE_URI"
+    )
+    db.init_app(cli_app)
+    return cli_app
+
+
+def __getattr__(name):
+    """`migrate_taxonomy_from_legacy.app`：延遲建立 CLI 專用的最小 Flask app。
+
+    app.py 啟動時會 import 本模組的 seed_legacy_taxonomy()（見
+    services/taxonomy_bootstrap_service.py）共用同一套資料轉換；如果
+    在 import 當下就建立第二個 Flask app，沒有 DATABASE_URL 的環境
+    （例如測試）會直接因為 Flask-SQLAlchemy 找不到 URI 而 import 失敗。
+    """
+    global _cli_app
+    if name == "app":
+        if _cli_app is None:
+            _cli_app = _build_cli_app()
+        return _cli_app
+    raise AttributeError(name)
 
 
 
@@ -159,54 +180,73 @@ def _parse_topic_categories(question_type: str, prompt_content: str) -> list:
     return categories
 
 
-def migrate():
-    with app.app_context():
-        seeds = [
-            (QUESTION_LEADERSHIP, DEFAULT_PROMPT_LEADERSHIP),
-            (QUESTION_CAREER, DEFAULT_PROMPT_CAREER),
-        ]
+LEGACY_SEEDS = (
+    (QUESTION_LEADERSHIP, DEFAULT_PROMPT_LEADERSHIP),
+    (QUESTION_CAREER, DEFAULT_PROMPT_CAREER),
+)
 
-        for topic_key, prompt_content in seeds:
-            existing_topic = Topic.query.get(topic_key)
-            if existing_topic and existing_topic.taxonomy_versions:
-                print(f"topic_key='{topic_key}' 已有 taxonomy 版本，略過（如需重跑請先手動清除）")
-                continue
 
-            categories = _parse_topic_categories(topic_key, prompt_content)
+def seed_legacy_taxonomy(log=print) -> list:
+    """把 legacy taxonomy 寫進目前 app context 的 session（只 add/flush，
+    不 commit，交給呼叫端決定 transaction 邊界）。已經有任何 taxonomy
+    版本的 Topic 一律略過，不覆蓋、不重複建立版本。
 
-            topic = existing_topic
-            if topic is None:
-                topic = Topic(
-                    topic_key=topic_key,
-                    title=TOPIC_METADATA[topic_key]["title"],
-                    question_text=TOPIC_METADATA[topic_key]["question_text"],
-                    description="migration 自既有 DEFAULT_PROMPT_* + SUBCATEGORY_METHODOLOGY",
-                )
-                db.session.add(topic)
-                db.session.flush()
+    Returns: 這次實際建立的 topic_key 清單。
+    """
+    created = []
+    parsed = {topic_key: _parse_topic_categories(topic_key, prompt) for topic_key, prompt in LEGACY_SEEDS}
 
-            version = Taxonomy_Version(
+    for topic_key, _prompt_content in LEGACY_SEEDS:
+        existing_topic = db.session.get(Topic, topic_key)
+        if existing_topic and existing_topic.taxonomy_versions:
+            log(f"topic_key='{topic_key}' 已有 taxonomy 版本，略過（如需重跑請先手動清除）")
+            continue
+
+        categories = parsed[topic_key]
+
+        topic = existing_topic
+        if topic is None:
+            topic = Topic(
                 topic_key=topic_key,
-                version_number=1,
-                status=TAXONOMY_VERSION_STATUS_PUBLISHED,
-                source=TAXONOMY_VERSION_SOURCE_MIGRATED_LEGACY,
-                methodology_note=(
-                    "沿用 services/classify_v2.py 的 "
-                    f"{'DEFAULT_PROMPT_LEADERSHIP' if topic_key == QUESTION_LEADERSHIP else 'DEFAULT_PROMPT_CAREER'} "
-                    "（判斷規則原文）+ services/subcategory_methodology.py 的 "
-                    "SUBCATEGORY_METHODOLOGY（main_category / methodology / citation）。"
-                ),
+                title=TOPIC_METADATA[topic_key]["title"],
+                question_text=TOPIC_METADATA[topic_key]["question_text"],
+                description="migration 自既有 DEFAULT_PROMPT_* + SUBCATEGORY_METHODOLOGY",
             )
-            db.session.add(version)
+            db.session.add(topic)
             db.session.flush()
 
-            for cat in categories:
-                db.session.add(Taxonomy_Category(version_id=version.version_id, **cat))
+        version = Taxonomy_Version(
+            topic_key=topic_key,
+            version_number=1,
+            status=TAXONOMY_VERSION_STATUS_PUBLISHED,
+            source=TAXONOMY_VERSION_SOURCE_MIGRATED_LEGACY,
+            methodology_note=(
+                "沿用 services/classify_v2.py 的 "
+                f"{'DEFAULT_PROMPT_LEADERSHIP' if topic_key == QUESTION_LEADERSHIP else 'DEFAULT_PROMPT_CAREER'} "
+                "（判斷規則原文）+ services/subcategory_methodology.py 的 "
+                "SUBCATEGORY_METHODOLOGY（main_category / methodology / citation）。"
+            ),
+        )
+        db.session.add(version)
+        db.session.flush()
 
+        for cat in categories:
+            db.session.add(Taxonomy_Category(version_id=version.version_id, **cat))
+        db.session.flush()
+
+        log(f"topic_key='{topic_key}'：已建立 version_number=1（published），{len(categories)} 個子類別")
+        created.append(topic_key)
+    return created
+
+
+def migrate():
+    with __getattr__("app").app_context():
+        try:
+            seed_legacy_taxonomy()
             db.session.commit()
-            print(f"topic_key='{topic_key}'：已建立 version_number=1（published），"
-                  f"{len(categories)} 個子類別")
-
+        except Exception:
+            db.session.rollback()
+            raise
         print("完成")
 
 

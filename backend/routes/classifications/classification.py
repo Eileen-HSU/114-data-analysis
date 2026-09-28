@@ -62,8 +62,10 @@ from models import (
 )
 from services.classify_v2 import classify_response_multi_segment, is_text_response, resolve_published_taxonomy_prompt
 from services.confidence_gate import evaluate_confidence_gate
+from services.effective_classification_service import effective_view, CLASSIFICATION_STATUS_SUPERSEDED
+from services.workspace_result_service import compute_review_revision
 from services.privacy_service import mask_pii, PiiMaskingError
-from services.question_routing_service import route_question_type
+from services.question_routing_service import route_question_type_with_reason, ROUTING_REASON_API_FAILURE, ROUTING_REASON_NO_CANDIDATES
 from services.batch_classification_service import run_batch_analysis
 from services.aggregated_summary_service import build_aggregated_summary, build_aggregated_summary_pair, AggregatedSummaryError
 from services.subcategory_methodology import QUESTION_OTHER, compute_display_sub_categories
@@ -224,11 +226,19 @@ def _build_aggregated_groups(all_classification_rows, id_to_row_index, question_
     order = []   # 記錄分組第一次出現的順序，回傳時維持穩定順序
 
     for r in all_classification_rows:
-        sub_category = r.sub_category or ""
+        # 【Human Review 生效】一律透過 effective_view() 取得這筆列的
+        # 有效分類（modified 用 final_*、excluded / failed / superseded
+        # 回傳 None 直接跳過、confirmed / pending 用 AI original），跟
+        # Report / Export / Chat 追問 / Admin 清單共用同一套規則。
+        view = effective_view(r)
+        if view is None:
+            continue
+
+        sub_category = view["sub_category"] or ""
         if "無具體建議" in sub_category:
             continue  # 這種萬用分類不該出現在彙整結果裡
 
-        key = (normalize_main_category(r.main_category), sub_category)
+        key = (normalize_main_category(view["main_category"]), sub_category)
         if key not in groups:
             groups[key] = {"items": []}
             order.append(key)
@@ -245,8 +255,8 @@ def _build_aggregated_groups(all_classification_rows, id_to_row_index, question_
         groups[key]["items"].append({
             "respondent_number": (row_index + 1) if row_index is not None else None,
             "excerpt": excerpt,
-            "reasoning": r.reasoning or "",
-            "summary": r.summary or "",
+            "reasoning": view["reasoning"] or "",
+            "summary": view["summary"] or "",
         })
 
     
@@ -448,7 +458,7 @@ def _persist_segmentation_result(
             secondary_citation=seg["secondary_citation"],
             status=seg["status"],
             taxonomy_version_id=taxonomy_version_id,
-            confidence=seg["confidence"] if isinstance(seg["confidence"], (int, float)) and not isinstance(seg["confidence"], bool) else None,
+            confidence=seg.get("confidence") if isinstance(seg.get("confidence"), (int, float)) and not isinstance(seg.get("confidence"), bool) else None,
             needs_human_review=needs_human_review,
             review_flag_reason=review_flag_reason,
         )
@@ -578,11 +588,31 @@ def upload_excel_for_classification():
         
         samples = _collect_masked_routing_samples(df, text_column)
         routing_context = _build_routing_context(text_column, samples)
-        routed_question_type = route_question_type(routing_context)
+        routed_question_type, routing_reason = route_question_type_with_reason(routing_context)
         question_type = routed_question_type or QUESTION_OTHER
 
         prompt_content_for_batch, category_lookup, taxonomy_version_id = _resolve_taxonomy_for_topic(question_type)
         taxonomy_unavailable = prompt_content_for_batch is None
+
+        # 【未分類資料來源統一】routing 判斷不出來時，Uploaded_Answer.question_type
+        # 存 NULL（這張表的既定語意：NULL = 尚未判斷出來、待處理），不再把
+        # 內部 fallback 值 "other" 寫進 DB；原因另外存在 routing_status /
+        # routing_detail，Admin 未分類頁據此顯示並提供指派 Topic / 重新 routing。
+        if routed_question_type is None:
+            stored_question_type = None
+            routing_status = {
+                ROUTING_REASON_API_FAILURE: "routing_failed",
+                ROUTING_REASON_NO_CANDIDATES: "no_topic_candidates",
+            }.get(routing_reason, "unrouted")
+            routing_detail = f"routing_reason={routing_reason}"
+        elif taxonomy_unavailable:
+            stored_question_type = routed_question_type
+            routing_status = "taxonomy_unavailable"
+            routing_detail = f"topic_key={routed_question_type} 沒有可用的 published taxonomy"
+        else:
+            stored_question_type = routed_question_type
+            routing_status = "routed"
+            routing_detail = None
 
         pending_items = []  # 每個元素額外帶一個 _question_id，DB 寫入時才用得到
         column_saved_count = 0
@@ -600,7 +630,9 @@ def upload_excel_for_classification():
                 source_column=text_column,
                 row_index=idx,
                 answer_text=answer_text,
-                question_type=question_type,
+                question_type=stored_question_type,
+                routing_status=routing_status,
+                routing_detail=routing_detail,
             )
             db.session.add(uploaded_answer)
             db.session.flush()  # 取得 uploaded_answer.id，供下面 FK 使用
@@ -612,6 +644,7 @@ def upload_excel_for_classification():
                 "identifier": uploaded_answer.id,
                 "answer_text": answer_text,
                 "_question_id": f"{text_column}_row{idx}",
+                "_uploaded_answer": uploaded_answer,
             })
 
         column_classification_rows = []
@@ -639,6 +672,13 @@ def upload_excel_for_classification():
                 )
                 column_classification_rows.extend(rows)
                 classified_count += 1
+                if result.get("segmentation_status") == "failed" or (
+                    rows and all(r.status == "failed" for r in rows)
+                ):
+                    item["_uploaded_answer"].routing_status = "classification_failed"
+                    item["_uploaded_answer"].routing_detail = (
+                        result.get("segmentation_error_detail") or "all segments failed"
+                    )[:2000]
 
         all_classification_rows.extend(column_classification_rows)
 
@@ -652,7 +692,8 @@ def upload_excel_for_classification():
 
         columns_summary.append({
             "column": text_column,
-            "question_type": question_type,
+            "question_type": stored_question_type,
+            "routing_status": routing_status,
             "saved_answer_count": column_saved_count,
             "classified_count": len(column_classification_rows),
             "aggregated_groups": column_groups,
@@ -671,8 +712,17 @@ def upload_excel_for_classification():
         d["respondent_number"] = (row_index + 1) if row_index is not None else None
         classifications_payload.append(d)
 
+    # 畫面呈現指紋：前端存進 Chat_History 訊息 meta，之後 Human Review
+    # 改變 effective classification 時可以判斷這份快照是否需要重建
+    # （見 services/workspace_result_service.py）。
+    review_revision = compute_review_revision(
+        {"source_type": "user_upload", "upload_batch_id": upload_batch_id}
+    )
+
     return jsonify({
         "upload_batch_id": upload_batch_id,
+        "source_type": "user_upload",
+        "review_revision": review_revision,
         "saved_answer_count": saved_answer_count,
         "classified_count": classified_count,
         "classifications": classifications_payload,
@@ -798,8 +848,12 @@ def analyze_survey(access_code):
 
             if existing_status is not None and existing_status.segmentation_status == "completed":
                 
-                existing_rows = Response_Classification.query.filter_by(
-                    response_id=response.response_id, question_id=question_id
+                # 被 Admin retry / reclassify 取代的舊 attempt（superseded）只保留
+                # 作為歷史，不能再當成 duplicate reference 或計入彙整。
+                existing_rows = Response_Classification.query.filter(
+                    Response_Classification.response_id == response.response_id,
+                    Response_Classification.question_id == question_id,
+                    Response_Classification.status != CLASSIFICATION_STATUS_SUPERSEDED,
                 ).all()
                 
                 rows_by_question_type.setdefault(question_type, []).extend(existing_rows)
@@ -820,6 +874,7 @@ def analyze_survey(access_code):
                             "secondary_methodology": r.secondary_methodology,
                             "secondary_citation": r.secondary_citation,
                             "status": r.status,
+                            "confidence": r.confidence,
                         }
                         for r in existing_rows
                     ],
@@ -872,6 +927,8 @@ def analyze_survey(access_code):
 
     return jsonify({
         "template_id": template_id,
+        "source_type": "survey",
+        "review_revision": compute_review_revision({"source_type": "survey", "template_id": template_id}),
         "analyzed_question_ids": analyzed_question_ids,
         "newly_classified_count": newly_classified_count,
         "aggregated_groups": aggregated_groups,

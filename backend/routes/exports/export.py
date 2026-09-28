@@ -25,6 +25,7 @@ from extensions import db
 from models import Export_File, Chat_History, Workspace
 from routes.workspaces.workspace import authorize_request
 from services.export_file_service import build_xlsx, build_docx
+from services import workspace_result_service
 from sqlalchemy.orm import defer
 
 exports_bp = Blueprint("exports", __name__)
@@ -89,6 +90,31 @@ def create_export():
     if not isinstance(rows, list):
         return jsonify({"error": "缺少 rows"}), 400
 
+    # 【Human Review 生效】這則訊息如果是可追溯來源的分類結果，匯出內容
+    # 一律以後端 DB 的 effective classification 為準（不信任前端傳來的
+    # rows，避免匯出到 Human Review 之前的舊快照）：已過期就先重建並
+    # 寫回 Chat_History，再用後端版本匯出。舊格式訊息（沒有來源）維持
+    # 原本行為，使用前端傳來的 rows。
+    rows_source = "client"
+    parsed_message = workspace_result_service.parse_classification_message(chat.message_content)
+    if parsed_message is not None and workspace_result_service.source_for_chat(chat, parsed_message) is not None:
+        try:
+            freshness = workspace_result_service.is_chat_result_stale(chat, parsed_message)
+            if freshness["stale"]:
+                parsed_message = workspace_result_service.refresh_chat_result(chat)
+            rows = parsed_message.get("rows") or []
+            if data.get("rating_stats") is None and parsed_message.get("rating_stats"):
+                data["rating_stats"] = parsed_message.get("rating_stats")
+            row_count = len(rows)
+            rows_source = "server"
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({
+                "code": "EXPORT_RESULT_REFRESH_FAILED",
+                "message": f"無法取得最新的人工審核結果，已中止匯出：{str(e)[:200]}",
+                "error": f"無法取得最新的人工審核結果，已中止匯出：{str(e)[:200]}",
+            }), 500
+
     # 【新增｜評分題統計】rating_stats 是可選欄位，跟 rows 完全平行：
     # rating 題從來不會出現在 rows 裡（後端從沒把它們送進 Gemini 分類），
     # 有評分題統計時就算 rows 是空陣列（例如整份問卷只有 rating 題）也
@@ -138,6 +164,7 @@ def create_export():
     result = export.to_dict()
     result["source_path"] = _build_source_path(workspace) if workspace else None
     result["project_id"] = chat.project_id
+    result["rows_source"] = rows_source
     return jsonify(result), 201
 
 

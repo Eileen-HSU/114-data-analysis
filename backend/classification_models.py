@@ -74,9 +74,30 @@ class Uploaded_Answer(db.Model):
         db.DateTime(timezone=True), nullable=False, default=taiwan_now
     )
 
+    # ── Routing / 人工指派狀態（additive-only，舊資料為 NULL）─────────
+    # routing_status 說明「為什麼這筆回答目前有／沒有分類結果」，讓 Admin
+    # 未分類頁可以精準區分，而不是只看 question_type 猜：
+    #   routed               ：routing 成功且已送分類
+    #   unrouted             ：routing 判斷不出 Topic（含信心不足、Gemini
+    #                          回傳 null / 不在候選清單）
+    #   routing_failed       ：routing 呼叫本身失敗（API 錯誤、限流用盡）
+    #   no_topic_candidates  ：當下沒有任何 Topic 有 published taxonomy
+    #   taxonomy_unavailable ：有 Topic，但該 Topic 沒有可用 published taxonomy
+    #   assigned             ：Admin 已人工指派 Topic（分類結果見 classification）
+    #   classification_failed：已送分類但整則失敗（見 Response_Segmentation_Status）
+    # routing_detail 保存對應的診斷訊息（錯誤原因、指派備註）。
+    routing_status = db.Column(db.String(30), nullable=True)
+    routing_detail = db.Column(db.Text, nullable=True)
+    assigned_by_admin_id = db.Column(db.Integer, nullable=True)
+    assigned_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "routing_status": self.routing_status,
+            "routing_detail": self.routing_detail,
+            "assigned_by_admin_id": self.assigned_by_admin_id,
+            "assigned_at": self.assigned_at.isoformat() if self.assigned_at else None,
             "upload_batch_id": self.upload_batch_id,
             "user_id": self.user_id,
             "source_column": self.source_column,
@@ -459,6 +480,13 @@ class Response_Classification(db.Model):
     needs_human_review = db.Column(db.Boolean, nullable=False, default=False)
     review_flag_reason = db.Column(db.String(50), nullable=True)
 
+    # ── Human Review 操作 metadata（additive-only）─────────────────
+    # 最近一次改變 review_status 的 Admin 與時間；完整歷史在
+    # Admin_Audit_Log（audit.py），這裡只是方便清單顯示的最新值。
+    reviewed_by_admin_id = db.Column(db.Integer, nullable=True)
+    reviewed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
     # ── 驗證邏輯 ──────────────────────────────────────────
     def validate_source_relation(self) -> None:
         """驗證資料來源與 response_id / upload_batch_id 的關係是否合法。
@@ -529,6 +557,9 @@ class Response_Classification(db.Model):
             "confidence": self.confidence,
             "needs_human_review": self.needs_human_review,
             "review_flag_reason": self.review_flag_reason,
+            "reviewed_by_admin_id": self.reviewed_by_admin_id,
+            "reviewed_at": self.reviewed_at.isoformat() if self.reviewed_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "created_at": (
                 self.created_at.isoformat() if self.created_at else None
             ),
@@ -604,6 +635,11 @@ class Classification_Review(db.Model):
         db.DateTime(timezone=True), nullable=False, default=taiwan_now
     )
     confirmed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    # session 結束（confirmed / excluded / closed）的時間與原因。
+    # closed_reason 例：quick_confirm（未送訊息就用快速確認）、
+    # reopen_cleanup（reopen 時清掉殘留的舊 session）。
+    closed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    closed_reason = db.Column(db.String(30), nullable=True)
 
     messages = db.relationship(
         "Classification_Review_Message",
@@ -620,6 +656,8 @@ class Classification_Review(db.Model):
             "status": self.status,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "confirmed_at": self.confirmed_at.isoformat() if self.confirmed_at else None,
+            "closed_at": self.closed_at.isoformat() if self.closed_at else None,
+            "closed_reason": self.closed_reason,
         }
         if include_messages:
             data["messages"] = [m.to_dict() for m in self.messages]

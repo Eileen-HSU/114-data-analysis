@@ -1,249 +1,142 @@
 #!/usr/bin/env python
 """
-測試腳本：Human Review「排除舊版資料」批次功能
-（services.review_service.exclude_legacy_pending_classifications() +
-POST /api/classification/review/exclude-legacy）。
+測試腳本：「排除舊版資料」bulk exclude（P1-9 收窄後的規則）。
+
+舊規則只看 confidence IS NULL + pending_review，範圍過寬，會誤排除
+taxonomy-versioned / failed / 審核中 / 已有人工動作的資料。新規則
+（services/review_service._bulk_exclude_scan）：
+
+    review_status = pending_review AND confidence IS NULL
+    AND taxonomy_version_id IS NULL
+    AND status NOT IN (failed, superseded)
+    AND 沒有 in_progress review session
+    AND 從未有人工動作（沒有任何 review session / audit）
 
 涵蓋：
-    1. 只排除同時符合 confidence IS NULL AND review_status =
-       'pending_review' 兩個條件的列（taxonomy_version_id 不論是否
-       有值都不影響判斷）
-    2. confirmed / modified / excluded 的列完全不動（即使 confidence
-       IS NULL）
-    3. 有 confidence（含 confidence=0.0 這個容易跟 NULL 搞混的邊界
-       值）的列不動
-    4. affected_count 精確等於實際被更新的筆數
-    5. 除了 review_status 以外，main_category / sub_category /
-       reasoning / confidence / taxonomy_version_id 等欄位完全沒有
-       被改動（不刪除資料、不覆寫其他欄位）
-    6. 重複呼叫（idempotent）：第二次呼叫時，已經被排除過的列不會
-       再被算進 affected_count
-    7. HTTP endpoint 串接：POST /api/classification/review/exclude-legacy
-       —— Admin token 正常回 200 + 正確 affected_count；沒帶 token
-       回 401
+    1. preview：eligible / skipped 數量、逐筆 skipped 原因、affected IDs
+    2. 執行：只排除 eligible，其他欄位不變；寫入 admin identity + audit
+       （batch_id）；報告標記 outdated（bulk_review_action）
+    3. 同一個 batch_id 重試冪等（不重複寫入、回傳上一次結果）
+    4. expected_ids：只處理預覽時確認過、而且執行當下仍合格的列
+    5. 向後相容：service 舊入口 / endpoint 仍回傳 affected_count
+    6. Admin-only（401）
 
 執行方式：
     cd backend
-    export JWT_SECRET_KEY=test-secret-key-for-testing-only
     python3 tests/test_review_bulk_exclude_legacy.py
 """
 
-import os
-import sys
-
-os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-testing-only")
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
-FAILED = []
-
-
-def check(label, condition):
-    status = "PASS" if condition else "FAIL"
-    if status == "FAIL":
-        FAILED.append(label)
-    print(f"[{status}] {label}")
-
-
-from flask import Flask
-
-from extensions import db
-import models as m
-from classification_models import (
-    SOURCE_TYPE_SURVEY,
-    REVIEW_STATUS_PENDING,
-    REVIEW_STATUS_CONFIRMED,
-    REVIEW_STATUS_MODIFIED,
-    REVIEW_STATUS_EXCLUDED,
+from admin_test_support import (
+    admin_header, check, create_app, finish, seed_classification, seed_people, seed_topic,
+    seed_upload_batch,
 )
-from routes.auth.admin_guard import build_admin_token
-from routes.classifications.review import review_bp
+import models as m
+from extensions import db
 from services import review_service
 
-
-app = Flask(__name__)
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
-app.config["TESTING"] = True
-app.register_blueprint(review_bp)
-db.init_app(app)
-
-with app.app_context():
-    tables = [
-        m.Admin.__table__,
-        m.Response_Classification.__table__,
-    ]
-    db.metadata.create_all(bind=db.engine, tables=tables)
-    db.session.add(m.Admin(admin_id=1, admin_name="測試管理員", email="admin@example.com", password_hash="x"))
-    db.session.commit()
-
+app = create_app()
 client = app.test_client()
-_next_response_id = [5000]
+BATCH = "batch-legacy-bulk"
 
+with app.app_context():
+    seed_people()
+    version_id = seed_topic()
+    ids = seed_upload_batch(BATCH, [f"legacy {i}" for i in range(10)])
 
-def _fresh_response_id():
-    _next_response_id[0] += 1
-    return _next_response_id[0]
+    def mk(i, **kw):
+        kw.setdefault("confidence", None)
+        return seed_classification(ids[i], BATCH, f"legacy {i}", f"MAIN{i}", f"SUB{i}", **kw)
 
+    c_legacy_1 = mk(0)
+    c_legacy_2 = mk(1)
+    c_has_version = mk(2, version_id=version_id)
+    c_failed = mk(3, status="failed")
+    c_active = mk(4)
+    c_history = mk(5)
+    c_confirmed = mk(6, review_status="confirmed")
+    c_has_confidence = mk(7, confidence=0.4)
+    c_later = mk(8)
 
-def make_row(
-    review_status,
-    taxonomy_version_id,
-    confidence,
-    main_category="M",
-    sub_category="S",
-    reasoning="R",
-):
-    row = m.Response_Classification(
-        response_id=_fresh_response_id(),
-        source_type=SOURCE_TYPE_SURVEY,
-        question_id="q1",
-        answer_text="這是一段測試用的完整回答內容",
-        segment_start=0,
-        segment_end=5,
-        main_category=main_category,
-        sub_category=sub_category,
-        reasoning=reasoning,
-        status="completed",
-        review_status=review_status,
-        taxonomy_version_id=taxonomy_version_id,
-        confidence=confidence,
-    )
-    db.session.add(row)
+    db.session.add(m.Classification_Review(classification_id=c_active, admin_id=2, status="in_progress"))
+    db.session.add(m.Classification_Review(classification_id=c_history, admin_id=2, status="closed"))
+    db.session.add(m.Report(source_type="user_upload", upload_batch_id=BATCH, version=1, status="completed", is_outdated=False))
     db.session.commit()
-    return row.classification_id
+
+    snapshot_fields = ("main_category", "sub_category", "reasoning", "confidence", "taxonomy_version_id",
+                       "answer_text", "segment_start", "segment_end", "status")
+
+    def snap(cid):
+        row = db.session.get(m.Response_Classification, cid)
+        return {f: getattr(row, f) for f in snapshot_fields}
+
+    before = {cid: snap(cid) for cid in (c_legacy_1, c_legacy_2, c_has_version, c_failed, c_active, c_history)}
 
 
+def review_status(cid):
+    with app.app_context():
+        return db.session.get(m.Response_Classification, cid).review_status
+
+
+print("========== 1. preview ==========")
+check("未帶 token -> 401", client.get("/api/classification/review/exclude-legacy/preview").status_code == 401)
+resp = client.get("/api/classification/review/exclude-legacy/preview", headers=admin_header(1))
+preview = resp.get_json()
+check("preview 200", resp.status_code == 200)
+check("eligible 只有真正的 legacy pending（含 c_later）",
+      sorted(preview["eligible_ids"]) == sorted([c_legacy_1, c_legacy_2, c_later]))
+skipped = {s["classification_id"]: s["code"] for s in preview["skipped"]}
+check("taxonomy-versioned 被跳過（HAS_TAXONOMY_VERSION）", skipped.get(c_has_version) == "HAS_TAXONOMY_VERSION")
+check("failed 被跳過（CLASSIFICATION_FAILED）", skipped.get(c_failed) == "CLASSIFICATION_FAILED")
+check("審核中被跳過（REVIEW_IN_PROGRESS）", skipped.get(c_active) == "REVIEW_IN_PROGRESS")
+check("已有人工紀錄被跳過（HAS_HUMAN_ACTION）", skipped.get(c_history) == "HAS_HUMAN_ACTION")
+check("confirmed / 有 confidence 的列根本不是候選", c_confirmed not in skipped and c_has_confidence not in skipped)
+check("skipped_reasons 彙總數量", {r["code"]: r["count"] for r in preview["skipped_reasons"]} == {
+    "CLASSIFICATION_FAILED": 1, "HAS_HUMAN_ACTION": 1, "HAS_TAXONOMY_VERSION": 1, "REVIEW_IN_PROGRESS": 1})
+check("preview 不修改任何資料", review_status(c_legacy_1) == "pending_review")
+
+
+print("\n========== 2. 執行（expected_ids 限定範圍）==========")
 with app.app_context():
-
-    print("========== 建立測試資料 ==========")
-
-    cid_legacy_1 = make_row(REVIEW_STATUS_PENDING, None, None, main_category="LEGACY1_MAIN", sub_category="LEGACY1_SUB", reasoning="LEGACY1_REASON")
-    cid_legacy_2 = make_row(REVIEW_STATUS_PENDING, None, None, main_category="LEGACY2_MAIN", sub_category="LEGACY2_SUB", reasoning="LEGACY2_REASON")
-    cid_has_taxonomy_version = make_row(REVIEW_STATUS_PENDING, 1, None, main_category="HAS_TAXV_MAIN", sub_category="HAS_TAXV_SUB", reasoning="HAS_TAXV_REASON")
-
-    cid_confirmed = make_row(REVIEW_STATUS_CONFIRMED, None, None)
-    cid_modified = make_row(REVIEW_STATUS_MODIFIED, None, None)
-    cid_already_excluded = make_row(REVIEW_STATUS_EXCLUDED, None, None)
-
-    cid_has_confidence = make_row(REVIEW_STATUS_PENDING, None, 0.55)
-    cid_confidence_zero = make_row(REVIEW_STATUS_PENDING, None, 0.0)
-
-    should_be_excluded_ids = {cid_legacy_1, cid_legacy_2, cid_has_taxonomy_version}
-    should_be_untouched_ids = {
-        cid_confirmed, cid_modified, cid_already_excluded,
-        cid_has_confidence, cid_confidence_zero,
-    }
-
-    def _snapshot(classification_id):
-        row = m.Response_Classification.query.get(classification_id)
-        return {
-            "main_category": row.main_category,
-            "sub_category": row.sub_category,
-            "reasoning": row.reasoning,
-            "confidence": row.confidence,
-            "taxonomy_version_id": row.taxonomy_version_id,
-            "answer_text": row.answer_text,
-            "segment_start": row.segment_start,
-            "segment_end": row.segment_end,
-        }
-
-    before_snapshots = {
-        cid: _snapshot(cid) for cid in (should_be_excluded_ids | should_be_untouched_ids)
-    }
-
-
-    print("\n========== 1~3. 篩選條件：只看 confidence IS NULL + pending_review ==========")
-
-    affected_count = review_service.exclude_legacy_pending_classifications(admin_id=1)
-
-    check("affected_count 精確等於 3（3 筆同時符合 confidence IS NULL + pending_review）", affected_count == 3)
-
-    for cid in should_be_excluded_ids:
-        row = m.Response_Classification.query.get(cid)
-        check(f"classification_id={cid}（confidence NULL 的舊版 pending）review_status 變成 excluded", row.review_status == REVIEW_STATUS_EXCLUDED)
-
-    check(
-        "taxonomy_version_id 有值（=1）但 confidence=NULL + pending_review：review_status 仍會變成 excluded（taxonomy_version_id 不再是判斷條件）",
-        m.Response_Classification.query.get(cid_has_taxonomy_version).review_status == REVIEW_STATUS_EXCLUDED,
-    )
-    check(
-        "confirmed 的列 review_status 不變",
-        m.Response_Classification.query.get(cid_confirmed).review_status == REVIEW_STATUS_CONFIRMED,
-    )
-    check(
-        "modified 的列 review_status 不變",
-        m.Response_Classification.query.get(cid_modified).review_status == REVIEW_STATUS_MODIFIED,
-    )
-    check(
-        "已經是 excluded 的列 review_status 不變（還是 excluded，不影響冪等性判斷）",
-        m.Response_Classification.query.get(cid_already_excluded).review_status == REVIEW_STATUS_EXCLUDED,
-    )
-    check(
-        "有 confidence=0.55 的列 review_status 不變（仍是 pending_review）",
-        m.Response_Classification.query.get(cid_has_confidence).review_status == REVIEW_STATUS_PENDING,
-    )
-    check(
-        "confidence=0.0（不是 NULL）的列 review_status 不變（仍是 pending_review）",
-        m.Response_Classification.query.get(cid_confidence_zero).review_status == REVIEW_STATUS_PENDING,
-    )
-
-
-    print("\n========== 5. 除了 review_status，其餘欄位完全沒被改動 ==========")
-
-    for cid in should_be_excluded_ids | should_be_untouched_ids:
-        after = _snapshot(cid)
-        check(
-            f"classification_id={cid}：main_category/sub_category/reasoning/confidence/"
-            "taxonomy_version_id/answer_text/segment_start/segment_end 全部不變",
-            after == before_snapshots[cid],
-        )
-
-
-    print("\n========== 6. 冪等性：再跑一次，已排除的不會重複計入 ==========")
-
-    affected_count_second_run = review_service.exclude_legacy_pending_classifications(admin_id=1)
-    check("第二次呼叫 affected_count 為 0（沒有剩下符合條件的舊版 pending 資料）", affected_count_second_run == 0)
-
-
-print(f"\n服務層測試累計失敗：{len(FAILED)} 項")
-
-
-print("\n========== 7. HTTP endpoint 串接 ==========")
-
+    # 預覽之後才出現的新 legacy 資料，不在 expected_ids 裡，不能被順手排除
+    late_ids = seed_upload_batch(BATCH, ["late"])
+    c_after_preview = seed_classification(late_ids[0], BATCH, "late", "M", "S", confidence=None)
+resp = client.post("/api/classification/review/exclude-legacy", headers=admin_header(1), json={
+    "batch_id": "bulk-001", "expected_ids": [c_legacy_1, c_legacy_2],
+})
+result = resp.get_json()
+check("執行 200", resp.status_code == 200)
+check("affected_count=2（只處理 expected_ids 裡仍合格的列）", result["affected_count"] == 2 and sorted(result["affected_ids"]) == sorted([c_legacy_1, c_legacy_2]))
+check("回傳 batch_id 可追蹤", result["batch_id"] == "bulk-001")
+check("legacy 兩筆 -> excluded", review_status(c_legacy_1) == "excluded" and review_status(c_legacy_2) == "excluded")
+check("預覽後新增的資料沒被排除", review_status(c_after_preview) == "pending_review")
+for cid in (c_has_version, c_failed, c_active, c_history, c_confirmed, c_has_confidence, c_later):
+    check(f"classification_id={cid} review_status 不變", review_status(cid) != "excluded")
 with app.app_context():
-    cid_via_http = make_row(REVIEW_STATUS_PENDING, None, None, main_category="HTTP_MAIN", sub_category="HTTP_SUB")
+    for cid in (c_legacy_1, c_legacy_2, c_has_version, c_failed, c_active, c_history):
+        after = snap(cid)
+        check(f"classification_id={cid} 除 review_status 外欄位不變", after == before[cid])
+    row = db.session.get(m.Response_Classification, c_legacy_1)
+    check("寫入 admin identity（reviewed_by_admin_id=1）", row.reviewed_by_admin_id == 1 and row.reviewed_at is not None)
+    audit = m.Admin_Audit_Log.query.filter_by(action="bulk_exclude", batch_id="bulk-001").all()
+    check("每筆一個 audit、admin=1、batch_id", len(audit) == 2 and all(a.admin_id == 1 for a in audit))
+    report = m.Report.query.filter_by(upload_batch_id=BATCH).first()
+    check("報告 outdated（bulk_review_action）", report.is_outdated and report.outdated_reason == "bulk_review_action")
 
-admin_token = build_admin_token(admin_id=1)
 
-resp_no_auth = client.post("/api/classification/review/exclude-legacy")
-check("沒帶 token 呼叫 endpoint 回 401", resp_no_auth.status_code == 401)
-
-resp = client.post(
-    "/api/classification/review/exclude-legacy",
-    headers={"Authorization": f"Bearer {admin_token}"},
-)
-check("帶合法 Admin token 呼叫 endpoint 回 200", resp.status_code == 200)
-body = resp.get_json()
-check("endpoint 回應包含 affected_count 欄位", "affected_count" in body)
-check("這次透過 endpoint 排除的筆數正確（只有剛放進去那 1 筆）", body["affected_count"] == 1)
-
+print("\n========== 3. 同 batch_id 重試冪等 ==========")
+resp = client.post("/api/classification/review/exclude-legacy", headers=admin_header(1), json={"batch_id": "bulk-001"})
+check("重試回傳上一次結果（idempotent_replay）", resp.get_json()["idempotent_replay"] is True and resp.get_json()["affected_count"] == 2)
+check("重試沒有順手排除其他 eligible（c_later 仍 pending）", review_status(c_later) == "pending_review")
 with app.app_context():
-    check(
-        "透過 endpoint 排除後，該筆 review_status 確實變成 excluded",
-        m.Response_Classification.query.get(cid_via_http).review_status == REVIEW_STATUS_EXCLUDED,
-    )
-
-resp_again = client.post(
-    "/api/classification/review/exclude-legacy",
-    headers={"Authorization": f"Bearer {admin_token}"},
-)
-check("endpoint 再呼叫一次，affected_count 為 0（沒有新的舊版 pending 資料了）", resp_again.get_json()["affected_count"] == 0)
+    check("重試沒有新增 audit", m.Admin_Audit_Log.query.filter_by(batch_id="bulk-001").count() == 2)
 
 
-print("\n" + "=" * 50)
-if FAILED:
-    print(f"共 {len(FAILED)} 項測試失敗：")
-    for label in FAILED:
-        print(f"  - {label}")
-    sys.exit(1)
-else:
-    print("全部測試通過！")
+print("\n========== 4. 向後相容入口 ==========")
+with app.app_context():
+    affected = review_service.exclude_legacy_pending_classifications(admin_id=1)
+check("舊 service 入口套用新規則（c_later + c_after_preview = 2）", affected == 2)
+check("第二次呼叫 affected_count=0", client.post("/api/classification/review/exclude-legacy", headers=admin_header(1)).get_json()["affected_count"] == 0)
+check("expected_ids 型別錯誤 -> 400 INVALID_IDS",
+      client.post("/api/classification/review/exclude-legacy", headers=admin_header(1), json={"expected_ids": "x"}).get_json()["code"] == "INVALID_IDS")
+
+finish()

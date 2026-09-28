@@ -62,13 +62,11 @@ class _FakeModel:
         return _FakeResp(_queue.pop(0))
 
 
-_fake_genai = types.ModuleType("google.generativeai")
-_fake_genai.GenerativeModel = _FakeModel
-_fake_genai.configure = lambda **kwargs: None
-_fake_google = types.ModuleType("google")
-_fake_google.generativeai = _fake_genai
-sys.modules["google"] = _fake_google
-sys.modules["google.generativeai"] = _fake_genai
+# 直接替換 services.gemini_client（新版 google-genai SDK 的包裝層），
+# 不再偽造 sys.modules["google"]——那會讓 `from google import genai` 失敗。
+import services.gemini_client as _gemini_client
+_gemini_client.GenerativeModel = _FakeModel
+_gemini_client.configure = lambda **kwargs: None
 
 
 def q(obj_or_text):
@@ -107,6 +105,9 @@ with app.app_context():
         m.Response_Classification.__table__,
         m.Response_Segmentation_Status.__table__,
         m.Uploaded_Answer.__table__,
+        # publish 會寫 audit、並把受影響的既有 Report 標記 outdated
+        m.Admin_Audit_Log.__table__,
+        m.Report.__table__,
     ]
     db.metadata.create_all(bind=db.engine, tables=tables)
 
@@ -512,7 +513,12 @@ check("HTTP 201（沒有 taxonomy 不代表上傳失敗）", resp_a.status_code 
 check("saved_answer_count 為 1（原始文字仍照常保存）", data_a.get("saved_answer_count") == 1)
 check("classified_count 為 0（不 fallback 動態分類）", data_a.get("classified_count") == 0)
 check("columns 標記 taxonomy_unavailable=True", data_a["columns"][0]["taxonomy_unavailable"] is True)
-check("完全沒有呼叫 Gemini 做分類（只消耗 routing 那一次）", len(_queue) == 0)
+# routing 候選清單只包含「有 published taxonomy」的 Topic（見
+# question_routing_service._get_routing_candidates），這裡兩個 Topic 都
+# 不合格 -> 沒有任何候選，連 routing 都不會呼叫 Gemini；預先排入的那一個
+# routing 回應必須原封不動留在佇列裡，證明完全沒有任何 Gemini 呼叫
+# （更不可能有 classification 呼叫）。
+check("完全沒有呼叫 Gemini 做分類（沒有候選 Topic，連 routing 都不呼叫）", len(_queue) == 1)
 
 with app2.app_context():
     ua_a = m.Uploaded_Answer.query.filter_by(upload_batch_id=data_a["upload_batch_id"]).all()

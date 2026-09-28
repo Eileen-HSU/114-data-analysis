@@ -1,0 +1,217 @@
+"""
+Workspace 分類結果（Chat_History 裡 [[CLASSIFICATION_TABLE]] 訊息）與
+DB 最新 effective classification 的同步。
+
+【背景】Excel 上傳 / 問卷 /analyze 完成當下，前端把後端算好的
+aggregated_groups 存進 Chat_History.message_content（快照）。之後 Admin
+在 Human Review 裡 modified / excluded / reopen，DB 已經改變，但這份
+快照不會跟著變——重新整理頁面、匯出檔案都還是舊結果。
+
+這裡提供後端權威的同步機制（不是前端 state workaround）：
+    - compute_review_revision()：依 effective 規則算出「畫面呈現指紋」，
+      只有會影響畫面的變更（modified / excluded / reopen 後改回 AI
+      original / failed / superseded）才會改變指紋；單純 confirm 不影響。
+    - is_chat_result_stale()：比對訊息裡存的 meta.review_revision。舊訊息
+      沒有這個欄位時，改跟「修正前的行為」（全部用 AI original）比較，
+      沒有被 Human Review 影響的舊訊息不會被判定為過期。
+    - refresh_chat_result()：用 DB 重建 aggregated_groups（跟 upload /
+      analyze 同一個 _build_aggregated_groups()、同樣的分組與排序），
+      覆寫回 Chat_History（DB persistence），回傳新的 rows。
+"""
+
+import hashlib
+import json
+
+from extensions import db, taiwan_now
+from models import Survey_Response, Survey_Template, Uploaded_Answer
+from classification_models import SOURCE_TYPE_SURVEY, SOURCE_TYPE_USER_UPLOAD
+from services.effective_classification_service import display_fingerprint_entry
+from services.source_lookup_service import fetch_classifications_in_scope
+from services.subcategory_methodology import QUESTION_OTHER
+
+CLASSIFICATION_TABLE_MARKER = "[[CLASSIFICATION_TABLE]]"
+
+
+def parse_classification_message(content):
+    if not content or not content.startswith(CLASSIFICATION_TABLE_MARKER):
+        return None
+    try:
+        return json.loads(content[len(CLASSIFICATION_TABLE_MARKER):])
+    except (TypeError, ValueError):
+        return None
+
+
+def build_classification_message(payload: dict) -> str:
+    return CLASSIFICATION_TABLE_MARKER + json.dumps(payload, ensure_ascii=False)
+
+
+def source_for_chat(chat, parsed=None):
+    """回傳這則分類結果訊息對應的分析單位；判斷不出來回傳 None
+    （舊格式訊息沒有存來源時，維持原本快照，不猜測）。"""
+    parsed = parsed if parsed is not None else parse_classification_message(chat.message_content)
+    if parsed is None:
+        return None
+    meta = parsed.get("meta") or {}
+    template_id = meta.get("template_id") or chat.template_id
+    if template_id:
+        return {"source_type": SOURCE_TYPE_SURVEY, "template_id": int(template_id)}
+    if meta.get("upload_batch_id"):
+        return {"source_type": SOURCE_TYPE_USER_UPLOAD, "upload_batch_id": meta["upload_batch_id"]}
+    return None
+
+
+def _scope_rows(source):
+    if source["source_type"] == SOURCE_TYPE_SURVEY:
+        return fetch_classifications_in_scope(SOURCE_TYPE_SURVEY, template_id=source["template_id"])
+    return fetch_classifications_in_scope(SOURCE_TYPE_USER_UPLOAD, upload_batch_id=source["upload_batch_id"])
+
+
+def compute_review_revision(source, rows=None, mode="effective") -> str:
+    rows = rows if rows is not None else _scope_rows(source)
+    entries = sorted(
+        (display_fingerprint_entry(r, mode=mode) for r in rows),
+        key=lambda e: (e[0] or 0),
+    )
+    return hashlib.sha1(json.dumps(entries, ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
+
+
+def is_chat_result_stale(chat, parsed=None) -> dict:
+    parsed = parsed if parsed is not None else parse_classification_message(chat.message_content)
+    source = source_for_chat(chat, parsed)
+    if source is None:
+        return {"has_source": False, "stale": False, "review_revision": None, "stored_revision": None}
+
+    rows = _scope_rows(source)
+    current = compute_review_revision(source, rows)
+    stored = (parsed.get("meta") or {}).get("review_revision")
+    if stored:
+        stale = stored != current
+    else:
+        # 舊訊息：跟修正前的產生方式（全部 AI original）比較。
+        stale = compute_review_revision(source, rows, mode="legacy_original") != current
+    return {
+        "has_source": True,
+        "stale": stale,
+        "review_revision": current,
+        "stored_revision": stored,
+        "source": source,
+    }
+
+
+def build_live_groups(source) -> list:
+    """用 DB 目前資料重建 aggregated_groups，分組／排序方式跟
+    upload_excel_for_classification() / analyze_survey() 完全一致。"""
+    from routes.classifications.classification import _build_aggregated_groups
+
+    rows = _scope_rows(source)
+
+    if source["source_type"] == SOURCE_TYPE_SURVEY:
+        template = db.session.get(Survey_Template, source["template_id"])
+        items = ((template.question_json or {}).get("items", []) if template else [])
+        question_order = {}
+        question_type_map = {}
+        for idx, item in enumerate(items):
+            if item.get("type") == "short":
+                question_order[item.get("id")] = idx
+                question_type_map[item.get("id")] = item.get("question_type") or QUESTION_OTHER
+
+        responses = (
+            Survey_Response.query.filter_by(template_id=source["template_id"])
+            .order_by(Survey_Response.response_id.asc()).all()
+        )
+        response_index = {r.response_id: i for i, r in enumerate(responses)}
+
+        rows_by_type = {}
+        type_order = []
+        for row in sorted(
+            rows,
+            key=lambda r: (
+                question_order.get(r.question_id, 10**6),
+                response_index.get(r.response_id, 10**6),
+                r.segment_start or 0,
+            ),
+        ):
+            q_type = question_type_map.get(row.question_id, QUESTION_OTHER)
+            if q_type not in rows_by_type:
+                rows_by_type[q_type] = []
+                type_order.append(q_type)
+            rows_by_type[q_type].append(row)
+
+        groups = []
+        for q_type in type_order:
+            groups.extend(_build_aggregated_groups(rows_by_type[q_type], response_index, q_type, id_field="response_id"))
+        return groups
+
+    answers = (
+        Uploaded_Answer.query.filter_by(upload_batch_id=source["upload_batch_id"])
+        .order_by(Uploaded_Answer.id.asc()).all()
+    )
+    answer_by_id = {a.id: a for a in answers}
+    row_index_by_id = {a.id: a.row_index for a in answers}
+    column_order = []
+    column_type = {}
+    for a in answers:
+        if a.source_column not in column_type:
+            column_order.append(a.source_column)
+            column_type[a.source_column] = a.question_type or QUESTION_OTHER
+
+    rows_by_column = {}
+    for row in sorted(rows, key=lambda r: (row_index_by_id.get(r.uploaded_answer_id, 10**6), r.segment_start or 0)):
+        answer = answer_by_id.get(row.uploaded_answer_id)
+        if answer is None:
+            continue
+        rows_by_column.setdefault(answer.source_column, []).append(row)
+
+    groups = []
+    for column in column_order:
+        column_rows = rows_by_column.get(column, [])
+        if not column_rows:
+            continue
+        column_groups = _build_aggregated_groups(column_rows, row_index_by_id, column_type[column])
+        for g in column_groups:
+            g["source_column"] = column
+            g["question_type"] = column_type[column]
+        groups.extend(column_groups)
+    return groups
+
+
+def _group_to_row(g):
+    return {
+        "main_category": g.get("main_category") or "",
+        "sub_category": g.get("sub_category") or "",
+        "respondent_text": g.get("respondent_text") or "",
+        "aggregated_reasoning": g.get("aggregated_reasoning") or "",
+        "aggregated_summary": g.get("aggregated_summary") or "",
+        "synthesis_status": g.get("synthesis_status") or "ok",
+        "synthesis_error": g.get("synthesis_error"),
+        "respondent_count": g.get("respondent_count"),
+    }
+
+
+def refresh_chat_result(chat) -> dict:
+    """重建並持久化這則分類結果訊息。只 add/修改，不 commit（交給呼叫端）。
+
+    Returns: 更新後的訊息 payload（{"rows", "meta", "rating_stats"}）。
+    """
+    parsed = parse_classification_message(chat.message_content)
+    source = source_for_chat(chat, parsed)
+    if source is None:
+        raise ValueError("這則訊息沒有可追溯的分析來源，無法重新整理")
+
+    groups = build_live_groups(source)
+    meta = dict(parsed.get("meta") or {})
+    meta["review_revision"] = compute_review_revision(source)
+    meta["refreshed_at"] = taiwan_now().isoformat()
+    meta["source_type"] = source["source_type"]
+    if source["source_type"] == SOURCE_TYPE_SURVEY:
+        meta["template_id"] = source["template_id"]
+    else:
+        meta["upload_batch_id"] = source["upload_batch_id"]
+
+    payload = {
+        "rows": [_group_to_row(g) for g in groups],
+        "meta": meta,
+        "rating_stats": parsed.get("rating_stats") or [],
+    }
+    chat.message_content = build_classification_message(payload)
+    return payload

@@ -1,110 +1,267 @@
 """
 
-get_effective_classification()：Aggregation 唯一該呼叫的「這筆
-classification 最終要拿哪個版本的分類結果來用」判斷入口。
+Effective classification：「這筆 Response_Classification 在 Workspace /
+Report / Export / Chat 追問 / Admin 清單裡，最終要拿哪一個版本的分類
+結果來用」的**唯一**判斷入口。
 
-不要讓各處各自重複判斷 confirmed 用 AI original、modified 用 final_*
-——這裡集中處理一次，Aggregation 相關 service 全部呼叫這個函式，
-不自己重寫判斷邏輯。
+不要讓各 route / service 各自重複判斷 confirmed 用 AI original、
+modified 用 final_*、excluded 要排除、failed 不算成功——這裡集中處理
+一次，所有讀取端都呼叫這裡，不自己重寫判斷邏輯。
 
-規則（對應需求文件第十二節）：
-    confirmed：使用 AI original classification（main_category /
-        sub_category / secondary_* / reasoning / methodology / citation
-        等欄位，都是 classify_v2.py 當初寫入、Human Review 完全沒有
-        動過的原始值）。
-    modified ：使用 final classification（final_main_category /
-        final_sub_category / final_secondary_* / final_reasoning）。
-        methodology / citation 不是存在 final_* 欄位裡（Phase 2 沒有
-        新增 final_methodology/final_citation 這兩個欄位），而是這裡
-        當場用 classification.taxonomy_version_id 對應的
-        Taxonomy_Category 查取得
-        ——因為 methodology/citation 本來就是 sub_category 的確定性
-        函式，不需要重複存一份，也避免「查表規則之後改了，final_*
-        裡存的舊 methodology 沒跟著更新」這種資料不一致風險。
-    pending_review / excluded：沒有 effective classification，呼叫
-        這個函式屬於呼叫端邏輯錯誤（Aggregation 的資料來源本來就該
-        先篩選成只剩 confirmed/modified，見
-        services/source_lookup_service.fetch_classifications_in_scope()
-        的 review_statuses 參數），這裡用明確的例外擋下來，不要讓
-        呼叫端不小心把 pending/excluded 的 None 分類值也算進統計。
+【規則】（同時兼容 legacy（taxonomy_version_id IS NULL）與動態 taxonomy
+classification）
+
+    status（AI 處理結果）：
+        failed      ：AI 沒有成功分類，永遠不是有效分類結果，不進任何
+                      統計／彙整／報表／匯出（只會出現在 Admin 的
+                      failed 清單等待 retry）。
+        superseded  ：重新處理（retry / reclassify）後被新 attempt 取代的
+                      舊列，保留作為 attempt history，同樣永遠不計入。
+        其他（completed / methodology_not_found / pending ...）：可以被計入，
+            再依 review_status 決定用哪個版本。
+
+    review_status（人工審核結果）：
+        excluded       ：人工決定不納入分析——不出現在任何統計／彙整／
+                         報表／匯出。
+        modified       ：使用人工確認後的 final_* 欄位（final_main_category /
+                         final_sub_category / final_secondary_* /
+                         final_reasoning）。methodology / citation 不另外
+                         存 final_* 版本，而是依 final_sub_category 重新查表：
+                         有 taxonomy_version_id 時查該版 Taxonomy_Category，
+                         legacy 列（taxonomy_version_id IS NULL）查產生當時
+                         使用的 legacy SUBCATEGORY_METHODOLOGY 表。
+        confirmed      ：人工確認 AI 原始結果——使用 AI original 欄位。
+        pending_review ：尚未人工確認（含「有進行中的 review session」，
+                         也就是 in_review）。
+                           - Workspace 即時彙整 / 匯出：依產品定案沿用 AI
+                             original 並計入（is_human_reviewed=False，
+                             不會被當成人工確認結果）。
+                           - Report 正式快照：不計入（只收 confirmed /
+                             modified，見 REPORT_ELIGIBLE_REVIEW_STATUSES），
+                             Readiness 另外回報 pending 數量。
+
+    Schema 對照（需求文件使用的欄位名 → 實際欄位）：
+        final_primary_category     → final_main_category / final_sub_category
+        final_secondary_categories → final_secondary_main_category / final_secondary_sub_category
+        final_reasoning            → final_reasoning
+        final_summary / final_sentiment / final_keywords /
+        final_recommended_actions  → 目前 schema 不存在（Human Review 只能改
+                                     分類與理由），summary 一律沿用 AI 原始值。
 """
 
-from classification_models import REVIEW_STATUS_CONFIRMED, REVIEW_STATUS_MODIFIED
+from classification_models import (
+    REVIEW_STATUS_CONFIRMED,
+    REVIEW_STATUS_EXCLUDED,
+    REVIEW_STATUS_MODIFIED,
+    REVIEW_STATUS_PENDING,
+)
 from extensions import db
-from models import Taxonomy_Version
-from services.taxonomy_service import methodology_lookup_for_taxonomy_version
+
+# ── AI 處理狀態（Response_Classification.status）──────────────────────
+CLASSIFICATION_STATUS_FAILED = "failed"
+CLASSIFICATION_STATUS_SUPERSEDED = "superseded"
+# 這些 status 永遠不是「成功的分類結果」，任何統計都不能計入。
+NON_COUNTABLE_STATUSES = frozenset({CLASSIFICATION_STATUS_FAILED, CLASSIFICATION_STATUS_SUPERSEDED})
+
+# Report 正式快照只收人工確認過的結果。
+REPORT_ELIGIBLE_REVIEW_STATUSES = (REVIEW_STATUS_CONFIRMED, REVIEW_STATUS_MODIFIED)
 
 
 class EffectiveClassificationError(ValueError):
-    """呼叫端傳進一筆 review_status 不是 confirmed/modified 的
-    classification 時使用——這是呼叫端的篩選邏輯有誤，不是資料損毀，
-    fail loud 比 fail silent 安全。"""
+    """呼叫端傳進一筆沒有「人工確認後 effective classification」的列給
+    get_effective_classification()（例如 pending/excluded/failed）——這是
+    呼叫端的篩選邏輯有誤，不是資料損毀，fail loud 比 fail silent 安全。"""
+
+
+# ═══════════════════════════════════════════════════════════════
+# 判斷函式（純 Python，不查 DB；可以吃 ORM 物件，也可以吃
+# SimpleNamespace 之類的測試替身）
+# ═══════════════════════════════════════════════════════════════
+
+def is_failed(row) -> bool:
+    return getattr(row, "status", None) == CLASSIFICATION_STATUS_FAILED
+
+
+def is_countable(row) -> bool:
+    """這筆列可不可以出現在 Workspace 即時彙整 / 匯出 / Chat 追問 context。"""
+    if getattr(row, "review_status", None) == REVIEW_STATUS_EXCLUDED:
+        return False
+    if getattr(row, "status", None) in NON_COUNTABLE_STATUSES:
+        return False
+    return True
+
+
+def is_report_eligible(row) -> bool:
+    return is_countable(row) and getattr(row, "review_status", None) in REPORT_ELIGIBLE_REVIEW_STATUSES
+
+
+def _uses_final(row) -> bool:
+    return getattr(row, "review_status", None) == REVIEW_STATUS_MODIFIED
+
+
+def effective_view(row, include_methodology: bool = False) -> dict | None:
+    """
+    回傳這筆列的 effective 分類 dict；不可計入（excluded / failed /
+    superseded）時回傳 None，呼叫端必須整筆跳過。
+
+    Returns:
+        {
+            "main_category", "sub_category",
+            "secondary_main_category", "secondary_sub_category",
+            "reasoning", "summary",
+            "review_status", "is_human_reviewed",
+            # include_methodology=True 時才有（需要查 DB）：
+            "methodology", "citation", "secondary_methodology", "secondary_citation",
+        }
+    """
+    if not is_countable(row):
+        return None
+
+    if _uses_final(row):
+        view = {
+            "main_category": getattr(row, "final_main_category", None),
+            "sub_category": getattr(row, "final_sub_category", None),
+            "secondary_main_category": getattr(row, "final_secondary_main_category", None),
+            "secondary_sub_category": getattr(row, "final_secondary_sub_category", None),
+            "reasoning": getattr(row, "final_reasoning", None),
+        }
+    else:
+        view = {
+            "main_category": getattr(row, "main_category", None),
+            "sub_category": getattr(row, "sub_category", None),
+            "secondary_main_category": getattr(row, "secondary_main_category", None),
+            "secondary_sub_category": getattr(row, "secondary_sub_category", None),
+            "reasoning": getattr(row, "reasoning", None),
+        }
+
+    review_status = getattr(row, "review_status", None) or REVIEW_STATUS_PENDING
+    view["summary"] = getattr(row, "summary", None)
+    view["review_status"] = review_status
+    view["is_human_reviewed"] = review_status in REPORT_ELIGIBLE_REVIEW_STATUSES
+
+    if include_methodology:
+        view.update(_methodology_fields(row, view))
+    return view
+
+
+def _methodology_fields(row, view) -> dict:
+    if not _uses_final(row):
+        return {
+            "methodology": getattr(row, "methodology", None),
+            "citation": getattr(row, "citation", None),
+            "secondary_methodology": getattr(row, "secondary_methodology", None),
+            "secondary_citation": getattr(row, "secondary_citation", None),
+        }
+
+    lookup = _methodology_lookup_for(row)
+    primary = lookup(view["sub_category"]) if view["sub_category"] else None
+    secondary = lookup(view["secondary_sub_category"]) if view["secondary_sub_category"] else None
+    return {
+        "methodology": primary["methodology"] if primary else None,
+        "citation": primary["citation"] if primary else None,
+        "secondary_methodology": secondary["methodology"] if secondary else None,
+        "secondary_citation": secondary["citation"] if secondary else None,
+    }
+
+
+def _methodology_lookup_for(row):
+    """依這筆列「產生當時使用的 taxonomy」回傳 sub_category -> {methodology,
+    citation} 的查表函式。
+
+    - 動態 taxonomy 列：查 taxonomy_version_id 那一版的 Taxonomy_Category
+      （不是目前 published 版，避免 taxonomy 改版後舊結果被誤查）。
+    - legacy 列（taxonomy_version_id IS NULL）：查 legacy
+      SUBCATEGORY_METHODOLOGY 表——這只是補齊「當初就是用這份表分類」
+      的 metadata，不是 classification fallback，不會產生任何新分類。
+    """
+    from models import Taxonomy_Version
+    from services.taxonomy_service import methodology_lookup_for_taxonomy_version
+
+    version_id = getattr(row, "taxonomy_version_id", None)
+    if version_id is not None:
+        version = db.session.get(Taxonomy_Version, version_id)
+        lookup = methodology_lookup_for_taxonomy_version(version) if version is not None else None
+        return lookup or (lambda _sub: None)
+
+    from services.subcategory_methodology import SUBCATEGORY_METHODOLOGY
+    from services.source_lookup_service import resolve_question_type
+
+    question_type = None
+    try:
+        question_type = resolve_question_type(row)
+    except Exception:  # SimpleNamespace / 缺 FK 的資料：退回跨表搜尋
+        question_type = None
+
+    def _lookup(sub_category):
+        if question_type in SUBCATEGORY_METHODOLOGY:
+            info = SUBCATEGORY_METHODOLOGY[question_type].get(sub_category)
+            return {"methodology": info["methodology"], "citation": info["citation"]} if info else None
+        matches = [t[sub_category] for t in SUBCATEGORY_METHODOLOGY.values() if sub_category in t]
+        if len(matches) == 1:
+            return {"methodology": matches[0]["methodology"], "citation": matches[0]["citation"]}
+        return None
+
+    return _lookup
 
 
 def get_effective_classification(classification) -> dict:
-    """
+    """Report 正式快照專用的嚴格版本：只接受 confirmed / modified 且
+    status 可計入的列，其他一律 EffectiveClassificationError。
+
     Returns:
         {
-            "main_category": str, "sub_category": str,
-            "secondary_main_category": str or None,
-            "secondary_sub_category": str or None,
-            "reasoning": str,
-            "methodology": str or None, "citation": str or None,
-            "secondary_methodology": str or None, "secondary_citation": str or None,
+            "main_category", "sub_category",
+            "secondary_main_category", "secondary_sub_category",
+            "reasoning", "methodology", "citation",
+            "secondary_methodology", "secondary_citation",
         }
     """
-    if classification.review_status == REVIEW_STATUS_CONFIRMED:
-        return {
-            "main_category": classification.main_category,
-            "sub_category": classification.sub_category,
-            "secondary_main_category": classification.secondary_main_category,
-            "secondary_sub_category": classification.secondary_sub_category,
-            "reasoning": classification.reasoning,
-            "methodology": classification.methodology,
-            "citation": classification.citation,
-            "secondary_methodology": classification.secondary_methodology,
-            "secondary_citation": classification.secondary_citation,
-        }
-
-    if classification.review_status == REVIEW_STATUS_MODIFIED:
-        methodology = citation = None
-        taxonomy_version = (
-            db.session.get(Taxonomy_Version, classification.taxonomy_version_id)
-            if classification.taxonomy_version_id is not None
-            else None
+    if not is_report_eligible(classification):
+        raise EffectiveClassificationError(
+            f"review_status={getattr(classification, 'review_status', None)!r} / "
+            f"status={getattr(classification, 'status', None)!r}（classification_id="
+            f"{getattr(classification, 'classification_id', None)}）沒有 effective "
+            "classification，只有 confirmed/modified 且非 failed 才有；呼叫端應該先用 "
+            "fetch_classifications_in_scope(review_statuses=[...]) 篩選過。"
         )
-        lookup = (
-            methodology_lookup_for_taxonomy_version(taxonomy_version)
-            if taxonomy_version is not None
-            else None
+    view = effective_view(classification, include_methodology=True)
+    return {
+        key: view[key]
+        for key in (
+            "main_category", "sub_category",
+            "secondary_main_category", "secondary_sub_category",
+            "reasoning", "methodology", "citation",
+            "secondary_methodology", "secondary_citation",
         )
-        if lookup and classification.final_sub_category:
-            info = lookup(classification.final_sub_category)
-            if info:
-                methodology, citation = info["methodology"], info["citation"]
+    }
 
-        secondary_methodology = secondary_citation = None
-        if lookup and classification.final_secondary_sub_category:
-            secondary_info = lookup(classification.final_secondary_sub_category)
-            if secondary_info:
-                secondary_methodology = secondary_info["methodology"]
-                secondary_citation = secondary_info["citation"]
 
-        return {
-            "main_category": classification.final_main_category,
-            "sub_category": classification.final_sub_category,
-            "secondary_main_category": classification.final_secondary_main_category,
-            "secondary_sub_category": classification.final_secondary_sub_category,
-            "reasoning": classification.final_reasoning,
-            "methodology": methodology,
-            "citation": citation,
-            "secondary_methodology": secondary_methodology,
-            "secondary_citation": secondary_citation,
-        }
+# ═══════════════════════════════════════════════════════════════
+# SQL 條件（DB 查詢端用，跟上面的 Python 判斷是同一套規則）
+# ═══════════════════════════════════════════════════════════════
 
-    raise EffectiveClassificationError(
-        f"review_status={classification.review_status!r}（classification_id="
-        f"{classification.classification_id}）沒有 effective classification，"
-        "只有 confirmed/modified 才有；呼叫端應該先用 "
-        "fetch_classifications_in_scope(review_statuses=[...]) 篩選過。"
+def countable_clause(model=None):
+    """SQLAlchemy 條件：等同 is_countable()。"""
+    if model is None:
+        from classification_models import Response_Classification as model
+    return db.and_(
+        model.review_status != REVIEW_STATUS_EXCLUDED,
+        db.or_(model.status.is_(None), ~model.status.in_(tuple(NON_COUNTABLE_STATUSES))),
     )
+
+
+def display_fingerprint_entry(row, mode: str = "effective"):
+    """用來判斷「畫面上的彙整結果是否需要重新產生」的單筆指紋。
+
+    mode="effective"：目前 effective 規則下，這筆列在畫面上的呈現。
+    mode="legacy_original"：本次修正之前 _build_aggregated_groups() 的
+        行為（無條件使用 AI 原始欄位、不排除任何列），用來判斷舊訊息
+        是否真的受 Human Review 影響。
+    """
+    classification_id = getattr(row, "classification_id", None)
+    if mode == "legacy_original":
+        return (classification_id, getattr(row, "main_category", None), getattr(row, "sub_category", None))
+    view = effective_view(row)
+    if view is None:
+        return (classification_id, None, None)
+    return (classification_id, view["main_category"], view["sub_category"])

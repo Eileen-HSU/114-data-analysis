@@ -62,7 +62,7 @@ def readiness(source_type, identifier):
         )
         return jsonify(data), 200
     except ReportError as e:
-        return jsonify({"error": e.message}), e.http_status
+        return jsonify({"code": e.code, "message": e.message, "error": e.message}), e.http_status
 
 
 @report_bp.route("/api/reports/<source_type>/<identifier>/generate", methods=["POST"])
@@ -80,7 +80,7 @@ def generate(source_type, identifier):
         status_code = 201 if report.status == "completed" else 500
         return jsonify(report.to_dict()), status_code
     except ReportError as e:
-        return jsonify({"error": e.message}), e.http_status
+        return jsonify({"code": e.code, "message": e.message, "error": e.message}), e.http_status
 
 
 @report_bp.route("/api/reports/<source_type>/<identifier>/versions", methods=["GET"])
@@ -97,7 +97,7 @@ def versions(source_type, identifier):
         )
         return jsonify({"versions": data}), 200
     except ReportError as e:
-        return jsonify({"error": e.message}), e.http_status
+        return jsonify({"code": e.code, "message": e.message, "error": e.message}), e.http_status
 
 
 @report_bp.route("/api/reports/<int:report_id>", methods=["GET"])
@@ -109,4 +109,4 @@ def get_report(report_id):
         data = report_service.get_report_detail(report_id, auth_user_id)
         return jsonify(data), 200
     except ReportError as e:
-        return jsonify({"error": e.message}), e.http_status
+        return jsonify({"code": e.code, "message": e.message, "error": e.message}), e.http_status

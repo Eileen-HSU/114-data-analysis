@@ -52,6 +52,7 @@ with app.app_context():
         m.Survey_Template.__table__,
         m.Survey_Response.__table__,
         m.Response_Classification.__table__,
+        m.Classification_Review.__table__,  # 清單會一併回傳 in_review 狀態
     ]
     db.metadata.create_all(bind=db.engine, tables=tables)
     admin = m.Admin(admin_name="tester", email="admin@example.com", password_hash="x")
@@ -67,11 +68,35 @@ with app.app_context():
     db.session.commit()
     survey_response_id = survey_response.response_id
 
+    # topic 篩選的正確語意是 Response_Classification.taxonomy_version_id ->
+    # Taxonomy_Version.topic_key（question_id 是題目 UUID / 欄位識別碼，
+    # 不是 topic_key；見 routes/admin/ai_admin.py 與
+    # tests/test_ai_admin_classifications_topic_filter.py）。這裡替每個
+    # 真正的 topic 建立 Topic + Taxonomy_Version，"other" / None 維持
+    # 舊資料的 question_id 形態（__unassigned__ 分支）。
+    _topic_versions = {}
+
+    def _version_id_for(topic_key):
+        if topic_key not in _topic_versions:
+            db.session.add(m.Topic(topic_key=topic_key, title=topic_key))
+            v = m.Taxonomy_Version(topic_key=topic_key, version_number=1, status="published", source="manual")
+            db.session.add(v)
+            db.session.flush()
+            _topic_versions[topic_key] = v.version_id
+        return _topic_versions[topic_key]
+
     def make_row(question_id, sub_category):
+        if question_id in (None, "other"):
+            return m.Response_Classification(
+                response_id=survey_response_id, source_type="survey", question_id=question_id,
+                answer_text="a", segment_start=0, segment_end=1,
+                main_category="M", sub_category=sub_category,
+            )
         return m.Response_Classification(
-            response_id=survey_response_id, source_type="survey", question_id=question_id,
+            response_id=survey_response_id, source_type="survey", question_id=f"q-{question_id}",
             answer_text="a", segment_start=0, segment_end=1,
             main_category="M", sub_category=sub_category,
+            taxonomy_version_id=_version_id_for(question_id),
         )
 
     db.session.add(make_row("leadership_and_dept", "leadership-row"))

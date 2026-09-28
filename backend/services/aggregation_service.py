@@ -29,9 +29,12 @@ aggregated_summary。
       item 數量。
 """
 
-from classification_models import REVIEW_STATUS_CONFIRMED, REVIEW_STATUS_MODIFIED
 from services.source_lookup_service import fetch_classifications_in_scope, response_dedup_key
-from services.effective_classification_service import get_effective_classification
+from services.effective_classification_service import (
+    NON_COUNTABLE_STATUSES,
+    REPORT_ELIGIBLE_REVIEW_STATUSES,
+    get_effective_classification,
+)
 
 
 def _segment_text(classification):
@@ -70,8 +73,8 @@ def build_aggregation(source_type, template_id=None, upload_batch_id=None) -> li
         source_type=source_type,
         template_id=template_id,
         upload_batch_id=upload_batch_id,
-        review_statuses=[REVIEW_STATUS_CONFIRMED, REVIEW_STATUS_MODIFIED],
-        exclude_statuses=["failed"],
+        review_statuses=list(REPORT_ELIGIBLE_REVIEW_STATUSES),
+        exclude_statuses=list(NON_COUNTABLE_STATUSES),
     )
 
     groups = {}  # (main_category, sub_category) -> {"methodology","citation","items":[],"response_keys":set()}

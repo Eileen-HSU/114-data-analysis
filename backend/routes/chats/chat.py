@@ -3,6 +3,8 @@ from extensions import db
 from models import Chat_History, Workspace, UploadedFile
 from routes.workspaces.workspace import authorize_request
 from services.chat_ask_service import answer_chat_question, ChatAskError
+from services import workspace_result_service
+from routes.api_errors import api_error
 import os
 
 chat_bp = Blueprint("chat", __name__)
@@ -156,6 +158,49 @@ def _get_chat_with_auth(chat_id, user_id):
         )
         .first()
     )
+
+
+@chat_bp.route("/api/chat/<int:chat_id>/classification-result/freshness", methods=["GET"])
+def classification_result_freshness(chat_id):
+    """這則分類結果訊息是否因為 Human Review（modified / excluded /
+    reopen / failed retry）而跟 DB 目前的 effective classification 不一致。"""
+    current_user_id, auth_error = authorize_request()
+    if auth_error:
+        return auth_error
+    chat = _get_chat_with_auth(chat_id, current_user_id)
+    if chat is None:
+        return api_error("CHAT_NOT_FOUND", "找不到這則訊息，或您無權限存取", 404)
+    parsed = workspace_result_service.parse_classification_message(chat.message_content)
+    if parsed is None:
+        return api_error("NOT_A_CLASSIFICATION_RESULT", "這則訊息不是分類結果", 400)
+    state = workspace_result_service.is_chat_result_stale(chat, parsed)
+    state.pop("source", None)
+    return jsonify(state), 200
+
+
+@chat_bp.route("/api/chat/<int:chat_id>/classification-result/refresh", methods=["POST"])
+def refresh_classification_result(chat_id):
+    """用 DB 目前的 effective classification 重建這則分類結果並寫回
+    Chat_History，重新整理頁面、分享頁、匯出都會讀到新結果。"""
+    current_user_id, auth_error = authorize_request()
+    if auth_error:
+        return auth_error
+    chat = _get_chat_with_auth(chat_id, current_user_id)
+    if chat is None:
+        return api_error("CHAT_NOT_FOUND", "找不到這則訊息，或您無權限存取", 404)
+    parsed = workspace_result_service.parse_classification_message(chat.message_content)
+    if parsed is None:
+        return api_error("NOT_A_CLASSIFICATION_RESULT", "這則訊息不是分類結果", 400)
+    if workspace_result_service.source_for_chat(chat, parsed) is None:
+        return api_error("RESULT_SOURCE_UNKNOWN", "這則分類結果沒有可追溯的分析來源（舊格式訊息），無法重新整理", 409)
+    try:
+        payload = workspace_result_service.refresh_chat_result(chat)
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        print("[CLASSIFICATION_RESULT_REFRESH_FAILED]", repr(exc))
+        return api_error("RESULT_REFRESH_FAILED", f"重新整理分類結果失敗：{str(exc)[:200]}", 500)
+    return jsonify({"chat_id": chat.chat_id, **payload}), 200
 
 
 @chat_bp.route("/api/chat/<int:project_id>/ask", methods=["POST"])

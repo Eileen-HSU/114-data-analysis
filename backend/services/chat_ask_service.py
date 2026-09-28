@@ -70,8 +70,8 @@ from models import Chat_History, Response_Classification, Survey_Response, Surve
 from classification_models import (
     SOURCE_TYPE_SURVEY,
     SOURCE_TYPE_USER_UPLOAD,
-    REVIEW_STATUS_EXCLUDED,
 )
+from services.effective_classification_service import effective_view
 from services.source_lookup_service import fetch_classifications_in_scope
 from services.subcategory_methodology import QUESTION_OTHER, compute_display_sub_categories
 from services.privacy_service import mask_pii, PiiMaskingError
@@ -210,34 +210,15 @@ def _resolve_chat_analysis_source(project_id: int):
 
 def _row_effective_view(row):
     """判斷這筆 classification 該不該出現在 /ask 的 context 裡，以及
-    要用哪個版本的分類原因/方法論/文獻。
+    要用哪個版本的分類結果。
 
-    【修正】這裡刻意跟畫面上的分類結果表格保持一致：
-    routes/classifications/classification.py 的 _build_aggregated_groups()
-    本身就是直接讀 AI 原始分類欄位（main_category / sub_category /
-    reasoning / summary / methodology / citation），完全不會因為
-    review_status 是 modified 就改用 final_* 欄位。/ask 功能的定位是
-    「解釋畫面上這張表格為什麼長這樣」，因此這裡也統一用 AI 原始
-    欄位，不要讓 Human Review 的修改結果，跟畫面上顯示的內容對不上，
-    反而讓使用者更困惑（例如畫面顯示 A2，這裡卻拿 human 改過的 A9
-    方法論來解釋，兩邊完全兜不起來）。
-
-    唯一的例外是 review_status = excluded：代表人工決定這筆不該再
-    納入任何後續分析（軟刪除語意），這裡回傳 None，呼叫端要整筆跳過，
-    不納入追問的 context。
+    跟畫面上的分類結果表格（routes/classifications/classification.py 的
+    _build_aggregated_groups()）、Report、Export 共用同一套規則：
+    services/effective_classification_service.effective_view()——
+    modified 用 final_*、confirmed / pending 用 AI original、
+    excluded / failed / superseded 回傳 None（呼叫端整筆跳過）。
     """
-    if row.review_status == REVIEW_STATUS_EXCLUDED:
-        return None
-
-    return {
-        "reasoning": row.reasoning,
-        "methodology": row.methodology,
-        "citation": row.citation,
-        "secondary_main_category": row.secondary_main_category,
-        "secondary_sub_category": row.secondary_sub_category,
-        "secondary_methodology": row.secondary_methodology,
-        "secondary_citation": row.secondary_citation,
-    }
+    return effective_view(row, include_methodology=True)
 
 
 def _safe_mask(text):
@@ -356,14 +337,19 @@ def _collect_items(source):
         for ua in uploaded_answers:
             question_type_by_group.setdefault(ua.source_column, ua.question_type or QUESTION_OTHER)
 
-    # 【第一步】跟 _build_aggregated_groups() 一樣先排除「無具體建議」
-    # ——這種萬用分類不會出現在畫面的分類表格裡，也就沒有對應的畫面
-    # 代碼，這裡用跟畫面完全一致的排除規則（用 AI 原始 main/sub_category
-    # 判斷，不看 Human Review 覆寫後的版本，因為畫面表格本來就是顯示
-    # AI 原始分類，不受 Human Review 影響——見
-    # routes/classifications/classification.py 的 _build_aggregated_groups()
-    # 本身也是直接用 r.sub_category，沒有走 effective classification）。
-    eligible_rows = [r for r in rows if not (r.sub_category and "無具體建議" in r.sub_category)]
+    # 【第一步】跟 _build_aggregated_groups() 完全一致：先用 effective
+    # 規則取得每筆的有效分類（excluded / failed 直接排除），再排除
+    # 「無具體建議」這種不會出現在畫面表格裡的萬用分類。
+    views = {}
+    eligible_rows = []
+    for r in rows:
+        view = _row_effective_view(r)
+        if view is None:
+            continue
+        if view["sub_category"] and "無具體建議" in view["sub_category"]:
+            continue
+        views[r.classification_id] = view
+        eligible_rows.append(r)
 
     # 【第二步】依畫面分組規則分組，每組各自重建畫面代碼
     grouped_rows = {}
@@ -378,22 +364,22 @@ def _collect_items(source):
         order = []
         seen = set()
         for row in ordered_rows:
-            key = (row.main_category or "", row.sub_category or "")
+            view = views[row.classification_id]
+            key = (view["main_category"] or "", view["sub_category"] or "")
             if key not in seen:
                 seen.add(key)
                 order.append(key)
 
         renumbered = compute_display_sub_categories(order, question_type)
         for row in group_rows:
-            key = (row.main_category or "", row.sub_category or "")
-            display_sub_category_by_row_id[row.classification_id] = renumbered.get(key, row.sub_category)
+            view = views[row.classification_id]
+            key = (view["main_category"] or "", view["sub_category"] or "")
+            display_sub_category_by_row_id[row.classification_id] = renumbered.get(key, view["sub_category"])
 
     items = []
     skipped_pii = 0
     for row in eligible_rows:
-        view = _row_effective_view(row)
-        if view is None:
-            continue
+        view = views[row.classification_id]
 
         excerpt = row.answer_text or ""
         if (
@@ -412,12 +398,10 @@ def _collect_items(source):
 
         items.append({
             "respondent_number": get_respondent_number(row),
-            "main_category": row.main_category or "（無）",
-            # 用畫面上重建出來的代碼，不是 view["sub_category"]（那是
-            # Human Review 之後可能已經改掉的最終分類，跟畫面表格顯示
-            # 的原始分類代碼是兩個不同語意，這裡要對齊的是「畫面上的
-            # 代碼」）。
-            "sub_category": display_sub_category_by_row_id.get(row.classification_id, row.sub_category or "（無）"),
+            "main_category": view["main_category"] or "（無）",
+            # 用畫面上重建出來的代碼（依 effective 分類重新編號，跟畫面
+            # 表格一致）。
+            "sub_category": display_sub_category_by_row_id.get(row.classification_id, view["sub_category"] or "（無）"),
             # methodology / citation 是固定文獻資訊、次要分類是查表結果，
             # 不是受訪者原文，不需要（也不應該）用 mask_pii() 處理。
             "methodology": view.get("methodology"),

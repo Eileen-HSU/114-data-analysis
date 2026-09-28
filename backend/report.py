@@ -142,6 +142,20 @@ class Report(db.Model):
     # 的作法，只存最新一次失敗原因，不做完整歷史 log。
     error_detail = db.Column(db.Text, nullable=True)
 
+    # ── Admin report lifecycle（additive-only）──────────────────
+    # outdated_reason：最近一次讓這份報告過期的事件（classification_modified /
+    # classification_excluded / classification_reopened / taxonomy_published /
+    # classification_rerun / bulk_review_action ...），由
+    # services/report_service.mark_reports_outdated_* 集中寫入。
+    outdated_reason = db.Column(db.String(50), nullable=True)
+    outdated_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    # Admin 從管理介面產生時記錄 Admin（generated_by 是 User FK）。
+    generated_by_admin_id = db.Column(db.Integer, nullable=True)
+    # 這個版本納入的分類結果實際使用的 taxonomy version（逗號分隔，
+    # legacy 分類以 "legacy" 表示）。
+    taxonomy_version_ids = db.Column(db.String(255), nullable=True)
+
     aggregations = db.relationship(
         "Report_Aggregation",
         backref="report",
@@ -170,6 +184,14 @@ class Report(db.Model):
             "status": self.status,
             "is_outdated": self.is_outdated,
             "error_detail": self.error_detail,
+            "outdated_reason": self.outdated_reason,
+            "outdated_at": self.outdated_at.isoformat() if self.outdated_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "generated_by_admin_id": self.generated_by_admin_id,
+            "taxonomy_version_ids": (
+                [v for v in self.taxonomy_version_ids.split(",") if v]
+                if self.taxonomy_version_ids else []
+            ),
         }
 
 

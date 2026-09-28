@@ -312,44 +312,79 @@ def methodology_lookup_for_taxonomy_version(taxonomy_version):
 
 # ── 發布新版（供 Phase C/D 呼叫；Phase B 本身沒有觸發入口）──────────
 
-def publish_taxonomy_version(topic_key: str, version_id: int):
+def publish_taxonomy_version(topic_key: str, version_id: int, admin_id: int = None, _validate=None):
     """
     在同一個 transaction 內：
-        1. 把同一個 topic_key 底下，目前所有 status=published 的舊版本
-           （排除自己）轉成 archived。
-        2. 把指定 version_id 設為 published。
+        1. SELECT ... FOR UPDATE 鎖住 Topic row（同一個 Topic 的併發 publish
+           被序列化；鎖到之後才重新讀取目標版本與既有 published 版本）。
+        2. 把同一個 topic_key 底下，目前所有 status=published 的舊版本
+           （排除自己）轉成 archived，先 flush。
+        3. 把指定 version_id 設為 published。
+        4. 既有報告標記 outdated（reason=taxonomy_published）+ audit。
 
-    這是保證「每個 Topic 最多一個 published 版本」不變量的唯一合法
-    入口；Phase B 沒有任何 route 呼叫它（本階段沒有建立新版本的功能），
-    但先把這個 service 準備好，Phase C（AI 產生新版）/ Phase D（Admin
-    發布 UI）可以直接複用，不用各自重新實作同樣的 transaction 邏輯。
+    DB 層最後防線：Taxonomy_Version.published_topic_key 的 UNIQUE INDEX
+    （見 taxonomy.py / services/taxonomy_bootstrap_service.py），即使在
+    不支援 row lock 的環境裡兩個 transaction 同時通過檢查，也只會有一個
+    commit 成功，另一個得到 TaxonomyVersionConflictError。
+
+    _validate：呼叫端傳入的驗證函式，在「鎖定之後」對重新讀取的版本執行，
+    避免「驗證時是 draft、真正發布時已經被別人發布」的 TOCTOU。
     """
-    from models import Taxonomy_Version
+    from models import Taxonomy_Version, Topic
     from taxonomy import (
         TAXONOMY_VERSION_STATUS_PUBLISHED,
         TAXONOMY_VERSION_STATUS_ARCHIVED,
     )
+    from services import audit_service
+    from services.report_service import mark_reports_outdated_for_topic, OUTDATED_TAXONOMY_PUBLISHED
 
-    target = Taxonomy_Version.query.get(version_id)
-    if target is None or target.topic_key != topic_key:
-        raise ValueError(
-            f"version_id={version_id} 不存在，或不屬於 topic_key={topic_key!r}"
+    try:
+        topic = Topic.query.filter_by(topic_key=topic_key).with_for_update().first()
+        target = (
+            Taxonomy_Version.query.filter_by(version_id=version_id).with_for_update().first()
         )
+        if topic is None or target is None or target.topic_key != topic_key:
+            raise ValueError(
+                f"version_id={version_id} 不存在，或不屬於 topic_key={topic_key!r}"
+            )
+        db.session.refresh(target)
+        if _validate is not None:
+            _validate(target)
 
-    now = taiwan_now()
-    existing_published = Taxonomy_Version.query.filter_by(
-        topic_key=topic_key, status=TAXONOMY_VERSION_STATUS_PUBLISHED
-    ).all()
-    for old_version in existing_published:
-        if old_version.version_id == target.version_id:
-            continue
-        old_version.status = TAXONOMY_VERSION_STATUS_ARCHIVED
-        old_version.archived_at = now
+        now = taiwan_now()
+        existing_published = Taxonomy_Version.query.filter_by(
+            topic_key=topic_key, status=TAXONOMY_VERSION_STATUS_PUBLISHED
+        ).all()
+        archived_ids = []
+        for old_version in existing_published:
+            if old_version.version_id == target.version_id:
+                continue
+            old_version.status = TAXONOMY_VERSION_STATUS_ARCHIVED
+            old_version.archived_at = now
+            archived_ids.append(old_version.version_id)
+        db.session.flush()  # 先釋放舊 published 的 published_topic_key，避免 UNIQUE 暫時衝突
 
-    target.status = TAXONOMY_VERSION_STATUS_PUBLISHED
-    target.published_at = now
+        before_status = target.status
+        target.status = TAXONOMY_VERSION_STATUS_PUBLISHED
+        target.published_at = now
+        db.session.flush()
 
-    db.session.commit()
+        audit_service.record(
+            audit_service.ACTION_TAXONOMY_PUBLISH, audit_service.ENTITY_TAXONOMY_VERSION,
+            target.version_id, admin_id,
+            before={"status": before_status, "archived_version_ids": archived_ids},
+            after={"status": target.status, "topic_key": topic_key, "version_number": target.version_number},
+        )
+        mark_reports_outdated_for_topic(topic_key, OUTDATED_TAXONOMY_PUBLISHED)
+        db.session.commit()
+    except IntegrityError as exc:
+        db.session.rollback()
+        raise TaxonomyVersionConflictError(
+            f"topic_key={topic_key!r} 同時有其他 publish 正在進行，這次發布未生效，請重新整理後再試"
+        ) from exc
+    except Exception:
+        db.session.rollback()
+        raise
     return target
 
 
@@ -692,7 +727,7 @@ def validate_taxonomy_version_for_publish(version):
             raise TaxonomyPublishValidationError(f"sub_category={c.sub_category!r} 缺少 sort_order")
 
 
-def publish_taxonomy_version_with_validation(topic_key: str, version_id: int):
+def publish_taxonomy_version_with_validation(topic_key: str, version_id: int, admin_id: int = None):
     """Admin Publish 按鈕的入口：先驗證，通過才呼叫既有的
     publish_taxonomy_version()（同一 transaction 內舊版 archived、
     新版 published）。驗證失敗時完全不觸碰任何版本的 status。"""
@@ -701,7 +736,10 @@ def publish_taxonomy_version_with_validation(topic_key: str, version_id: int):
         raise ValueError("taxonomy version not found")
 
     validate_taxonomy_version_for_publish(version)
-    return publish_taxonomy_version(topic_key, version_id)
+    # 鎖定後再驗證一次（另一位 Admin 可能剛剛已經發布了同一版）。
+    return publish_taxonomy_version(
+        topic_key, version_id, admin_id=admin_id, _validate=validate_taxonomy_version_for_publish,
+    )
 
 
 def list_topics_with_status():

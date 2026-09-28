@@ -47,21 +47,43 @@ from classification_models import (
     REVIEW_STATUS_EXCLUDED,
 )
 from services.review_ai_service import build_review_reply
-from services.report_service import mark_reports_outdated_for_classification
+from services import audit_service
+from services.effective_classification_service import is_failed
+from services.report_service import (
+    OUTDATED_BULK_REVIEW_ACTION,
+    OUTDATED_CLASSIFICATION_CONFIRMED,
+    OUTDATED_CLASSIFICATION_EXCLUDED,
+    OUTDATED_CLASSIFICATION_MODIFIED,
+    OUTDATED_CLASSIFICATION_REOPENED,
+    classification_source,
+    mark_reports_outdated_for_classification,
+    mark_reports_outdated_for_sources,
+)
 from services.source_lookup_service import resolve_question_type
 
 
 class ReviewError(Exception):
-    """業務邏輯錯誤，attrs: http_status, message, extra。routes 層負責
-    轉成 JSON response，extra 裡的欄位（例如 409 衝突時的
-    reviewing_admin_id/reviewing_admin_name）會一起攤平進 response body。
+    """業務邏輯錯誤，attrs: http_status, message, code, extra。routes 層負責
+    轉成 JSON response（machine-readable `code` + user-readable `message`），
+    extra 裡的欄位（例如 409 衝突時的 reviewing_admin_id/reviewing_admin_name）
+    會一起攤平進 response body。
     """
 
-    def __init__(self, message: str, http_status: int = 400, extra: dict | None = None):
+    def __init__(self, message: str, http_status: int = 400, extra: dict | None = None, code: str | None = None):
         super().__init__(message)
         self.message = message
         self.http_status = http_status
         self.extra = extra or {}
+        self.code = code or _DEFAULT_CODES.get(http_status, "REVIEW_ERROR")
+
+
+_DEFAULT_CODES = {400: "BAD_REQUEST", 404: "CLASSIFICATION_NOT_FOUND", 409: "REVIEW_CONFLICT", 422: "UNPROCESSABLE"}
+
+# Classification_Review.status
+REVIEW_SESSION_IN_PROGRESS = "in_progress"
+REVIEW_SESSION_CONFIRMED = "confirmed"
+REVIEW_SESSION_EXCLUDED = "excluded"
+REVIEW_SESSION_CLOSED = "closed"
 
 
 _LOCKED_REVIEW_STATUSES = (REVIEW_STATUS_CONFIRMED, REVIEW_STATUS_MODIFIED, REVIEW_STATUS_EXCLUDED)
@@ -111,14 +133,7 @@ def _require_no_conflicting_reviewer(classification_id, admin_id):
     """
     active_review = _get_active_review(classification_id)
     if active_review is not None and active_review.admin_id != admin_id:
-        raise ReviewError(
-            "這筆分類目前正由其他管理員審核中",
-            409,
-            extra={
-                "reviewing_admin_id": active_review.admin_id,
-                "reviewing_admin_name": _admin_display_name(active_review.admin_id),
-            },
-        )
+        raise _conflict_error(active_review)
     return active_review
 
 
@@ -187,40 +202,36 @@ def _taxonomy_categories(classification):
 
 
 def _reject_failed_classification(classification):
-    if classification.status == "failed":
-        raise ReviewError("分類結果處理失敗，無法進行人工確認", 409)
+    if is_failed(classification):
+        raise ReviewError(
+            "分類結果處理失敗，無法進行人工確認；請使用「重新處理」",
+            409,
+            code="CLASSIFICATION_FAILED",
+        )
 
 
 def _segment_text(classification):
     return classification.answer_text[classification.segment_start:classification.segment_end]
 
 
-# ── 對外主要介面 ──────────────────────────────────────────────
-
-def get_review_state(classification_id, admin_id):
-    """需求文件 API 第 1 點：AI original + 目前 review 狀態。任一
-    Admin 都可以查看，不因為別人正在審核就擋掉（前端需要顯示「目前由
-    誰審核中」，必須讀得到這個狀態）。"""
-    classification = _load_classification(classification_id)
-    active_review = _get_active_review(classification_id)
-    return {
-        "classification": classification.to_dict(),
-        "active_review": active_review.to_dict() if active_review else None,
-    }
 
 
-def start_review(classification_id, admin_id):
-    """需求文件 API 第 2 點：開始/取得 conversation。
+def _conflict_error(active_review):
+    return ReviewError(
+        "這筆分類目前正由其他管理員審核中",
+        409,
+        code="REVIEW_IN_PROGRESS_BY_OTHER",
+        extra={
+            "reviewing_admin_id": active_review.admin_id,
+            "reviewing_admin_name": _admin_display_name(active_review.admin_id),
+        },
+    )
 
-    併發控制流程：
-      1. SELECT ... FOR UPDATE 鎖住這筆 Response_Classification row
-         （同一 classification_id 的並行請求會在這裡被序列化）。
-      2. 鎖到之後才查詢是否已有 in_progress 的 review。
-      3a. 沒有 -> 建立一筆 admin_id=目前這個 Admin 的新 review。
-      3b. 有，且是同一個 Admin -> 冪等回傳那一筆（重新整理頁面、
-          重複點擊都安全）。
-      3c. 有，且是別的 Admin -> 409，告知目前是誰在審核。
-    """
+
+def _lock_classification(classification_id):
+    """SELECT ... FOR UPDATE 鎖住這筆 classification，作為同一筆
+    classification 所有狀態轉換的 mutex（start / confirm / modify /
+    exclude / reopen 全部都要先鎖，避免併發請求交錯寫出非法狀態）。"""
     classification = (
         Response_Classification.query
         .filter_by(classification_id=classification_id)
@@ -229,28 +240,113 @@ def start_review(classification_id, admin_id):
     )
     if classification is None:
         raise ReviewError("找不到這筆分類結果", 404)
+    return classification
+
+
+def _active_reviews(classification_id):
+    """所有 in_progress session（正常情況最多一筆；歷史資料若有殘留
+    多筆也全部回傳，交給呼叫端一起關閉，不會只處理第一筆）。"""
+    return (
+        Classification_Review.query
+        .filter_by(classification_id=classification_id, status=REVIEW_SESSION_IN_PROGRESS)
+        .order_by(Classification_Review.created_at.desc(), Classification_Review.review_id.desc())
+        .all()
+    )
+
+
+def _close_reviews(reviews, status, reason, now):
+    for review in reviews:
+        review.status = status
+        review.closed_at = now
+        review.closed_reason = reason
+        if status == REVIEW_SESSION_CONFIRMED:
+            review.confirmed_at = now
+
+
+def _require_own_or_no_active(classification_id, admin_id):
+    """其他 Admin 持有 in_progress session -> 409；否則回傳自己的
+    active sessions（可能是空 list）。"""
+    actives = _active_reviews(classification_id)
+    for review in actives:
+        if review.admin_id != admin_id:
+            raise _conflict_error(review)
+    return actives
+
+
+def _stamp(classification, admin_id, now):
+    classification.reviewed_by_admin_id = admin_id
+    classification.reviewed_at = now
+    classification.updated_at = now
+
+
+def _already_finalized_error(classification):
+    return ReviewError(
+        "這筆分類已經確認或排除過了",
+        409,
+        code="ALREADY_FINALIZED",
+        extra={"review_status": classification.review_status},
+    )
+
+
+def _commit_or_rollback():
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+
+
+def derive_review_state(classification, active_review=None) -> str:
+    """給前端顯示用的衍生狀態：failed / in_review / pending_review /
+    confirmed / modified / excluded。in_review 不是另外存的
+    review_status，而是「pending_review + 有 in_progress session」。"""
+    if classification.review_status == REVIEW_STATUS_PENDING:
+        if is_failed(classification):
+            return "failed"
+        if active_review is not None:
+            return "in_review"
+    return classification.review_status
+
+
+# ── 對外主要介面 ──────────────────────────────────────────────
+
+def get_review_state(classification_id, admin_id):
+    """AI original + 目前 review 狀態。任一 Admin 都可以查看，不因為別人
+    正在審核就擋掉（前端需要顯示「目前由誰審核中」）。"""
+    classification = _load_classification(classification_id)
+    active_review = _get_active_review(classification_id)
+    return {
+        "classification": classification.to_dict(),
+        "active_review": active_review.to_dict() if active_review else None,
+        "review_state": derive_review_state(classification, active_review),
+    }
+
+
+def start_review(classification_id, admin_id):
+    """pending_review -> in_review（建立 in_progress session）。
+
+      1. SELECT ... FOR UPDATE 鎖住 classification（併發請求被序列化）。
+      2. failed -> 409（failed 走 retry，不走一般審核）。
+      3. 已定案（confirmed/modified/excluded）-> 409（要先 reopen）。
+      4. 已有 in_progress：同一 Admin 冪等回傳；別的 Admin 409。
+    """
+    classification = _lock_classification(classification_id)
+    _reject_failed_classification(classification)
 
     if classification.review_status in _LOCKED_REVIEW_STATUSES:
-        raise ReviewError("這筆分類已經確認或排除，無法再開始新的 review", 409)
-
-    existing = _get_active_review(classification_id)
-    if existing is not None:
-        if existing.admin_id == admin_id:
-            return existing
         raise ReviewError(
-            "這筆分類目前正由其他管理員審核中",
-            409,
-            extra={
-                "reviewing_admin_id": existing.admin_id,
-                "reviewing_admin_name": _admin_display_name(existing.admin_id),
-            },
+            "這筆分類已經確認或排除，無法再開始新的 review", 409, code="ALREADY_FINALIZED",
         )
 
+    actives = _require_own_or_no_active(classification_id, admin_id)
+    if actives:
+        return actives[0]
+
     review = Classification_Review(
-        classification_id=classification_id, admin_id=admin_id, status="in_progress",
+        classification_id=classification_id, admin_id=admin_id, status=REVIEW_SESSION_IN_PROGRESS,
     )
     db.session.add(review)
-    db.session.commit()
+    _commit_or_rollback()
     return review
 
 
@@ -331,60 +427,76 @@ def send_message(classification_id, admin_id, message_text):
     }
 
 
-def confirm_original(classification_id, admin_id):
-    """需求文件 API 第 4 點。只有從未進入 Review Conversation 才允許：
-    review_status -> confirmed，不寫入任何 final_* 欄位（effective
-    分類直接讀 AI original）。"""
-    classification = _load_classification(classification_id)
+
+def confirm_original(classification_id, admin_id, batch_id=None, action=None):
+    """pending_review / in_review（尚未送出任何訊息）-> confirmed。
+
+    - 自己持有、但還沒送出任何訊息的 in_progress session 會一併關閉
+      （status=closed, closed_reason=quick_confirm）——修正「開始 review
+      後直接返回列表按快速確認，classification 變 confirmed 但 session
+      永遠停在 in_progress」的斷鏈。
+    - 已經在 session 裡送出過訊息 -> 409（必須用 confirm-candidate）。
+    - failed -> 409；已定案 -> 409（重試不會產生重複紀錄）。
+    """
+    classification = _lock_classification(classification_id)
     _reject_failed_classification(classification)
 
     if classification.review_status in _LOCKED_REVIEW_STATUSES:
-        raise ReviewError("這筆分類已經確認或排除過了", 409)
+        raise _already_finalized_error(classification)
 
-    _require_no_conflicting_reviewer(classification_id, admin_id)
-
-    active_review = _get_active_review(classification_id)
-    if active_review is not None and _has_entered_current_conversation(active_review.review_id):
+    actives = _require_own_or_no_active(classification_id, admin_id)
+    if any(_has_entered_current_conversation(r.review_id) for r in actives):
         raise ReviewError(
             "這筆分類已經進入過 review conversation，請用 confirm-candidate 確認，"
             "不能再用 confirm-original",
             409,
+            code="CONVERSATION_STARTED",
         )
 
+    now = taiwan_now()
+    before = audit_service.classification_state(classification)
+    _close_reviews(actives, REVIEW_SESSION_CLOSED, "quick_confirm", now)
     classification.review_status = REVIEW_STATUS_CONFIRMED
-    mark_reports_outdated_for_classification(classification)
-    db.session.commit()
+    _stamp(classification, admin_id, now)
+
+    audit_service.record(
+        action or (audit_service.ACTION_BATCH_CONFIRM if batch_id else audit_service.ACTION_QUICK_CONFIRM),
+        audit_service.ENTITY_CLASSIFICATION, classification_id, admin_id,
+        before=before, after=audit_service.classification_state(classification),
+        batch_id=batch_id,
+    )
+    mark_reports_outdated_for_classification(
+        classification, OUTDATED_BULK_REVIEW_ACTION if batch_id else OUTDATED_CLASSIFICATION_CONFIRMED,
+    )
+    _commit_or_rollback()
     return classification
 
 
 def confirm_candidate(classification_id, admin_id):
-    """需求文件 API 第 5 點。曾經進入過 Review Conversation 才允許：
-    寫入 final_*，review_status -> modified（即使最終候選跟 AI
-    original 完全相同也一樣，因為「Admin 曾提出異議」本身就是重要
-    feedback data）。"""
-    classification = _load_classification(classification_id)
-
-    if classification.review_status in _LOCKED_REVIEW_STATUSES:
-        raise ReviewError("這筆分類已經確認或排除過了", 409)
-
+    """in_review（已送出訊息）-> modified：寫入 final_*（即使最終候選跟
+    AI original 完全相同也一樣，「Admin 曾提出異議」本身就是 feedback）。
+    session -> confirmed。"""
+    classification = _lock_classification(classification_id)
     _reject_failed_classification(classification)
 
-    review = _require_no_conflicting_reviewer(classification_id, admin_id)
-    if review is None or not _has_entered_current_conversation(review.review_id):
+    if classification.review_status in _LOCKED_REVIEW_STATUSES:
+        raise _already_finalized_error(classification)
+
+    actives = _require_own_or_no_active(classification_id, admin_id)
+    review = next((r for r in actives if _has_entered_current_conversation(r.review_id)), None)
+    if review is None:
         raise ReviewError(
             "這筆分類還沒有進入過 review conversation，請用 confirm-original 確認，"
             "不能用 confirm-candidate",
             409,
+            code="CONVERSATION_NOT_STARTED",
         )
-
-    if review is None:
-        raise ReviewError("找不到進行中的 review session", 404)
 
     latest_candidate_msg = (
         Classification_Review_Message.query
         .filter_by(review_id=review.review_id, role="assistant")
         .filter(Classification_Review_Message.candidate_sub_category.isnot(None))
-        .order_by(Classification_Review_Message.created_at.desc())
+        .order_by(Classification_Review_Message.created_at.desc(), Classification_Review_Message.message_id.desc())
         .first()
     )
 
@@ -395,11 +507,8 @@ def confirm_candidate(classification_id, admin_id):
         final_secondary_sub = latest_candidate_msg.candidate_secondary_sub_category
         final_reasoning = latest_candidate_msg.candidate_reasoning
     else:
-        # 對話發生過，但 AI 從未正式提出候選變更（例如 Admin 問了問題，
-        # AI 只回答說明、始終認為 AI original 才是對的）：final 直接
-        # 沿用 AI original 的值，review_status 仍然是 modified
-        # ——「Admin 曾提出異議」本身就是 feedback，不代表最終結果
-        # 一定要不一樣。
+        # 對話發生過，但 AI 從未正式提出候選變更：final 沿用 AI original，
+        # review_status 仍然是 modified。
         final_main = classification.main_category
         final_sub = classification.sub_category
         final_secondary_main = classification.secondary_main_category
@@ -411,130 +520,351 @@ def confirm_candidate(classification_id, admin_id):
         final_secondary_main = None
         final_secondary_sub = None
 
+    now = taiwan_now()
+    before = audit_service.classification_state(classification)
     classification.final_main_category = final_main
     classification.final_sub_category = final_sub
     classification.final_secondary_main_category = final_secondary_main
     classification.final_secondary_sub_category = final_secondary_sub
     classification.final_reasoning = final_reasoning
     classification.review_status = REVIEW_STATUS_MODIFIED
+    _stamp(classification, admin_id, now)
 
-    review.status = "confirmed"
-    review.confirmed_at = taiwan_now()
+    _close_reviews([review], REVIEW_SESSION_CONFIRMED, "candidate_confirmed", now)
+    # 同一 Admin 殘留的其他 in_progress（歷史資料）一併關閉，保證不留 active。
+    _close_reviews([r for r in actives if r is not review], REVIEW_SESSION_CLOSED, "superseded_session", now)
 
-    mark_reports_outdated_for_classification(classification)
-    db.session.commit()
+    audit_service.record(
+        audit_service.ACTION_MODIFY, audit_service.ENTITY_CLASSIFICATION, classification_id, admin_id,
+        before=before, after=audit_service.classification_state(classification),
+        reason=f"review_id={review.review_id}",
+    )
+    mark_reports_outdated_for_classification(classification, OUTDATED_CLASSIFICATION_MODIFIED)
+    _commit_or_rollback()
     return classification
 
 
-def reopen_review(classification_id, admin_id):
-    classification = (
-        Response_Classification.query
-        .filter_by(classification_id=classification_id)
-        .with_for_update()
-        .first()
-    )
-    if classification is None:
-        raise ReviewError("找不到這筆分類結果", 404)
-    _reject_failed_classification(classification)
+def reopen_review(classification_id, admin_id, reason=None):
+    """confirmed / modified / excluded -> pending_review，並替重新開啟的
+    Admin 建立新的 in_progress session（= in_review）。
 
-    active_review = _get_active_review(classification_id)
-    if active_review is not None:
-        if active_review.admin_id != admin_id:
-            raise ReviewError(
-                "這筆分類目前正由其他管理員審核中",
-                409,
-                extra={
-                    "reviewing_admin_id": active_review.admin_id,
-                    "reviewing_admin_name": _admin_display_name(active_review.admin_id),
-                },
-            )
-        return active_review
+    - 舊的審核歷史、AI original、final_* 全部保留（final_* 在 pending
+      狀態下不會被 effective 規則採用，下一次 confirm 才決定新結果）。
+    - 殘留的舊 in_progress session（例如舊版 quick confirm 留下的）不會
+      再讓 reopen 提早 return：已定案的 classification 上的 in_progress
+      一律視為過期，關閉後才建立新的 session。
+    - 冪等：已經被自己 reopen（pending + 自己的 in_progress）-> 回傳既有
+      session；被別的 Admin reopen / 審核中 -> 409。
+    - failed 且未排除 -> 409（failed 走 retry）。
+    """
+    classification = _lock_classification(classification_id)
+    actives = _active_reviews(classification_id)
 
-    if classification.review_status != REVIEW_STATUS_CONFIRMED:
-        raise ReviewError("只有已確認的分類可以重新開啟 review", 409)
+    if classification.review_status == REVIEW_STATUS_PENDING:
+        for review in actives:
+            if review.admin_id != admin_id:
+                raise _conflict_error(review)
+        if actives:
+            return actives[0]  # 重試：已經是 reopen 後的狀態
+        _reject_failed_classification(classification)
+        raise ReviewError("這筆分類目前是待處理狀態，不需要重新開啟", 409, code="NOT_REOPENABLE")
+
+    if classification.review_status not in _LOCKED_REVIEW_STATUSES:
+        raise ReviewError(
+            f"review_status={classification.review_status!r} 無法重新開啟", 409, code="NOT_REOPENABLE",
+        )
+    if is_failed(classification) and classification.review_status != REVIEW_STATUS_EXCLUDED:
+        _reject_failed_classification(classification)
+
+    now = taiwan_now()
+    before = audit_service.classification_state(classification)
+    _close_reviews(actives, REVIEW_SESSION_CLOSED, "reopen_cleanup", now)
 
     classification.review_status = REVIEW_STATUS_PENDING
+    _stamp(classification, admin_id, now)
     review = Classification_Review(
-        classification_id=classification_id,
-        admin_id=admin_id,
-        status="in_progress",
+        classification_id=classification_id, admin_id=admin_id, status=REVIEW_SESSION_IN_PROGRESS,
     )
     db.session.add(review)
-    mark_reports_outdated_for_classification(classification)
-    db.session.commit()
+
+    audit_service.record(
+        audit_service.ACTION_REOPEN, audit_service.ENTITY_CLASSIFICATION, classification_id, admin_id,
+        before=before, after=audit_service.classification_state(classification),
+        reason=reason,
+    )
+    mark_reports_outdated_for_classification(classification, OUTDATED_CLASSIFICATION_REOPENED)
+    _commit_or_rollback()
     return review
 
 
-def exclude(classification_id, admin_id):
-    """需求文件 API 第 6 點：Admin 決定這個 segment 不納入後續分析。"""
-    classification = _load_classification(classification_id)
+def exclude(classification_id, admin_id, reason=None):
+    """pending_review / in_review -> excluded（軟刪除標記，不刪資料）。
+    自己的 in_progress session -> excluded。已定案 -> 409（要先 reopen）。
+    failed 也可以排除（明確決定捨棄這筆失敗結果）。"""
+    classification = _lock_classification(classification_id)
 
     if classification.review_status in _LOCKED_REVIEW_STATUSES:
-        raise ReviewError("這筆分類已經確認或排除過了", 409)
+        raise _already_finalized_error(classification)
 
-    active_review = _require_no_conflicting_reviewer(classification_id, admin_id)
+    actives = _require_own_or_no_active(classification_id, admin_id)
 
+    now = taiwan_now()
+    before = audit_service.classification_state(classification)
     classification.review_status = REVIEW_STATUS_EXCLUDED
+    _stamp(classification, admin_id, now)
+    _close_reviews(actives, REVIEW_SESSION_EXCLUDED, "excluded", now)
 
-    if active_review is not None:
-        active_review.status = "excluded"
-
-    mark_reports_outdated_for_classification(classification)
-    db.session.commit()
+    audit_service.record(
+        audit_service.ACTION_EXCLUDE, audit_service.ENTITY_CLASSIFICATION, classification_id, admin_id,
+        before=before, after=audit_service.classification_state(classification),
+        reason=reason,
+    )
+    mark_reports_outdated_for_classification(classification, OUTDATED_CLASSIFICATION_EXCLUDED)
+    _commit_or_rollback()
     return classification
 
 
-def exclude_legacy_pending_classifications(admin_id) -> int:
-    """
-    批次「排除舊版資料」（Human Review 新增功能）：一次性把符合下列
-    全部條件的 Response_Classification 從 pending_review 標記為
-    excluded，讓它們不再納入目前分析，但不刪除任何資料、也不修改
-    review_status 以外的任何欄位：
+# ── 批次操作 ─────────────────────────────────────────────────
 
-        confidence IS NULL                （沒有信心分數，本來就無法
-                                            套用 Confidence Gate 判斷，
-                                            也不可能有 needs_human_review
-                                            以外的正常分析路徑會用到）
-        AND review_status = 'pending_review'（還沒被人工確認/排除過；
-                                            confirmed/modified/excluded
-                                            已經是定案狀態，不動）
+def _normalize_batch_id(batch_id):
+    import uuid
+    if batch_id is None or str(batch_id).strip() == "":
+        return uuid.uuid4().hex
+    batch_id = str(batch_id).strip()
+    if len(batch_id) > 64:
+        raise ReviewError("batch_id 長度不可超過 64", 400, code="INVALID_BATCH_ID")
+    return batch_id
 
-    跟單筆 exclude() 的刻意差異：
-        - 不呼叫 mark_reports_outdated_for_classification()：
-          aggregation/report/export 不在這次功能範圍內，且這批本來
-          就是「沒有 taxonomy_version_id、沒有 confidence」的舊資料，
-          不會被現有 Confidence Gate / Phase B 分析路徑實際採用，
-          這裡刻意不去動 Report 相關狀態。
-        - 不檢查是否有 in_progress 的 Classification_Review session：
-          「舊版資料」的定義完全由上面三個條件決定，不额外收斂範圍；
-          這批資料本身也還沒有需求要支援針對它們開 review conversation。
-        - main_category / sub_category / reasoning / confidence /
-          taxonomy_version_id 等其餘欄位原樣保留，只改 review_status。
 
-    Args:
-        admin_id: 觸發這次批次操作的 Admin（跟其他 review_service
-            對外函式簽章一致，保留給未來加操作紀錄用；
-            Response_Classification 本身沒有「誰排除的」欄位，
-            目前沒有實際寫入任何地方，跟單筆 exclude() 的既有行為
-            一致）。
+def batch_confirm(classification_ids, admin_id, batch_id=None):
+    """一次確認多筆（維持 AI 原始分類）。在單一 transaction 裡處理：
+    每筆各自鎖定、檢查資格；不合格的逐筆回報原因（skipped），合格的
+    一起 commit。同一個 batch_id 重試時，已經在這個 batch 被確認過的
+    筆數回報 already_done，不會重複寫入 audit / 重複改狀態。"""
+    from audit import Admin_Audit_Log
 
-    Returns:
-        實際被更新（pending_review -> excluded）的筆數。
-    """
-    matched_rows = (
+    if not isinstance(classification_ids, list) or not classification_ids:
+        raise ReviewError("classification_ids 必須是非空陣列", 400, code="INVALID_IDS")
+    if len(classification_ids) > 500:
+        raise ReviewError("一次最多 500 筆", 400, code="BATCH_TOO_LARGE")
+    try:
+        ids = sorted({int(i) for i in classification_ids})
+    except (TypeError, ValueError):
+        raise ReviewError("classification_ids 只能是整數", 400, code="INVALID_IDS")
+    batch_id = _normalize_batch_id(batch_id)
+
+    done_in_batch = {
+        int(a.entity_id) for a in Admin_Audit_Log.query.filter_by(
+            batch_id=batch_id, action=audit_service.ACTION_BATCH_CONFIRM,
+        ).all()
+    }
+
+    confirmed, skipped, already_done = [], [], []
+    sources = set()
+    now = taiwan_now()
+    try:
+        for cid in ids:
+            row = (
+                Response_Classification.query.filter_by(classification_id=cid)
+                .with_for_update().first()
+            )
+            if row is None:
+                skipped.append({"classification_id": cid, "code": "CLASSIFICATION_NOT_FOUND", "message": "找不到這筆分類結果"})
+                continue
+            if cid in done_in_batch and row.review_status == REVIEW_STATUS_CONFIRMED:
+                already_done.append(cid)
+                continue
+            if is_failed(row):
+                skipped.append({"classification_id": cid, "code": "CLASSIFICATION_FAILED", "message": "分類處理失敗，請改用重新處理"})
+                continue
+            if row.review_status in _LOCKED_REVIEW_STATUSES:
+                skipped.append({"classification_id": cid, "code": "ALREADY_FINALIZED", "message": f"已經是 {row.review_status}"})
+                continue
+            actives = _active_reviews(cid)
+            other = next((r for r in actives if r.admin_id != admin_id), None)
+            if other is not None:
+                skipped.append({
+                    "classification_id": cid, "code": "REVIEW_IN_PROGRESS_BY_OTHER",
+                    "message": f"目前由 {_admin_display_name(other.admin_id) or f'Admin #{other.admin_id}'} 審核中",
+                })
+                continue
+            if any(_has_entered_current_conversation(r.review_id) for r in actives):
+                skipped.append({"classification_id": cid, "code": "CONVERSATION_STARTED", "message": "已進入審核對話，請在對話中確認"})
+                continue
+
+            before = audit_service.classification_state(row)
+            _close_reviews(actives, REVIEW_SESSION_CLOSED, "quick_confirm", now)
+            row.review_status = REVIEW_STATUS_CONFIRMED
+            _stamp(row, admin_id, now)
+            audit_service.record(
+                audit_service.ACTION_BATCH_CONFIRM, audit_service.ENTITY_CLASSIFICATION, cid, admin_id,
+                before=before, after=audit_service.classification_state(row), batch_id=batch_id,
+            )
+            sources.add(classification_source(row))
+            confirmed.append(cid)
+
+        if confirmed:
+            mark_reports_outdated_for_sources(sources, OUTDATED_BULK_REVIEW_ACTION)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+
+    return {
+        "batch_id": batch_id,
+        "confirmed_ids": confirmed,
+        "already_done_ids": already_done,
+        "skipped": skipped,
+        "confirmed_count": len(confirmed),
+        "skipped_count": len(skipped),
+    }
+
+
+# ── Bulk exclude（排除舊版資料）─────────────────────────────────
+#
+# 舊行為（confidence IS NULL + pending_review）範圍過寬，可能誤排除
+# taxonomy-versioned / failed / 審核中 / 已有人工動作的資料。收窄為：
+#   review_status = pending_review
+#   AND confidence IS NULL
+#   AND taxonomy_version_id IS NULL      （真正的 legacy 分類）
+#   AND status NOT IN (failed, superseded)（failed 應走 retry，不是靜默排除）
+#   AND 沒有 in_progress review session  （有人正在審核）
+#   AND 從未有任何人工動作                （沒有任何 review session / audit 紀錄）
+
+BULK_EXCLUDE_SKIP_REASONS = {
+    "HAS_TAXONOMY_VERSION": "有 taxonomy version（非 legacy 資料）",
+    "CLASSIFICATION_FAILED": "分類處理失敗，請改用重新處理",
+    "REVIEW_IN_PROGRESS": "目前有進行中的審核",
+    "HAS_HUMAN_ACTION": "已經有人工審核紀錄",
+}
+
+
+def _bulk_exclude_scan():
+    from audit import Admin_Audit_Log
+    from services.effective_classification_service import NON_COUNTABLE_STATUSES
+
+    candidates = (
         Response_Classification.query
         .filter(
             Response_Classification.confidence.is_(None),
             Response_Classification.review_status == REVIEW_STATUS_PENDING,
         )
+        .order_by(Response_Classification.classification_id.asc())
         .all()
     )
+    ids = [c.classification_id for c in candidates]
+    reviewed_ids, active_ids, audited_ids = set(), set(), set()
+    if ids:
+        for review in Classification_Review.query.filter(Classification_Review.classification_id.in_(ids)).all():
+            reviewed_ids.add(review.classification_id)
+            if review.status == REVIEW_SESSION_IN_PROGRESS:
+                active_ids.add(review.classification_id)
+        audited_ids = {
+            int(a.entity_id) for a in Admin_Audit_Log.query.filter(
+                Admin_Audit_Log.entity_type == audit_service.ENTITY_CLASSIFICATION,
+                Admin_Audit_Log.entity_id.in_([str(i) for i in ids]),
+            ).all()
+        }
 
-    for row in matched_rows:
-        row.review_status = REVIEW_STATUS_EXCLUDED
+    eligible, skipped = [], []
+    for row in candidates:
+        cid = row.classification_id
+        if row.taxonomy_version_id is not None:
+            code = "HAS_TAXONOMY_VERSION"
+        elif row.status in NON_COUNTABLE_STATUSES:
+            code = "CLASSIFICATION_FAILED"
+        elif cid in active_ids:
+            code = "REVIEW_IN_PROGRESS"
+        elif cid in reviewed_ids or cid in audited_ids:
+            code = "HAS_HUMAN_ACTION"
+        else:
+            eligible.append(row)
+            continue
+        skipped.append({"classification_id": cid, "code": code, "message": BULK_EXCLUDE_SKIP_REASONS[code]})
+    return eligible, skipped
 
-    db.session.commit()
-    return len(matched_rows)
+
+def preview_legacy_bulk_exclude():
+    """執行前預覽：回傳 eligible / skipped 數量、原因與 affected IDs。"""
+    eligible, skipped = _bulk_exclude_scan()
+    reasons = {}
+    for item in skipped:
+        reasons[item["code"]] = reasons.get(item["code"], 0) + 1
+    return {
+        "eligible_count": len(eligible),
+        "eligible_ids": [r.classification_id for r in eligible],
+        "skipped_count": len(skipped),
+        "skipped_reasons": [
+            {"code": code, "message": BULK_EXCLUDE_SKIP_REASONS[code], "count": count}
+            for code, count in sorted(reasons.items())
+        ],
+        "skipped": skipped,
+    }
+
+
+def execute_legacy_bulk_exclude(admin_id, batch_id=None, expected_ids=None):
+    """真正執行 bulk exclude（單一 transaction）。
+
+    - batch_id 是冪等鍵：同一個 batch_id 重試時，回傳上一次的結果，
+      不會重複寫入。
+    - expected_ids（選填，通常是 preview 回傳的 eligible_ids）：只處理
+      這些 ID 裡「執行當下仍然合格」的列，避免預覽後資料變動造成範圍
+      擴大。
+    """
+    from audit import Admin_Audit_Log
+
+    batch_id = _normalize_batch_id(batch_id)
+    previous = Admin_Audit_Log.query.filter_by(batch_id=batch_id, action=audit_service.ACTION_BULK_EXCLUDE).all()
+    if previous:
+        ids = sorted(int(a.entity_id) for a in previous)
+        return {"batch_id": batch_id, "affected_count": len(ids), "affected_ids": ids, "skipped_count": 0, "skipped": [], "idempotent_replay": True}
+
+    eligible, skipped = _bulk_exclude_scan()
+    if expected_ids is not None:
+        expected = {int(i) for i in expected_ids}
+        eligible = [r for r in eligible if r.classification_id in expected]
+
+    now = taiwan_now()
+    affected, sources = [], set()
+    try:
+        for row in eligible:
+            locked = (
+                Response_Classification.query.filter_by(classification_id=row.classification_id)
+                .with_for_update().first()
+            )
+            if locked is None or locked.review_status != REVIEW_STATUS_PENDING:
+                continue
+            before = audit_service.classification_state(locked)
+            locked.review_status = REVIEW_STATUS_EXCLUDED
+            _stamp(locked, admin_id, now)
+            audit_service.record(
+                audit_service.ACTION_BULK_EXCLUDE, audit_service.ENTITY_CLASSIFICATION,
+                locked.classification_id, admin_id,
+                before=before, after=audit_service.classification_state(locked),
+                reason="legacy bulk exclude", batch_id=batch_id,
+            )
+            sources.add(classification_source(locked))
+            affected.append(locked.classification_id)
+        if affected:
+            mark_reports_outdated_for_sources(sources, OUTDATED_BULK_REVIEW_ACTION)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+
+    return {
+        "batch_id": batch_id,
+        "affected_count": len(affected),
+        "affected_ids": affected,
+        "skipped_count": len(skipped),
+        "skipped": skipped,
+        "idempotent_replay": False,
+    }
+
+
+def exclude_legacy_pending_classifications(admin_id, batch_id=None) -> int:
+    """向後相容的舊入口：套用收窄後的 eligibility 規則，回傳實際排除筆數。"""
+    return execute_legacy_bulk_exclude(admin_id, batch_id=batch_id)["affected_count"]
 
 
 def get_history(classification_id, admin_id):
@@ -558,3 +888,9 @@ def get_history(classification_id, admin_id):
         data["admin_name"] = _admin_display_name(r.admin_id)
         result.append(data)
     return result
+
+
+def get_audit_history(classification_id):
+    """這筆 classification 的完整 Admin 操作稽核紀錄（不含聊天訊息）。"""
+    _load_classification(classification_id)
+    return [a.to_dict() for a in audit_service.list_for_entity(audit_service.ENTITY_CLASSIFICATION, classification_id)]

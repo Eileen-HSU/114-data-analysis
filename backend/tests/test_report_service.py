@@ -53,13 +53,11 @@ class _FakeModel:
         return _FakeResp(_queue.pop(0))  # 佇列空了會丟 IndexError，模擬呼叫失敗
 
 
-_fake_genai = types.ModuleType("google.generativeai")
-_fake_genai.GenerativeModel = _FakeModel
-_fake_genai.configure = lambda **kwargs: None
-_fake_google = types.ModuleType("google")
-_fake_google.generativeai = _fake_genai
-sys.modules["google"] = _fake_google
-sys.modules["google.generativeai"] = _fake_genai
+# 直接替換 services.gemini_client（新版 google-genai SDK 的包裝層），
+# 不再偽造 sys.modules["google"]——那會讓 `from google import genai` 失敗。
+import services.gemini_client as _gemini_client
+_gemini_client.GenerativeModel = _FakeModel
+_gemini_client.configure = lambda **kwargs: None
 
 
 def q(obj_or_text):
@@ -83,12 +81,14 @@ db.init_app(app)
 with app.app_context():
     tables = [
         m.User.__table__,
+        m.Admin.__table__,
         m.Survey_Template.__table__,
         m.Survey_Response.__table__,
         m.Response_Classification.__table__,
         m.Uploaded_Answer.__table__,
         m.Classification_Review.__table__,
         m.Classification_Review_Message.__table__,
+        m.Admin_Audit_Log.__table__,
         m.Report.__table__,
         m.Report_Aggregation.__table__,
         m.Report_Aggregation_Item.__table__,
@@ -97,6 +97,8 @@ with app.app_context():
 
     db.session.add(m.User(user_id=1, user_name="owner", email="owner@example.com", password_hash="x"))
     db.session.add(m.User(user_id=2, user_name="stranger", email="stranger@example.com", password_hash="x"))
+    # Human Review 為 Admin-only（見 routes/classifications/review.py），需要 Admin 帳號
+    db.session.add(m.Admin(admin_id=1, admin_name="Reviewer", email="reviewer@example.com", password_hash="x"))
     db.session.commit()
 
     template = m.Survey_Template(
@@ -201,7 +203,11 @@ with app.app_context():
     db.session.commit()
     rc3_id = rc3.classification_id
 
-resp_confirm = client.post(f"/api/classification/{rc3_id}/review/confirm-original", headers=auth_header(1))
+from routes.auth.admin_guard import build_admin_token
+resp_confirm = client.post(
+    f"/api/classification/{rc3_id}/review/confirm-original",
+    headers={"Authorization": f"Bearer {build_admin_token(1)}"},  # Human Review 為 Admin-only
+)
 check("confirm-original HTTP 200", resp_confirm.status_code == 200)
 
 with app.app_context():

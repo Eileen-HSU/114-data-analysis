@@ -46,13 +46,11 @@ def check(label, condition):
     print(f"[{status}] {label}")
 
 
-_fake_genai = types.ModuleType("google.generativeai")
-_fake_genai.GenerativeModel = object
-_fake_genai.configure = lambda **kwargs: None
-_fake_google = types.ModuleType("google")
-_fake_google.generativeai = _fake_genai
-sys.modules["google"] = _fake_google
-sys.modules["google.generativeai"] = _fake_genai
+# 直接替換 services.gemini_client（新版 google-genai SDK 的包裝層），
+# 不再偽造 sys.modules["google"]——那會讓 `from google import genai` 失敗。
+import services.gemini_client as _gemini_client
+_gemini_client.GenerativeModel = object
+_gemini_client.configure = lambda **kwargs: None
 
 
 from flask import Flask
@@ -85,6 +83,12 @@ with app.app_context():
         m.Topic.__table__,
         m.Taxonomy_Version.__table__,
         m.Taxonomy_Category.__table__,
+        # publish 會寫 audit、並把受影響的既有 Report 標記 outdated
+        m.Admin_Audit_Log.__table__,
+        m.Survey_Template.__table__,
+        m.Survey_Response.__table__,
+        m.Response_Classification.__table__,
+        m.Report.__table__,
     ]
     db.metadata.create_all(bind=db.engine, tables=tables)
     admin = m.Admin(admin_name="tester", email="admin@example.com", password_hash="x")

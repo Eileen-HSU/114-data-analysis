@@ -240,8 +240,26 @@ def _build_routing_prompt(candidates: list) -> str:
 {{"question_type": {topic_key_options} 其中之一，或 null}}"""
 
 
+ROUTING_REASON_ROUTED = "routed"
+ROUTING_REASON_EMPTY_INPUT = "empty_input"
+ROUTING_REASON_NO_CANDIDATES = "no_candidates"
+ROUTING_REASON_UNDETERMINED = "undetermined"
+ROUTING_REASON_API_FAILURE = "api_failure"
+
+
 def route_question_type(context_text: str) -> Optional[str]:
-    """
+    """對外相容介面：只回傳 topic_key 或 None（原因見
+    route_question_type_with_reason()）。"""
+    return route_question_type_with_reason(context_text)[0]
+
+
+def route_question_type_with_reason(context_text: str):
+    """回傳 (topic_key 或 None, reason)。reason 讓呼叫端可以把「為什麼
+    沒有 routing 結果」持久化（Uploaded_Answer.routing_status），Admin
+    未分類頁才能區分「判斷不出 Topic（含信心不足）」、「routing API 失敗」、
+    「目前沒有任何 published Topic」。
+
+    原本的說明：
     對外主要介面，函式簽章維持不變。輸入已經組好的判斷用文字
     （呼叫端負責組裝、以及必要的 PII masking，這裡不做遮罩），
     回傳判斷結果（某個目前有 published taxonomy 的 Topic.topic_key）
@@ -255,14 +273,14 @@ def route_question_type(context_text: str) -> Optional[str]:
     不一致的候選清單。
     """
     if not context_text or not context_text.strip():
-        return None
+        return None, ROUTING_REASON_EMPTY_INPUT
 
     candidates = _get_routing_candidates()
     if not candidates:
         # 目前完全沒有任何 Topic 有 published taxonomy，沒有任何
         # 合法答案可選，連 Gemini 都不用呼叫。
         print("[ROUTING_FALLBACK]", "reason=no_candidates")
-        return None
+        return None, ROUTING_REASON_NO_CANDIDATES
 
     allowed_topic_keys = {c["topic_key"] for c in candidates}
     routing_prompt = _build_routing_prompt(candidates)
@@ -284,7 +302,7 @@ def route_question_type(context_text: str) -> Optional[str]:
             result = parsed.get("question_type")
 
             if result in allowed_topic_keys:
-                return result
+                return result, ROUTING_REASON_ROUTED
 
             # Gemini 有成功回應，只是判斷結果是 null、或不在這次
             # 候選清單裡（例如候選改變了、或 Gemini 自己編了一個不
@@ -292,7 +310,7 @@ def route_question_type(context_text: str) -> Optional[str]:
             # 錯誤，不重試。
             print("[ROUTING_UNDETERMINED]", f"raw_result={result!r}", f"allowed={sorted(allowed_topic_keys)}")
             print("[ROUTING_FALLBACK]", "reason=undetermined")
-            return None
+            return None, ROUTING_REASON_UNDETERMINED
 
         except Exception as e:
             last_error = e
@@ -323,4 +341,4 @@ def route_question_type(context_text: str) -> Optional[str]:
             break
 
     print("[ROUTING_FALLBACK]", "reason=api_failure", repr(last_error))
-    return None
+    return None, ROUTING_REASON_API_FAILURE

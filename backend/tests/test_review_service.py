@@ -124,6 +124,7 @@ with app.app_context():
         m.Taxonomy_Category.__table__,
         m.Classification_Review.__table__,
         m.Classification_Review_Message.__table__,
+        m.Admin_Audit_Log.__table__,
         m.Report.__table__,
     ]
     db.metadata.create_all(bind=db.engine, tables=tables)

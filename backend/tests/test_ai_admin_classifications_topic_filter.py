@@ -73,6 +73,7 @@ with app.app_context():
         m.Survey_Template.__table__,
         m.Survey_Response.__table__,
         m.Response_Classification.__table__,
+        m.Classification_Review.__table__,  # 清單會一併回傳 in_review 狀態
         tx.Topic.__table__,
         tx.Taxonomy_Version.__table__,
         tx.Taxonomy_Category.__table__,
