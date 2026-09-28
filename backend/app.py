@@ -348,6 +348,7 @@ def ensure_runtime_schema():
             db.session.commit()
 
             # ── Taxonomy publish 併發保護：每個 Topic 最多一個 published ──
+            ensure_column("Topic", "merged_into", "`merged_into` VARCHAR(50) NULL")
             ensure_column("Taxonomy_Version", "published_topic_key", "`published_topic_key` VARCHAR(50) NULL")
             db.session.commit()
             from services.taxonomy_bootstrap_service import ensure_published_topic_unique_index

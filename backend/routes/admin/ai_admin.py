@@ -391,6 +391,43 @@ def retry_failed_classification(classification_id):
         return _recovery_error(exc)
 
 
+@ai_admin_bp.post("/topics/<topic_key>/merge-into")
+def merge_topic_into(topic_key):
+    """Body: {"target_topic_key": "..."}：整個主題（自動主題 / 草稿主題）併入另一個
+    主題，並用目標主題重新分類這個主題底下的資料。"""
+    admin, failure = _admin_or_error()
+    if failure:
+        return failure
+    data = request.get_json(silent=True) or {}
+    try:
+        return jsonify(recovery.merge_topic(topic_key, data.get("target_topic_key"), admin.admin_id)), 200
+    except recovery.RecoveryError as exc:
+        return _recovery_error(exc)
+
+
+@ai_admin_bp.get("/topics/<topic_key>/answers")
+def topic_answers(topic_key):
+    """這個主題底下的原始回答：來源欄位 / 題目、筆數、每個類別的回答範例。
+    Query: per_category（預設 5，最多 200）、main_category + sub_category（只看某一類）。"""
+    from services.topic_answers_service import TopicAnswersError, list_topic_answers
+
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    try:
+        per_category = int(request.args.get("per_category", 5))
+    except ValueError:
+        per_category = 5
+    try:
+        return jsonify(list_topic_answers(
+            topic_key, per_category=per_category,
+            main_category=request.args.get("main_category"),
+            sub_category=request.args.get("sub_category"),
+        ))
+    except TopicAnswersError as exc:
+        return api_error(exc.code, exc.message, exc.http_status)
+
+
 @ai_admin_bp.get("/classifications/<int:classification_id>/attempts")
 def classification_attempts(classification_id):
     _, failure = _admin_or_error()

@@ -175,6 +175,8 @@ def _get_routing_candidates() -> list:
 
         version = versions[0]
         topic = version.topic  # Taxonomy_Version -> Topic 的 backref（見 taxonomy.py）
+        if topic is not None and getattr(topic, "merged_into", None):
+            continue  # 已被合併到其他主題，不再當候選
 
         category_names = []
         seen_labels = set()
@@ -208,7 +210,7 @@ def _get_routing_candidates() -> list:
 
         known = {c["topic_key"] for c in candidates}
         for topic in Topic.query.filter(Topic.topic_key.like("auto\\_%", escape="\\")).all():
-            if topic.topic_key in known or not is_auto_topic(topic.topic_key):
+            if topic.topic_key in known or not is_auto_topic(topic.topic_key) or topic.merged_into:
                 continue
             try:
                 version, _provisional = usable_version_for(topic.topic_key)

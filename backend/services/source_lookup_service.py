@@ -133,3 +133,19 @@ def fetch_classifications_in_scope(
         query = query.filter(~Response_Classification.status.in_(exclude_statuses))
 
     return query.all()
+
+
+def source_question_label(classification):
+    """這則回答是回答哪一題：上傳 -> Excel 欄位名稱；問卷 -> 題目文字。查不到回傳 None。"""
+    if classification.source_type == SOURCE_TYPE_USER_UPLOAD:
+        uploaded_answer = Uploaded_Answer.query.get(classification.uploaded_answer_id)
+        return uploaded_answer.source_column if uploaded_answer else None
+    if classification.source_type == SOURCE_TYPE_SURVEY:
+        survey_response = Survey_Response.query.get(classification.response_id)
+        template = Survey_Template.query.get(survey_response.template_id) if survey_response else None
+        if template is None or not template.question_json:
+            return None
+        for item in template.question_json.get("items", []):
+            if item.get("id") == classification.question_id:
+                return item.get("title") or item.get("question_title") or classification.question_id
+    return None

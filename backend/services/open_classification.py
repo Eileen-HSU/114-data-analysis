@@ -146,6 +146,20 @@ def _generate_draft(topic_key, sample_texts, title, question_text):
     )
 
 
+def follow_merge(topic_key):
+    """主題被管理員合併到其他主題時，改用目標主題（最多追 5 層，避免循環）。"""
+    from models import Topic
+
+    seen = set()
+    while topic_key and topic_key not in seen and len(seen) < 5:
+        seen.add(topic_key)
+        topic = db.session.get(Topic, topic_key)
+        if topic is None or not topic.merged_into:
+            return topic_key
+        topic_key = topic.merged_into
+    return topic_key
+
+
 def resolve_taxonomy(topic_key, *, sample_texts=None, title=None, question_text=None) -> dict:
     """分類前取得要用的分類架構與 prompt。
 
@@ -163,6 +177,10 @@ def resolve_taxonomy(topic_key, *, sample_texts=None, title=None, question_text=
         methodology_lookup_for_taxonomy_version,
     )
 
+    merged_target = follow_merge(topic_key)
+    if merged_target != topic_key:
+        # 已合併的主題：直接用目標主題，不會再為它產生新的自動分類架構
+        topic_key, sample_texts = merged_target, None
     result = {
         "prompt": None, "lookup": None, "version_id": None, "topic_key": topic_key,
         "provisional": False, "generated": False, "error": None,

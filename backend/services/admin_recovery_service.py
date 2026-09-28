@@ -321,6 +321,21 @@ def _reprocess(scope, topic_key, admin_id, action, taxonomy_version_id=None, rea
             extra={"classification_ids": blocked},
         )
 
+    # 進行中的審核對話：別人正在審 -> 409；自己的在重新分類成功後關閉（closed_reason=superseded）
+    from classification_models import Classification_Review
+    open_reviews = Classification_Review.query.filter(
+        Classification_Review.classification_id.in_([r.classification_id for r in existing] or [-1]),
+        Classification_Review.status == "in_progress",
+    ).all()
+    others = [rv for rv in open_reviews if rv.admin_id != admin_id]
+    if others:
+        from services.review_service import _admin_display_name
+        raise RecoveryError(
+            "REVIEW_IN_PROGRESS_BY_OTHER", "這筆分類目前正由其他管理員審核中", 409,
+            extra={"reviewing_admin_id": others[0].admin_id,
+                   "reviewing_admin_name": _admin_display_name(others[0].admin_id)},
+        )
+
     prompt_content, category_lookup, version = _resolve_taxonomy(topic_key, taxonomy_version_id)
 
     answer = scope["answer"]
@@ -358,6 +373,10 @@ def _reprocess(scope, topic_key, admin_id, action, taxonomy_version_id=None, rea
             if row.review_status == REVIEW_STATUS_PENDING or row.status in NON_COUNTABLE_STATUSES:
                 row.status = CLASSIFICATION_STATUS_SUPERSEDED
                 row.updated_at = now
+        for review in open_reviews:
+            review.status = "closed"
+            review.closed_at = now
+            review.closed_reason = "superseded"
         if status_row is not None:
             db.session.delete(status_row)
         db.session.flush()
@@ -541,4 +560,105 @@ def attempt_history(classification_id):
     return {
         "attempts": [r.to_dict() for r in rows.order_by(Response_Classification.classification_id.asc()).all()],
         "audit": [a.to_dict() for a in audit],
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# 主題分錯了：整個主題併入另一個主題
+# ═══════════════════════════════════════════════════════════════
+
+ACTION_MERGE_TOPIC = "merge_topic"
+
+
+def merge_topic(source_topic_key, target_topic_key, admin_id):
+    """管理員判斷「這個主題（通常是 AI 自動建立的主題）其實屬於另一個主題」：
+
+    1. 來源主題記錄 merged_into = 目標主題：之後同樣的資料（例如同名欄位）
+       直接用目標主題，來源主題不再列入 routing 候選、也不會再自動歸納。
+    2. 來源主題還沒發布的草稿改為 archived（保留歷史，不刪除）。
+    3. 來源主題底下的資料，逐則用目標主題的分類架構重新分類（舊結果標記
+       superseded 保留歷史）；已有人工定案結果的回答會跳過並回報。
+
+    只允許合併「沒有已發布版本」的主題（自動主題 / 草稿主題），避免誤把
+    正式主題整個搬走。
+    """
+    from models import Topic
+    from services.open_classification import usable_version_for
+    from taxonomy import TAXONOMY_VERSION_STATUS_ARCHIVED
+
+    if not target_topic_key or target_topic_key == source_topic_key:
+        raise RecoveryError("INVALID_TARGET_TOPIC", "請選擇另一個主題", 400)
+    source = db.session.get(Topic, source_topic_key)
+    target = db.session.get(Topic, target_topic_key)
+    if source is None or target is None:
+        raise RecoveryError("TOPIC_NOT_FOUND", "找不到主題", 404)
+    if target.merged_into:
+        raise RecoveryError("TARGET_ALREADY_MERGED", f"目標主題已經併入「{target.merged_into}」，請直接選那個主題", 409)
+    if any(v.status == "published" for v in source.taxonomy_versions):
+        raise RecoveryError(
+            "SOURCE_HAS_PUBLISHED_TAXONOMY",
+            "這個主題已經有正式發布的分類架構，不能整個併入其他主題；請改用單筆「移到其他主題」。",
+            409,
+        )
+    target_version, _ = usable_version_for(target_topic_key)
+    if target_version is None:
+        raise RecoveryError("TAXONOMY_UNAVAILABLE", f"目標主題「{target.title}」目前沒有可用的分類架構", 422)
+
+    now = taiwan_now()
+    source.merged_into = target_topic_key
+    archived = []
+    for version in source.taxonomy_versions:
+        if version.status in ("draft", "in_review"):
+            version.status = TAXONOMY_VERSION_STATUS_ARCHIVED
+            version.archived_at = now
+            archived.append(version.version_id)
+    audit_service.record(
+        ACTION_MERGE_TOPIC, "topic", source_topic_key, admin_id,
+        before={"merged_into": None}, after={"merged_into": target_topic_key, "archived_version_ids": archived},
+    )
+    db.session.commit()
+
+    # 重新分類來源主題底下的資料
+    answer_ids = [a.id for a in Uploaded_Answer.query.filter_by(question_type=source_topic_key).all()]
+    source_version_ids = [v.version_id for v in source.taxonomy_versions]
+    survey_rows = []
+    if source_version_ids:
+        seen = set()
+        for row in Response_Classification.query.filter(
+            Response_Classification.taxonomy_version_id.in_(source_version_ids),
+            Response_Classification.source_type == SOURCE_TYPE_SURVEY,
+            Response_Classification.status != CLASSIFICATION_STATUS_SUPERSEDED,
+        ).all():
+            key = (row.response_id, row.question_id)
+            if key not in seen:
+                seen.add(key)
+                survey_rows.append(row.classification_id)
+
+    moved, skipped = 0, []
+    for answer_id in answer_ids:
+        try:
+            answer = _lock_answer(answer_id)
+            _reprocess(_scope_for_answer(answer), target_topic_key, admin_id, ACTION_MERGE_TOPIC,
+                       reason=f"主題 {source_topic_key} 併入 {target_topic_key}")
+            moved += 1
+        except RecoveryError as exc:
+            db.session.rollback()
+            skipped.append({"uploaded_answer_id": answer_id, "code": exc.code, "message": exc.message})
+    for classification_id in survey_rows:
+        try:
+            reclassify_classification(classification_id, admin_id, topic_key=target_topic_key,
+                                      reason=f"主題 {source_topic_key} 併入 {target_topic_key}",
+                                      action=ACTION_MERGE_TOPIC)
+            moved += 1
+        except RecoveryError as exc:
+            db.session.rollback()
+            skipped.append({"classification_id": classification_id, "code": exc.code, "message": exc.message})
+
+    return {
+        "source_topic_key": source_topic_key,
+        "target_topic_key": target_topic_key,
+        "archived_version_ids": archived,
+        "moved_count": moved,
+        "skipped_count": len(skipped),
+        "skipped": skipped[:100],
     }

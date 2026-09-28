@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { NavLink, useParams } from "react-router-dom";
 import { api } from "../shared/apiClient";
 import { t, taxStatusText, TAX_EDITABLE_STATUSES } from "../shared/taxStatus";
 import TaxCategoryField from "../shared/TaxCategoryField";
+import TopicMovePicker from "../shared/TopicMovePicker";
+import { CategoryAnswers, OtherCategoryAnswers, TopicSourceSummary, loadTopicAnswers } from "./TopicAnswers";
 import { useAuth } from "../../../../hooks/AuthContext";
 
 export default function TaxonomyPanel() {
@@ -14,6 +16,17 @@ export default function TaxonomyPanel() {
   const [taxVersion, setTaxVersion] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [mergedTargetTitle, setMergedTargetTitle] = useState("");
+  const [mergeResultText, setMergeResultText] = useState("");
+  const [answers, setAnswers] = useState(null); // 這個主題底下的原始回答（證據）
+
+  const loadAnswers = async () => {
+    try {
+      setAnswers(await loadTopicAnswers(topicKey, token));
+    } catch {
+      setAnswers(null); // 原始回答載入失敗不影響分類架構編輯
+    }
+  };
 
   // 取得這個 topic 有哪些版本（沿用既有 taxonomy-topics 列表 API，前端篩出這一筆，
   // 不新增「單一 topic 版本清單」API——這次 IA 重構刻意不動 backend）
@@ -22,6 +35,10 @@ export default function TaxonomyPanel() {
       const data = await api("/api/admin/ai/taxonomy-topics", token);
       const mine = (data.topics || []).find((x) => x.topic_key === topicKey);
       setTopicMeta(mine || null);
+      if (mine?.merged_into) {
+        const target = (data.topics || []).find((x) => x.topic_key === mine.merged_into);
+        setMergedTargetTitle(target?.title || mine.merged_into);
+      }
       return mine || null;
     } catch (e) {
       setError(e.message);
@@ -42,6 +59,10 @@ export default function TaxonomyPanel() {
     let cancelled = false;
     setLoading(true);
     setTaxVersion(null);
+    setMergeResultText("");
+    setMergedTargetTitle("");
+    setAnswers(null);
+    loadAnswers();
     (async () => {
       const meta = await loadTopicMeta();
       if (cancelled || !meta) { setLoading(false); return; }
@@ -110,6 +131,30 @@ export default function TaxonomyPanel() {
     } catch (e) { setError(e.message); }
   };
 
+  // 整個主題併入另一個主題（後端會重新分類底下的回答，已人工定案的跳過並回報）
+  const mergeTopic = async (target) => {
+    const result = await api(`/api/admin/ai/topics/${topicKey}/merge-into`, token, {
+      method: "POST",
+      body: JSON.stringify({ target_topic_key: target.topic_key }),
+    });
+    setMergedTargetTitle(target.title || target.topic_key);
+    setTaxVersion(null);
+    await loadTopicMeta();
+    await loadAnswers();
+    const skipped = result.skipped || [];
+    const text = t(`已併入「${target.title}」，重新分類 ${result.moved_count} 則回答`, `Merged into "${target.title}", re-classified ${result.moved_count} answer(s)`)
+      + (skipped.length ? t(`；${skipped.length} 則未處理（${skipped[0].message}）`, `; ${skipped.length} skipped (${skipped[0].message})`) : "");
+    setMergeResultText(text);
+    return text;
+  };
+
+  // 類別 -> 這一類的原始回答；不在目前版本分類架構裡的類別另外列出
+  const groupKey = (main, sub) => `${main || ""}|${sub || ""}`;
+  const groupFor = (cat) => (answers?.groups || []).find((g) => groupKey(g.main_category, g.sub_category) === groupKey(cat.main_category, cat.sub_category))
+    || { main_category: cat.main_category, sub_category: cat.sub_category, count: 0, items: [] };
+  const taxKeys = new Set((taxVersion?.categories || []).map((c) => groupKey(c.main_category, c.sub_category)));
+  const otherGroups = (answers?.groups || []).filter((g) => !taxKeys.has(groupKey(g.main_category, g.sub_category)));
+
   if (loading) return <div className="admin-card"><p>{t("載入中...", "Loading...")}</p></div>;
 
   return <>
@@ -118,7 +163,31 @@ export default function TaxonomyPanel() {
 
     {!topicMeta && <div className="admin-card"><p>{t("找不到這個主題。", "Topic not found.")}</p></div>}
 
-    {topicMeta && !taxVersion && (
+    {topicMeta?.merged_into && (
+      <div className="admin-card topic-merged-banner">
+        <p>{t(`這個主題已併入「${mergedTargetTitle}」。之後同樣的欄位 / 題目會直接用「${mergedTargetTitle}」的分類架構。`,
+          `This topic was merged into "${mergedTargetTitle}". Future uploads of the same column use that taxonomy.`)}</p>
+        {mergeResultText && <p className="review-batch-message">{mergeResultText}</p>}
+        <NavLink to={`/admin/ai/topics/${topicMeta.merged_into}`}>{t("前往該主題 →", "Open that topic →")}</NavLink>
+      </div>
+    )}
+
+    {topicMeta && !topicMeta.merged_into && <TopicSourceSummary data={answers} />}
+
+    {topicMeta && !topicMeta.merged_into && !topicMeta.published_version && (
+      <div className="admin-card topic-merge-card">
+        <h3>{t("這個主題分錯了？整個併入其他主題", "Wrong topic? Merge it into another topic")}</h3>
+        <p className="review-empty-hint">{topicMeta.is_auto_topic
+          ? t("這是 AI 自動建立的主題。如果這些回答其實屬於某個既有主題，可以整個併過去：底下的回答會用目標主題的分類架構重新分類，這個主題的暫定分類會封存，之後同樣的欄位也會直接歸到目標主題。",
+            "This topic was created automatically. If these answers belong to an existing topic, merge it: answers are re-classified with the target taxonomy, this provisional taxonomy is archived, and future uploads of the same column go to the target.")
+          : t("這個主題還沒有正式發布的分類架構。併入後，底下的回答會用目標主題的分類架構重新分類，之後同樣的欄位 / 題目也會直接歸到目標主題。",
+            "This topic has no published taxonomy. After merging, its answers are re-classified with the target taxonomy and future uploads go to the target.")}
+        </p>
+        <TopicMovePicker token={token} currentTopicKey={topicKey} mode="topic" onMove={mergeTopic} />
+      </div>
+    )}
+
+    {topicMeta && !taxVersion && !topicMeta.merged_into && (
       <div className="admin-card"><p>{t("這個主題目前還沒有任何分類架構版本。", "This topic doesn't have any taxonomy version yet.")}</p></div>
     )}
 
@@ -159,6 +228,7 @@ export default function TaxonomyPanel() {
               <button onClick={() => deleteTaxCategory(cat.category_id)}>{t("刪除", "Delete")}</button>
             </span>}
           </div>
+          {answers && <CategoryAnswers topicKey={topicKey} token={token} group={groupFor(cat)} />}
           {editable ? <div className="tax-field-grid">
             <TaxCategoryField cat={cat} field="main_category" label={t("大類別", "Main category")} onSave={saveTaxCategory} />
             <TaxCategoryField cat={cat} field="sub_category" label={t("子類別", "Sub category")} onSave={saveTaxCategory} />
@@ -178,6 +248,8 @@ export default function TaxonomyPanel() {
           </div>}
         </div>;
       })}
+
+      {answers && <OtherCategoryAnswers topicKey={topicKey} token={token} groups={otherGroups} />}
     </>}
   </>;
 }

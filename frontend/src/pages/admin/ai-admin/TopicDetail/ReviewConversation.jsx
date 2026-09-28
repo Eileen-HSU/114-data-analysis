@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../shared/apiClient";
 import { errorMessage } from "../shared/reviewStates";
 import { FailureNotice } from "../shared/StatusWidgets";
+import TopicMovePicker from "../shared/TopicMovePicker";
 import { t, reviewFlagReasonText } from "../shared/taxStatus";
 import { useAuth } from "../../../../hooks/AuthContext";
 
@@ -87,6 +88,7 @@ export default function ReviewConversation({ classificationId, mode = "start", o
   const [manualSub, setManualSub] = useState("");
   const [manualSecondary, setManualSecondary] = useState("");
   const [manualReason, setManualReason] = useState("");
+  const [moved, setMoved] = useState(null); // { title, rows }：已移到其他主題
   const messageEndRef = useRef(null);
 
   const load = useCallback(async () => {
@@ -296,6 +298,23 @@ export default function ReviewConversation({ classificationId, mode = "start", o
     }
   };
 
+  // 主題分錯了：整則回答移到另一個主題重新分類。舊結果被取代（保留在歷史），
+  // 所以這個審核畫面就結束了，改顯示新的分類結果。
+  const handleMoveTopic = async (target) => {
+    setBusyAction("move-topic");
+    try {
+      const result = await api(`/api/admin/ai/classifications/${classificationId}/reclassify`, token, {
+        method: "POST",
+        body: JSON.stringify({ topic_key: target.topic_key, reason: t("管理員移到其他主題", "Moved to another topic by admin") }),
+      });
+      setMoved({ title: target.title || target.topic_key, rows: result.classifications || [] });
+      onChanged?.();
+      return t(`已移到「${target.title}」`, `Moved to "${target.title}"`);
+    } finally {
+      setBusyAction("");
+    }
+  };
+
   const options = reviewState?.taxonomy_options || [];
   const optionGroups = useMemo(() => {
     const groups = new Map();
@@ -321,6 +340,23 @@ export default function ReviewConversation({ classificationId, mode = "start", o
 
   if (loading) {
     return <div className="admin-card review-conversation"><p>{t("載入中…", "Loading…")}</p></div>;
+  }
+
+  if (moved) {
+    return (
+      <div className="admin-card review-conversation">
+        <h3>{t(`已移到「${moved.title}」並重新分類`, `Moved to "${moved.title}" and re-classified`)}</h3>
+        {moved.rows.length === 0 && <p className="review-empty-hint">{t("沒有產生新的分類結果。", "No new classification was produced.")}</p>}
+        {moved.rows.map((r) => (
+          <p key={r.classification_id}>
+            <span className="review-field-label">{r.status === "failed" ? t("處理失敗", "Failed") : t("新分類", "New category")}</span>
+            {r.status === "failed" ? t("AI 處理失敗，可在「處理失敗」分頁重新處理", "AI failed; retry it from the Failed tab") : `${r.main_category || "—"} / ${r.sub_category || "—"}`}
+          </p>
+        ))}
+        <p><small>{t("新的結果會出現在目標主題的「分類審查」清單，等待確認；舊的結果保留在歷史紀錄。", "The new result waits for review in the target topic's review list; the old one stays in history.")}</small></p>
+        <button onClick={onClose}>{t("← 返回列表", "← Back to list")}</button>
+      </div>
+    );
   }
 
   if (!classification) {
@@ -358,6 +394,9 @@ export default function ReviewConversation({ classificationId, mode = "start", o
         <div className="review-readonly">
           <section className="review-section">
             <h3>{t("原始回覆片段", "Original segment")}</h3>
+            {reviewState?.source_question && (
+              <p className="review-source-question"><span className="review-field-label">{t("回答的題目 / 欄位", "Question / column")}</span>{reviewState.source_question}</p>
+            )}
             <p className="review-segment-text">{segment}</p>
           </section>
 
@@ -404,6 +443,9 @@ export default function ReviewConversation({ classificationId, mode = "start", o
             <div className="review-main">
               <section className="review-section">
                 <h3>{t("原始回覆片段", "Original segment")}</h3>
+                {reviewState?.source_question && (
+                  <p className="review-source-question"><span className="review-field-label">{t("回答的題目 / 欄位", "Question / column")}</span>{reviewState.source_question}</p>
+                )}
                 <p className="review-segment-text">{segment}</p>
                 {classification.answer_text && classification.answer_text !== segment && (
                   <details>
@@ -472,6 +514,20 @@ export default function ReviewConversation({ classificationId, mode = "start", o
                     </button>
                   </>
                 )}
+              </section>
+
+              <section className="review-section review-move-topic">
+                <h3>{t("主題分錯了？移到其他主題", "Wrong topic? Move to another topic")}</h3>
+                <p className="review-empty-hint">
+                  {t("目前主題", "Current topic")}：<b>{reviewState?.topic?.title || reviewState?.topic?.topic_key || t("（未歸屬）", "(none)")}</b>
+                  {" "}— {t("移過去後會用那個主題的分類架構重新分類整則回答。", "The whole answer is re-classified with the chosen topic's taxonomy.")}
+                </p>
+                <TopicMovePicker
+                  token={token}
+                  currentTopicKey={reviewState?.topic?.topic_key}
+                  disabled={isConflict || busyAction !== ""}
+                  onMove={handleMoveTopic}
+                />
               </section>
             </div>
 

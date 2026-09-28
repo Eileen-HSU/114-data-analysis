@@ -791,6 +791,8 @@ def list_topics_with_status():
             "topic_key": topic.topic_key,
             "title": topic.title,
             "question_text": topic.question_text,
+            "merged_into": topic.merged_into,
+            "is_auto_topic": topic.topic_key.startswith("auto_"),
             "status": status,
             "published_version": published.to_dict() if published else None,
             "latest_draft_version": latest_draft.to_dict() if latest_draft else None,

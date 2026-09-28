@@ -59,7 +59,7 @@ from services.report_service import (
     mark_reports_outdated_for_classification,
     mark_reports_outdated_for_sources,
 )
-from services.source_lookup_service import resolve_question_type
+from services.source_lookup_service import resolve_question_type, source_question_label
 
 
 class ReviewError(Exception):
@@ -240,6 +240,20 @@ def _with_proposed_categories(classification, categories):
     return categories + extra
 
 
+def _topic_of(classification):
+    """這筆分類目前歸屬的主題（依分類時使用的 taxonomy version）。"""
+    from models import Topic
+
+    topic_key = None
+    if classification.taxonomy_version_id is not None:
+        version = db.session.get(Taxonomy_Version, classification.taxonomy_version_id)
+        topic_key = version.topic_key if version is not None else None
+    if topic_key is None:
+        topic_key = _resolve_question_type(classification)
+    topic = db.session.get(Topic, topic_key) if topic_key else None
+    return {"topic_key": topic_key, "title": topic.title if topic else topic_key}
+
+
 def taxonomy_options(classification):
     """前端「直接選擇分類」下拉選單用（只給名稱，不含 methodology 細節）。"""
     return [
@@ -368,6 +382,8 @@ def get_review_state(classification_id, admin_id):
         "active_review": active_review.to_dict() if active_review else None,
         "review_state": derive_review_state(classification, active_review),
         "taxonomy_options": taxonomy_options(classification),
+        "topic": _topic_of(classification),
+        "source_question": source_question_label(classification),
     }
 
 

@@ -51,8 +51,16 @@ export default function AiAdminPage() {
     {loading && <LoadingNotice text={t("正在載入分析主題…", "Loading topics…")} />}
     <div className="topic-grid">
       {topics.map((topic) => (
-        <article key={topic.topic_key} className="topic-card">
+        <article key={topic.topic_key} className={`topic-card${topic.merged_into ? " topic-card--merged" : ""}`}>
           <h2>{topic.title}</h2>
+          {(topic.is_auto_topic || topic.merged_into) && (
+            <p className="topic-card-tags">
+              {topic.is_auto_topic && <span className="topic-tag">{t("AI 自動主題", "Auto topic")}</span>}
+              {topic.merged_into && <span className="topic-tag topic-tag--merged">
+                {t("已併入", "Merged into")} {topics.find((x) => x.topic_key === topic.merged_into)?.title || topic.merged_into}
+              </span>}
+            </p>
+          )}
           <p>{t("狀態：", "Status:")} <b>{taxStatusText(topic.status)}</b></p>
           {topic.published_version && <small>{t("已發布", "Published")}: v{topic.published_version.version_number}</small>}
           {topic.published_version && topic.latest_draft_version && <br />}

@@ -127,6 +127,11 @@ class Topic(db.Model):
 
     description = db.Column(db.Text, nullable=True)
 
+    # 管理員判斷「這個主題其實屬於另一個主題」並執行合併後，指向目標主題。
+    # 之後遇到同樣的資料（例如同名欄位的自動主題）會直接使用目標主題，
+    # 這個主題也不再列入 routing 候選。NULL = 沒有被合併。
+    merged_into = db.Column(db.String(50), nullable=True)
+
     created_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
     updated_at = db.Column(
         db.DateTime(timezone=True), default=taiwan_now, onupdate=taiwan_now
@@ -142,6 +147,7 @@ class Topic(db.Model):
             "title": self.title,
             "question_text": self.question_text,
             "description": self.description,
+            "merged_into": self.merged_into,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
