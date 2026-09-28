@@ -504,3 +504,7 @@ label { display:block; font-weight:800; margin:12px 0; } textarea,select { width
 .review-secondary-group { margin-bottom: 6px; }
 .review-secondary-group > small { display: block; color: #666; margin: 4px 0 2px; }
 .review-secondary-option { display: flex; gap: 6px; align-items: center; font-size: 14px; margin: 2px 0; }
+
+/* 分類架構初始化（bootstrap）警告 */
+.ai-admin-health-warning { border: 1px solid #fca5a5; background: #fef2f2; color: #7f1d1d; border-radius: 10px; padding: 12px 16px; margin: 0 0 16px; }
+.ai-admin-health-warning p { margin: 4px 0; }

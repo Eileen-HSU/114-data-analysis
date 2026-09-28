@@ -383,6 +383,11 @@ def ensure_integrity_followup_schema():
     獨立一個 try，前面的 schema 步驟失敗不會連帶跳過這裡。"""
     with app.app_context():
         try:
+            # 系統健康狀態（taxonomy bootstrap 結果，Admin 頁顯示警告用）
+            from models import System_Health_Status
+            ensure_table(System_Health_Status)
+            db.session.commit()
+
             # 重新分析 attempt 模型（services/classification_attempt_service.py）
             ensure_column("Response_Segmentation_Status", "attempt_no", "`attempt_no` INT NOT NULL DEFAULT 1")
             ensure_column("Response_Segmentation_Status", "last_attempt_error", "`last_attempt_error` TEXT NULL")
@@ -420,17 +425,24 @@ def bootstrap_taxonomy_on_startup():
     published taxonomy 就不分類），不會 fallback 到 hardcoded 分類。
     可用 TAXONOMY_BOOTSTRAP_ON_STARTUP=0 關閉，改用
     `python3 cli.py bootstrap-taxonomy` 在部署流程中手動執行。"""
+    from services.system_health_service import record_bootstrap_result
+
     if os.environ.get("TAXONOMY_BOOTSTRAP_ON_STARTUP", "1") == "0":
         app.logger.info("[TAXONOMY_BOOTSTRAP] disabled by TAXONOMY_BOOTSTRAP_ON_STARTUP=0")
+        with app.app_context():
+            record_bootstrap_result(disabled=True)
         return
     with app.app_context():
         from services.taxonomy_bootstrap_service import bootstrap_legacy_taxonomy
         try:
             result = bootstrap_legacy_taxonomy(logger=app.logger)
             app.logger.info("[TAXONOMY_BOOTSTRAP] %s", result)
+            record_bootstrap_result(result=result)
         except Exception as exc:
             db.session.rollback()
             app.logger.exception("[TAXONOMY_BOOTSTRAP] failed: %s", exc)
+            # 不阻止網站啟動，但把失敗寫進 System_Health_Status，Admin 頁會顯示警告
+            record_bootstrap_result(error=exc)
 
 
 bootstrap_taxonomy_on_startup()

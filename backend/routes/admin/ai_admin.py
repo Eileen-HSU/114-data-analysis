@@ -409,6 +409,18 @@ def merge_topic_into(topic_key):
         return _recovery_error(exc)
 
 
+@ai_admin_bp.get("/system/health")
+def system_health():
+    """Admin：taxonomy bootstrap 狀態（失敗時間、安全的錯誤摘要、目前有沒有
+    已發布的分類架構）。不回傳 stack trace；一般使用者無法存取。"""
+    from services.system_health_service import taxonomy_bootstrap_health
+
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    return jsonify({"taxonomy_bootstrap": taxonomy_bootstrap_health()})
+
+
 @ai_admin_bp.get("/topics/<topic_key>/answers")
 def topic_answers(topic_key):
     """這個主題底下的原始回答：來源欄位 / 題目、筆數、每個類別的回答範例。

@@ -92,6 +92,7 @@ with app.app_context():
         db.session.execute(text(f"ALTER TABLE `{table}` DROP COLUMN `{column}`"))
     db.session.execute(text("DROP TABLE Admin_Audit_Log"))
     db.session.execute(text("DROP TABLE Response_Classification_Secondary"))
+    db.session.execute(text("DROP TABLE System_Health_Status"))
     db.session.execute(text(
         "INSERT INTO User (user_id, user_name, email, password_hash) VALUES (1, 'u', 'u@example.com', 'x')"))
     db.session.execute(text(
@@ -133,6 +134,8 @@ with app.app_context():
         "SELECT secondary_sub_category FROM Response_Classification WHERE upload_batch_id='legacy-batch'")).scalar() == "A2 回饋與溝通")
     check("既有資料不受影響", db.session.execute(text(
         "SELECT question_type FROM Uploaded_Answer WHERE upload_batch_id='legacy-batch'")).scalar() == "other")
+    check("bootstrap 結果寫進 System_Health_Status（created）", db.session.execute(text(
+        "SELECT status FROM System_Health_Status WHERE component='taxonomy_bootstrap'")).scalar() == "created")
     audit_count = db.session.execute(text("SELECT COUNT(*) FROM Admin_Audit_Log WHERE action='taxonomy_bootstrap'")).scalar()
     check("bootstrap audit 1 筆", audit_count == 1)
 
@@ -142,6 +145,8 @@ check("第二次啟動成功", code == 0)
 with app.app_context():
     db.session.remove()
     check("版本數不變（2）", db.session.execute(text("SELECT COUNT(*) FROM Taxonomy_Version")).scalar() == 2)
+    check("第二次啟動 bootstrap 狀態 skipped_existing（沒有警告）", db.session.execute(text(
+        "SELECT status FROM System_Health_Status WHERE component='taxonomy_bootstrap'")).scalar() == "skipped_existing")
     check("次要分類回填冪等（仍是 2 列）", db.session.execute(text(
         "SELECT COUNT(*) FROM Response_Classification_Secondary")).scalar() == 2)
     check("bootstrap audit 仍是 1 筆", db.session.execute(text(

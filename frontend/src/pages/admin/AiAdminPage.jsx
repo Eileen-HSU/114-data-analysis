@@ -17,6 +17,7 @@ export default function AiAdminPage() {
   const [topics, setTopics] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [bootstrapHealth, setBootstrapHealth] = useState(null);
 
   const loadTopics = async () => {
     setLoading(true);
@@ -32,6 +33,11 @@ export default function AiAdminPage() {
   useEffect(() => {
     if (!canAccess) return;
     loadTopics();
+    // 分類架構初始化（bootstrap）狀態：失敗不會讓網站停掉，所以要在這裡明顯提醒
+    api("/api/admin/ai/system/health", token)
+      .then((d) => setBootstrapHealth(d.taxonomy_bootstrap || null))
+      .catch(() => setBootstrapHealth(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canAccess]);
 
   const handleTopicCreated = (topicKey) => {
@@ -47,6 +53,7 @@ export default function AiAdminPage() {
       <p>{t("管理各分析主題的分類架構，並審核 AI 分類結果。", "Manage each topic's taxonomy and review AI classification results.")}</p>
     </header>
     {error && <p className="ai-admin-error">{error}<button onClick={() => setError("")}>×</button></p>}
+    <BootstrapWarning health={bootstrapHealth} />
     <CreateTopicSection token={token} onCreated={handleTopicCreated} />
     {loading && <LoadingNotice text={t("正在載入分析主題…", "Loading topics…")} />}
     <div className="topic-grid">
@@ -77,4 +84,34 @@ export default function AiAdminPage() {
       <button onClick={() => navigate("/admin/ai/new-categories")}>{t("新類別候選", "New Category Candidates")}</button>
     </p>
   </main></>;
+}
+
+
+// 分類架構初始化（taxonomy bootstrap）警告：只給管理員看，錯誤摘要已由後端去除敏感資訊
+function BootstrapWarning({ health }) {
+  if (!health || !health.warning) return null;
+  const when = health.last_failure_at || health.last_run_at;
+  return (
+    <div className="ai-admin-health-warning" role="alert">
+      <b>
+        {health.warning === "bootstrap_failed"
+          ? t("⚠ 分類架構初始化失敗", "⚠ Taxonomy bootstrap failed")
+          : t("⚠ 目前沒有任何已發布的分類架構", "⚠ No published taxonomy yet")}
+      </b>
+      <p>
+        {health.open_classification_enabled
+          ? t("上傳的資料只有在 AI 自動歸納分類架構成功時才會分析；不會改用程式內建的舊分類規則。",
+            "Uploads are analysed only if the AI succeeds in deriving a taxonomy; built-in legacy rules are never used as a fallback.")
+          : t("固定分類模式：在發布分類架構之前，上傳的資料只會保存、不會分類。",
+            "Fixed-taxonomy mode: uploads are saved but not classified until a taxonomy is published.")}
+      </p>
+      <p><small>
+        {t("狀態", "Status")}: {health.status}
+        {when ? ` · ${t("時間", "Time")}: ${new Date(when).toLocaleString()}` : ""}
+        {health.error_summary ? ` · ${t("原因", "Reason")}: ${health.error_summary}` : ""}
+      </small></p>
+      <p><small>{t("處理方式：確認資料庫連線後重新啟動後端，或執行 flask bootstrap-taxonomy；也可以直接建立並發布主題的分類架構。",
+        "Fix: check the database connection and restart the backend, or run `flask bootstrap-taxonomy`; you can also create and publish a topic taxonomy directly.")}</small></p>
+    </div>
+  );
 }

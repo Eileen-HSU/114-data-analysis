@@ -10,6 +10,8 @@ import os
 import re
 
 _PATTERNS = (
+    # URL 裡的帳密：scheme://user:password@host
+    (re.compile(r"(?i)([a-z][a-z0-9+.\-]*://)[^\s/@:]+:[^\s/@]+@"), r"\1[REDACTED]@"),
     # Google API key（AIza 開頭）
     (re.compile(r"AIza[0-9A-Za-z_\-]{20,}"), "[REDACTED_KEY]"),
     # Authorization: Bearer xxx / bearer xxx
