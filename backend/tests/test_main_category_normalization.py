@@ -39,7 +39,7 @@ import sys
 from types import SimpleNamespace
 
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-testing-only")
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # 移進 tests/ 後需指向 backend/
 
 FAILED = []
 

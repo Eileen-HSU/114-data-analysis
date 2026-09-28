@@ -21,6 +21,16 @@ from extensions import db
 from models import User, Workspace, Chat_History
 from routes.workspaces.workspace import workspace_bp
 from routes.chats.chat import chat_bp
+from sqlalchemy.dialects.mysql import MEDIUMTEXT
+from sqlalchemy.ext.compiler import compiles
+
+
+# Chat_History.message_content 是 MySQL MEDIUMTEXT；SQLite 測試資料庫
+# 需要把它編譯成 TEXT（跟其他 tests/ 的作法一致）。
+@compiles(MEDIUMTEXT, "sqlite")
+def _compile_mediumtext_sqlite(element, compiler, **kwargs):
+    return "TEXT"
+
 
 class WorkspaceSharingTests(unittest.TestCase):
     def setUp(self):

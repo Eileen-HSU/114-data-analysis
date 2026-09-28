@@ -50,13 +50,11 @@ class _FakeModel:
         return _FakeResp(_queue.pop(0))
 
 
-_fake_genai = types.ModuleType("google.generativeai")
-_fake_genai.GenerativeModel = _FakeModel
-_fake_genai.configure = lambda **kwargs: None
-_fake_google = types.ModuleType("google")
-_fake_google.generativeai = _fake_genai
-sys.modules["google"] = _fake_google
-sys.modules["google.generativeai"] = _fake_genai
+# 直接替換 services.gemini_client（新版 google-genai SDK 的包裝層），
+# 不再偽造 sys.modules["google"]——那會讓 `from google import genai` 失敗。
+import services.gemini_client as _gemini_client
+_gemini_client.GenerativeModel = _FakeModel
+_gemini_client.configure = lambda **kwargs: None
 
 
 def q(obj_or_text):
@@ -139,7 +137,7 @@ MASKED_SURVEY_ANSWER = mask_pii(SURVEY_ANSWER)
 print(f"masked = {MASKED_SURVEY_ANSWER!r}")
 
 with app.app_context():
-    template = m.Survey_Template(title="測試問卷", access_code="TEST1", question_json={
+    template = m.Survey_Template(user_id=1, title="測試問卷", access_code="TEST1", question_json={
         "items": [
             {"id": "q1", "type": "short", "title": "對主管的建議", "question_type": "leadership_and_dept"},
             {"id": "q2", "type": "short", "title": "沒有 routing 結果的題目", "question_type": None},
@@ -163,7 +161,7 @@ resp = client.post("/api/survey-response", json={
         "q1": SURVEY_ANSWER,
         "q2": "這題沒有 question_type，應該被跳過",
     }},
-})
+}, headers=auth_header(1))  # 路由自 ownership migration 起要求登入且為問卷 owner
 data = resp.get_json()
 
 check("HTTP 201", resp.status_code == 201)

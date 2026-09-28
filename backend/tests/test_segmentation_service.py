@@ -46,13 +46,11 @@ class _FakeModel:
         return _FakeResp(_queued_responses.pop(0))
 
 
-_fake_genai = types.ModuleType("google.generativeai")
-_fake_genai.GenerativeModel = _FakeModel
-_fake_genai.configure = lambda **kwargs: None
-_fake_google = types.ModuleType("google")
-_fake_google.generativeai = _fake_genai
-sys.modules["google"] = _fake_google
-sys.modules["google.generativeai"] = _fake_genai
+# 直接替換 services.gemini_client（新版 google-genai SDK 的包裝層），
+# 不再偽造 sys.modules["google"]——那會讓 `from google import genai` 失敗。
+import services.gemini_client as _gemini_client
+_gemini_client.GenerativeModel = _FakeModel
+_gemini_client.configure = lambda **kwargs: None
 
 from services.privacy_service import mask_pii_with_mapping
 from services.segmentation_service import segment_answer
