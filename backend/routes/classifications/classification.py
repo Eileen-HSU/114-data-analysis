@@ -132,6 +132,24 @@ def _resolve_taxonomy_for_topic(question_type: str):
         return None, None, None
 
 
+def _resolve_taxonomy_open(routed_topic, label, sample_texts, question_text=None):
+    """開放式分類的統一入口（見 services/open_classification.py）：
+
+    - 判斷出主題：用該主題的已發布分類架構（開放式 prompt，可提出新類別）；
+      沒有已發布版本時，用暫定草稿，或依這批回答自動歸納一份草稿。
+    - 判斷不出主題：依欄位名稱 / 題目文字建立或沿用「自動主題」。
+    - OPEN_CLASSIFICATION_ENABLED=0：維持原本 fail-closed 行為。
+    """
+    from services.open_classification import open_mode_enabled, resolve_for_unrouted, resolve_taxonomy
+
+    if routed_topic and routed_topic != QUESTION_OTHER:
+        return resolve_taxonomy(routed_topic, sample_texts=sample_texts, title=label, question_text=question_text or label)
+    if open_mode_enabled():
+        return resolve_for_unrouted(label, sample_texts, question_text=question_text)
+    return {"prompt": None, "lookup": None, "version_id": None, "topic_key": None,
+            "provisional": False, "generated": False, "error": "判斷不出主題"}
+
+
 def _safe_rating_int(raw):
     """把 rating 答案安全轉成 0~5 的整數；轉不出來或超出範圍回傳 None
     （代表這筆值不合法，呼叫端要直接跳過，不能讓一筆髒資料讓整份統計
@@ -240,8 +258,12 @@ def _build_aggregated_groups(all_classification_rows, id_to_row_index, question_
 
         key = (normalize_main_category(view["main_category"]), sub_category)
         if key not in groups:
-            groups[key] = {"items": []}
+            groups[key] = {"items": [], "is_new_category": False}
             order.append(key)
+        # 開放式分類：AI 提出、尚未被管理員採用的新類別（人工確認 / 修改
+        # 過的列就不再是「待審新類別」）。
+        if getattr(r, "status", None) == "new_category" and getattr(r, "review_status", None) in (None, "pending_review"):  # 剛建立尚未 flush 時是 None
+            groups[key]["is_new_category"] = True
 
         row_index = id_to_row_index.get(getattr(r, id_field))
         excerpt = r.answer_text
@@ -317,6 +339,7 @@ def _build_aggregated_groups(all_classification_rows, id_to_row_index, question_
             "synthesis_status": synthesis_status,
             "synthesis_error": synthesis_error,
             "respondent_count": len(items),
+            "is_new_category": groups[key]["is_new_category"],
         })
 
     return result
@@ -513,7 +536,8 @@ def submit_survey_response():
             skipped_question_ids.append(question_id)
             continue
 
-        prompt_content, category_lookup, taxonomy_version_id = _resolve_taxonomy_for_topic(question_type)
+        taxonomy = _resolve_taxonomy_open(question_type, str(question_id), [str(answer)])
+        prompt_content, category_lookup, taxonomy_version_id = taxonomy["prompt"], taxonomy["lookup"], taxonomy["version_id"]
         if prompt_content is None:
             # 沒有 Published Taxonomy：這一題跳過分類，原始回答本來就
             # 已經完整存在 survey.answer_json，不受影響（見需求文件
@@ -589,30 +613,46 @@ def upload_excel_for_classification():
         samples = _collect_masked_routing_samples(df, text_column)
         routing_context = _build_routing_context(text_column, samples)
         routed_question_type, routing_reason = route_question_type_with_reason(routing_context)
-        question_type = routed_question_type or QUESTION_OTHER
 
-        prompt_content_for_batch, category_lookup, taxonomy_version_id = _resolve_taxonomy_for_topic(question_type)
+        column_texts = [str(v) for v in df[text_column] if is_text_response(v)]
+        # 自動歸納分類架構會自己 commit / 失敗時 rollback；先把前面欄位已經
+        # 寫好的資料 commit，避免被這一欄的 rollback 一起丟掉。
+        db.session.commit()
+        taxonomy = _resolve_taxonomy_open(routed_question_type, str(text_column), column_texts)
+        prompt_content_for_batch = taxonomy["prompt"]
+        category_lookup = taxonomy["lookup"]
+        taxonomy_version_id = taxonomy["version_id"]
         taxonomy_unavailable = prompt_content_for_batch is None
+        question_type = (taxonomy["topic_key"] if not taxonomy_unavailable else None) or routed_question_type or QUESTION_OTHER
 
         # 【未分類資料來源統一】routing 判斷不出來時，Uploaded_Answer.question_type
         # 存 NULL（這張表的既定語意：NULL = 尚未判斷出來、待處理），不再把
         # 內部 fallback 值 "other" 寫進 DB；原因另外存在 routing_status /
         # routing_detail，Admin 未分類頁據此顯示並提供指派 Topic / 重新 routing。
-        if routed_question_type is None:
+        # 開放式分類：判斷不出主題時改用「自動主題」（auto_topic）；只有連
+        # AI 自動歸納都失敗時，才是未分類（原因寫進 routing_detail）。
+        if not taxonomy_unavailable and routed_question_type is None:
+            stored_question_type = taxonomy["topic_key"]
+            routing_status = "auto_topic"
+            routing_detail = (
+                f"routing_reason={routing_reason}；使用自動主題 {taxonomy['topic_key']}"
+                f"（{'本次 AI 新歸納' if taxonomy['generated'] else '沿用'}暫定分類架構）"
+            )
+        elif not taxonomy_unavailable:
+            stored_question_type = routed_question_type
+            routing_status = "routed"
+            routing_detail = "使用暫定分類架構（待管理員發布）" if taxonomy["provisional"] else None
+        elif routed_question_type is None:
             stored_question_type = None
             routing_status = {
                 ROUTING_REASON_API_FAILURE: "routing_failed",
                 ROUTING_REASON_NO_CANDIDATES: "no_topic_candidates",
             }.get(routing_reason, "unrouted")
-            routing_detail = f"routing_reason={routing_reason}"
-        elif taxonomy_unavailable:
-            stored_question_type = routed_question_type
-            routing_status = "taxonomy_unavailable"
-            routing_detail = f"topic_key={routed_question_type} 沒有可用的 published taxonomy"
+            routing_detail = f"routing_reason={routing_reason}" + (f"；{taxonomy['error']}" if taxonomy["error"] else "")
         else:
             stored_question_type = routed_question_type
-            routing_status = "routed"
-            routing_detail = None
+            routing_status = "taxonomy_unavailable"
+            routing_detail = taxonomy["error"] or f"topic_key={routed_question_type} 沒有可用的 published taxonomy"
 
         pending_items = []  # 每個元素額外帶一個 _question_id，DB 寫入時才用得到
         column_saved_count = 0
@@ -694,6 +734,9 @@ def upload_excel_for_classification():
             "column": text_column,
             "question_type": stored_question_type,
             "routing_status": routing_status,
+            "provisional_taxonomy": bool(taxonomy["provisional"]) and not taxonomy_unavailable,
+            "auto_topic": routing_status == "auto_topic",
+            "taxonomy_version_id": taxonomy_version_id,
             "saved_answer_count": column_saved_count,
             "classified_count": len(column_classification_rows),
             "aggregated_groups": column_groups,
@@ -723,6 +766,7 @@ def upload_excel_for_classification():
         "upload_batch_id": upload_batch_id,
         "source_type": "user_upload",
         "review_revision": review_revision,
+        "provisional_taxonomy": any(c["provisional_taxonomy"] for c in columns_summary),
         "saved_answer_count": saved_answer_count,
         "classified_count": classified_count,
         "classifications": classifications_payload,
@@ -779,6 +823,12 @@ def analyze_survey(access_code):
         for item in items
         if item.get("type") == "short"
     }
+    question_title_map = {
+        item.get("id"): (item.get("title") or item.get("question_title") or item.get("id") or "")
+        for item in items
+        if item.get("type") == "short"
+    }
+    provisional_question_ids = []
 
     if not question_type_map:
         
@@ -815,13 +865,28 @@ def analyze_survey(access_code):
 
     for question_id, question_type in question_type_map.items():
 
-        prompt_content_for_batch, category_lookup, taxonomy_version_id = _resolve_taxonomy_for_topic(question_type)
+        question_answers = [
+            str((r.answer_json or {}).get("answers", {}).get(question_id))
+            for r in responses
+            if is_text_response((r.answer_json or {}).get("answers", {}).get(question_id))
+        ]
+        db.session.commit()  # 同上：保護前面題目已寫入的結果
+        taxonomy = _resolve_taxonomy_open(
+            question_type if question_type != QUESTION_OTHER else None,
+            question_title_map.get(question_id) or str(question_id),
+            question_answers,
+        )
+        prompt_content_for_batch = taxonomy["prompt"]
+        category_lookup = taxonomy["lookup"]
+        taxonomy_version_id = taxonomy["version_id"]
         if prompt_content_for_batch is None:
-            # 沒有 Published Taxonomy（含 QUESTION_OTHER）：整題跳過，
-            # 不 fallback 到 DYNAMIC_GENERAL_PROMPT。原始回答仍完整存在
-            # Survey_Response.answer_json，只是這次不會產生新分類結果。
-            per_question_diagnostic[question_id] = {"taxonomy_unavailable": True}
+            # 開放式分類下只有在「連 AI 自動歸納都失敗」或關閉開放模式時
+            # 才會走到這裡：整題跳過，原始回答仍完整存在 answer_json。
+            per_question_diagnostic[question_id] = {"taxonomy_unavailable": True, "reason": taxonomy["error"]}
             continue
+        question_type = taxonomy["topic_key"] or question_type
+        if taxonomy["provisional"]:
+            provisional_question_ids.append(question_id)
 
         existing_references = []
         pending_items = []
@@ -929,6 +994,8 @@ def analyze_survey(access_code):
         "template_id": template_id,
         "source_type": "survey",
         "review_revision": compute_review_revision({"source_type": "survey", "template_id": template_id}),
+        "provisional_taxonomy": bool(provisional_question_ids),
+        "provisional_question_ids": provisional_question_ids,
         "analyzed_question_ids": analyzed_question_ids,
         "newly_classified_count": newly_classified_count,
         "aggregated_groups": aggregated_groups,

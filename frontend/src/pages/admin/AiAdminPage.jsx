@@ -5,6 +5,7 @@ import { useAuth } from "../../hooks/AuthContext";
 import { api } from "./ai-admin/shared/apiClient";
 import { t, taxStatusText } from "./ai-admin/shared/taxStatus";
 import CreateTopicSection from "./ai-admin/CreateTopicSection";
+import { LoadingNotice } from "./ai-admin/shared/StatusWidgets";
 import "./ai-admin.css";
 
 export default function AiAdminPage() {
@@ -15,12 +16,16 @@ export default function AiAdminPage() {
 
   const [topics, setTopics] = useState([]);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const loadTopics = async () => {
+    setLoading(true);
     try {
       setTopics((await api("/api/admin/ai/taxonomy-topics", token)).topics);
     } catch (e) {
       setError(e.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -43,6 +48,7 @@ export default function AiAdminPage() {
     </header>
     {error && <p className="ai-admin-error">{error}<button onClick={() => setError("")}>×</button></p>}
     <CreateTopicSection token={token} onCreated={handleTopicCreated} />
+    {loading && <LoadingNotice text={t("正在載入分析主題…", "Loading topics…")} />}
     <div className="topic-grid">
       {topics.map((topic) => (
         <article key={topic.topic_key} className="topic-card">
@@ -59,7 +65,8 @@ export default function AiAdminPage() {
     </div>
     <p style={{ marginTop: 24 }}>
       <button onClick={() => navigate("/admin/ai/unassigned")}>{t("其他 / 未歸屬資料", "Other / Unassigned Data")}</button>{" "}
-      <button onClick={() => navigate("/admin/ai/reports")}>{t("報告管理", "Report Management")}</button>
+      <button onClick={() => navigate("/admin/ai/reports")}>{t("報告管理", "Report Management")}</button>{" "}
+      <button onClick={() => navigate("/admin/ai/new-categories")}>{t("新類別候選", "New Category Candidates")}</button>
     </p>
   </main></>;
 }

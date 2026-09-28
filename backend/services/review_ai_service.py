@@ -73,6 +73,30 @@ candidate_secondary_sub_category: {candidate_secondary_sub_category}
 }}"""
 
 
+def _generate_with_retry(model, user_content):
+    """Gemini 暫時過載（503）時依 2、4 秒退避重試；額度不足（429）等一次
+    建議秒數（最多 20 秒，避免對話畫面卡太久）；其他錯誤直接往上拋。"""
+    import time
+
+    unavailable_retries = 0
+    rate_limit_retried = False
+    while True:
+        try:
+            return model.generate_content(user_content, generation_config={"temperature": 0})
+        except Exception as e:
+            text = str(e)
+            if genai.is_transient_unavailable_error(e) and unavailable_retries < 2:
+                time.sleep(genai.UNAVAILABLE_RETRY_DELAYS_SECONDS[unavailable_retries])
+                unavailable_retries += 1
+                continue
+            if ("429" in text or "RESOURCE_EXHAUSTED" in text) and not rate_limit_retried:
+                rate_limit_retried = True
+                match = re.search(r"[Rr]etry in ([\d.]+)s", text)
+                time.sleep(min(float(match.group(1)) if match else 10.0, 20.0) + 1.0)
+                continue
+            raise
+
+
 class ReviewAIError(RuntimeError):
     """Gemini 呼叫或回傳格式有問題時使用（呼叫端應該 fail-safe，
     不讓整個 review 對話中斷，但也不能假裝有 candidate）。"""
@@ -195,15 +219,14 @@ def build_review_reply(
             model_name="gemini-3.1-flash-lite",
             system_instruction=system_instruction,
         )
-        response = model.generate_content(
-            user_content,
-            generation_config={"temperature": 0},
-        )
+        response = _generate_with_retry(model, user_content)
         parsed = _parse_json(response.text)
     except Exception as e:
         print("[REVIEW AI ERROR][CALL_OR_PARSE_FAILED]", repr(e))
+        from services.failure_explainer import explain_failure
+        explained = explain_failure(repr(e))
         return {
-            "reply": "系統暫時無法處理這則訊息，請稍後再試一次。",
+            "reply": f"AI 暫時無法回覆：{explained['message']}（也可以改用「直接選擇分類」。）",
             "candidate_main_category": None,
             "candidate_sub_category": None,
             "candidate_secondary_main_category": None,

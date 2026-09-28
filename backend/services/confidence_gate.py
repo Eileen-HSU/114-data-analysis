@@ -60,6 +60,10 @@ def evaluate_confidence_gate(segment: dict):
     if segment.get("status") == "methodology_not_found":
         return True, REASON_METHODOLOGY_NOT_FOUND
 
+    if segment.get("status") == "new_category":
+        # 開放式分類：AI 提出清單外的新類別，一律交給人工確認
+        return True, "new_category_proposed"
+
     confidence = segment.get("confidence")
     # bool 是 int 的子類別，isinstance(True, int) 會是 True，
     # 這裡要明確排除，避免 confidence=True 被誤判成合法數值 1。

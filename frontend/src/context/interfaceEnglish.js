@@ -63,6 +63,8 @@ export const interfaceEnglish = {
   "人工審核結果已更新，正在重新整理分類結果…": "Human review results changed. Refreshing the classification results…",
   "已套用最新的人工審核結果。": "The latest human review results have been applied.",
   "人工審核結果已更新，但重新整理失敗；目前顯示的是先前的結果，請稍後重新整理頁面。": "Human review results changed, but refreshing failed. Showing the previous results; please reload the page later.",
+  "AI 新類別・待確認": "New AI category · pending review",
+  "這批資料沒有既有的分類架構，類別由 AI 依內容自動歸納（暫定），管理員審核發布後會成為正式分類。": "There was no existing taxonomy for this data, so the AI derived provisional categories from the content. They become official once an admin reviews and publishes them.",
   "這批資料沒有產生任何分類結果。": "No classification results were generated for this data.", "分類完成，共": "Classification complete. Total:",
   "個類別。": "categories.", "大類別": "Main category", "子類別": "Subcategory", "問卷回覆內容": "Survey response",
   "判斷原因與說明": "Reasoning and explanation", "受試者建議摘要": "Summary of respondent suggestions",

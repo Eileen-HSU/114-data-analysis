@@ -168,8 +168,29 @@ def _has_entered_current_conversation(review_id):
 
 
 def _taxonomy_categories(classification):
+    """這筆 classification 可以選的分類清單（Human Review 對話與人工直接
+    指定分類共用）。
+
+    - 有 taxonomy_version_id：該版 Taxonomy_Category（不是目前 published
+      版，確保跟當初分類用的是同一份清單）。
+    - legacy（taxonomy_version_id IS NULL）：依 question_type 取 legacy
+      SUBCATEGORY_METHODOLOGY 表——原本這裡回傳空清單，導致 AI 對話永遠
+      提不出任何合法候選（每個建議都被當成「不在清單內」拒絕）。
+    - 版本已被刪除：退回這筆原本的 AI 分類，至少不會是空清單。
+    """
     if classification.taxonomy_version_id is None:
-        return []
+        from services.subcategory_methodology import SUBCATEGORY_METHODOLOGY
+        question_type = _resolve_question_type(classification)
+        table = SUBCATEGORY_METHODOLOGY.get(question_type) or {}
+        return [
+            {
+                "main_category": info["main_category"],
+                "sub_category": sub,
+                "methodology": info.get("methodology"),
+                "citation": info.get("citation"),
+            }
+            for sub, info in table.items()
+        ]
     version = db.session.get(Taxonomy_Version, classification.taxonomy_version_id)
     if version is None:
         return [
@@ -198,6 +219,33 @@ def _taxonomy_categories(classification):
             "citation": category.citation,
         }
         for category in version.categories
+    ]
+
+
+def _with_proposed_categories(classification, categories):
+    """開放式分類：AI 提出的新類別（status=new_category）也要能被選，
+    「維持 AI 原始分類」才能運作；標記 proposed=True 讓前端顯示為新類別。"""
+    if classification.status != "new_category":
+        return categories
+    existing = {c["sub_category"] for c in categories}
+    extra = []
+    for main, sub in (
+        (classification.main_category, classification.sub_category),
+        (classification.secondary_main_category, classification.secondary_sub_category),
+    ):
+        if sub and sub not in existing:
+            extra.append({"main_category": main, "sub_category": sub, "methodology": None,
+                          "citation": None, "proposed": True})
+            existing.add(sub)
+    return categories + extra
+
+
+def taxonomy_options(classification):
+    """前端「直接選擇分類」下拉選單用（只給名稱，不含 methodology 細節）。"""
+    return [
+        {"main_category": c["main_category"], "sub_category": c["sub_category"], "proposed": bool(c.get("proposed"))}
+        for c in _with_proposed_categories(classification, _taxonomy_categories(classification))
+        if c.get("sub_category")
     ]
 
 
@@ -319,6 +367,7 @@ def get_review_state(classification_id, admin_id):
         "classification": classification.to_dict(),
         "active_review": active_review.to_dict() if active_review else None,
         "review_state": derive_review_state(classification, active_review),
+        "taxonomy_options": taxonomy_options(classification),
     }
 
 
@@ -362,8 +411,19 @@ def send_message(classification_id, admin_id, message_text):
         raise ReviewError("尚未開始 review conversation，請先呼叫 start", 400)
 
     question_type = _resolve_question_type(classification)
-    if question_type is None:
-        raise ReviewError("這筆分類找不到對應的題目分類架構（question_type），無法進行 review", 422)
+    if question_type is None and classification.taxonomy_version_id is not None:
+        # 例如問卷題目本身沒有存 question_type，但這筆分類是用某個 Topic
+        # 的 taxonomy 產生的：直接用那個 Topic。
+        version = db.session.get(Taxonomy_Version, classification.taxonomy_version_id)
+        question_type = version.topic_key if version is not None else None
+    taxonomy_categories = _taxonomy_categories(classification)
+    if question_type is None or not taxonomy_categories:
+        raise ReviewError(
+            "這筆分類找不到對應的主題分類清單，AI 無法討論；請改用「直接選擇分類」，"
+            "或先到「其他 / 未歸屬資料」替這筆資料指派主題。",
+            422,
+            code="NO_TAXONOMY_OPTIONS",
+        )
 
     # 目前候選：取這個 session 裡最新一則、有實際提出 candidate 的
     # assistant 訊息；沒有的話 fallback 成 AI original，讓 Gemini
@@ -405,7 +465,7 @@ def send_message(classification_id, admin_id, message_text):
         candidate_secondary_sub_category=candidate_secondary_sub,
         conversation_history=history,
         user_message=message_text,
-        taxonomy_categories=_taxonomy_categories(classification),
+        taxonomy_categories=taxonomy_categories,
     )
 
     assistant_msg = Classification_Review_Message(
@@ -421,9 +481,14 @@ def send_message(classification_id, admin_id, message_text):
     db.session.add(assistant_msg)
     db.session.commit()
 
+    from services.failure_explainer import explain_failure
+
     return {
         "message": assistant_msg.to_dict(),
         "taxonomy_rejected": ai_result["taxonomy_rejected"],
+        # AI 呼叫失敗（額度不足、模型忙碌…）時的中文說明；對話仍然保存，
+        # 可以直接再送一次或改用「直接選擇分類」。
+        "ai_error": explain_failure(ai_result.get("error_detail")),
     }
 
 
@@ -538,6 +603,56 @@ def confirm_candidate(classification_id, admin_id):
         audit_service.ACTION_MODIFY, audit_service.ENTITY_CLASSIFICATION, classification_id, admin_id,
         before=before, after=audit_service.classification_state(classification),
         reason=f"review_id={review.review_id}",
+    )
+    mark_reports_outdated_for_classification(classification, OUTDATED_CLASSIFICATION_MODIFIED)
+    _commit_or_rollback()
+    return classification
+
+
+def confirm_manual(classification_id, admin_id, sub_category, secondary_sub_category=None, reasoning=None):
+    """Admin 不經過 AI 對話，直接從這筆分類的合法分類清單裡指定最終分類：
+    pending / in_review -> modified（寫入 final_*）。
+
+    - 只接受清單內的子類別（fail-closed：不能自創分類）；main_category
+      由清單查表決定，不由前端傳入。
+    - 自己的 in_progress session 一併結束（confirmed）；別的 Admin 審核中 -> 409。
+    - failed -> 409（請用重新處理）；已定案 -> 409（請先 reopen）。
+    """
+    classification = _lock_classification(classification_id)
+    _reject_failed_classification(classification)
+    if classification.review_status in _LOCKED_REVIEW_STATUSES:
+        raise _already_finalized_error(classification)
+    actives = _require_own_or_no_active(classification_id, admin_id)
+
+    options = {
+        c["sub_category"]: c
+        for c in _with_proposed_categories(classification, _taxonomy_categories(classification))
+        if c.get("sub_category")
+    }
+    if not sub_category or sub_category not in options:
+        raise ReviewError("請從清單中選擇一個子類別", 400, code="INVALID_CATEGORY")
+    if secondary_sub_category and secondary_sub_category not in options:
+        raise ReviewError("次要子類別必須在清單中", 400, code="INVALID_CATEGORY")
+    if secondary_sub_category == sub_category:
+        secondary_sub_category = None
+
+    now = taiwan_now()
+    before = audit_service.classification_state(classification)
+    classification.final_main_category = options[sub_category]["main_category"]
+    classification.final_sub_category = sub_category
+    classification.final_secondary_main_category = (
+        options[secondary_sub_category]["main_category"] if secondary_sub_category else None
+    )
+    classification.final_secondary_sub_category = secondary_sub_category or None
+    classification.final_reasoning = (reasoning or "").strip() or "管理員直接指定分類"
+    classification.review_status = REVIEW_STATUS_MODIFIED
+    _stamp(classification, admin_id, now)
+    _close_reviews(actives, REVIEW_SESSION_CONFIRMED, "manual_selection", now)
+
+    audit_service.record(
+        audit_service.ACTION_MODIFY, audit_service.ENTITY_CLASSIFICATION, classification_id, admin_id,
+        before=before, after=audit_service.classification_state(classification),
+        reason="manual_selection" + (f": {reasoning.strip()}" if reasoning and reasoning.strip() else ""),
     )
     mark_reports_outdated_for_classification(classification, OUTDATED_CLASSIFICATION_MODIFIED)
     _commit_or_rollback()

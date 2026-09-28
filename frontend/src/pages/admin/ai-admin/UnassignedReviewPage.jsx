@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import Navbar from "../../../components/feature/Navbar";
 import { useAuth } from "../../../hooks/AuthContext";
 import { api } from "./shared/apiClient";
 import { t } from "./shared/taxStatus";
 import { UNASSIGNED_KINDS, errorMessage, unassignedKindLabel, unroutedReasonLabel } from "./shared/reviewStates";
+import { FailureNotice, LoadingNotice } from "./shared/StatusWidgets";
 
 const PAGE_SIZE = 30;
 
@@ -29,12 +30,21 @@ export default function UnassignedReviewPage() {
   const [rowError, setRowError] = useState({});
   const [detail, setDetail] = useState(null);
 
-  const load = async () => {
+  const [loading, setLoading] = useState(false);
+  const requestSeq = useRef(0);
+  // silent：操作（確認 / 排除 / 重新處理）完成後的重新讀取，不清空畫面，
+  // 只有切換分頁 / 篩選 / 頁數才顯示「搜尋中」。
+  const load = async ({ silent = false } = {}) => {
+    const seq = ++requestSeq.current;
+    if (!silent) setLoading(true);
     try {
       setError("");
-      setData(await api(`/api/admin/ai/unassigned?kind=${kind}&page=${page}&page_size=${PAGE_SIZE}`, token));
+      const result = await api(`/api/admin/ai/unassigned?kind=${kind}&page=${page}&page_size=${PAGE_SIZE}`, token);
+      if (seq === requestSeq.current) setData(result);
     } catch (e) {
-      setError(errorMessage(e));
+      if (seq === requestSeq.current) setError(errorMessage(e));
+    } finally {
+      if (seq === requestSeq.current) setLoading(false);
     }
   };
 
@@ -58,17 +68,17 @@ export default function UnassignedReviewPage() {
     try {
       const result = await fn();
       setMessage(typeof successText === "function" ? successText(result) : successText);
-      await load();
+      await load({ silent: true });
     } catch (e) {
       setRowError((p) => ({ ...p, [key]: errorMessage(e) }));
-      await load();
+      await load({ silent: true });
     } finally {
       setBusy((p) => ({ ...p, [key]: false }));
     }
   };
 
   const resultText = (result) => (result?.succeeded === false
-    ? t(`已送出分類，但處理失敗：${result.segmentation_error_detail || ""}`, `Classification ran but failed: ${result.segmentation_error_detail || ""}`)
+    ? t(`已送出分類，但處理失敗：${result.failure?.message || ""}`, `Classification ran but failed: ${result.failure?.message_en || ""}`)
     : t("已完成分類，結果已進入該主題的審查清單。", "Classified; results are now in the topic's review list."));
 
   const assign = (item, topicKey, versionId) => run(
@@ -128,9 +138,11 @@ export default function UnassignedReviewPage() {
       ))}
     </div>
 
-    {data.items.length === 0 && <p className="review-empty-hint">{t("這個分類底下目前沒有資料。", "Nothing here right now.")}</p>}
+    {loading && <LoadingNotice />}
 
-    {data.items.map((item) => {
+    {!loading && data.items.length === 0 && <p className="review-empty-hint">{t("這個分類底下目前沒有資料。", "Nothing here right now.")}</p>}
+
+    {!loading && data.items.map((item) => {
       const key = item.kind === "unrouted" ? `a${item.id}` : `c${item.classification_id}`;
       return (
         <UnassignedCard key={key} item={item} topics={topics} busy={!!busy[key]} error={rowError[key]}
@@ -181,8 +193,8 @@ function UnassignedCard({ item, topics, busy, error, onDismissError, onAssign, o
       </div>
       <div className="review-card-mid">
         <p><span className="review-field-label">{t("原因", "Reason")}</span>
-          {item.kind === "failed" ? (item.reason || t("未提供錯誤訊息", "No error detail")) : unroutedReasonLabel(item.reason)}</p>
-        {item.routing_detail && <p><small>{item.routing_detail}</small></p>}
+          {item.kind === "failed" ? t("分類處理失敗", "Classification failed") : unroutedReasonLabel(item.reason)}</p>
+        {item.failure && <FailureNotice failure={item.failure} />}
         <p><span className="review-field-label">{t("處理狀態", "Processing status")}</span>{item.processing_status}</p>
         {item.source_column && <p><span className="review-field-label">{t("來源欄位", "Source column")}</span>{item.source_column}（{t("第", "row ")}{(item.row_index ?? 0) + 1}{t(" 列", "")}）</p>}
       </div>

@@ -185,6 +185,7 @@ def _group_to_row(g):
         "synthesis_status": g.get("synthesis_status") or "ok",
         "synthesis_error": g.get("synthesis_error"),
         "respondent_count": g.get("respondent_count"),
+        "is_new_category": bool(g.get("is_new_category")),
     }
 
 

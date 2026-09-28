@@ -145,10 +145,14 @@ print("\n========== 6. 產生失敗 ==========")
 GEMINI_QUEUE.clear()  # 沒有摘要回應 -> AI 摘要失敗
 resp = client.post(f"/api/admin/ai/reports/user_upload/{BATCH}/generate", headers=admin_header(1))
 check("失敗 -> 500 REPORT_GENERATION_FAILED 且帶具體原因",
-      resp.status_code == 500 and resp.get_json()["code"] == "REPORT_GENERATION_FAILED" and "摘要產生失敗" in resp.get_json()["message"])
+      resp.status_code == 500 and resp.get_json()["code"] == "REPORT_GENERATION_FAILED"
+      and resp.get_json()["message"].startswith("報告產生失敗：") and resp.get_json()["failure"]["raw"])
+check("失敗原因有中文說明，原始錯誤保留在 failure.raw",
+      "摘要產生失敗" in resp.get_json()["failure"]["raw"] and resp.get_json()["failure"]["message"])
 failed_report = resp.get_json()["report"]
 check("DB 記錄 status=failed + error_detail", failed_report["status"] == "failed" and failed_report["error_detail"])
 check("unit：needs_regeneration=last_generation_failed", unit()["regeneration_reason"] == "last_generation_failed")
+check("unit：latest_failure 帶中文說明", bool(unit()["latest_failure"]["message"]))
 
 
 print("\n========== 7. 匯出 ==========")

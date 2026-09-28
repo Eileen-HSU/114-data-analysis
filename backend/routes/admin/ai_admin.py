@@ -14,9 +14,11 @@ from services.review_service import derive_review_state
 from taxonomy import Taxonomy_Version
 from routes.auth.admin_guard import verify_admin_token
 from services.effective_classification_service import effective_view
+from services.failure_explainer import explain_failure
 from routes.api_errors import api_error
 from services import admin_recovery_service as recovery
 from services import report_service
+from services import new_category_service
 from services.classify_v2 import _run_classification
 from services.prompt_admin_service import (
     GOLDEN_TEST_SET,
@@ -269,6 +271,7 @@ def reviewed_classifications():
             "admin_id": active.admin_id,
             "admin_name": admin_names.get(active.admin_id),
         }
+        item["failure"] = explain_failure(row.reasoning) if row.status == "failed" else None
         view = effective_view(row)
         item["effective_result"] = None if view is None else {
             "main_category": view["main_category"],
@@ -453,9 +456,11 @@ def admin_generate_report(source_type, identifier):
     except report_service.ReportError as exc:
         return _report_error(exc)
     if report.status != "completed":
+        explained = explain_failure(report.error_detail)
         return api_error(
-            "REPORT_GENERATION_FAILED", f"報告產生失敗：{report.error_detail or '未知原因'}", 500,
-            report=report.to_dict(),
+            "REPORT_GENERATION_FAILED",
+            f"報告產生失敗：{explained['message'] if explained else '未知原因'}", 500,
+            report=report.to_dict(), failure=explained,
         )
     return jsonify({"report": report.to_dict()}), 201
 
@@ -492,6 +497,50 @@ def admin_export_report(report_id):
     return Response(data, mimetype=mimetype, headers={
         "Content-Disposition": f"attachment; filename*=UTF-8''{filename}",
     })
+
+
+# ── 開放式分類：新類別候選 ─────────────────────────────────────────
+
+@ai_admin_bp.get("/new-categories")
+def list_new_categories():
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    return jsonify(new_category_service.list_candidates(request.args.get("topic") or None))
+
+
+@ai_admin_bp.post("/new-categories/adopt")
+def adopt_new_category():
+    """Body: {topic_key, main_category, sub_category, definition?}"""
+    admin, failure = _admin_or_error()
+    if failure:
+        return failure
+    data = request.get_json(silent=True) or {}
+    try:
+        result = new_category_service.adopt(
+            data.get("topic_key"), data.get("main_category"), data.get("sub_category"),
+            admin.admin_id, definition=data.get("definition"),
+        )
+    except new_category_service.NewCategoryError as exc:
+        return api_error(exc.code, exc.message, exc.http_status)
+    return jsonify(result), 201
+
+
+@ai_admin_bp.post("/new-categories/merge")
+def merge_new_category():
+    """Body: {topic_key, main_category, sub_category, target_sub_category}"""
+    admin, failure = _admin_or_error()
+    if failure:
+        return failure
+    data = request.get_json(silent=True) or {}
+    try:
+        result = new_category_service.merge(
+            data.get("topic_key"), data.get("main_category"), data.get("sub_category"),
+            data.get("target_sub_category"), admin.admin_id,
+        )
+    except new_category_service.NewCategoryError as exc:
+        return api_error(exc.code, exc.message, exc.http_status)
+    return jsonify(result), 200
 
 
 @ai_admin_bp.get("/taxonomy")

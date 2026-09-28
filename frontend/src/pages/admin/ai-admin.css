@@ -458,3 +458,17 @@ label { display:block; font-weight:800; margin:12px 0; } textarea,select { width
     grid-template-columns: 1fr;
   }
 }
+
+/* 切換分頁 / 篩選時的載入提示與 AI 失敗說明 */
+.ai-admin-loading { display: flex; align-items: center; gap: 8px; padding: 14px 16px; margin: 12px 0; border-radius: 8px; background: #eef2ff; color: #4338ca; font-weight: 600; }
+.ai-admin-failure { display: grid; gap: 6px; }
+.ai-admin-failure details { font-size: 12px; color: #9f1239; }
+.ai-admin-failure summary { cursor: pointer; }
+.ai-admin-failure code { display: block; margin-top: 4px; white-space: pre-wrap; word-break: break-all; font-size: 12px; color: #475569; }
+
+/* 審核對話：直接選擇分類 + AI 建議 */
+.review-manual-pick { display: grid; gap: 10px; }
+.review-manual-pick label { display: grid; gap: 4px; }
+.review-manual-pick select, .review-manual-pick textarea { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; font: inherit; }
+.review-candidate-chip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; padding: 6px 10px; border-radius: 8px; background: #eef2ff; color: #3730a3; font-size: 14px; }
+.review-candidate-chip button { border: 1px solid #a5b4fc; background: #fff; border-radius: 6px; padding: 2px 10px; cursor: pointer; }

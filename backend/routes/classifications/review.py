@@ -5,6 +5,7 @@ Human Review API（Admin-only）：
   POST /api/classification/<id>/review/message           Admin 傳送 review message
   POST /api/classification/<id>/review/confirm-original
   POST /api/classification/<id>/review/confirm-candidate
+  POST /api/classification/<id>/review/confirm-manual      直接從分類清單指定最終分類
   POST /api/classification/<id>/review/exclude
   GET  /api/classification/<id>/review/history
   POST /api/classification/<id>/review/reopen            confirmed/modified/excluded -> pending（+ 新 session）
@@ -133,6 +134,26 @@ def confirm_candidate(classification_id):
         return err
     try:
         classification = review_service.confirm_candidate(classification_id, admin_id)
+        return jsonify(classification.to_dict()), 200
+    except ReviewError as e:
+        return _error_response(e)
+
+
+@review_bp.route("/api/classification/<int:classification_id>/review/confirm-manual", methods=["POST"])
+def confirm_manual(classification_id):
+    """Body: {"sub_category": "...", "secondary_sub_category": 選填, "reasoning": 選填}
+    Admin 直接從合法分類清單指定最終分類（不需要先跟 AI 對話）。"""
+    admin_id, err = _require_admin(request)
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    try:
+        classification = review_service.confirm_manual(
+            classification_id, admin_id,
+            sub_category=data.get("sub_category"),
+            secondary_sub_category=data.get("secondary_sub_category") or None,
+            reasoning=data.get("reasoning"),
+        )
         return jsonify(classification.to_dict()), 200
     except ReviewError as e:
         return _error_response(e)

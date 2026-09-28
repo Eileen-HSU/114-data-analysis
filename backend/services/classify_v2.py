@@ -43,20 +43,30 @@ def _is_rate_limit_error(exc: Exception) -> bool:
 
 
 def _generate_with_retry(model, user_message: str):
-    """對 model.generate_content() 的統一包裝：只有真的撞到免費層
-    429 限流時才等待重試，其他錯誤（prompt 有問題、解析失敗等）
-    維持原本行為，立刻讓例外往上拋，不做無意義的重試。"""
-    last_error = None
-    for attempt in range(3):
+    """對 model.generate_content() 的統一包裝：
+      - 429 限流：照 Gemini 建議秒數等待後重試（最多再試 2 次）。
+      - 503 / UNAVAILABLE（模型暫時過載）：依
+        genai.UNAVAILABLE_RETRY_DELAYS_SECONDS（2、4、8 秒）退避後重試。
+      - 其他錯誤（prompt 有問題、解析失敗等）維持原本行為，立刻往上拋，
+        不做無意義的重試。"""
+    rate_limit_retries = 0
+    unavailable_retries = 0
+    while True:
         try:
             return model.generate_content(user_message, generation_config={"temperature": 0})
         except Exception as e:
-            last_error = e
-            if attempt < 2 and _is_rate_limit_error(e):
+            if _is_rate_limit_error(e) and rate_limit_retries < 2:
+                rate_limit_retries += 1
                 delay = _extract_retry_delay_seconds(e) or 20.0
                 time.sleep(delay + 1.0)
                 continue
-            raise last_error
+            if genai.is_transient_unavailable_error(e) and unavailable_retries < len(genai.UNAVAILABLE_RETRY_DELAYS_SECONDS):
+                delay = genai.UNAVAILABLE_RETRY_DELAYS_SECONDS[unavailable_retries]
+                unavailable_retries += 1
+                print(f"[CLASSIFY_RETRY][UNAVAILABLE] attempt={unavailable_retries} retry_in={delay}s", repr(e)[:200])
+                time.sleep(delay)
+                continue
+            raise
 
 
 # Gemini #2（批次分類）專用：附加在 prompt_content 之後的輸出格式
@@ -437,8 +447,14 @@ def _build_classification_result(parsed: dict, category_lookup) -> dict:
         result["citation"] = methodology_info["citation"]
         result["status"] = "completed"
     else:
-        result["status"] = "methodology_not_found"
-        result["error_detail"] = f"sub_category 不在固定清單裡：{result['sub_category']}"
+        from services.open_classification import NEW_CATEGORY_STATUS, open_mode_enabled
+        if open_mode_enabled() and result["main_category"] and result["sub_category"]:
+            # 開放式分類：AI 提出清單外的新類別——照樣歸類、保留 AI 判斷
+            # 原因，交給管理員在「新類別候選」決定採用或合併。
+            result["status"] = NEW_CATEGORY_STATUS
+        else:
+            result["status"] = "methodology_not_found"
+            result["error_detail"] = f"sub_category 不在固定清單裡：{result['sub_category']}"
 
     if result["secondary_sub_category"]:
         secondary_info = category_lookup(result["secondary_sub_category"])
@@ -715,7 +731,8 @@ def resolve_published_taxonomy_prompt(topic_key: str):
     )
 
     taxonomy_version = get_published_taxonomy_version(topic_key)
-    prompt_content = build_classification_prompt(taxonomy_version)
+    from services.open_classification import open_mode_enabled
+    prompt_content = build_classification_prompt(taxonomy_version, open_set=open_mode_enabled())
     category_lookup = methodology_lookup_for_taxonomy_version(taxonomy_version)
     return prompt_content, category_lookup, taxonomy_version
 

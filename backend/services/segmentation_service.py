@@ -67,8 +67,12 @@ class SegmentValidationError(ValueError):
 
 
 def _call_gemini_segmentation(masked_text: str) -> list:
-    last_error = None
-    for attempt in range(3):
+    """429 限流照建議秒數重試（最多 2 次）；503 / UNAVAILABLE（模型暫時
+    過載）依 genai.UNAVAILABLE_RETRY_DELAYS_SECONDS 退避重試；其他錯誤
+    （含 JSON 解析失敗）直接往上拋。"""
+    rate_limit_retries = 0
+    unavailable_retries = 0
+    while True:
         try:
             model = genai.GenerativeModel(
                 model_name="gemini-3.1-flash-lite",
@@ -82,12 +86,18 @@ def _call_gemini_segmentation(masked_text: str) -> list:
             parsed = json.loads(cleaned)
             return parsed["segments"]
         except Exception as e:
-            last_error = e
-            if attempt < 2 and _is_rate_limit_error(e):
+            if _is_rate_limit_error(e) and rate_limit_retries < 2:
+                rate_limit_retries += 1
                 delay = _extract_retry_delay_seconds(e) or 20.0
                 time.sleep(delay + 1.0)
                 continue
-            raise last_error
+            if genai.is_transient_unavailable_error(e) and unavailable_retries < len(genai.UNAVAILABLE_RETRY_DELAYS_SECONDS):
+                delay = genai.UNAVAILABLE_RETRY_DELAYS_SECONDS[unavailable_retries]
+                unavailable_retries += 1
+                print(f"[SEGMENTATION_RETRY][UNAVAILABLE] attempt={unavailable_retries} retry_in={delay}s", repr(e)[:200])
+                time.sleep(delay)
+                continue
+            raise
 
 
 

@@ -57,6 +57,7 @@ function buildClassificationMessageContent(aggregatedGroups, meta, ratingStats) 
     synthesis_status: g.synthesis_status || "ok",
     synthesis_error: g.synthesis_error || null,
     respondent_count: g.respondent_count ?? null,
+    is_new_category: Boolean(g.is_new_category),
   }));
   const rating_stats = (ratingStats || []).map((r) => ({
     question_id: r.question_id,
@@ -609,6 +610,11 @@ function ClassificationTableView({ rows, ratingStats, meta, chatId, showToast, r
       {hasClassificationRows ? (
         <>
           <div className="assistant-output-intro"><InterfaceText>{"分類完成，共"}</InterfaceText>{rows.length}<InterfaceText>{"個類別。"}</InterfaceText></div>
+          {meta?.provisional_taxonomy && (
+            <div className="assistant-output-diagnostic">
+              <InterfaceText>{"這批資料沒有既有的分類架構，類別由 AI 依內容自動歸納（暫定），管理員審核發布後會成為正式分類。"}</InterfaceText>
+            </div>
+          )}
 
           <div className="assistant-output-table-wrap">
             <table className="assistant-output-table classification-table">
@@ -654,6 +660,9 @@ function ClassificationTableView({ rows, ratingStats, meta, chatId, showToast, r
 
                       <td className="sub-category-cell">
                         {row.sub_category}
+                        {row.is_new_category && (
+                          <span className="new-category-badge"><InterfaceText>{"AI 新類別・待確認"}</InterfaceText></span>
+                        )}
                       </td>
 
                       <td>
@@ -1177,6 +1186,7 @@ export default function WorkspacePage() {
               source_type: "survey",
               template_id: analyzeData.template_id,
               review_revision: analyzeData.review_revision,
+              provisional_taxonomy: Boolean(analyzeData.provisional_taxonomy),
               // 【新增｜診斷訊息】沒有結果時，把後端算出來的原因帶過去，
               // 不要只顯示「沒有結果」讓使用者猜。
               diagnostic_message: analyzeData.diagnostic?.message,
@@ -1349,6 +1359,7 @@ export default function WorkspacePage() {
             source_type: "survey",
             template_id: analyzeData.template_id,
             review_revision: analyzeData.review_revision,
+            provisional_taxonomy: Boolean(analyzeData.provisional_taxonomy),
             diagnostic_message: analyzeData.diagnostic?.message,
           }
         );
@@ -1446,6 +1457,7 @@ export default function WorkspacePage() {
         upload_batch_id: data.upload_batch_id,
         source_type: "user_upload",
         review_revision: data.review_revision,
+        provisional_taxonomy: Boolean(data.provisional_taxonomy),
         text_column: data.text_column,
         text_column_auto_detected: data.text_column_auto_detected,
         // 【新增｜匯出檔名跟原始上傳檔名對應】方便使用者從匯出清單就

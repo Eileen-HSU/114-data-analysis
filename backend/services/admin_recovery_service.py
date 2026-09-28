@@ -51,6 +51,7 @@ from classification_models import (
     SOURCE_TYPE_USER_UPLOAD,
 )
 from services import audit_service
+from services.failure_explainer import explain_failure, routing_failure
 from services.effective_classification_service import (
     CLASSIFICATION_STATUS_FAILED,
     CLASSIFICATION_STATUS_SUPERSEDED,
@@ -117,6 +118,7 @@ def _answer_item(answer):
     data["kind"] = KIND_UNROUTED
     data["reason"] = derive_unrouted_reason(answer)
     data["processing_status"] = "not_classified"
+    data["failure"] = routing_failure(answer.routing_status, answer.routing_detail)
     return data
 
 
@@ -126,6 +128,7 @@ def _classification_item(row, kind):
     data["segment"] = row.answer_text[row.segment_start:row.segment_end] if row.answer_text else ""
     data["reason"] = (row.reasoning or "")[:500] if kind == KIND_FAILED else "legacy_question_other"
     data["processing_status"] = row.status
+    data["failure"] = explain_failure(row.reasoning) if kind == KIND_FAILED else None
     return data
 
 
@@ -173,6 +176,7 @@ def answer_detail(answer_id) -> dict:
     status_row = Response_Segmentation_Status.query.filter_by(uploaded_answer_id=answer_id).first()
     data = answer.to_dict()
     data["reason"] = derive_unrouted_reason(answer) if status_row is None else answer.routing_status
+    data["failure"] = routing_failure(answer.routing_status, answer.routing_detail)
     data["segmentation"] = status_row.to_dict() if status_row else None
     data["classifications"] = [r.to_dict() for r in rows]
     data["audit"] = [a.to_dict() for a in audit_service.list_for_entity(audit_service.ENTITY_UPLOADED_ANSWER, answer_id)]
@@ -208,14 +212,22 @@ def _resolve_taxonomy(topic_key, taxonomy_version_id=None):
         if not version.categories:
             raise RecoveryError("TAXONOMY_VERSION_EMPTY", "這個 taxonomy version 沒有任何分類", 422)
     else:
+        from services.open_classification import usable_version_for
         try:
-            version = get_published_taxonomy_version(topic_key)
-        except PublishedTaxonomyNotFoundError as exc:
-            raise RecoveryError("TAXONOMY_UNAVAILABLE", str(exc), 422)
+            # 已發布版本優先；開放式分類下，還沒發布的自動主題 / 新主題可以
+            # 先用暫定草稿分類（見 services/open_classification.py）。
+            version, _provisional = usable_version_for(topic_key)
         except PublishedTaxonomyIntegrityError as exc:
             raise RecoveryError("TAXONOMY_INTEGRITY_ERROR", str(exc), 409)
+        if version is None:
+            raise RecoveryError("TAXONOMY_UNAVAILABLE", f"主題 {topic_key} 目前沒有可用的分類架構", 422)
 
-    return build_classification_prompt(version), methodology_lookup_for_taxonomy_version(version), version
+    from services.open_classification import open_mode_enabled
+    return (
+        build_classification_prompt(version, open_set=open_mode_enabled()),
+        methodology_lookup_for_taxonomy_version(version),
+        version,
+    )
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -335,7 +347,10 @@ def _reprocess(scope, topic_key, admin_id, action, taxonomy_version_id=None, rea
                 before=before, after={"error": repr(exc)[:500], "topic_key": topic_key}, reason=reason,
             )
             db.session.commit()
-        raise RecoveryError("CLASSIFICATION_SERVICE_FAILED", f"分類服務呼叫失敗：{str(exc)[:300]}", 502)
+        explained = explain_failure(repr(exc))
+        raise RecoveryError(
+            explained["code"], explained["message"], 502, extra={"raw_error": explained["raw"]},
+        )
 
     try:
         now = taiwan_now()
@@ -395,6 +410,11 @@ def _reprocess(scope, topic_key, admin_id, action, taxonomy_version_id=None, rea
         "taxonomy_version_id": version.version_id,
         "segmentation_status": result.get("segmentation_status"),
         "segmentation_error_detail": result.get("segmentation_error_detail"),
+        "failure": None if succeeded else explain_failure(
+            result.get("segmentation_error_detail")
+            or next((r.reasoning for r in new_rows if r.status == CLASSIFICATION_STATUS_FAILED), None)
+            or "all segments failed"
+        ),
         "classifications": [r.to_dict() for r in new_rows],
         "superseded_ids": after["superseded_ids"],
     }

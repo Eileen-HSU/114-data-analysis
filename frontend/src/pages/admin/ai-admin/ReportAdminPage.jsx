@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import Navbar from "../../../components/feature/Navbar";
 import { useAuth } from "../../../hooks/AuthContext";
 import { api, apiDownload } from "./shared/apiClient";
 import { t } from "./shared/taxStatus";
 import { errorMessage, outdatedReasonLabel } from "./shared/reviewStates";
+import { FailureNotice, LoadingNotice } from "./shared/StatusWidgets";
 
 const PAGE_SIZE = 20;
 
@@ -35,14 +36,21 @@ export default function ReportAdminPage() {
 
   const unitKey = (u) => `${u.source_type}:${u.identifier}`;
 
-  const load = async () => {
+  const [loading, setLoading] = useState(false);
+  const requestSeq = useRef(0);
+  const load = async ({ silent = false } = {}) => {
+    const seq = ++requestSeq.current;
+    if (!silent) setLoading(true);
     try {
       setError("");
       const params = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) });
       if (onlyNeedsRegen) params.set("needs_regeneration", "true");
-      setData(await api(`/api/admin/ai/reports?${params}`, token));
+      const result = await api(`/api/admin/ai/reports?${params}`, token);
+      if (seq === requestSeq.current) setData(result);
     } catch (e) {
-      setError(errorMessage(e));
+      if (seq === requestSeq.current) setError(errorMessage(e));
+    } finally {
+      if (seq === requestSeq.current) setLoading(false);
     }
   };
 
@@ -68,7 +76,7 @@ export default function ReportAdminPage() {
       setRowMessage((p) => ({ ...p, [key]: { ok: false, text: errorMessage(e) } }));
     } finally {
       setBusy((p) => ({ ...p, [key]: false }));
-      await load();
+      await load({ silent: true });
       if (expanded === key) await loadVersions(u);
     }
   };
@@ -107,9 +115,11 @@ export default function ReportAdminPage() {
       {t("只看需要重新產生的報告", "Only show reports that need regeneration")}
     </label>
 
-    {data.items.length === 0 && <p className="review-empty-hint">{t("目前沒有任何分析資料。", "No analysis data yet.")}</p>}
+    {loading && <LoadingNotice />}
 
-    {data.items.map((u) => {
+    {!loading && data.items.length === 0 && <p className="review-empty-hint">{t("目前沒有任何分析資料。", "No analysis data yet.")}</p>}
+
+    {!loading && data.items.map((u) => {
       const key = unitKey(u);
       const r = u.latest_report;
       const readiness = u.readiness || {};
@@ -138,7 +148,7 @@ export default function ReportAdminPage() {
             {u.needs_regeneration && u.regeneration_reason && !u.latest_completed_report?.is_outdated && (
               <p className="review-flag-badge">{outdatedReasonLabel(u.regeneration_reason)}</p>
             )}
-            {r?.status === "failed" && <p className="ai-admin-error">{t("失敗原因：", "Failure: ")}{r.error_detail}</p>}
+            {r?.status === "failed" && <FailureNotice failure={u.latest_failure} fallback={r.error_detail} />}
             {readiness.has_pending && <p><small>{t("仍有待處理的分類，報告只會包含已確認 / 已修改的結果。", "Pending items exist; only confirmed / modified results are included.")}</small></p>}
           </div>
           {msg && <p className={msg.ok ? "review-batch-message" : "ai-admin-error"}>{msg.text}</p>}

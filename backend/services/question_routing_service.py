@@ -198,6 +198,35 @@ def _get_routing_candidates() -> list:
             "category_summary": category_names,
         })
 
+    # 開放式分類：之前遇過、由系統自動歸納的「自動主題」（只有暫定草稿、
+    # 還沒被管理員發布）也列為候選，類似的新資料才會沿用同一個主題，
+    # 不會每次都重新歸納一份。
+    from services.open_classification import is_auto_topic, open_mode_enabled, usable_version_for
+
+    if open_mode_enabled():
+        from models import Topic
+
+        known = {c["topic_key"] for c in candidates}
+        for topic in Topic.query.filter(Topic.topic_key.like("auto\\_%", escape="\\")).all():
+            if topic.topic_key in known or not is_auto_topic(topic.topic_key):
+                continue
+            try:
+                version, _provisional = usable_version_for(topic.topic_key)
+            except Exception:
+                continue
+            if version is None:
+                continue
+            names = []
+            for category in version.categories[:_MAX_CATEGORY_NAMES_IN_SUMMARY]:
+                names.append(f"{category.main_category} / {category.sub_category}")
+            candidates.append({
+                "topic_key": topic.topic_key,
+                "title": topic.title,
+                "question_text": topic.question_text,
+                "description": topic.description,
+                "category_summary": names,
+            })
+
     return candidates
 
 

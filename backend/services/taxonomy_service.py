@@ -230,7 +230,7 @@ def _category_rule_text(category) -> str:
     )
 
 
-def build_classification_prompt(taxonomy_version) -> str:
+def build_classification_prompt(taxonomy_version, open_set: bool = False) -> str:
     """
     從一個（必須是 published，但這裡不重複檢查，呼叫端已經透過
     get_published_taxonomy_version() 確保過）Taxonomy_Version 動態組出
@@ -260,7 +260,14 @@ def build_classification_prompt(taxonomy_version) -> str:
 
     # ── 大類別／子類別清單（依 sort_order 出現順序分組，同一
     #    main_category 的子類別合併列在同一組底下，不重新排序）──
-    category_list_lines = ["【可用的大類別與子類別，只能從以下清單中選擇，不得自創】", ""]
+    # open_set（開放式分類，見 services/open_classification.py）：清單是
+    # 優先參考，都不適合時允許依 OPEN_SET_RULES 提出新類別。
+    list_header = (
+        "【可用的大類別與子類別（優先從以下清單選擇；都不適合時依「開放式分類規則」提出新類別）】"
+        if open_set else
+        "【可用的大類別與子類別，只能從以下清單中選擇，不得自創】"
+    )
+    category_list_lines = [list_header, ""]
     current_main = object()  # sentinel，保證第一次一定觸發換組
     for category in categories:
         if category.main_category != current_main:
@@ -276,15 +283,18 @@ def build_classification_prompt(taxonomy_version) -> str:
         rule_paragraphs.append(f"{i}. {category.sub_category}：{rule_text}")
     rules_block = "【各子類別判斷指令與判斷規則】\n\n" + "\n\n".join(rule_paragraphs)
 
-    return "\n\n".join([
+    parts = [
         intro,
         category_list_block,
         rules_block,
         GLOBAL_RULES,
         "【次要類別規則】\n" + _SECONDARY_CATEGORY_RULE,
-        _CONFIDENCE_RUBRIC_BLOCK,
-        _OUTPUT_FORMAT_BLOCK,
-    ])
+    ]
+    if open_set:
+        from services.open_classification import OPEN_SET_RULES
+        parts.append(OPEN_SET_RULES)
+    parts += [_CONFIDENCE_RUBRIC_BLOCK, _OUTPUT_FORMAT_BLOCK]
+    return "\n\n".join(parts)
 
 
 def methodology_lookup_for_taxonomy_version(taxonomy_version):

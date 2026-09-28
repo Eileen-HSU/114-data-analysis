@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../shared/apiClient";
 import { errorMessage } from "../shared/reviewStates";
+import { FailureNotice } from "../shared/StatusWidgets";
 import { t, reviewFlagReasonText } from "../shared/taxStatus";
 import { useAuth } from "../../../../hooks/AuthContext";
 
@@ -79,7 +80,14 @@ export default function ReviewConversation({ classificationId, mode = "start", o
   const [conflict, setConflict] = useState(null); // { reviewing_admin_id, reviewing_admin_name }
   const [messageText, setMessageText] = useState("");
   const [sending, setSending] = useState(false);
-  const [busyAction, setBusyAction] = useState(""); // "confirm-candidate" | "exclude" | ""
+  const [busyAction, setBusyAction] = useState(""); // "confirm-candidate" | "confirm-manual" | "exclude" | ""
+  // 送出後、AI 回覆前先把自己的訊息顯示出來，並顯示「AI 思考中」。
+  const [pendingMessage, setPendingMessage] = useState("");
+  const [aiNotice, setAiNotice] = useState(null); // { failure } | { rejected: true }
+  const [manualSub, setManualSub] = useState("");
+  const [manualSecondary, setManualSecondary] = useState("");
+  const [manualReason, setManualReason] = useState("");
+  const messageEndRef = useRef(null);
 
   const load = useCallback(async () => {
     try {
@@ -134,11 +142,6 @@ export default function ReviewConversation({ classificationId, mode = "start", o
     return match?.messages || [];
   }, [activeReview, history]);
 
-  const hasEnteredConversation = useMemo(
-    () => history.some((r) => (r.messages || []).some((m) => m.role === "user")),
-    [history],
-  );
-
   const isLocked = classification && LOCKED_STATUSES.includes(classification.review_status);
 
   const otherReviewerFromActive = useMemo(() => {
@@ -190,19 +193,80 @@ export default function ReviewConversation({ classificationId, mode = "start", o
   };
 
   const handleSendMessage = async () => {
-    if (!messageText.trim() || sending) return;
+    const text = messageText.trim();
+    if (!text || sending) return;
     setSending(true);
+    setAiNotice(null);
+    setPendingMessage(text);
+    setMessageText("");
     try {
-      await runAction(`/api/classification/${classificationId}/review/message`, {
+      const result = await runAction(`/api/classification/${classificationId}/review/message`, {
         method: "POST",
-        body: JSON.stringify({ message: messageText.trim() }),
+        body: JSON.stringify({ message: text }),
       });
-      setMessageText("");
+      if (result?.ai_error) setAiNotice({ failure: result.ai_error });
+      else if (result?.taxonomy_rejected) setAiNotice({ rejected: true });
       await load();
     } catch {
-      // runAction 已經把錯誤放進 error / conflict
+      // runAction 已經把錯誤放進 error / conflict；把沒送出的文字還給輸入框
+      setMessageText(text);
     } finally {
+      setPendingMessage("");
       setSending(false);
+    }
+  };
+
+  // 「維持 AI 原始分類」：
+  //   - 這個 session 還沒送出任何訊息 -> confirm-original（狀態：已確認）
+  //   - 已經跟 AI 討論過 -> 依既有規則記為「已修改」（最終分類 = AI 原始），
+  //     保留「曾提出異議」這個審核紀錄，用 confirm-manual 明確寫入原始分類。
+  const aiOriginalInOptions = Boolean(
+    classification?.sub_category
+    && (reviewState?.taxonomy_options || []).some((o) => o.sub_category === classification.sub_category),
+  );
+  const discussedInSession = activeMessages.some((m) => m.role === "user");
+  const handleKeepOriginal = async () => {
+    setBusyAction("keep-original");
+    try {
+      if (!discussedInSession) {
+        await runAction(`/api/classification/${classificationId}/review/confirm-original`, { method: "POST" });
+      } else {
+        await runAction(`/api/classification/${classificationId}/review/confirm-manual`, {
+          method: "POST",
+          body: JSON.stringify({
+            sub_category: classification.sub_category,
+            secondary_sub_category: classification.secondary_sub_category || undefined,
+            reasoning: t("討論後維持 AI 原始分類", "Kept the AI's original classification after discussion"),
+          }),
+        });
+      }
+      await load();
+      onChanged?.();
+    } catch {
+      /* 錯誤已經顯示 */
+    } finally {
+      setBusyAction("");
+    }
+  };
+
+  const handleConfirmManual = async () => {
+    if (!manualSub) return;
+    setBusyAction("confirm-manual");
+    try {
+      await runAction(`/api/classification/${classificationId}/review/confirm-manual`, {
+        method: "POST",
+        body: JSON.stringify({
+          sub_category: manualSub,
+          secondary_sub_category: manualSecondary || undefined,
+          reasoning: manualReason.trim() || undefined,
+        }),
+      });
+      await load();
+      onChanged?.();
+    } catch {
+      /* 錯誤已經顯示 */
+    } finally {
+      setBusyAction("");
     }
   };
 
@@ -231,6 +295,29 @@ export default function ReviewConversation({ classificationId, mode = "start", o
       setBusyAction("");
     }
   };
+
+  const options = reviewState?.taxonomy_options || [];
+  const optionGroups = useMemo(() => {
+    const groups = new Map();
+    options.forEach((o) => {
+      const key = o.main_category || t("（未分組）", "(Ungrouped)");
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push({ value: o.sub_category, proposed: o.proposed });
+    });
+    return [...groups.entries()];
+  }, [options]);
+
+  // 預設選取目前候選（AI 建議或原始判斷），方便只改一點點就確認。
+  useEffect(() => {
+    if (!manualSub && candidate?.sub_category && options.some((o) => o.sub_category === candidate.sub_category)) {
+      setManualSub(candidate.sub_category);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidate?.sub_category, options.length]);
+
+  useEffect(() => {
+    messageEndRef.current?.scrollIntoView({ block: "nearest" });
+  }, [activeMessages.length, pendingMessage]);
 
   if (loading) {
     return <div className="admin-card review-conversation"><p>{t("載入中…", "Loading…")}</p></div>;
@@ -318,6 +405,12 @@ export default function ReviewConversation({ classificationId, mode = "start", o
               <section className="review-section">
                 <h3>{t("原始回覆片段", "Original segment")}</h3>
                 <p className="review-segment-text">{segment}</p>
+                {classification.answer_text && classification.answer_text !== segment && (
+                  <details>
+                    <summary>{t("查看完整回答", "Show full answer")}</summary>
+                    <p className="review-segment-text">{classification.answer_text}</p>
+                  </details>
+                )}
               </section>
 
               <section className="review-section">
@@ -339,41 +432,101 @@ export default function ReviewConversation({ classificationId, mode = "start", o
                 </p>
               </section>
 
-              <section className="review-section">
-                <h3>{t("目前候選分類", "Current candidate classification")}</h3>
-                <CategoryBlock
-                  title={t("候選", "Candidate")}
-                  main={candidate?.main_category}
-                  sub={candidate?.sub_category}
-                  secondary={candidate?.secondary_sub_category}
-                  reasoning={candidate?.reasoning}
-                />
+              <section className="review-section review-manual-pick">
+                <h3>{t("選擇最終分類", "Choose the final category")}</h3>
+                {options.length === 0 ? (
+                  <p className="review-empty-hint">{t("這筆資料沒有可用的分類清單，請先到「其他 / 未歸屬資料」指派主題。", "No category list is available for this item. Assign a topic first under Other / Unassigned.")}</p>
+                ) : (
+                  <>
+                    <label>
+                      <span className="review-field-label">{t("子類別", "Sub category")}</span>
+                      <select value={manualSub} disabled={isConflict || busyAction !== ""} onChange={(e) => setManualSub(e.target.value)}>
+                        <option value="">{t("請選擇…", "Choose…")}</option>
+                        {optionGroups.map(([main, subs]) => (
+                          <optgroup key={main} label={main}>
+                            {subs.map((sub) => <option key={sub.value} value={sub.value}>{sub.value}{sub.proposed ? t("（AI 新提出）", " (new, proposed by AI)") : ""}</option>)}
+                          </optgroup>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      <span className="review-field-label">{t("次要子類別（選填）", "Secondary (optional)")}</span>
+                      <select value={manualSecondary} disabled={isConflict || busyAction !== ""} onChange={(e) => setManualSecondary(e.target.value)}>
+                        <option value="">{t("無", "None")}</option>
+                        {optionGroups.map(([main, subs]) => (
+                          <optgroup key={main} label={main}>
+                            {subs.filter((sub) => sub.value !== manualSub).map((sub) => <option key={sub.value} value={sub.value}>{sub.value}{sub.proposed ? t("（AI 新提出）", " (new, proposed by AI)") : ""}</option>)}
+                          </optgroup>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      <span className="review-field-label">{t("判斷原因（選填）", "Reason (optional)")}</span>
+                      <textarea rows={2} value={manualReason} disabled={isConflict || busyAction !== ""}
+                        onChange={(e) => setManualReason(e.target.value)}
+                        placeholder={t("為什麼歸到這一類？會寫進審核紀錄。", "Why this category? Saved to the audit log.")} />
+                    </label>
+                    <button className="review-btn-primary" onClick={handleConfirmManual}
+                      disabled={isConflict || busyAction !== "" || !manualSub}>
+                      {busyAction === "confirm-manual" ? t("處理中…", "Working…") : t("以此分類確認", "Confirm with this category")}
+                    </button>
+                  </>
+                )}
               </section>
             </div>
 
             <div className="review-side">
               <section className="review-section">
-                <h3>{t("審核對話", "Review conversation")}</h3>
+                <h3>{t("跟 AI 討論（選用）", "Discuss with AI (optional)")}</h3>
+                <p className="review-empty-hint">{t("可以請 AI 說明判斷理由或建議其他分類；AI 只能從分類清單裡建議。", "Ask the AI to explain or suggest another category; it can only suggest categories from the list.")}</p>
                 <div className="review-message-list">
-                  {activeMessages.length === 0 && <p className="review-empty-hint">{t("尚無對話，輸入意見後開始討論。", "No messages yet — type your feedback below to start the discussion.")}</p>}
+                  {activeMessages.length === 0 && !pendingMessage && <p className="review-empty-hint">{t("尚無對話。例如：「這段比較像在講工作量，應該歸哪一類？」", "No messages yet. e.g. “This seems to be about workload — which category fits?”")}</p>}
                   {activeMessages.map((m) => (
                     <div key={m.message_id} className={`review-message review-message--${m.role}`}>
                       <b>{m.role === "user" ? t("管理員", "Admin") : "AI"}</b>
                       <p>{m.content}</p>
+                      {m.role === "assistant" && m.candidate_sub_category && (
+                        <p className="review-candidate-chip">
+                          {t("AI 建議：", "AI suggests: ")}{m.candidate_main_category} / {m.candidate_sub_category}
+                          {m.candidate_secondary_sub_category ? `（${t("次要", "secondary")}：${m.candidate_secondary_sub_category}）` : ""}
+                          <button type="button" disabled={isConflict || busyAction !== ""}
+                            onClick={() => { setManualSub(m.candidate_sub_category); setManualSecondary(m.candidate_secondary_sub_category || ""); setManualReason(m.candidate_reasoning || ""); }}>
+                            {t("套用到選擇", "Use this")}
+                          </button>
+                        </p>
+                      )}
                     </div>
                   ))}
+                  {pendingMessage && (
+                    <>
+                      <div className="review-message review-message--user"><b>{t("管理員", "Admin")}</b><p>{pendingMessage}</p></div>
+                      <div className="review-message review-message--assistant"><b>AI</b><p><i className="ri-loader-4-line ri-spin" /> {t("AI 思考中…", "AI is thinking…")}</p></div>
+                    </>
+                  )}
+                  <div ref={messageEndRef} />
                 </div>
+
+                {aiNotice?.failure && <FailureNotice failure={aiNotice.failure} />}
+                {aiNotice?.rejected && (
+                  <p className="review-flag-badge">{t("AI 這次建議的分類不在清單裡，已忽略；請再描述一次，或直接在左邊選擇分類。", "The AI suggested a category that is not in the list, so it was ignored. Rephrase or pick a category on the left.")}</p>
+                )}
 
                 <div className="review-message-input">
                   <textarea
                     value={messageText}
                     onChange={(e) => setMessageText(e.target.value)}
-                    placeholder={t("輸入你對這筆分類的意見…", "Type your feedback on this classification…")}
-                    disabled={isConflict || sending}
-                    rows={4}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                        e.preventDefault();
+                        handleSendMessage();
+                      }
+                    }}
+                    placeholder={t("輸入你對這筆分類的意見（Enter 送出，Shift+Enter 換行）…", "Type your feedback (Enter to send, Shift+Enter for a new line)…")}
+                    disabled={isConflict || sending || options.length === 0}
+                    rows={3}
                   />
-                  <button onClick={handleSendMessage} disabled={isConflict || sending || !messageText.trim()}>
-                    {sending ? t("送出中…", "Sending…") : t("送出訊息", "Send message")}
+                  <button onClick={handleSendMessage} disabled={isConflict || sending || !messageText.trim() || options.length === 0}>
+                    {sending ? t("AI 回覆中…", "Waiting for AI…") : t("送出訊息", "Send message")}
                   </button>
                 </div>
               </section>
@@ -383,11 +536,20 @@ export default function ReviewConversation({ classificationId, mode = "start", o
           <div className="review-bottom-actions">
             <button
               className="review-btn-primary"
-              onClick={handleConfirmCandidate}
-              disabled={isConflict || busyAction !== "" || !hasEnteredConversation}
-              title={!hasEnteredConversation ? t("尚未進入對話，請先在清單頁使用「接受 AI 分類」", "No conversation yet — use “Accept AI classification” from the list instead") : undefined}
+              onClick={handleKeepOriginal}
+              disabled={isConflict || busyAction !== "" || (discussedInSession && !aiOriginalInOptions)}
+              title={discussedInSession
+                ? t("已討論過，會記為「已修改」（最終分類＝AI 原始分類）", "Already discussed: recorded as Modified with the AI's original category")
+                : t("直接接受 AI 原始分類（已確認）", "Accept the AI's original classification (Confirmed)")}
             >
-              {busyAction === "confirm-candidate" ? t("處理中…", "Working…") : t("採用目前候選", "Adopt current candidate")}
+              {busyAction === "keep-original" ? t("處理中…", "Working…") : t("維持 AI 原始分類", "Keep AI's original classification")}
+            </button>
+            <button
+              onClick={handleConfirmCandidate}
+              disabled={isConflict || busyAction !== "" || !latestCandidateMessage}
+              title={!latestCandidateMessage ? t("AI 還沒有提出建議分類", "The AI has not suggested a category yet") : undefined}
+            >
+              {busyAction === "confirm-candidate" ? t("處理中…", "Working…") : t("採用 AI 最新建議", "Adopt AI's latest suggestion")}
             </button>
             <button onClick={handleExclude} disabled={isConflict || busyAction !== ""} className="review-btn-danger">
               {busyAction === "exclude" ? t("處理中…", "Working…") : t("不納入分析", "Exclude from analysis")}

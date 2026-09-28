@@ -476,6 +476,8 @@ def _unit_label(source_type, template_id, upload_batch_id):
 
 
 def _report_lifecycle(source_type, template_id, upload_batch_id):
+    from services.failure_explainer import explain_failure
+
     reports = (
         Report.query.filter_by(source_type=source_type, template_id=template_id, upload_batch_id=upload_batch_id)
         .order_by(Report.version.desc()).all()
@@ -501,6 +503,7 @@ def _report_lifecycle(source_type, template_id, upload_batch_id):
         "label": _unit_label(source_type, template_id, upload_batch_id),
         "readiness": readiness,
         "latest_report": latest.to_dict() if latest else None,
+        "latest_failure": explain_failure(latest.error_detail) if latest is not None and latest.status == REPORT_STATUS_FAILED else None,
         "latest_completed_report": latest_completed.to_dict() if latest_completed else None,
         "needs_regeneration": bool(needs),
         "regeneration_reason": why,

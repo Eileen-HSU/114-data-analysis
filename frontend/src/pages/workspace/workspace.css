@@ -1250,3 +1250,6 @@
 .classification-table th:nth-child(3) { width: 28%; }
 .classification-table th:nth-child(4) { width: 24%; }
 .classification-table th:nth-child(5) { width: 20%; }
+
+/* 開放式分類：AI 新提出、尚未確認的類別 */
+.new-category-badge { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 600; white-space: nowrap; }

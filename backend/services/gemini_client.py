@@ -12,6 +12,23 @@ _api_key = (
 )
 
 
+# Gemini 暫時過載（HTTP 503 / UNAVAILABLE，例如「This model is currently
+# experiencing high demand」）時的自動重試間隔（秒）。這類錯誤通常幾秒內
+# 就會恢復，跟 429 限流（要照 retryDelay 等待）是不同情況，分開處理。
+UNAVAILABLE_RETRY_DELAYS_SECONDS = (2.0, 4.0, 8.0)
+
+
+def is_transient_unavailable_error(exc: Exception) -> bool:
+    """Gemini 伺服器端暫時不可用（503 / UNAVAILABLE / overloaded）。"""
+    text = str(exc)
+    return (
+        "503" in text
+        or "UNAVAILABLE" in text
+        or "ServiceUnavailable" in type(exc).__name__
+        or "overloaded" in text.lower()
+    )
+
+
 def configure(api_key=None, **_kwargs):
     global _api_key
     _api_key = api_key or _api_key

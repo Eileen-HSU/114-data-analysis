@@ -52,6 +52,7 @@ export const unroutedReasonLabel = (reason) => ({
   classification_failed: t("已送分類但處理失敗", "Sent for classification but failed"),
   assigned: t("已人工指派主題", "Topic assigned by admin"),
   routed: t("已自動判斷主題", "Topic routed automatically"),
+  auto_topic: t("已建立自動主題並用 AI 歸納的暫定分類分析", "Analysed with an AI-derived provisional taxonomy under an auto topic"),
   legacy_question_other: t("舊流程無法判斷主題的資料", "Legacy data without a topic"),
 }[reason] || reason);
 

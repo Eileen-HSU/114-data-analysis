@@ -25,6 +25,11 @@
 
 import sys
 import os
+
+# 這支測試驗證「封閉式（fail-closed）」模式：清單外的類別不採用、沒有分類架構
+# 就不分類。系統預設已改為開放式分類（見 services/open_classification.py），
+# 這裡明確關閉開放模式；開放式行為由 tests/test_open_classification.py 驗證。
+os.environ["OPEN_CLASSIFICATION_ENABLED"] = "0"
 import json
 
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-testing-only")

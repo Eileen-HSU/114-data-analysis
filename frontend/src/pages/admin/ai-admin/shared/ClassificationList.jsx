@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./apiClient";
 import { t, reviewFlagReasonText } from "./taxStatus";
 import { STATE_TABS, errorMessage, stateLabel } from "./reviewStates";
+import { FailureNotice, LoadingNotice } from "./StatusWidgets";
 import { useAuth } from "../../../../hooks/AuthContext";
 
 const HIGH_CONFIDENCE_THRESHOLD = 0.9;
@@ -35,18 +36,25 @@ export default function ClassificationList({ topicParam, onOpenReview, refreshSi
   const [batchMessage, setBatchMessage] = useState("");
   const [excludeLegacyBusy, setExcludeLegacyBusy] = useState(false);
 
-  const load = async () => {
-    setLoading(true);
+  // 每次載入都有編號，只採用最後一次請求的結果：快速切換分頁時，較慢回來
+  // 的舊請求不會蓋掉新分頁的資料。
+  const requestSeq = useRef(0);
+  // silent：操作（確認 / 排除 / 重新處理）完成後的重新讀取，不清空畫面，
+  // 只有切換分頁 / 篩選 / 頁數才顯示「搜尋中」。
+  const load = async ({ silent = false } = {}) => {
+    const seq = ++requestSeq.current;
+    if (!silent) setLoading(true);
     try {
       setError("");
       const params = new URLSearchParams({ state: activeTab, page: String(page), page_size: String(PAGE_SIZE) });
       if (topicParam) params.set("topic", topicParam);
       if (needsReviewOnly) params.set("needs_human_review", "true");
-      setData(await api(`/api/admin/ai/classifications?${params}`, token));
+      const result = await api(`/api/admin/ai/classifications?${params}`, token);
+      if (seq === requestSeq.current) setData(result);
     } catch (e) {
-      setError(errorMessage(e));
+      if (seq === requestSeq.current) setError(errorMessage(e));
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) setLoading(false);
     }
   };
 
@@ -85,7 +93,7 @@ export default function ClassificationList({ topicParam, onOpenReview, refreshSi
     setRowError((p) => ({ ...p, [id]: "" }));
     try {
       await fn();
-      await load();
+      await load({ silent: true });
     } catch (e) {
       setRowError((p) => ({ ...p, [id]: errorMessage(e) }));
     } finally {
@@ -114,7 +122,7 @@ export default function ClassificationList({ topicParam, onOpenReview, refreshSi
     const result = await api(`/api/admin/ai/classifications/${row.classification_id}/retry`, token, { method: "POST" });
     setBatchMessage(result.succeeded
       ? t("已重新處理，新的分類結果在「待處理」。", "Reprocessed; the new result is under Pending.")
-      : t(`重新處理仍然失敗：${result.segmentation_error_detail || ""}`, `Retry still failed: ${result.segmentation_error_detail || ""}`));
+      : t(`重新處理仍然失敗：${result.failure?.message || ""}`, `Retry still failed: ${result.failure?.message_en || ""}`));
   });
 
   const runBatchConfirm = async () => {
@@ -138,7 +146,7 @@ export default function ClassificationList({ topicParam, onOpenReview, refreshSi
           `${result.confirmed_count} confirmed, ${skipped.length} skipped (reasons shown on each item).`)
         : t(`已成功確認 ${result.confirmed_count} 筆分類。`, `${result.confirmed_count} classifications confirmed.`));
       setSelectedIds(new Set(skipped.map((s) => s.classification_id)));
-      await load();
+      await load({ silent: true });
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -170,7 +178,7 @@ export default function ClassificationList({ topicParam, onOpenReview, refreshSi
         `已排除 ${result.affected_count} 筆舊版資料（批次 ${result.batch_id.slice(0, 8)}）`,
         `Excluded ${result.affected_count} legacy classification(s) (batch ${result.batch_id.slice(0, 8)})`,
       ));
-      await load();
+      await load({ silent: true });
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -238,6 +246,8 @@ export default function ClassificationList({ topicParam, onOpenReview, refreshSi
 
       {batchMessage && <p className="review-batch-message">{batchMessage}</p>}
 
+      {loading && <LoadingNotice />}
+
       {!loading && rows.length === 0 && (
         <p className="review-empty-hint">
           {activeTab === "pending_review" ? t("目前沒有待處理的分類結果。", "Nothing pending right now.")
@@ -245,7 +255,7 @@ export default function ClassificationList({ topicParam, onOpenReview, refreshSi
         </p>
       )}
 
-      {rows.map((row) => (
+      {!loading && rows.map((row) => (
         <ClassificationCard
           key={row.classification_id}
           row={row}
@@ -304,10 +314,8 @@ function ClassificationCard({
 
       {state === "failed" && (
         <div className="review-card-mid">
-          <p className="ai-admin-error" style={{ margin: 0 }}>
-            <span className="review-field-label">{t("失敗原因", "Failure")}</span>
-            {(row.reasoning || t("未提供錯誤訊息", "No error detail")).slice(0, 300)}
-          </p>
+          <span className="review-field-label">{t("失敗原因", "Failure")}</span>
+          <FailureNotice failure={row.failure} fallback={t("未提供錯誤訊息", "No error detail")} />
         </div>
       )}
 
