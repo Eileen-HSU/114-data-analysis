@@ -58,7 +58,8 @@ export default function AiAdminPage() {
       ))}
     </div>
     <p style={{ marginTop: 24 }}>
-      <button onClick={() => navigate("/admin/ai/unassigned")}>{t("其他 / 未歸屬資料", "Other / Unassigned Data")}</button>
+      <button onClick={() => navigate("/admin/ai/unassigned")}>{t("其他 / 未歸屬資料", "Other / Unassigned Data")}</button>{" "}
+      <button onClick={() => navigate("/admin/ai/reports")}>{t("報告管理", "Report Management")}</button>
     </p>
   </main></>;
 }

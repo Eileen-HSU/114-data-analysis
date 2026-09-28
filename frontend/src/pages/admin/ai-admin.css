@@ -145,6 +145,9 @@ label { display:block; font-weight:800; margin:12px 0; } textarea,select { width
 .review-status-tag--confirmed { background: #f0fdf4; color: #15803d; }
 .review-status-tag--modified { background: #eff6ff; color: #1d4ed8; }
 .review-status-tag--excluded { background: #f8fafc; color: #64748b; }
+.review-status-tag--in_review { background: #fffbeb; color: #b45309; }
+.review-status-tag--failed { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+.review-pagination { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 16px 0; flex-wrap: wrap; }
 
 /* ---- action buttons：不可被壓成很窄，小螢幕改多欄 wrap ---- */
 .review-card-actions,

@@ -518,7 +518,68 @@ function RatingStatsPanel({ ratingStats }) {
 }
 
 
+// 【Human Review 生效】分類結果訊息是分析當下存進 Chat_History 的快照。
+// Admin 之後修改 / 排除 / 重新開啟審核時，後端會判斷這份快照是否跟 DB 目前的
+// effective classification 不一致（freshness）；不一致就由後端重建並寫回
+// Chat_History（refresh），畫面改用後端回傳的新結果——重新整理頁面、分享頁、
+// 匯出都會讀到同一份資料，不是只改前端 state。
 function ClassificationTable({ rows, ratingStats, meta, chatId, showToast, readOnly = false }) {
+  const [live, setLive] = useState(null);
+  const [syncState, setSyncState] = useState("idle"); // idle | refreshing | refreshed | error
+  const hasSource = Boolean(meta?.upload_batch_id || meta?.template_id);
+
+  useEffect(() => {
+    if (readOnly || !chatId || !hasSource) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const freshnessRes = await fetch(apiUrl(`/api/chat/${chatId}/classification-result/freshness`), { headers: getAuthHeader() });
+        if (!freshnessRes.ok) return;
+        const freshness = await freshnessRes.json();
+        if (!freshness.stale || cancelled) return;
+        setSyncState("refreshing");
+        const refreshRes = await fetch(apiUrl(`/api/chat/${chatId}/classification-result/refresh`), { method: "POST", headers: getAuthHeader() });
+        const payload = await refreshRes.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!refreshRes.ok) throw new Error(payload.message || payload.error || `HTTP ${refreshRes.status}`);
+        setLive(payload);
+        setSyncState("refreshed");
+      } catch (error) {
+        console.error("[CLASSIFICATION_RESULT_REFRESH_FAILED]", error);
+        if (!cancelled) setSyncState("error");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [chatId, hasSource, readOnly]);
+
+  const effectiveRows = live ? live.rows : rows;
+  const effectiveMeta = live ? live.meta : meta;
+  const effectiveRatingStats = live ? live.rating_stats : ratingStats;
+
+  return (
+    <>
+      {syncState === "refreshing" && (
+        <div className="assistant-output-diagnostic"><InterfaceText>{"人工審核結果已更新，正在重新整理分類結果…"}</InterfaceText></div>
+      )}
+      {syncState === "refreshed" && (
+        <div className="assistant-output-diagnostic"><InterfaceText>{"已套用最新的人工審核結果。"}</InterfaceText></div>
+      )}
+      {syncState === "error" && (
+        <div className="assistant-output-diagnostic"><InterfaceText>{"人工審核結果已更新，但重新整理失敗；目前顯示的是先前的結果，請稍後重新整理頁面。"}</InterfaceText></div>
+      )}
+      <ClassificationTableView
+        rows={effectiveRows}
+        ratingStats={effectiveRatingStats}
+        meta={effectiveMeta}
+        chatId={chatId}
+        showToast={showToast}
+        readOnly={readOnly}
+      />
+    </>
+  );
+}
+
+function ClassificationTableView({ rows, ratingStats, meta, chatId, showToast, readOnly = false }) {
   const hasRatingStats = Array.isArray(ratingStats) && ratingStats.length > 0;
   const hasClassificationRows = Array.isArray(rows) && rows.length > 0;
 
@@ -1113,6 +1174,9 @@ export default function WorkspacePage() {
             {
               classified_count: analyzeData.newly_classified_count,
               source_filename: `${surveyTitle}（問卷）`,
+              source_type: "survey",
+              template_id: analyzeData.template_id,
+              review_revision: analyzeData.review_revision,
               // 【新增｜診斷訊息】沒有結果時，把後端算出來的原因帶過去，
               // 不要只顯示「沒有結果」讓使用者猜。
               diagnostic_message: analyzeData.diagnostic?.message,
@@ -1282,6 +1346,9 @@ export default function WorkspacePage() {
           {
             classified_count: analyzeData.newly_classified_count,
             source_filename: `${detail.title}（問卷）`,
+            source_type: "survey",
+            template_id: analyzeData.template_id,
+            review_revision: analyzeData.review_revision,
             diagnostic_message: analyzeData.diagnostic?.message,
           }
         );
@@ -1377,6 +1444,8 @@ export default function WorkspacePage() {
         classified_count: data.classified_count,
         saved_answer_count: data.saved_answer_count,
         upload_batch_id: data.upload_batch_id,
+        source_type: "user_upload",
+        review_revision: data.review_revision,
         text_column: data.text_column,
         text_column_auto_detected: data.text_column_auto_detected,
         // 【新增｜匯出檔名跟原始上傳檔名對應】方便使用者從匯出清單就

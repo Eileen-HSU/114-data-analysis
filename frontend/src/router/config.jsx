@@ -19,6 +19,7 @@ import TaxonomyPanel from "../pages/admin/ai-admin/TopicDetail/TaxonomyPanel.jsx
 import ReviewPanel from "../pages/admin/ai-admin/TopicDetail/ReviewPanel.jsx";
 import SandboxPanel from "../pages/admin/ai-admin/TopicDetail/SandboxPanel.jsx";
 import UnassignedReviewPage from "../pages/admin/ai-admin/UnassignedReviewPage.jsx";
+import ReportAdminPage from "../pages/admin/ai-admin/ReportAdminPage.jsx";
 
 import SharedWorkspacePage from "../pages/workspace/SharedWorkspacePage.jsx";
 
@@ -44,6 +45,7 @@ const routes = [
   { path: "/trash", element: <TrashPage /> },
   { path: "/admin/ai", element: <AiAdminPage /> },
   { path: "/admin/ai/unassigned", element: <UnassignedReviewPage /> },
+  { path: "/admin/ai/reports", element: <ReportAdminPage /> },
   {
     path: "/admin/ai/topics/:topicKey",
     element: <TopicDetailLayout />,

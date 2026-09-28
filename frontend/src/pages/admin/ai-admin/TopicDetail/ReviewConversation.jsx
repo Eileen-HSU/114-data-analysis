@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../shared/apiClient";
+import { errorMessage } from "../shared/reviewStates";
 import { t, reviewFlagReasonText } from "../shared/taxStatus";
 import { useAuth } from "../../../../hooks/AuthContext";
 
@@ -90,7 +91,7 @@ export default function ReviewConversation({ classificationId, mode = "start", o
       setReviewState(state);
       setHistory(historyRes.reviews || []);
     } catch (e) {
-      setError(e.message);
+      setError(errorMessage(e));
     }
   }, [classificationId, token]);
 
@@ -111,7 +112,7 @@ export default function ReviewConversation({ classificationId, mode = "start", o
               });
             }
           } else if (!cancelled) {
-            setError(e.message);
+            setError(errorMessage(e));
           }
         }
       }
@@ -182,7 +183,7 @@ export default function ReviewConversation({ classificationId, mode = "start", o
           reviewing_admin_name: e.body.reviewing_admin_name,
         });
       } else {
-        setError(e.message);
+        setError(errorMessage(e));
       }
       throw e;
     }
