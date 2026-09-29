@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { interfaceEnglish } from "./interfaceEnglish";
 import { resolveLanguagePreference } from "./languagePreference";
@@ -227,28 +227,24 @@ export function LanguageProvider({ children }) {
     // Authentication and profile responses must never change the active language.
     localStorage.setItem(STORAGE_KEY, language);
   }, [language]);
-  useEffect(() => { document.documentElement.lang = language; }, [language]);
+  useLayoutEffect(() => { document.documentElement.lang = language; }, [language]);
   useEffect(() => {
     installLanguageAwareFetch();
     axios.defaults.headers.common["Accept-Language"] = language;
   }, [language]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const observeOptions = { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ["placeholder", "title", "aria-label"] };
     const applyTranslations = () => {
       observer.disconnect();
       translateLegacyInterface(language);
       observer.observe(document.body, observeOptions);
     };
-    let frame;
-    const scheduleTranslations = () => {
-      window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(applyTranslations);
-    };
-    scheduleTranslations();
-    const observer = new MutationObserver(scheduleTranslations);
-    observer.observe(document.body, observeOptions);
+    // Translate initial content before paint. MutationObserver runs at the
+    // microtask checkpoint, so route/profile updates are translated before the
+    // next frame too; deferring with rAF could paint Chinese or starve updates.
+    const observer = new MutationObserver(applyTranslations);
+    applyTranslations();
     return () => {
-      window.cancelAnimationFrame(frame);
       observer.disconnect();
     };
   }, [language]);

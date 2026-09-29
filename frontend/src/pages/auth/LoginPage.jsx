@@ -105,9 +105,6 @@ export default function LoginPage() {
 
       login(userData);
       navigate(userData.account_type === "admin" ? "/admin/ai" : "/workspace");
-
-      login(userData);
-      navigate(userData.account_type === "admin" ? "/admin/ai" : "/workspace");
     } catch (err) {
       setIsSubmitting(false);
       sessionStorage.removeItem("dataanalysis_login_loading");
