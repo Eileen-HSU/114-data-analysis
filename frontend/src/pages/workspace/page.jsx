@@ -5,7 +5,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import Navbar from "../../components/feature/Navbar";
 import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
 import { useAuth } from "../../hooks/AuthContext";
-import { useLanguage } from "../../context/LanguageContext";
+import { translateInterfaceText, useLanguage } from "../../context/LanguageContext";
 import { useCollection } from "../../hooks/CollectionContext";
 import { useActivity } from "../../hooks/ActivityContext";
 import { apiUrl } from "../../lib/api";
@@ -776,6 +776,7 @@ export default function WorkspacePage() {
   const location = useLocation();
   const { isLoggedIn, user } = useAuth();
   const { language } = useLanguage();
+  const ui = (text) => translateInterfaceText(text, language);
   const { recordActivity } = useActivity();
   const loadedProjectIds = useRef(new Set());
 
@@ -1816,8 +1817,8 @@ export default function WorkspacePage() {
             <div className="workspace-entry-loading-icon">
               <i className="ri-loader-4-line"></i>
             </div>
-            <h1>{isEntryLoading ? "正在載入工作區..." : "正在載入歷史對話..."}</h1>
-            <p>{isEntryLoading ? "正在整理您的專案管理、歷史對話紀錄與分析資料，請稍候。" : "正在取得這個 Chat 的歷史資料，完成後會自動顯示。"}</p>
+            <h1>{ui(isEntryLoading ? "正在載入工作區..." : "正在載入歷史對話...")}</h1>
+            <p>{ui(isEntryLoading ? "正在整理您的專案管理、歷史對話紀錄與分析資料，請稍候。" : "正在取得這個 Chat 的歷史資料，完成後會自動顯示。")}</p>
           </div>
         </main>
       </>
@@ -1836,7 +1837,7 @@ export default function WorkspacePage() {
           boxShadow: "0 4px 16px rgba(0,0,0,0.18)", whiteSpace: "nowrap",
         }}>
           <i className="ri-checkbox-circle-line" style={{ color: "#a8e6a3", fontSize: 16 }}></i>
-          {toastMsg}
+          {ui(toastMsg)}
         </div>
       )}
       <div className="workspace-page">
@@ -1851,7 +1852,7 @@ export default function WorkspacePage() {
                 <i className="ri-search-line"></i>
                 <input
                   type="text"
-                  placeholder="搜尋歷史對話紀錄..."
+                  placeholder={ui("搜尋歷史對話紀錄...")}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
@@ -1913,14 +1914,14 @@ export default function WorkspacePage() {
                     <button
                       className="session-edit"
                       onClick={(e) => { e.stopPropagation(); startRename(s); }}
-                      title="重新命名"
+                      title={ui("重新命名")}
                     >
                       <i className="ri-pencil-line"></i>
                     </button>
                     <button
                       className="session-delete"
                       onClick={(e) => { e.stopPropagation(); requestDeleteSession(s.id); }}
-                      title="刪除工作區"
+                      title={ui("刪除工作區")}
                     >
                       <i className="ri-delete-bin-line"></i>
                     </button>
@@ -1929,7 +1930,7 @@ export default function WorkspacePage() {
               )}
             </div>
             <div className="sidebar-footer">
-              <button className="btn-new-session sidebar-bottom-add" onClick={createNewSession} title="新增工作區">
+              <button className="btn-new-session sidebar-bottom-add" onClick={createNewSession} title={ui("新增工作區")}>
                 <i className="ri-add-line"></i>
               </button>
             </div>
@@ -2022,7 +2023,7 @@ export default function WorkspacePage() {
                       <button
                         className={`attach-btn survey-pick-btn${showSurveyPicker ? " active" : ""}`}
                         onClick={() => setShowSurveyPicker((v) => !v)}
-                        title="選擇問卷分析"
+                        title={ui("選擇問卷分析")}
                       >
                         <i className="ri-survey-line"></i>
                       </button>
@@ -2039,7 +2040,7 @@ export default function WorkspacePage() {
                             <i className="ri-search-line"></i>
                             <input
                               type="text"
-                              placeholder="搜尋問卷名稱或代碼..."
+                              placeholder={ui("搜尋問卷名稱或代碼...")}
                               value={surveyPickerSearch}
                               onChange={(e) => setSurveyPickerSearch(e.target.value)}
                               autoFocus
@@ -2080,7 +2081,7 @@ export default function WorkspacePage() {
                                     </div>
                                   </div>
                                   <span className={`survey-picker-status${s.status === "active" ? " active" : ""}`}>
-                                    {s.status === "active" ? "進行中" : "已結束"}
+                                    {ui(s.status === "active" ? "進行中" : "已結束")}
                                   </span>
                                 </button>
                               ))
@@ -2093,7 +2094,7 @@ export default function WorkspacePage() {
                     <button
                       className="attach-btn"
                       onClick={() => fileInputRef.current?.click()}
-                      title="附加檔案"
+                      title={ui("附加檔案")}
                     >
                       <i className="ri-attachment-line"></i>
                     </button>
@@ -2106,14 +2107,14 @@ export default function WorkspacePage() {
                         const f = e.target.files?.[0];
                         if (!f) return;
                         setAttachedFile(f);
-                        showToast(`「${f.name}」已附加，發送後將上傳`);
+                        showToast(language === "en" ? `“${f.name}” attached. It will upload when you send.` : `「${f.name}」已附加，發送後將上傳`);
                         e.target.value = "";
                       }}
                     />
                     <textarea
                       ref={textareaRef}
                       rows={1}
-                      placeholder="輸入您的問題或上傳檔案進行分析..."
+                      placeholder={ui("輸入您的問題或上傳檔案進行分析...")}
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
                       onInput={handleTextareaInput}
@@ -2146,7 +2147,7 @@ export default function WorkspacePage() {
             <p><InterfaceText>{"確定要刪除「"}</InterfaceText>{deleteTarget.title}<InterfaceText>{"」嗎？刪除後可在專案管理的最近刪除中還原。"}</InterfaceText></p>
             <div className="workspace-alert-actions">
               <button className="workspace-alert-primary" onClick={confirmDeleteSession} type="button" disabled={isDeletingSession}>
-                {isDeletingSession ? "刪除中..." : "確定"}
+                {ui(isDeletingSession ? "刪除中..." : "確定")}
               </button>
               <button className="workspace-alert-secondary" onClick={() => setDeleteTarget(null)} type="button" disabled={isDeletingSession}><InterfaceText>{"取消"}</InterfaceText></button>
             </div>
