@@ -56,4 +56,16 @@ git commit -m "docs: record language persistence fix and verification"
 
 ## 推送狀態
 
-本次尚未推送。等待確認目前登入的 `Kaolyccc` 是否為使用者指定信箱的 GitHub 帳號。確認後執行 `git push origin main`，再以 `git fetch origin main` 與 `git status --short --branch` 驗證同步。尚未驗證正式站台部署。
+使用者指示推送後，已使用目前登入的 `Kaolyccc` 執行 `git push origin main`，成功將遠端由 `f741447c` 更新至 `b00b6b6c`，包含重新下載紀錄、語言修正、測試、建置與本文件。提交作者信箱為 `kaolysweet@gmail.com`。尚未驗證正式站台部署。
+
+更新推送紀錄後執行：
+
+```powershell
+git add docs/LANGUAGE_SESSION_FIX_2026-09-29.md
+git commit -m "docs: confirm language fix pushed to GitHub"
+git push origin main
+git fetch origin main
+git status --short --branch
+git rev-parse HEAD
+git rev-parse origin/main
+```
