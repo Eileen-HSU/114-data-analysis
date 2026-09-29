@@ -23,19 +23,19 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE_PATH || 'playwright')
       await page.locator('#language').waitFor();
       if (selected) await page.locator(selected === 'en' ? '#english' : '#chinese').click();
       const expected = selected || 'zh-TW';
-      const verify = async language => {
+      const verify = async (language, stored = language) => {
         await page.waitForFunction(value => document.documentElement.lang === value, language);
         assert.equal(await page.locator('#language').textContent(), language);
-        assert.equal(await page.evaluate(() => localStorage.getItem('dataanalysis_language')), language);
+        assert.equal(await page.evaluate(() => localStorage.getItem('dataanalysis_language')), stored);
       };
-      await verify(expected);
+      await verify(expected, selected);
       await page.locator('#login').click();
-      await verify(expected);
+      await verify(expected, selected);
       // A manual choice while the profile is loading must survive its late response.
       await page.locator('#english').click();
       await verify('en');
       releaseProfile();
-      await page.waitForFunction(value => JSON.parse(localStorage.getItem('dataanalysis_auth')).language === value, selected === 'en' ? 'zh-TW' : 'en');
+      await page.waitForFunction(value => document.getElementById('profile').textContent === value, selected === 'en' ? 'zh-TW' : 'en');
       await verify('en');
       await page.reload();
       await page.locator('#language').waitFor();
