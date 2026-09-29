@@ -507,14 +507,33 @@ def submit_survey_response(access_code):
 
 @survey_bp.route('/api/surveys/<access_code>/bind', methods=['PATCH'])
 def bind_survey_to_workspace(access_code):
+    """查詢問卷與工作區的關聯（不會自行建立關聯）。
+
+    目前的資料模型沒有「問卷 -> 工作區」欄位；問卷與工作區的關聯就是
+    Chat_History.template_id（工作區裡帶 template_id 的對話紀錄，由
+    POST /api/chat/history 寫入，寫入時驗證問卷與工作區都屬於目前使用者）。
+    Workspace 的分類結果重新整理、Chat 問答、匯出都是從這個欄位找問卷。
+
+    這支 API 以前不驗證 workspace、也不寫入任何資料就回傳「綁定成功」。
+    現在只回報真實狀態：
+        200 {"bound": true, ...}   ：工作區裡已經有這份問卷的對話紀錄
+        409 SURVEY_NOT_LINKED     ：兩者都屬於你，但還沒有任何關聯紀錄
+        400 / 401 / 403 / 404    ：參數錯誤、未登入、不是你的問卷或工作區
+    關聯的建立只靠 POST /api/chat/history。目前的前端匯入流程仍會在建立工作區
+    後呼叫這支 API（fire-and-forget，不讀回應），收到 409 不影響匯入；409 只
+    代表「呼叫當下還沒有帶 template_id 的對話紀錄」。
+    """
+    from models import Workspace
+
     auth_user_id, auth_error = verify_token(request)
     if auth_error:
         return jsonify({"error": "Unauthorized"}), 401
 
     data = request.get_json(silent=True) or {}
-    project_id = data.get('project_id')
-    if not project_id:
-        return jsonify({"error": "請提供 project_id"}), 400
+    try:
+        project_id = int(data.get('project_id'))
+    except (TypeError, ValueError):
+        return jsonify({"error": "請提供正確的 project_id"}), 400
 
     survey = find_survey_by_access_or_short_code(access_code)
     if not survey:
@@ -522,10 +541,27 @@ def bind_survey_to_workspace(access_code):
     if survey.user_id != auth_user_id:
         return jsonify({"error": "無權限"}), 403
 
-    return jsonify({
-        "message": "綁定成功",
+    workspace = db.session.get(Workspace, project_id)
+    if workspace is None or workspace.is_deleted:
+        return jsonify({"error": "找不到工作區"}), 404
+    if workspace.user_id != auth_user_id:
+        return jsonify({"error": "無權限操作這個工作區"}), 403
+
+    linked = Chat_History.query.filter_by(
+        project_id=project_id, template_id=survey.template_id,
+    ).first() is not None
+    body = {
+        "bound": linked,
         "project_id": project_id,
-    }), 200
+        "template_id": survey.template_id,
+    }
+    if not linked:
+        return jsonify({
+            **body,
+            "code": "SURVEY_NOT_LINKED",
+            "error": "這個工作區還沒有這份問卷的對話紀錄；關聯會在儲存帶 template_id 的對話時建立，這支 API 不會自行建立關聯。",
+        }), 409
+    return jsonify({**body, "message": "問卷已與此工作區關聯"}), 200
 
 
 # ═══════════════════════════════════════════════════════════════

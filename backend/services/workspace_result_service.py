@@ -75,6 +75,23 @@ def compute_review_revision(source, rows=None, mode="effective") -> str:
     return hashlib.sha1(json.dumps(entries, ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
 
 
+def live_rating_stats(source):
+    """問卷來源：用 DB 目前所有填答重新計算 rating 題統計（跟 /analyze 同一個
+    _build_rating_stats()）。新增填答後，Chat 重新整理與 Excel / Word 匯出
+    都用這份，不再沿用分析當下的快照。非問卷來源回傳 None。"""
+    if source is None or source["source_type"] != SOURCE_TYPE_SURVEY:
+        return None
+    from routes.classifications.classification import _build_rating_stats
+
+    template = db.session.get(Survey_Template, source["template_id"])
+    items = ((template.question_json or {}).get("items", []) if template else [])
+    responses = (
+        Survey_Response.query.filter_by(template_id=source["template_id"])
+        .order_by(Survey_Response.response_id.asc()).all()
+    )
+    return _build_rating_stats(items, responses)
+
+
 def is_chat_result_stale(chat, parsed=None) -> dict:
     parsed = parsed if parsed is not None else parse_classification_message(chat.message_content)
     source = source_for_chat(chat, parsed)
@@ -89,7 +106,14 @@ def is_chat_result_stale(chat, parsed=None) -> dict:
     else:
         # 舊訊息：跟修正前的產生方式（全部 AI original）比較。
         stale = compute_review_revision(source, rows, mode="legacy_original") != current
+    rating_stale = False
+    live_ratings = live_rating_stats(source)
+    if live_ratings is not None:
+        # 問卷新增填答後 rating 題統計會變，但分類指紋不一定變：也要判定過期
+        rating_stale = (parsed.get("rating_stats") or []) != live_ratings
+        stale = stale or rating_stale
     return {
+        "rating_stats_stale": rating_stale,
         "has_source": True,
         "stale": stale,
         "review_revision": current,
@@ -253,10 +277,11 @@ def refresh_chat_result(chat) -> dict:
     else:
         meta["upload_batch_id"] = source["upload_batch_id"]
 
+    live_ratings = live_rating_stats(source)
     payload = {
         "rows": [_group_to_row(g) for g in groups],
         "meta": meta,
-        "rating_stats": parsed.get("rating_stats") or [],
+        "rating_stats": live_ratings if live_ratings is not None else (parsed.get("rating_stats") or []),
     }
     chat.message_content = build_classification_message(payload)
     return payload

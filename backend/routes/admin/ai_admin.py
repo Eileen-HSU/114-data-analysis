@@ -352,6 +352,27 @@ def assign_unassigned_answer(answer_id):
         return _recovery_error(exc)
 
 
+@ai_admin_bp.post("/unassigned/answers/<int:answer_id>/retry")
+def retry_failed_answer(answer_id):
+    """零片段失敗的上傳回答（failed 分頁 target=answer）重新分析。
+    Body（選填）: {"topic_key": "...", "taxonomy_version_id": ..., "reason": "..."}；
+    不帶 topic_key 時沿用這筆回答原本的主題。"""
+    admin, failure = _admin_or_error()
+    if failure:
+        return failure
+    data = request.get_json(silent=True) or {}
+    try:
+        return jsonify(recovery.retry_failed_answer(
+            answer_id, admin.admin_id, topic_key=data.get("topic_key") or None,
+            taxonomy_version_id=_optional_int(data.get("taxonomy_version_id")),
+            reason=data.get("reason"),
+        )), 200
+    except (TypeError, ValueError):
+        return api_error("INVALID_TAXONOMY_VERSION_ID", "taxonomy_version_id 必須是整數", 400)
+    except recovery.RecoveryError as exc:
+        return _recovery_error(exc)
+
+
 @ai_admin_bp.post("/unassigned/answers/<int:answer_id>/reroute")
 def reroute_unassigned_answer(answer_id):
     admin, failure = _admin_or_error()

@@ -324,6 +324,14 @@ export default function ReviewConversation({ classificationId, mode = "start", o
         method: "POST",
         body: JSON.stringify({ topic_key: target.topic_key, reason: t("管理員移到其他主題", "Moved to another topic by admin") }),
       });
+      if (result.succeeded === false) {
+        // 新主題的分類全部失敗：後端保留原本的結果（kept_previous），這筆沒有被移走。
+        onChanged?.();
+        throw new Error(t(
+          `移到「${target.title}」失敗，原本的分類結果維持不變：${result.failure?.message || ""}`,
+          `Moving to "${target.title}" failed; the original result was kept: ${result.failure?.message_en || ""}`,
+        ));
+      }
       setMoved({ title: target.title || target.topic_key, rows: result.classifications || [] });
       onChanged?.();
       return t(`已移到「${target.title}」`, `Moved to "${target.title}"`);

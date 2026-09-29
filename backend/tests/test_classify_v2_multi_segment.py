@@ -67,7 +67,7 @@ ORIGINAL = "王小明覺得主管很願意聽取意見，但工作量太大，�
 
 print("========== 情境 1：固定 2 次 Gemini 呼叫，index 對應正確（含亂序）==========")
 _call_log.clear()
-queue_json({"segments": ["【姓名】覺得主管很願意聽取意見", "工作量太大，希望增加人力"]})
+queue_json({"segments": ["【姓名】覺得主管很願意聽取意見，", "但工作量太大，希望增加人力"]})  # 完整涵蓋原文
 queue_json({"classifications": [
     {"index": 1, "main_category": "部門合作", "sub_category": "B2 支援協作",
      "secondary_sub_category": None, "reasoning": "r2", "summary": "s2", "confidence": "high"},
@@ -82,7 +82,7 @@ check("index 0 正確對應第一段", result["segments"][0]["sub_category"] == 
 check("index 1 正確對應第二段（即使 Gemini 回傳順序相反）", result["segments"][1]["sub_category"] == "B2 支援協作")
 check(
     "orig_start/orig_end 正確指向原文",
-    ORIGINAL[result["segments"][0]["orig_start"]:result["segments"][0]["orig_end"]] == "王小明覺得主管很願意聽取意見",
+    ORIGINAL[result["segments"][0]["orig_start"]:result["segments"][0]["orig_end"]] == "王小明覺得主管很願意聽取意見，",
 )
 
 
@@ -95,7 +95,7 @@ check("user message 不重複 JSON 格式規則", "classifications" not in _call
 
 
 print("\n========== 情境 3：index 集合不完整，整批 fail-closed ==========")
-queue_json({"segments": ["【姓名】覺得主管很願意聽取意見", "工作量太大，希望增加人力"]})
+queue_json({"segments": ["【姓名】覺得主管很願意聽取意見，", "但工作量太大，希望增加人力"]})  # 完整涵蓋原文
 queue_json({"classifications": [
     {"index": 0, "main_category": "x", "sub_category": "y", "reasoning": "r", "summary": "s"},
 ]})  # 缺 index 1

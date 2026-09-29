@@ -122,7 +122,8 @@ export default function ClassificationList({ topicParam, onOpenReview, refreshSi
     const result = await api(`/api/admin/ai/classifications/${row.classification_id}/retry`, token, { method: "POST" });
     setBatchMessage(result.succeeded
       ? t("已重新處理，新的分類結果在「待處理」。", "Reprocessed; the new result is under Pending.")
-      : t(`重新處理仍然失敗：${result.failure?.message || ""}`, `Retry still failed: ${result.failure?.message_en || ""}`));
+      : t(`重新處理仍然失敗${result.kept_previous ? "，原本的結果維持不變" : ""}：${result.failure?.message || ""}`,
+        `Retry still failed${result.kept_previous ? "; the previous result was kept" : ""}: ${result.failure?.message_en || ""}`));
   });
 
   const runBatchConfirm = async () => {

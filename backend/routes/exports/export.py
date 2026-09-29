@@ -103,7 +103,12 @@ def create_export():
             if freshness["stale"]:
                 parsed_message = workspace_result_service.refresh_chat_result(chat)
             rows = parsed_message.get("rows") or []
-            if data.get("rating_stats") is None and parsed_message.get("rating_stats"):
+            source = workspace_result_service.source_for_chat(chat, parsed_message)
+            if source["source_type"] == "survey":
+                # 問卷：rating 題統計一律用後端（refresh 後）版本，跟 Chat 畫面
+                # 重新整理後的數字一致；不採用前端可能是舊快照的 rating_stats。
+                data["rating_stats"] = parsed_message.get("rating_stats") or []
+            elif data.get("rating_stats") is None and parsed_message.get("rating_stats"):
                 data["rating_stats"] = parsed_message.get("rating_stats")
             row_count = len(rows)
             rows_source = "server"

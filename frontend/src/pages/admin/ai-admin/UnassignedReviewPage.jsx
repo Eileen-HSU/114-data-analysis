@@ -78,7 +78,9 @@ export default function UnassignedReviewPage() {
   };
 
   const resultText = (result) => (result?.succeeded === false
-    ? t(`已送出分類，但處理失敗：${result.failure?.message || ""}`, `Classification ran but failed: ${result.failure?.message_en || ""}`)
+    ? (result?.kept_previous
+      ? t(`重新處理失敗，原本的結果維持不變：${result.failure?.message || ""}`, `Reprocessing failed; the previous result was kept: ${result.failure?.message_en || ""}`)
+      : t(`已送出分類，但處理失敗：${result.failure?.message || ""}`, `Classification ran but failed: ${result.failure?.message_en || ""}`))
     : t("已完成分類，結果已進入該主題的審查清單。", "Classified; results are now in the topic's review list."));
 
   const assign = (item, topicKey, versionId) => run(
@@ -95,17 +97,27 @@ export default function UnassignedReviewPage() {
     (r) => (r.routed ? resultText(r) : t(`仍然判斷不出主題：${unroutedReasonLabel(r.routing_status)}`, `Still no topic: ${unroutedReasonLabel(r.routing_status)}`)),
   );
 
-  const reclassify = (item, topicKey) => run(
+  // failed 分頁裡「零片段失敗」的上傳回答沒有 classification_id（target=answer），
+  // 重試走回答層級的 API；其餘沿用分類列的 retry / reclassify。
+  const itemKey = (item) => (item.kind === "unrouted" || item.target === "answer" ? `a${item.id}` : `c${item.classification_id}`);
+
+  const reclassify = (item, topicKey) => (item.target === "answer" ? run(
+    itemKey(item),
+    () => api(`/api/admin/ai/unassigned/answers/${item.id}/retry`, token, {
+      method: "POST", body: JSON.stringify(topicKey ? { topic_key: topicKey } : {}),
+    }),
+    resultText,
+  ) : run(
     `c${item.classification_id}`,
     () => api(`/api/admin/ai/classifications/${item.classification_id}/${item.kind === "failed" && !topicKey ? "retry" : "reclassify"}`, token, {
       method: "POST", body: JSON.stringify(topicKey ? { topic_key: topicKey } : {}),
     }),
     resultText,
-  );
+  ));
 
   const openDetail = async (item) => {
     try {
-      if (item.kind === "unrouted") {
+      if (item.kind === "unrouted" || item.target === "answer") {
         setDetail({ title: t("回答處理紀錄", "Answer history"), data: await api(`/api/admin/ai/unassigned/answers/${item.id}`, token) });
       } else {
         setDetail({ title: t("處理嘗試紀錄", "Attempt history"), data: await api(`/api/admin/ai/classifications/${item.classification_id}/attempts`, token) });
@@ -143,7 +155,7 @@ export default function UnassignedReviewPage() {
     {!loading && data.items.length === 0 && <p className="review-empty-hint">{t("這個分類底下目前沒有資料。", "Nothing here right now.")}</p>}
 
     {!loading && data.items.map((item) => {
-      const key = item.kind === "unrouted" ? `a${item.id}` : `c${item.classification_id}`;
+      const key = itemKey(item);
       return (
         <UnassignedCard key={key} item={item} topics={topics} busy={!!busy[key]} error={rowError[key]}
           onDismissError={() => setRowError((p) => ({ ...p, [key]: "" }))}

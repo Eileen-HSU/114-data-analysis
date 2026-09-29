@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request
 from extensions import db
-from models import Chat_History, Workspace, UploadedFile
+from models import Chat_History, Survey_Template, Workspace, UploadedFile
 from routes.workspaces.workspace import authorize_request
 from services.chat_ask_service import answer_chat_question, ChatAskError
 from services import workspace_result_service
@@ -48,7 +48,22 @@ def save_chat_history():
 
     if not workspace:
         return jsonify({"error": "找不到該專案或您無權限操作"}), 404
-    
+
+    # 6-1. 問卷關聯：Chat_History.template_id 就是「問卷 <-> 工作區」的關聯
+    # （分類結果重新整理、Chat 問答、匯出都靠它找問卷），只能關聯自己的問卷。
+    if template_id not in (None, ""):
+        try:
+            template_id = int(template_id)
+        except (ValueError, TypeError):
+            return jsonify({"error": "不合法的 template_id 格式"}), 400
+        template = db.session.get(Survey_Template, template_id)
+        if template is None:
+            return jsonify({"error": "找不到這份問卷"}), 404
+        if template.user_id != current_user_id:
+            return jsonify({"error": "無權限關聯這份問卷"}), 403
+    else:
+        template_id = None
+
     # 7. 寫入 DB
     chat = Chat_History(
         project_id      = project_id,

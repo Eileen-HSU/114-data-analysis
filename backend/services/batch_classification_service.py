@@ -30,6 +30,7 @@ from typing import Any, Dict, List, Optional
 
 from services.classify_v2 import classify_response_multi_segment
 from services.response_dedup_service import dedupe_by_similarity
+from services.segmentation_service import find_coverage_gaps
 
 
 def _relocate_segments(
@@ -88,6 +89,14 @@ def _relocate_segments(
         relocated.append(relocated_seg)
 
         search_from = new_end  # 下一段只往後找，天然保證依序不重疊
+
+    # 完整涵蓋檢查：target 如果比代表項多出任何非空白 / 標點的內容
+    # （開頭、中間或結尾），沿用會讓多出來的文字無聲地不屬於任何片段，
+    # 一律視為沿用失敗，改走完整分類流程。
+    if find_coverage_gaps(
+        target_answer_text, [(seg["orig_start"], seg["orig_end"]) for seg in relocated]
+    ):
+        return None
 
     return relocated
 

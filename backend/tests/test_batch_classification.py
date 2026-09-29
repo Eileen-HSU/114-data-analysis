@@ -79,11 +79,28 @@ print("\n--- A1：_relocate_segments 基本情境 ---")
 segs = _relocate_segments(
     [{"orig_start": 0, "orig_end": 16, "main_category": "m"}],
     "希望主管可以多給一些工作上的回饋",
-    "希望主管可以多給一些工作上的回饋，謝謝",
+    "希望主管可以多給一些工作上的回饋。",  # 只多一個標點：沒有語意內容，可以沿用
 )
 check("成功定位，回傳非 None", segs is not None)
 check("main_category 沿用", segs[0]["main_category"] == "m")
-check("座標正確", "希望主管可以多給一些工作上的回饋，謝謝"[segs[0]["orig_start"]:segs[0]["orig_end"]] == "希望主管可以多給一些工作上的回饋")
+check("座標正確", "希望主管可以多給一些工作上的回饋。"[segs[0]["orig_start"]:segs[0]["orig_end"]] == "希望主管可以多給一些工作上的回饋")
+
+# 完整涵蓋回歸：target 多出任何文字（開頭 / 中間 / 結尾），沿用會讓那段
+# 文字無聲地不屬於任何片段 -> 必須回傳 None，改走完整分類。
+for label, target in [
+    ("結尾多出文字", "希望主管可以多給一些工作上的回饋，謝謝"),
+    ("結尾多出另一個訴求", "希望主管可以多給一些工作上的回饋，但薪水太低"),
+    ("開頭多出文字", "其實我希望主管可以多給一些工作上的回饋"),
+]:
+    check(f"{label}：沿用失敗回傳 None", _relocate_segments(
+        [{"orig_start": 0, "orig_end": 16, "main_category": "m"}],
+        "希望主管可以多給一些工作上的回饋", target,
+    ) is None)
+check("兩段之間多出文字：沿用失敗回傳 None", _relocate_segments(
+    [{"orig_start": 0, "orig_end": 5, "main_category": "m"}, {"orig_start": 6, "orig_end": 11, "main_category": "n"}],
+    "主管很友善，薪水太低",
+    "主管很友善，而且同事也很好，薪水太低",
+) is None)
 
 segs2 = _relocate_segments(
     [{"orig_start": 0, "orig_end": 21, "main_category": "m"}],
@@ -95,11 +112,11 @@ check("中段被改寫，定位失敗回傳 None", segs2 is None)
 check("空 candidate_segments 回傳 None", _relocate_segments([], "a", "b") is None)
 
 
-print("\n--- A2：run_batch_analysis 批次內部去重（trailing addition 成功）---")
+print("\n--- A2：run_batch_analysis 批次內部去重（只差標點，沿用成功）---")
 _queue.clear()
 texts = [
     "希望主管可以多給一些工作上的回饋",
-    "希望主管可以多給一些工作上的回饋，謝謝",
+    "希望主管可以多給一些工作上的回饋！",
     "希望增加人力資源，工作量目前太大了",
 ]
 masked_a = mask_pii(texts[0])
@@ -155,12 +172,25 @@ existing = [{
         "status": "completed",
     }],
 }]
-pending3 = [{"identifier": 11, "answer_text": "希望主管可以多給一些工作上的回饋，謝謝"}]
+pending3 = [{"identifier": 11, "answer_text": "希望主管可以多給一些工作上的回饋！"}]
 _queue.clear()
 results3 = run_batch_analysis(existing, pending3, "prompt", "leadership_and_dept")
 check("完全零 Gemini 呼叫", len(_queue) == 0)
 check("正確標記沿用自 identifier 3", results3[0]["reused_from"] == 3)
 check("新回答的座標指向自己的原文", pending3[0]["answer_text"][results3[0]["segments"][0]["orig_start"]:results3[0]["segments"][0]["orig_end"]] == existing[0]["answer_text"])
+
+
+print("\n--- A5：新回答比既有回答多出內容 -> 不沿用，完整分類（不漏字）---")
+_queue.clear()
+pending5 = [{"identifier": 12, "answer_text": "希望主管可以多給一些工作上的回饋，謝謝"}]
+q({"segments": [mask_pii(pending5[0]["answer_text"])]})
+q({"classifications": [{"index": 0, "main_category": "m", "sub_category": "A2 回饋與溝通",
+                          "secondary_sub_category": None, "reasoning": "r", "summary": "s", "confidence": "high"}]})
+results5 = run_batch_analysis(existing, pending5, "prompt", "leadership_and_dept")
+check("A5 完整呼叫 Gemini（拆分+分類）", len(_queue) == 0)
+check("A5 不標記沿用", results5[0]["reused_from"] is None)
+seg5 = results5[0]["segments"][0]
+check("A5 片段涵蓋完整原文（含『謝謝』）", pending5[0]["answer_text"][seg5["orig_start"]:seg5["orig_end"]] == pending5[0]["answer_text"])
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -247,7 +277,7 @@ with app.app_context():
 
     answer_texts = [
         "希望主管可以多給一些工作上的回饋",       # r0：代表項
-        "希望主管可以多給一些工作上的回饋，謝謝",  # r1：應沿用 r0
+        "希望主管可以多給一些工作上的回饋！",  # r1：只差標點，應沿用 r0
         "希望增加人力資源",                       # r2：獨立
     ]
     response_ids = []
@@ -327,7 +357,7 @@ print("\n--- B4：Excel 上傳批次去重 ---")
 import pandas as pd
 df = pd.DataFrame({"意見": [
     "主管很願意聽取意見",
-    "主管很願意聽取意見，謝謝",  # 應沿用上一筆
+    "主管很願意聽取意見！",  # 只差標點，應沿用上一筆
     "希望增加教育訓練資源",
 ]})
 buf = io.BytesIO()
@@ -359,7 +389,7 @@ with app.app_context():
     batch_id = data4["upload_batch_id"]
     rc_excel = m.Response_Classification.query.filter_by(upload_batch_id=batch_id).all()
     check("Excel 這批寫入 3 筆 Response_Classification", len(rc_excel) == 3)
-    dup_row = [r for r in rc_excel if r.answer_text == "主管很願意聽取意見，謝謝"][0]
+    dup_row = [r for r in rc_excel if r.answer_text == "主管很願意聽取意見！"][0]
     check("Excel 內部沿用正確，sub_category 相同", dup_row.sub_category == "A2 回饋與溝通")
     check("Excel 沿用後座標指向自己的原文", dup_row.answer_text[dup_row.segment_start:dup_row.segment_end] == "主管很願意聽取意見")
 

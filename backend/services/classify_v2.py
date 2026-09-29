@@ -669,22 +669,7 @@ def classify_response_multi_segment(
 
     effective_category_lookup = category_lookup or _methodology_lookup_for_question_type(question_type)
 
-    reviewed_examples_block = ""
-    if taxonomy_version_id is not None:
-        try:
-            from services.review_feedback_service import (
-                get_reviewed_examples,
-                build_review_feedback_prompt,
-            )
-
-            reviewed_examples = get_reviewed_examples(taxonomy_version_id)
-            reviewed_examples_block = build_review_feedback_prompt(reviewed_examples)
-        except Exception as e:
-            # feedback loop 是既有分類流程之外的加分功能，任何非預期
-            # 錯誤（DB 連線問題等）都不應該讓正式分類卡住，fail-open
-            # 成「這次沒有範例」，效果等同 taxonomy_version_id 沒傳。
-            print("[CLASSIFY ERROR][REVIEW_FEEDBACK_FAILED]", repr(e))
-            reviewed_examples_block = ""
+    reviewed_examples_block = _reviewed_examples_block(taxonomy_version_id)
 
     masked_texts = [seg["masked_text"] for seg in valid_segments]
     classifications = _call_gemini_batch_classification(
@@ -704,12 +689,34 @@ def classify_response_multi_segment(
 
 
 
+def _reviewed_examples_block(taxonomy_version_id) -> str:
+    """同一個 taxonomy version 的人工審核範例（Human Review feedback loop）。
+    範例文字的 PII 遮罩由 services.review_feedback_service 負責（單筆遮罩
+    失敗就 skip）；任何非預期錯誤 fail-open 成「這次沒有範例」。"""
+    if taxonomy_version_id is None:
+        return ""
+    try:
+        from services.review_feedback_service import (
+            get_reviewed_examples,
+            build_review_feedback_prompt,
+        )
+
+        return build_review_feedback_prompt(get_reviewed_examples(taxonomy_version_id))
+    except Exception as e:
+        # feedback loop 是既有分類流程之外的加分功能，任何非預期
+        # 錯誤（DB 連線問題等）都不應該讓正式分類卡住，fail-open
+        # 成「這次沒有範例」，效果等同 taxonomy_version_id 沒傳。
+        print("[CLASSIFY ERROR][REVIEW_FEEDBACK_FAILED]", repr(e))
+        return ""
+
+
 def classify_existing_segments(
     answer_text: str,
     spans: list,
     prompt_content: str,
     question_type: str,
     category_lookup=None,
+    taxonomy_version_id=None,
 ) -> dict:
     """
     只重新「分類」既有片段（不重新拆分）：重新分析一則已有人工審核結果的
@@ -717,6 +724,8 @@ def classify_existing_segments(
     原本處理失敗的片段，用原文位置 (orig_start, orig_end) 重新送分類。
 
     spans: [(orig_start, orig_end), ...]
+    taxonomy_version_id: prompt_content 對應的 taxonomy version；有傳時
+        比照 classify_response_multi_segment() 帶入同一版本的人工審核範例。
     回傳格式同 classify_response_multi_segment()，segments 跟 spans 一一對應。
     """
     effective_category_lookup = category_lookup or _methodology_lookup_for_question_type(question_type)
@@ -729,8 +738,11 @@ def classify_existing_segments(
             masked.append(None)
 
     to_send = [text for text in masked if text is not None]
+    reviewed_examples_block = _reviewed_examples_block(taxonomy_version_id) if to_send else ""
     classified = iter(
-        _call_gemini_batch_classification(to_send, prompt_content, effective_category_lookup) if to_send else []
+        _call_gemini_batch_classification(
+            to_send, prompt_content, effective_category_lookup, reviewed_examples_block=reviewed_examples_block,
+        ) if to_send else []
     )
     segments = []
     for i, (start, end) in enumerate(spans):

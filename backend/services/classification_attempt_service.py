@@ -250,7 +250,8 @@ def _apply_locked(scope, result, taxonomy_version_id, expected_attempt_no, mode,
             db.session.flush()
             new_rows.extend(build_classification_rows(
                 scope, [{**seg, "orig_start": old.segment_start, "orig_end": old.segment_end}],
-                old.taxonomy_version_id or taxonomy_version_id, attempt_no=next_no,
+                # 記錄這次分類實際使用的 taxonomy version（prompt 與人工審核範例都來自它）
+                taxonomy_version_id or old.taxonomy_version_id, attempt_no=next_no,
             ))
         if not new_rows:
             status.last_attempt_error = _first_error(segments) or "失敗片段重新分類仍然失敗"

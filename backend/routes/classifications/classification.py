@@ -907,8 +907,10 @@ def analyze_survey(access_code):
     question_routing_status = {
         item.get("id"): item.get("routing_status") for item in items if item.get("type") == "short"
     }
-    # 自動主題範圍：問卷擁有者
-    scope = f"user:{survey.user_id}"
+    # 自動主題範圍：問卷擁有者。刻意不叫 scope——下面逐則回答迴圈用
+    # answer_scope 存單筆回答的 attempt scope（dict），同名會讓第二題的
+    # routing / 自動主題拿到上一題最後一則回答的 dict。
+    topic_scope = f"user:{survey.user_id}"
 
     if not question_type_map:
         
@@ -959,7 +961,7 @@ def analyze_survey(access_code):
         ):
             # 建立問卷時 routing 的 AI 呼叫失敗（或舊問卷沒有記錄原因）：現在重新判斷
             # 一次；只有模型成功判斷「沒有適合主題」才可以走自動主題。
-            outcome = route_question_type_detailed(title, scope=scope)
+            outcome = route_question_type_detailed(title, scope=topic_scope)
             if outcome["reason"] == ROUTING_REASON_API_FAILURE:
                 per_question_diagnostic[question_id] = {
                     "taxonomy_unavailable": True,
@@ -969,7 +971,7 @@ def analyze_survey(access_code):
                 continue
             routed = outcome["topic_key"]
             _remember_question_routing(survey, question_id, outcome)
-        taxonomy = _resolve_taxonomy_open(routed, title, question_answers, scope=scope)
+        taxonomy = _resolve_taxonomy_open(routed, title, question_answers, scope=topic_scope)
         prompt_content_for_batch = taxonomy["prompt"]
         category_lookup = taxonomy["lookup"]
         taxonomy_version_id = taxonomy["version_id"]
@@ -1009,8 +1011,8 @@ def analyze_survey(access_code):
             qdiag["valid"] += 1
 
             # 重新分析不再 hard-delete 舊結果：見 services/classification_attempt_service.py
-            scope = attempt_service.survey_scope(response.response_id, question_id, answer_text)
-            plan = attempt_service.plan_reanalysis(scope)
+            answer_scope = attempt_service.survey_scope(response.response_id, question_id, answer_text)
+            plan = attempt_service.plan_reanalysis(answer_scope)
             current = plan["rows"]
 
             if plan["mode"] in (attempt_service.MODE_REUSE, attempt_service.MODE_SKIP, attempt_service.MODE_RETRY_SEGMENTS):
@@ -1046,14 +1048,14 @@ def analyze_survey(access_code):
             elif plan["mode"] == attempt_service.MODE_SKIP:
                 qdiag["blocked_by_review"] += 1
             elif plan["mode"] == attempt_service.MODE_RETRY_SEGMENTS:
-                segment_retries.append((scope, plan))
+                segment_retries.append((answer_scope, plan))
             else:
                 if plan["mode"] == attempt_service.MODE_FULL:
                     qdiag["reanalyzed"] += 1
                 pending_items.append({
                     "identifier": response.response_id,
                     "answer_text": answer_text,
-                    "_scope": scope,
+                    "_scope": answer_scope,
                     "_plan": plan,
                 })
 
@@ -1070,19 +1072,20 @@ def analyze_survey(access_code):
         ) if pending_items else []
 
         work = [(item["_scope"], item["_plan"], result, None) for item, result in zip(pending_items, results)]
-        for scope, plan in segment_retries:
+        for retry_scope, plan in segment_retries:
             retry_rows = plan["retry_rows"]
             result = classify_existing_segments(
-                scope["answer_text"], [(r.segment_start, r.segment_end) for r in retry_rows],
+                retry_scope["answer_text"], [(r.segment_start, r.segment_end) for r in retry_rows],
                 prompt_content_for_batch, question_type, category_lookup=category_lookup,
+                taxonomy_version_id=taxonomy_version_id,
             )
-            work.append((scope, plan, result, [r.classification_id for r in retry_rows]))
+            work.append((retry_scope, plan, result, [r.classification_id for r in retry_rows]))
             qdiag["segment_retries"] += 1
 
         rerun_happened = False
-        for scope, plan, result, retry_ids in work:
+        for work_scope, plan, result, retry_ids in work:
             outcome = attempt_service.apply_attempt(
-                scope, result, taxonomy_version_id, plan["expected_attempt_no"], plan["mode"],
+                work_scope, result, taxonomy_version_id, plan["expected_attempt_no"], plan["mode"],
                 retry_row_ids=retry_ids,
             )
             if outcome.applied:
@@ -1090,7 +1093,7 @@ def analyze_survey(access_code):
                 rerun_happened = rerun_happened or plan["mode"] != attempt_service.MODE_NEW
                 if plan["mode"] == attempt_service.MODE_RETRY_SEGMENTS:
                     # 目前生效的列：重新查一次（被取代的失敗片段已經 superseded）
-                    fresh = attempt_service.current_rows(scope)
+                    fresh = attempt_service.current_rows(work_scope)
                     bucket = rows_by_question_type.setdefault(question_type, [])
                     stale = {r.classification_id for r in plan["rows"]}
                     bucket[:] = [r for r in bucket if r.classification_id not in stale] + fresh
