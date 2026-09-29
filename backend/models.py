@@ -186,6 +186,9 @@ class Survey_Response(db.Model):
         db.ForeignKey("Survey_Template.template_id", ondelete="CASCADE"),
         nullable=False,
     )
+    response_token = db.Column(
+        db.String(255), nullable=False, default=lambda: uuid.uuid4().hex
+    )
     answer_json = db.Column(db.JSON, nullable=False)
     submitted_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
     updated_at = db.Column(
