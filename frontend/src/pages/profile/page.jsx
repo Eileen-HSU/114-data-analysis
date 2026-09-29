@@ -72,7 +72,7 @@ export default function ProfilePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, updateUser, profileCache } = useAuth();
-  const { language, setLanguage, t } = useLanguage();
+  const { language, t } = useLanguage();
   const { activities, recordActivity, clearActivities } = useActivity();
   const avatarInputRef = useRef(null);
   const editSectionRef = useRef(null);
@@ -536,7 +536,6 @@ export default function ProfilePage() {
           gender:       editProfile.gender,
           location:     editProfile.location,
           bio:          editProfile.bio,
-          language:     editProfile.language,
           avatar_url:   avatarSrc,
           updated_at:   new Date().toISOString(),
         }),
@@ -546,7 +545,6 @@ export default function ProfilePage() {
       if (!res.ok) throw new Error(result.error || '儲存失敗，請稍後再試');
 
       setProfile(editProfile);
-      setLanguage(editProfile.language);
       recordActivity({
         text: "更新個人資料",
         icon: "ri-user-settings-line",

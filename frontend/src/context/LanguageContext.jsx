@@ -222,17 +222,11 @@ const LanguageContext = createContext({ language: "zh-TW", setLanguage: () => {}
 
 export function LanguageProvider({ children }) {
   const { user, updateUser } = useAuth();
-  const [language, setLanguageState] = useState(() => resolveLanguagePreference(localStorage.getItem(STORAGE_KEY), user?.language));
+  const [language, setLanguageState] = useState(() => resolveLanguagePreference(localStorage.getItem(STORAGE_KEY)));
   useEffect(() => {
-    const storedLanguage = localStorage.getItem(STORAGE_KEY);
-    const next = resolveLanguagePreference(storedLanguage, user?.language);
-    setLanguageState(next);
-    // Keep API request headers consistent when adopting an account preference.
-    // Do not persist the guest default before a profile has loaded.
-    if (["zh-TW", "en"].includes(storedLanguage) || ["zh-TW", "en"].includes(user?.language)) {
-      localStorage.setItem(STORAGE_KEY, next);
-    }
-  }, [user?.language]);
+    // Authentication and profile responses must never change the active language.
+    localStorage.setItem(STORAGE_KEY, language);
+  }, [language]);
   useEffect(() => { document.documentElement.lang = language; }, [language]);
   useEffect(() => {
     installLanguageAwareFetch();
