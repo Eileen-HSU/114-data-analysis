@@ -17,6 +17,14 @@ const scenarios = [
       const { language, profileLanguage, twoFactor } = scenario;
       const page = await browser.newPage();
       const errors = [];
+      if (process.env.TEST_DISABLE_LEGACY_BRIDGE === '1') {
+        await page.route('**/src/context/LanguageContext.jsx*', async route => {
+          const response = await route.fetch();
+          const source = await response.text();
+          assert.ok(source.includes('translateLegacyInterface(language);'));
+          await route.fulfill({ response, body: source.replace('translateLegacyInterface(language);', 'if (window.location.pathname !== "/workspace") translateLegacyInterface(language);') });
+        });
+      }
       page.on('pageerror', error => errors.push(error.message));
       await page.addInitScript(() => {
         window.languageWrites = [];
@@ -43,6 +51,7 @@ const scenarios = [
       });
 
       let profileRequests = 0;
+      let pendingWorkspaceData = 0;
       let expectedRequestLanguage = language;
       const wrongHeaders = [];
       const profileWrites = [];
@@ -51,6 +60,10 @@ const scenarios = [
         const path = new URL(request.url()).pathname;
         const user = { user_id: 123, user_name: 'Test', email: 'test@example.com', account_type: 'user', language: profileLanguage };
         let json = [];
+        if (path === '/api/workspace/user' || path === '/api/surveys/mine') {
+          pendingWorkspaceData++;
+          await new Promise(resolve => setTimeout(resolve, 900));
+        }
         if (path === '/api/login' || path === '/api/profile/123' || path === '/api/auth/2fa/login/two-factor') {
           if (request.headers()['accept-language'] !== expectedRequestLanguage) wrongHeaders.push({ path, method: request.method(), language: request.headers()['accept-language'], expected: expectedRequestLanguage });
         }
@@ -66,6 +79,7 @@ const scenarios = [
           json = { ...user, language: profileLanguage };
         }
         await route.fulfill({ json });
+        if (path === '/api/workspace/user' || path === '/api/surveys/mine') pendingWorkspaceData--;
       });
 
       const verify = async (expected, writes) => {
@@ -102,10 +116,21 @@ const scenarios = [
         await page.locator('button[type="submit"]').click();
       }
       await page.waitForURL('**/workspace');
+      if (!twoFactor) {
+        await page.locator('.workspace-entry-loading-card').waitFor();
+        assert.equal(await page.locator('.workspace-entry-loading-card h1').textContent(), language === 'en' ? 'Loading workspace…' : '正在載入工作區...');
+      }
+      await page.locator('.sidebar-title').waitFor();
       await page.waitForFunction(() => JSON.parse(localStorage.getItem('dataanalysis_auth'))?.email_2fa_enabled === false);
       assert.ok(profileRequests > 0);
+      const deadline = Date.now() + 5000;
+      while (pendingWorkspaceData && Date.now() < deadline) await page.waitForTimeout(25);
+      assert.equal(pendingWorkspaceData, 0, 'Workspace and survey API responses must finish before checking settled UI');
       await verify(language, writes);
       assert.equal(await page.locator('.sidebar-title').textContent(), language === 'en' ? 'Conversation history' : '歷史對話紀錄');
+      assert.equal(await page.locator('.sidebar-search input').getAttribute('placeholder'), language === 'en' ? 'Search conversation history…' : '搜尋歷史對話紀錄...');
+      await page.locator('.workspace-share-btn').click();
+      assert.ok((await page.locator('body').innerText()).includes(language === 'en' ? 'Please open a workspace first' : '請先開啟一個工作區'));
       assert.deepEqual(profileWrites, [], 'Login/profile initialization must not save any language preference');
 
       // Cases 3 and 4: reload reads persistence without writing it back.
