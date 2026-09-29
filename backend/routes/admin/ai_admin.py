@@ -1,14 +1,13 @@
 """Internal AI administration API.
 
-All endpoints are deliberately read-only or candidate-only until a Golden Test
-run marks the candidate as publishable.  Production classifications are never
-changed by this blueprint.
+Admin-only endpoints for topics / taxonomy versions, classification review,
+unassigned-answer recovery and report lifecycle.
 """
 
 from flask import Blueprint, jsonify, request
 
 from extensions import db
-from models import Admin, Prompt_Template
+from models import Admin
 from classification_models import Response_Classification, Classification_Review, ALLOWED_REVIEW_STATUSES
 from services.review_service import derive_review_state
 from taxonomy import Taxonomy_Version
@@ -19,13 +18,6 @@ from routes.api_errors import api_error
 from services import admin_recovery_service as recovery
 from services import report_service
 from services import new_category_service
-from services.classify_v2 import _run_classification
-from services.prompt_admin_service import (
-    GOLDEN_TEST_SET,
-    update_draft,
-    test_draft_prompt,
-    publish_prompt,
-)
 from services.subcategory_methodology import SUBCATEGORY_METHODOLOGY
 from services.taxonomy_generation_service import (
     generate_taxonomy_draft,
@@ -65,84 +57,6 @@ def _admin_or_error():
     if not admin:
         return None, (jsonify({"error": "Admin access required"}), 403)
     return admin, None
-
-
-def _topic(row):
-    return {
-        "prompt_key": row.prompt_key,
-        "production_status": "published" if row.live_content else "not_published",
-        "candidate_status": "validated" if row.draft_validated else "needs_validation",
-        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
-    }
-
-
-@ai_admin_bp.get("/topics")
-def list_topics():
-    _, failure = _admin_or_error()
-    if failure:
-        return failure
-    rows = Prompt_Template.query.order_by(Prompt_Template.prompt_key).all()
-    return jsonify({"topics": [_topic(row) for row in rows]})
-
-
-@ai_admin_bp.route("/topics/<prompt_key>", methods=["GET", "PUT"])
-def candidate(prompt_key):
-    _, failure = _admin_or_error()
-    if failure:
-        return failure
-    row = Prompt_Template.query.get(prompt_key)
-    if not row:
-        return jsonify({"error": "Classification topic not found"}), 404
-    if request.method == "GET":
-        return jsonify(row.to_dict())
-
-    payload = request.get_json(silent=True) or {}
-    content = payload.get("draft_content")
-    if not isinstance(content, str) or not content.strip():
-        return jsonify({"error": "draft_content is required"}), 400
-    # update_draft invalidates a previous validation result by design.
-    return jsonify(update_draft(prompt_key, content))
-
-
-@ai_admin_bp.post("/topics/<prompt_key>/sandbox")
-def sandbox(prompt_key):
-    _, failure = _admin_or_error()
-    if failure:
-        return failure
-    row = Prompt_Template.query.get(prompt_key)
-    if not row:
-        return jsonify({"error": "Classification topic not found"}), 404
-    payload = request.get_json(silent=True) or {}
-    answer_text = (payload.get("answer_text") or "").strip()
-    if not answer_text:
-        return jsonify({"error": "answer_text is required"}), 400
-    # _run_classification only calls the model; it never persists a production row.
-    result = _run_classification(answer_text, row.draft_content, prompt_key)
-    return jsonify({"result": result})
-
-
-@ai_admin_bp.post("/topics/<prompt_key>/validate")
-def validate_candidate(prompt_key):
-    _, failure = _admin_or_error()
-    if failure:
-        return failure
-    try:
-        return jsonify(test_draft_prompt(prompt_key))
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
-
-
-@ai_admin_bp.post("/topics/<prompt_key>/publish")
-def publish_candidate(prompt_key):
-    _, failure = _admin_or_error()
-    if failure:
-        return failure
-    try:
-        return jsonify(publish_prompt(prompt_key))
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 404
-    except PermissionError as exc:
-        return jsonify({"error": str(exc)}), 409
 
 
 CLASSIFICATION_STATES = ("pending_review", "in_review", "failed", "confirmed", "modified", "excluded")
@@ -632,29 +546,12 @@ def taxonomy():
     return jsonify({"topics": topics})
 
 
-@ai_admin_bp.get("/golden-tests")
-def golden_tests():
-    _, failure = _admin_or_error()
-    if failure:
-        return failure
-    cases = []
-    for prompt_key, items in GOLDEN_TEST_SET.items():
-        cases.extend({"prompt_key": prompt_key, **item} for item in items)
-    return jsonify({"cases": cases})
-
-
 @ai_admin_bp.post("/topics/<topic_key>/taxonomy/generate")
 def generate_taxonomy(topic_key):
     """
     Phase C：Taxonomy Generation。輸入一批初始回答，由 AI 歸納出一份
     結構化 draft taxonomy（Taxonomy_Version.status=draft），交給
     Phase D 的 Admin Review 流程。
-
-    這個端點刻意跟上面 candidate（Prompt_Template draft）系列的
-    /topics/<prompt_key>/... 路由分開：topic_key 這裡指的是
-    Topic.topic_key（taxonomy 概念），不是 Prompt_Template.prompt_key
-    （prompt 概念），兩者目前是同一套字串 key 空間但語意不同，沿用
-    Phase A/B 已經定案的區分，不因為路由方便就混用。
 
     請求 body：
         answer_texts (必填)：這批要拿來歸納的原始回答文字陣列。
@@ -712,11 +609,8 @@ def generate_taxonomy(topic_key):
 
 # ── Phase D：Admin Taxonomy Review / Edit / Publish ────────────────
 #
-# 這些路由跟上面 candidate（Prompt_Template draft）系列的
-# /topics/<prompt_key>/... 完全分開資料流：這裡一律透過
-# services/taxonomy_service.py（taxo 別名）操作 Topic/Taxonomy_Version/
-# Taxonomy_Category，不會touchPrompt_Template，也不會被誤認成「修改
-# Prompt 草稿」（需求文件第 2、15 節）。
+# 這些路由一律透過 services/taxonomy_service.py（taxo 別名）操作
+# Topic/Taxonomy_Version/Taxonomy_Category。
 
 
 @ai_admin_bp.get("/taxonomy-topics")

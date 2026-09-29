@@ -1,7 +1,6 @@
 """
 測試腳本：驗證 backend/services/classify_v2.py 的多意義單元分類流程
-（classify_response_multi_segment），以及確認舊版 _run_classification()
-／classify_response_v2() 沒有被破壞。
+（classify_response_multi_segment）。
 
 用假的 google.generativeai 模組取代真實 API。
 
@@ -119,21 +118,6 @@ check("PII masking 失敗時完全不呼叫 Gemini", len(_call_log) == 0)
 check("segmentation_status 為 failed", result["segmentation_status"] == "failed")
 check("segments 為空清單", result["segments"] == [])
 check("error_detail 標記 PII_MASKING_FAILED", "PII_MASKING_FAILED" in result["segmentation_error_detail"])
-
-
-print("\n========== 情境 5：舊版 _run_classification() / classify_response_v2() 不受影響 ==========")
-_call_log.clear()
-queue_json({"main_category": "主管領導", "sub_category": "A2 回饋與溝通",
-            "secondary_sub_category": None, "reasoning": "r", "summary": "s", "confidence": "high"})
-old_result = cv2._run_classification("王小明的信箱是abc@gmail.com", cv2.DEFAULT_PROMPT_LEADERSHIP, "leadership_and_dept")
-check("舊路徑只呼叫 1 次 Gemini", len(_call_log) == 1)
-check("舊路徑依然自動遮罩（送出內容不含明文 PII）", "王小明" not in _call_log[0]["prompt"] and "abc@gmail.com" not in _call_log[0]["prompt"])
-check("舊路徑分類成功", old_result["status"] == "completed")
-
-_call_log.clear()
-queue("not valid json")
-old_fail = cv2._run_classification("測試", cv2.DEFAULT_PROMPT_LEADERSHIP, "leadership_and_dept")
-check("舊路徑錯誤標籤仍是 GEMINI_API_FAILED（不是 BATCH_CLASSIFICATION_FAILED）", "GEMINI_API_FAILED" in old_fail["error_detail"])
 
 
 print("\n" + "=" * 50)

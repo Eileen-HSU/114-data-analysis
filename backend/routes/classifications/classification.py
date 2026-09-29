@@ -61,7 +61,7 @@ from models import (
 )
 from services.classify_v2 import classify_existing_segments, classify_response_multi_segment, is_text_response, resolve_published_taxonomy_prompt
 from services import classification_attempt_service as attempt_service
-from services.secondary_classification_service import get_secondaries
+from services.secondary_classification_service import get_secondaries, legacy_fields
 from classification_models import SECONDARY_KIND_AI
 from services.confidence_gate import evaluate_confidence_gate
 from services.effective_classification_service import effective_view, CLASSIFICATION_STATUS_SUPERSEDED
@@ -1029,16 +1029,13 @@ def analyze_survey(access_code):
                             "orig_end": r.segment_end,
                             "main_category": r.main_category,
                             "sub_category": r.sub_category,
-                            "secondary_sub_category": r.secondary_sub_category,
-                            "secondary_main_category": r.secondary_main_category,
                             # 沿用時次要分類要完整帶過去（可能不只一個）
                             "secondary_categories": get_secondaries(r, SECONDARY_KIND_AI),
+                            **legacy_fields(get_secondaries(r, SECONDARY_KIND_AI)),
                             "reasoning": r.reasoning,
                             "summary": r.summary,
                             "methodology": r.methodology,
                             "citation": r.citation,
-                            "secondary_methodology": r.secondary_methodology,
-                            "secondary_citation": r.secondary_citation,
                             "status": r.status,
                             "confidence": r.confidence,
                         }

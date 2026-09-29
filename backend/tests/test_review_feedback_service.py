@@ -118,12 +118,17 @@ def make_row(
         segment_end=segment_end,
         main_category=main_category,
         sub_category=sub_category,
-        secondary_sub_category=secondary_sub_category,
         reasoning=reasoning,
         final_main_category=final_main_category,
         final_sub_category=final_sub_category,
-        final_secondary_sub_category=final_secondary_sub_category,
         final_reasoning=final_reasoning,
+        secondaries=[
+            m.Response_Classification_Secondary(
+                kind=kind, position=0, main_category=None, sub_category=sub, in_taxonomy=True,
+            )
+            for kind, sub in (("ai", secondary_sub_category), ("final", final_secondary_sub_category))
+            if sub
+        ],
         status="completed",
         review_status=review_status,
         taxonomy_version_id=taxonomy_version_id,

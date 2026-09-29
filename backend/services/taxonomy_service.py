@@ -408,10 +408,7 @@ def publish_taxonomy_version(topic_key: str, version_id: int, admin_id: int = No
 #
 # 這一段刻意跟上面 Phase B/C 的內容分開放，但同一個檔案——CRUD 的對象
 # 一樣是 Topic/Taxonomy_Version/Taxonomy_Category，沒有理由為了
-# 「這是 Phase D 加的」就切成新檔案。跟 Prompt_Template candidate 的
-# CRUD（services/prompt_admin_service.py）完全是不同的資料表、不同的
-# service 檔案，兩者不共用任何函式，避免混淆「Prompt 草稿」跟
-# 「Taxonomy 草稿」（見需求文件第 2 節）。
+# 「這是 Phase D 加的」就切成新檔案。
 
 from sqlalchemy.exc import IntegrityError
 

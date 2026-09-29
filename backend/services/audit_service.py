@@ -33,11 +33,12 @@ def classification_state(row) -> dict:
         "sub_category": row.sub_category,
         "final_main_category": row.final_main_category,
         "final_sub_category": row.final_sub_category,
-        "final_secondary_main_category": row.final_secondary_main_category,
-        "final_secondary_sub_category": row.final_secondary_sub_category,
         "final_secondary_categories": [
             {"main_category": c.main_category, "sub_category": c.sub_category}
-            for c in (getattr(row, "secondaries", None) or []) if c.kind == "final"
+            for c in sorted(
+                (c for c in (getattr(row, "secondaries", None) or []) if c.kind == "final"),
+                key=lambda c: c.position,
+            )
         ],
     }
 

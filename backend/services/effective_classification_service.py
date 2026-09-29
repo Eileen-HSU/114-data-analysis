@@ -24,8 +24,8 @@ classification）
         excluded       ：人工決定不納入分析——不出現在任何統計／彙整／
                          報表／匯出。
         modified       ：使用人工確認後的 final_* 欄位（final_main_category /
-                         final_sub_category / final_secondary_* /
-                         final_reasoning）。methodology / citation 不另外
+                         final_sub_category / final_reasoning），次要分類用
+                         Response_Classification_Secondary（kind="final"）。methodology / citation 不另外
                          存 final_* 版本，而是依 final_sub_category 重新查表：
                          有 taxonomy_version_id 時查該版 Taxonomy_Category，
                          legacy 列（taxonomy_version_id IS NULL）查產生當時
@@ -42,7 +42,7 @@ classification）
 
     Schema 對照（需求文件使用的欄位名 → 實際欄位）：
         final_primary_category     → final_main_category / final_sub_category
-        final_secondary_categories → final_secondary_main_category / final_secondary_sub_category
+        final_secondary_categories → Response_Classification_Secondary（kind="final"）
         final_reasoning            → final_reasoning
         final_summary / final_sentiment / final_keywords /
         final_recommended_actions  → 目前 schema 不存在（Human Review 只能改
@@ -121,21 +121,18 @@ def effective_view(row, include_methodology: bool = False) -> dict | None:
         view = {
             "main_category": getattr(row, "final_main_category", None),
             "sub_category": getattr(row, "final_sub_category", None),
-            "secondary_main_category": getattr(row, "final_secondary_main_category", None),
-            "secondary_sub_category": getattr(row, "final_secondary_sub_category", None),
             "reasoning": getattr(row, "final_reasoning", None),
         }
     else:
         view = {
             "main_category": getattr(row, "main_category", None),
             "sub_category": getattr(row, "sub_category", None),
-            "secondary_main_category": getattr(row, "secondary_main_category", None),
-            "secondary_sub_category": getattr(row, "secondary_sub_category", None),
             "reasoning": getattr(row, "reasoning", None),
         }
 
     # 次要分類：可能不只一個（見 services/secondary_classification_service.py）；
-    # secondary_main_category / secondary_sub_category 保留為第一個，向後相容。
+    # 回傳 dict 的 secondary_main_category / secondary_sub_category 是第一個
+    # 次要分類，給舊的讀取端用（不是資料庫欄位）。
     from services.secondary_classification_service import effective_secondaries
 
     secondaries = effective_secondaries(row, view["sub_category"])

@@ -90,7 +90,6 @@ export default function LoginPage() {
         user_id: data.user_id,
         admin_id: data.admin_id,
         account_type: data.account_type,
-        role: data.role,
         token: data.token,
         pre_auth_token: data.pre_auth_token,
         email_2fa_enabled: data.email_2fa_enabled,

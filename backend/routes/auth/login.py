@@ -29,11 +29,9 @@ def get_jwt_secret() -> str:
     return _JWT_SECRET
 
 
-def build_token(user_id: int, role: str = "user", now=None) -> str:
-    """User 專用 token。role 只是沿用資料庫裡的 User.role 值原樣帶出去
-    （给前端顯示/相容舊程式碼用），實際的權限判斷一律看
-    account_type=="admin"，不會因為某個 User.role 剛好是 "admin"
-    字串就被當成管理員（對應需求 #7）。
+def build_token(user_id: int, now=None) -> str:
+    """User 專用 token。管理員權限一律看 account_type=="admin"（Admin 另有
+    自己的帳號表與 token），User 沒有角色欄位。
     """
     if now is None:
         now = taiwan_now()
@@ -42,7 +40,6 @@ def build_token(user_id: int, role: str = "user", now=None) -> str:
         {
             "account_type": "user",
             "user_id": user_id,
-            "role": role,
             "exp": exp_time,
         },
         get_jwt_secret(),
@@ -108,7 +105,6 @@ def login():
             "user_id": user.user_id,
             "user_name": user.user_name,
             "email": user.email,
-            "role": user.role,
             "email_2fa_enabled": user.email_2fa_enabled,
         }
 
@@ -140,7 +136,7 @@ def login():
                 verification.is_used = True
                 user.email_2fa_enabled = False
                 db.session.commit()
-                token = build_token(user.user_id, role=user.role, now=now)
+                token = build_token(user.user_id, now=now)
                 return jsonify({
                     "token": token,
                     **user_info,
@@ -160,7 +156,7 @@ def login():
             )
             return jsonify({"require_2fa": True, "pre_auth_token": pre_auth_token, **user_info}), 200
 
-        token = build_token(user.user_id, role=user.role)
+        token = build_token(user.user_id)
         return jsonify({"token": token, **user_info}), 200
 
     except Exception as e:

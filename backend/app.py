@@ -232,24 +232,12 @@ def ensure_runtime_schema():
 
             # ── Human Review / Aggregation / Report 支援（新增，additive-only）──
             ensure_column(
-                "Response_Classification", "secondary_main_category",
-                "`secondary_main_category` VARCHAR(100) NULL",
-            )
-            ensure_column(
                 "Response_Classification", "final_main_category",
                 "`final_main_category` VARCHAR(100) NULL",
             )
             ensure_column(
                 "Response_Classification", "final_sub_category",
                 "`final_sub_category` VARCHAR(100) NULL",
-            )
-            ensure_column(
-                "Response_Classification", "final_secondary_main_category",
-                "`final_secondary_main_category` VARCHAR(100) NULL",
-            )
-            ensure_column(
-                "Response_Classification", "final_secondary_sub_category",
-                "`final_secondary_sub_category` VARCHAR(100) NULL",
             )
             ensure_column(
                 "Response_Classification", "final_reasoning",

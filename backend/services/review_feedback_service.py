@@ -84,7 +84,7 @@ def _example_from_row(row: Response_Classification):
         sub_category = row.sub_category
         reasoning = row.reasoning
     # 範例呈現「人工確認時看到的那組結果」：modified 用人工 final、confirmed 用 AI
-    # 原始次要分類（可能不只一個，同一份子表資料，舊資料由舊欄位推導）。
+    # 原始次要分類（可能不只一個，來源是 Response_Classification_Secondary）。
     kind = SECONDARY_KIND_FINAL if row.review_status == REVIEW_STATUS_MODIFIED else SECONDARY_KIND_AI
     secondaries = [s["sub_category"] for s in get_secondaries(row, kind) if s["sub_category"] != sub_category]
     secondary_sub_category = "、".join(secondaries) if secondaries else None

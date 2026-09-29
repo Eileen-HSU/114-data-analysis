@@ -105,10 +105,12 @@ with app.app_context():
         response_id=r2_id, source_type="survey", question_id="q1",
         answer_text="主管應多給回饋，也要注意部門支援", segment_start=0, segment_end=16,
         main_category="主管領導", sub_category="A2 回饋與溝通",
-        secondary_main_category="部門合作", secondary_sub_category="B2 支援協作",
+        secondaries=[m.Response_Classification_Secondary(
+            kind="ai", position=0, main_category="部門合作", sub_category="B2 支援協作",
+            methodology="互惠與責任承擔分析", citation="cite-b2", in_taxonomy=True,
+        )],
         reasoning="reasoning 2", summary="s",
         methodology="互動與溝通需求分析", citation="cite-a2",
-        secondary_methodology="互惠與責任承擔分析", secondary_citation="cite-b2",
         status="completed", review_status="confirmed",
     )
     db.session.add(rc2)

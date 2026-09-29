@@ -418,18 +418,14 @@ class Response_Classification(db.Model):
     # ── AI 分類結果（AI ORIGINAL RESULT，Human Review 絕對不能覆寫）──
     main_category = db.Column(db.String(100))
     sub_category = db.Column(db.String(100))
-    # 次要分類可以跨大類別，因此 secondary_main_category 是獨立欄位，
-    # 但這個值永遠是後端用 secondary_sub_category 查
-    # services.subcategory_methodology.get_methodology() 表得到的結果，
-    # 不是 Gemini 自己輸出的欄位（Gemini 的輸出格式沒有這個欄位）。
-    secondary_main_category = db.Column(db.String(100))
-    secondary_sub_category = db.Column(db.String(100))
+    # 次要分類（0~N 個）一律存在 Response_Classification_Secondary 子表
+    # （kind="ai"）。2026-09 資料庫整理時移除了舊的單值鏡像欄位
+    # secondary_main_category / secondary_sub_category /
+    # secondary_methodology / secondary_citation。
     reasoning = db.Column(db.Text)
     summary = db.Column(db.Text)
     methodology = db.Column(db.String(100))
     citation = db.Column(db.Text)
-    secondary_methodology = db.Column(db.String(100))
-    secondary_citation = db.Column(db.Text)
 
     # ── Human Review 最終確認結果（final_*）─────────────────
     # 只有 User 在 Review Conversation 中明確按下確認後才會寫入，
@@ -440,10 +436,10 @@ class Response_Classification(db.Model):
     # review_status = modified：曾進過 Review Conversation並確認，
     #     這裡一定有值（即使最終跟 AI original 一樣也會填，因為
     #     「User 曾對 AI 結果產生異議」本身是重要 feedback data）。
+    # 人工定案的次要分類存在 Response_Classification_Secondary（kind="final"），
+    # 舊的 final_secondary_main_category / final_secondary_sub_category 已移除。
     final_main_category = db.Column(db.String(100))
     final_sub_category = db.Column(db.String(100))
-    final_secondary_main_category = db.Column(db.String(100))
-    final_secondary_sub_category = db.Column(db.String(100))
     final_reasoning = db.Column(db.Text)
 
     # ── 狀態與時間戳 ──────────────────────────────────────
@@ -550,6 +546,12 @@ class Response_Classification(db.Model):
                 raise ValueError("外部上傳分類必須提供 uploaded_answer_id")
 
     def to_dict(self) -> dict:
+        ai_secondaries = secondary_list(self, SECONDARY_KIND_AI)
+        final_secondaries = secondary_list(self, SECONDARY_KIND_FINAL)
+        # API 相容：舊版回應有單值的 secondary_* / final_secondary_* 欄位，
+        # 現在由子表的第一個次要分類推導（資料庫不再有這些欄位）。
+        first_ai = next((s for s in ai_secondaries if s.get("in_taxonomy")), {})
+        first_final = final_secondaries[0] if final_secondaries else {}
         return {
             "classification_id": self.classification_id,
             "response_id": self.response_id,
@@ -562,18 +564,12 @@ class Response_Classification(db.Model):
             "segment_end": self.segment_end,
             "main_category": self.main_category,
             "sub_category": self.sub_category,
-            "secondary_main_category": self.secondary_main_category,
-            "secondary_sub_category": self.secondary_sub_category,
             "reasoning": self.reasoning,
             "summary": self.summary,
             "methodology": self.methodology,
             "citation": self.citation,
-            "secondary_methodology": self.secondary_methodology,
-            "secondary_citation": self.secondary_citation,
             "final_main_category": self.final_main_category,
             "final_sub_category": self.final_sub_category,
-            "final_secondary_main_category": self.final_secondary_main_category,
-            "final_secondary_sub_category": self.final_secondary_sub_category,
             "final_reasoning": self.final_reasoning,
             "status": self.status,
             "review_status": self.review_status,
@@ -585,8 +581,14 @@ class Response_Classification(db.Model):
             "reviewed_at": self.reviewed_at.isoformat() if self.reviewed_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "attempt_no": self.attempt_no,
-            "secondary_categories": secondary_list(self, SECONDARY_KIND_AI),
-            "final_secondary_categories": secondary_list(self, SECONDARY_KIND_FINAL),
+            "secondary_categories": ai_secondaries,
+            "final_secondary_categories": final_secondaries,
+            "secondary_main_category": first_ai.get("main_category"),
+            "secondary_sub_category": first_ai.get("sub_category"),
+            "secondary_methodology": first_ai.get("methodology"),
+            "secondary_citation": first_ai.get("citation"),
+            "final_secondary_main_category": first_final.get("main_category"),
+            "final_secondary_sub_category": first_final.get("sub_category"),
             "created_at": (
                 self.created_at.isoformat() if self.created_at else None
             ),
@@ -615,10 +617,7 @@ def secondary_list(row, kind):
 #   in_taxonomy：AI 提出的次要子類別是否在當時使用的分類架構裡；不在的
 #       保留紀錄（Admin 看得到），但不計入彙整。人工選的 final 一律 True。
 #
-# 舊的 secondary_* / final_secondary_* 欄位保留，存「第一個」次要分類的
-# 鏡像值（向後相容舊的讀取端）；讀取一律走
-# services/secondary_classification_service.py（舊資料沒有子表列時由
-# 舊欄位推導）。
+# 這是次要分類唯一的保存位置（舊的單值鏡像欄位已於 2026-09 移除）。
 SECONDARY_KIND_AI = "ai"
 SECONDARY_KIND_FINAL = "final"
 

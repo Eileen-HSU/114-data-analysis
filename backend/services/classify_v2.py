@@ -327,9 +327,8 @@ def _call_gemini_and_parse(masked_text: str, prompt_content: str, category_looku
         services.taxonomy_service.methodology_lookup_for_taxonomy_version()
         產生的查表函式，確保分類跟驗證讀同一份 Published Taxonomy。
 
-    被 _run_classification()（單一整則回答，內部自己遮罩一次）與
-    _classify_segment()（意義單元拆分後的單一 segment，遮罩已在
-    外層做過一次）共用，避免兩邊邏輯各寫一份。
+    由 _classify_segment()（意義單元拆分後的單一 segment，遮罩已在
+    外層做過一次）呼叫。
     """
     result = {
         "main_category": None,
@@ -379,39 +378,6 @@ def _call_gemini_and_parse(masked_text: str, prompt_content: str, category_looku
         result["error_detail"] = f"GEMINI_API_FAILED: {str(e)[:180]}"
 
     return result
-
-
-def _run_classification(answer_text: str, prompt_content: str, question_type: str) -> dict:
-    """
-    底層分類函式（既有邏輯不變）：接受任意 prompt 內容（可能是正式版，
-    也可能是沙盒草稿），內部自行遮罩整則 answer_text 後送 Gemini。
-
-    被 classify_response_v2()（批次分類，flask run-classification 用）
-    與 prompt_admin_service.py 的沙盒測試直接呼叫，這兩個呼叫端
-    這次都不修改，所以這個函式的行為必須維持跟修改前一致，
-    只是內部改呼叫共用的 _call_gemini_and_parse()，避免跟新的
-    多意義單元流程重複維護兩份幾乎一樣的邏輯。
-    """
-    try:
-        masked_text = mask_pii(answer_text)
-    except PiiMaskingError as e:
-        print("[CLASSIFY ERROR][PII_MASKING_FAILED]", repr(e))
-        return {
-            "main_category": None,
-            "sub_category": None,
-            "secondary_sub_category": None,
-            "reasoning": None,
-            "summary": None,
-            "confidence": None,
-            "methodology": None,
-            "citation": None,
-            "secondary_methodology": None,
-            "secondary_citation": None,
-            "status": "failed",
-            "error_detail": f"PII_MASKING_FAILED: {str(e)[:180]}",
-        }
-
-    return _call_gemini_and_parse(masked_text, prompt_content, _methodology_lookup_for_question_type(question_type))
 
 
 def _build_classification_result(parsed: dict, category_lookup) -> dict:
@@ -590,8 +556,7 @@ def classify_response_multi_segment(
               services.review_feedback_service，system_instruction
               逐字元跟這個功能加入之前相同。既有呼叫端
               （test_classify_v2_multi_segment.py、
-              test_taxonomy_classification.py、prompt_admin_service.py
-              的黃金測試路徑）完全不用修改。
+              test_taxonomy_classification.py）完全不用修改。
             - 有傳：呼叫
               services.review_feedback_service.get_reviewed_examples()
               撈出同一個 taxonomy_version_id 下，已經人工審核
@@ -636,7 +601,7 @@ def classify_response_multi_segment(
         "segments": [
             {
                 "orig_start": int, "orig_end": int,
-                # 以下欄位跟舊版 _run_classification() 回傳的欄位一致
+                # 以下為單一片段的分類結果欄位
                 "main_category": ..., "sub_category": ..., ..., "status": ...,
             },
             ...
@@ -792,20 +757,3 @@ def resolve_published_taxonomy_prompt(topic_key: str):
     prompt_content = build_classification_prompt(taxonomy_version, open_set=open_mode_enabled())
     category_lookup = methodology_lookup_for_taxonomy_version(taxonomy_version)
     return prompt_content, category_lookup, taxonomy_version
-
-
-def classify_response_v2(answer_text: str, question_type: str) -> dict:
-    """
-    正式分類流程：從資料庫讀取該題目對應的正式版（live_content）prompt。
-    需要 Flask app context（因為要查資料庫），不能在沒有資料庫連線的環境單獨執行。
-    """
-    from models import Prompt_Template
-
-    row = Prompt_Template.query.get(question_type)
-    if row is None:
-        raise RuntimeError(
-            f"資料庫裡找不到 prompt_key='{question_type}' 的 Prompt_Template，"
-            "請先執行 flask seed-prompts 建立初始資料"
-        )
-
-    return _run_classification(answer_text, row.live_content, question_type)

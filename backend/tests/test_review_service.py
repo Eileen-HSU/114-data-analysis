@@ -212,7 +212,7 @@ def user_header(user_id):
     return {"Authorization": f"Bearer {token}"}
 
 
-def make_classification(answer_text, main_category, sub_category, secondary_sub_category=None):
+def make_classification(answer_text, main_category, sub_category):
     with app.app_context():
         rc = m.Response_Classification(
             response_id=response_id,
@@ -223,7 +223,6 @@ def make_classification(answer_text, main_category, sub_category, secondary_sub_
             segment_end=len(answer_text),
             main_category=main_category,
             sub_category=sub_category,
-            secondary_sub_category=secondary_sub_category,
             reasoning="ai reasoning",
             summary="ai summary",
             methodology="互惠與責任承擔分析",

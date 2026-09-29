@@ -16,6 +16,8 @@ services/subcategory_methodology.py 的 SUBCATEGORY_METHODOLOGY 查表
                                    main_category / sub_category
 
 【本次 Phase A 的設計取捨，供下一階段接續參考】
+（註：文中提到的 Prompt_Template 提示詞表已於 2026-09 資料庫整理時移除，
+以下保留為當時的設計紀錄。）
 
 1. Topic 為什麼是新表，不是重用 Prompt_Template：
    Prompt_Template（prompt_key 為 PK）draft_content / live_content

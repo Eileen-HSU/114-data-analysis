@@ -29,7 +29,6 @@ class User(db.Model):
     user_name = db.Column(db.String(50), nullable=False)
     email = db.Column(db.String(100), nullable=False, unique=True)
     password_hash = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(10), default="user")  # user / admin
     email_2fa_enabled = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
 
@@ -73,18 +72,13 @@ class UserVerification(db.Model):
         db.ForeignKey("User.user_id", ondelete="SET NULL"),
         nullable=True,
     )
-    type = db.Column(db.String(50), nullable=False)  # REGISTER / PASSWORD_RESET / 2FA / SHARE_CHAT
+    type = db.Column(db.String(50), nullable=False)  # 2FA / PASSWORD_RESET / PASSWORD_CHANGE
     code_hash = db.Column(db.String(255), nullable=False)
     is_used = db.Column(db.Boolean, default=False)
     attempts = db.Column(db.Integer, default=0, nullable=False)
     expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
     created_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
     target_email = db.Column(db.String(255))
-
-    # 分享對話功能使用：綁定驗證碼對應的 Workspace，其餘驗證類型為 None
-    project_id = db.Column(
-        db.Integer, db.ForeignKey("Workspace.project_id", ondelete="CASCADE"), nullable=True
-    )
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -129,7 +123,6 @@ class Chat_History(db.Model):
     message_content = db.Column(MEDIUMTEXT, nullable=False)
     sender_type = db.Column(db.String(10), nullable=False)  # user / ai
     status = db.Column(db.String(20), default="active")  # processing / completed / failed
-    corrected_change = db.Column(db.Text)
     created_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
 
     # 子資料表關聯
@@ -194,11 +187,6 @@ class Survey_Response(db.Model):
         nullable=False,
     )
     answer_json = db.Column(db.JSON, nullable=False)
-    # 資料庫既有欄位，後端/前端仍在使用中，不可刪除
-    res_iden = db.Column(db.String(100), nullable=True)
-    response_token = db.Column(
-        db.String(255), nullable=False, default=lambda: str(uuid.uuid4())
-    )
     submitted_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
     updated_at = db.Column(
         db.DateTime(timezone=True), default=taiwan_now, onupdate=taiwan_now
@@ -238,34 +226,6 @@ class Export_File(db.Model):
             "export_status": self.export_status,
             "created_at": (
                 self.created_at.isoformat() if self.created_at else None
-            ),
-        }
-
-
-# ═══════════════════════════════════════════════════════════════
-# AI 分類 Prompt 管理（沙盒環境）
-# ═══════════════════════════════════════════════════════════════
-
-# T10: Prompt_Template - 管理可後台編輯測試的 AI 分類 prompt（草稿版 + 正式版）
-class Prompt_Template(db.Model):
-    __tablename__ = "Prompt_Template"
-
-    prompt_key = db.Column(db.String(50), primary_key=True)
-    draft_content = db.Column(db.Text, nullable=False)
-    live_content = db.Column(db.Text, nullable=False)
-    draft_validated = db.Column(db.Boolean, default=False, nullable=False)
-    updated_at = db.Column(
-        db.DateTime(timezone=True), default=taiwan_now, onupdate=taiwan_now
-    )
-
-    def to_dict(self) -> dict:
-        return {
-            "prompt_key": self.prompt_key,
-            "draft_content": self.draft_content,
-            "live_content": self.live_content,
-            "draft_validated": self.draft_validated,
-            "updated_at": (
-                self.updated_at.isoformat() if self.updated_at else None
             ),
         }
 

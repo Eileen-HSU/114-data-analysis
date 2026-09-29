@@ -1,27 +1,16 @@
 """
 cli.py
 
-集中管理原本散落在根目錄的一次性維運／管理腳本，2026-09 合併於此。
+集中管理一次性維運／管理指令（2026-09 合併於此）：
+    flask init-workspace
+    flask diagnose
+    flask fix-access-codes
+    flask create-admin
+    flask bootstrap-taxonomy
 
-原本這 7 支各自獨立的腳本：
-    init_workspace.py        -> flask init-workspace
-    diagnose.py               -> flask diagnose
-    seed_prompt_templates.py  -> flask seed-prompts
-    update_prompts.py         -> flask update-prompts
-    fix_access_codes.py       -> flask fix-access-codes
-    create_admin.py           -> flask create-admin
-    run_classification.py     -> flask run-classification
-
-全部改用 Flask 官方支援的 CLI command（@app.cli.command()）統一掛在
-同一個進入點，不再各自重複「開一個 app.app_context() 做一件事」的
-樣板程式碼，也不用記一堆檔名，只要記得都是 `flask <子指令>`。
-
-其中 seed_prompt_templates.py / update_prompts.py / create_admin.py /
-run_classification.py 原本刻意「自己組一個最小的 Flask app」，是為了
-避免載入完整 app.py（含所有 routes）才能跑一支小腳本；改成 CLI
-command 之後，這些指令本來就是透過 `flask` 指令、以完整 app.py
-啟動，這個顧慮不再適用，因此統一改為直接使用 app.py 建立好的 app
-實例，不再各自建立最小 app。
+2026-09 資料庫整理時移除了 seed-prompts / update-prompts /
+run-classification：這三個指令只服務已淘汰的 Prompt_Template 提示詞表，
+正式分類改由已發布的分類架構（Taxonomy）即時組出提示詞。
 
 【使用方式】
     cd backend
@@ -30,21 +19,16 @@ command 之後，這些指令本來就是透過 `flask` 指令、以完整 app.p
 例如：
     FLASK_APP=cli.py flask init-workspace
     FLASK_APP=cli.py flask diagnose
-    FLASK_APP=cli.py flask seed-prompts
-    FLASK_APP=cli.py flask update-prompts
     FLASK_APP=cli.py flask fix-access-codes
     FLASK_APP=cli.py flask create-admin --enable-2fa
-    FLASK_APP=cli.py flask run-classification
     FLASK_APP=cli.py flask bootstrap-taxonomy
 
 用 `FLASK_APP=cli.py flask --help` 可以列出全部子指令。
 """
 
-import csv
 import os
 import re
 import sys
-import time
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import click
@@ -150,80 +134,6 @@ def diagnose():
     except Exception as e:
         click.echo(f"\n[ERROR] 診斷失敗: {e}", err=True)
         raise
-
-
-# ═══════════════════════════════════════════════════════════════
-# flask seed-prompts（原 seed_prompt_templates.py）
-# ═══════════════════════════════════════════════════════════════
-@app.cli.command("seed-prompts")
-def seed_prompts():
-    """一次性腳本：把 classify_v2.py 的預設 prompt 寫進 Prompt_Template 表。"""
-    from models import Prompt_Template
-    from services.classify_v2 import DEFAULT_PROMPT_LEADERSHIP, DEFAULT_PROMPT_CAREER
-    from services.subcategory_methodology import QUESTION_LEADERSHIP, QUESTION_CAREER
-
-    seeds = [
-        (QUESTION_LEADERSHIP, DEFAULT_PROMPT_LEADERSHIP),
-        (QUESTION_CAREER, DEFAULT_PROMPT_CAREER),
-    ]
-    for key, content in seeds:
-        existing = Prompt_Template.query.get(key)
-        if existing:
-            click.echo(f"prompt_key='{key}' 已存在，略過（如需重置請先手動刪除）")
-            continue
-        row = Prompt_Template(
-            prompt_key=key,
-            draft_content=content,
-            live_content=content,
-            draft_validated=True,  # 初始值等同正式版，視為已驗證
-        )
-        db.session.add(row)
-        click.echo(f"已新增 prompt_key='{key}'")
-    db.session.commit()
-    click.echo("完成")
-
-
-# ═══════════════════════════════════════════════════════════════
-# flask update-prompts（原 update_prompts.py）
-# ═══════════════════════════════════════════════════════════════
-@app.cli.command("update-prompts")
-def update_prompts():
-    """一次性腳本：把更新過的 prompt 常數推進資料庫（更新草稿→測試→發布）。
-
-    run_classification 實際呼叫的是資料庫裡 Prompt_Template.live_content，
-    不是 classify_v2.py 裡的常數本身，改了 .py 檔案不會自動生效，
-    必須執行這個指令才會真的推進到正式版。
-    """
-    from services.prompt_admin_service import update_draft, test_draft_prompt, publish_prompt
-    from services.classify_v2 import DEFAULT_PROMPT_LEADERSHIP, DEFAULT_PROMPT_CAREER
-    from services.subcategory_methodology import QUESTION_LEADERSHIP, QUESTION_CAREER
-
-    def _update_and_publish(prompt_key, new_content):
-        click.echo(f"--- {prompt_key} ---")
-        update_draft(prompt_key, new_content)
-        click.echo("  已更新草稿")
-
-        result = test_draft_prompt(prompt_key)
-        click.echo(
-            f"  測試結果：格式合法比例 {result['format_valid_rate']:.0%}，"
-            f"跟黃金標籤一致比例 {result['accuracy_vs_golden']:.0%}"
-        )
-
-        if not result["can_publish"]:
-            click.echo("  ⚠️ 測試未通過，不會發布，請檢查 prompt 內容是否有誤")
-            for d in result["details"]:
-                if not d["is_format_valid"]:
-                    click.echo(f"    格式錯誤：{d['answer_text'][:20]}... -> {d['actual_sub_category']}")
-            return
-
-        publish_prompt(prompt_key)
-        click.echo("  ✅ 已發布到正式版")
-
-    _update_and_publish(QUESTION_LEADERSHIP, DEFAULT_PROMPT_LEADERSHIP)
-    click.echo()
-    click.echo("等待 30 秒，避免兩組測試的呼叫次數疊加超過 rate limit...")
-    time.sleep(30)
-    _update_and_publish(QUESTION_CAREER, DEFAULT_PROMPT_CAREER)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -356,105 +266,6 @@ def create_admin(reset_password, enable_2fa):
 
     if enable_2fa:
         click.echo("已開啟此 Admin 帳號的 Email 2FA（下次登入會需要驗證信裡的驗證碼）。")
-
-
-# ═══════════════════════════════════════════════════════════════
-# flask run-classification（原 run_classification.py）
-# ═══════════════════════════════════════════════════════════════
-#
-# 讀取 vine 滿意度質化資料 Excel，對每一題的每一則有效回答呼叫
-# Gemini 分類，存成 CSV，供後續跟人工分類結果比對。需要：
-#   1. 環境變數 GEMINI_API_KEY
-#   2. pandas / openpyxl（已在 requirements.txt）
-#   3. 對應的 Excel 檔案與這裡的 EXCEL_PATH 一致
-_EXCEL_PATH = "vine滿意度質化資料（部門標記＋隨機）ㄐㄠ.xlsx"
-_OUTPUT_PATH = "classification_results.csv"
-
-
-@app.cli.command("run-classification")
-def run_classification():
-    """讀取 Excel 問卷回饋，逐筆呼叫 Gemini 分類並輸出 CSV 供人工比對。"""
-    import pandas as pd
-    from services.classify_v2 import (
-        classify_response_v2,
-        is_text_response,
-        QUESTION_LEADERSHIP,
-        QUESTION_CAREER,
-    )
-
-    if not os.environ.get("GEMINI_API_KEY"):
-        click.echo("錯誤：找不到 GEMINI_API_KEY，請確認 .env 檔案或環境變數已設定", err=True)
-        return
-
-    column_question_map = {
-        "針對主管領導和部門合作這兩項，如果您有機會直接向管理層提出各一項建議，您會提出什麼建議？為什麼這項建議對您和公司很重要？": QUESTION_LEADERSHIP,
-        "關於工作表現的回饋及職涯發展，您認為公司再強化或提供哪些協助將能更好地激勵您和您的同事？": QUESTION_CAREER,
-    }
-
-    df = pd.read_excel(_EXCEL_PATH)
-
-    rows_to_process = []
-    for col in df.columns:
-        question_type = column_question_map.get(col)
-        if question_type is None:
-            click.echo(f"警告：欄位「{col[:30]}...」不在對應表裡，略過")
-            continue
-        for idx, value in df[col].items():
-            if is_text_response(value):
-                rows_to_process.append({
-                    "respondent_id": idx + 1,
-                    "question": col,
-                    "question_type": question_type,
-                    "answer_text": str(value).strip(),
-                })
-
-    click.echo(f"共 {len(rows_to_process)} 筆待分類回答，開始呼叫 Gemini...")
-
-    results = []
-    for i, row in enumerate(rows_to_process, 1):
-        click.echo(f"[{i}/{len(rows_to_process)}] 分類中：{row['answer_text'][:20]}...")
-
-        classification = classify_response_v2(row["answer_text"], row["question_type"])
-
-        if classification["status"] == "failed":
-            click.echo(f"    第一次失敗（{classification['error_detail'][:50]}...），15秒後重試...")
-            time.sleep(15)
-            classification = classify_response_v2(row["answer_text"], row["question_type"])
-            if classification["status"] == "failed":
-                click.echo(f"    重試後仍失敗：{classification['error_detail'][:50]}")
-
-        results.append({
-            "respondent_id": row["respondent_id"],
-            "question": row["question"][:30] + "...",
-            "answer_text": row["answer_text"],
-            "ai_main_category": classification["main_category"],
-            "ai_sub_category": classification["sub_category"],
-            "ai_secondary_sub_category": classification["secondary_sub_category"],
-            "ai_reasoning": classification["reasoning"],
-            "ai_summary": classification["summary"],
-            "ai_confidence": classification["confidence"],
-            "ai_methodology": classification["methodology"],
-            "ai_citation": classification["citation"],
-            "ai_secondary_methodology": classification["secondary_methodology"],
-            "ai_secondary_citation": classification["secondary_citation"],
-            "status": classification["status"],
-            "error_detail": classification.get("error_detail"),
-        })
-
-        # 免費方案 rate limit 是每分鐘 15 次請求，間隔設 5 秒比較安全
-        time.sleep(5)
-
-    with open(_OUTPUT_PATH, "w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.DictWriter(f, fieldnames=results[0].keys())
-        writer.writeheader()
-        writer.writerows(results)
-
-    click.echo(f"\n完成！結果已存至 {_OUTPUT_PATH}")
-
-    status_counts = {}
-    for r in results:
-        status_counts[r["status"]] = status_counts.get(r["status"], 0) + 1
-    click.echo(f"狀態統計：{status_counts}")
 
 
 # ═══════════════════════════════════════════════════════════════

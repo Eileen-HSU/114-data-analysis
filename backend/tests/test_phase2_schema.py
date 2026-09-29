@@ -139,21 +139,21 @@ with app.app_context():
         segment_end=4,
         main_category="部門合作",
         sub_category="B2 支援協作",
-        secondary_main_category="主管領導",
-        secondary_sub_category="A2 回饋與溝通",
+        secondaries=[m.Response_Classification_Secondary(
+            kind="ai", position=0, main_category="主管領導", sub_category="A2 回饋與溝通",
+            methodology="互動與溝通需求分析", citation="cite2", in_taxonomy=True,
+        )],
         reasoning="ai reasoning",
         summary="ai summary",
         methodology="互惠與責任承擔分析",
         citation="cite1",
-        secondary_methodology="互動與溝通需求分析",
-        secondary_citation="cite2",
         status="completed",
     )
     db.session.add(rc)
     db.session.commit()
     rc_id = rc.classification_id
 
-    check("secondary_main_category 寫入成功", rc.secondary_main_category == "主管領導")
+    check("次要分類寫入子表成功", rc.to_dict()["secondary_main_category"] == "主管領導")
     check("final_* 欄位預設為 None（AI original 不受影響）", rc.final_main_category is None and rc.final_sub_category is None)
     check("review_status 預設為 pending_review", rc.review_status == REVIEW_STATUS_PENDING)
 
@@ -162,8 +162,6 @@ with app.app_context():
     rc.review_status = REVIEW_STATUS_MODIFIED
     rc.final_main_category = "主管領導"
     rc.final_sub_category = "A4 領導風格"
-    rc.final_secondary_main_category = None
-    rc.final_secondary_sub_category = None
     rc.final_reasoning = "human confirmed reasoning"
     db.session.commit()
 

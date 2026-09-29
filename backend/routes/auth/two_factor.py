@@ -217,7 +217,6 @@ def _verify_user_2fa(email, otp):
     token = jwt.encode({
         'account_type': 'user',
         'user_id': user.user_id,
-        'role': user.role,
         'exp': taiwan_now() + timedelta(hours=24)
     }, get_jwt_secret(), algorithm="HS256")
 
@@ -232,7 +231,6 @@ def _verify_user_2fa(email, otp):
             "email": user.email,
             "user_name": user.user_name,
             "name": user.user_name,
-            "role": user.role,
         }
     }), 200
 

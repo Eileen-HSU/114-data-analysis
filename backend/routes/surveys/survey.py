@@ -646,8 +646,8 @@ def export_survey_responses(access_code):
     # 這裡刻意不直接把 Survey_Response ORM 物件傳進 builder，而是先轉成
     # 單純的 dict：builder（export_file_service.py）不需要、也不應該
     # 知道 SQLAlchemy model 的存在，職責切乾淨、也方便之後單獨對 builder
-    # 寫不依賴資料庫的單元測試。res_iden 欄位是目前完全沒被使用的舊欄位
-    # （見分析報告），這裡刻意不讀它，一律用 answer_json.respondent_identity。
+    # 寫不依賴資料庫的單元測試。受訪者身分一律用 answer_json.respondent_identity
+    # （舊的 res_iden 欄位已於 2026-09 資料庫整理時移除）。
     response_payload = [
         {
             "answers": (r.answer_json or {}).get("answers") or {},

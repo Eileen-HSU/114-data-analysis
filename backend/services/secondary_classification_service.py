@@ -17,12 +17,13 @@
     架構的 identity，不只顯示名稱）。大類別以分類架構為準：AI 給的子類別
     在分類架構裡 -> 用架構裡的大類別（AI 寫錯大類別也會被校正）；不在
     分類架構裡 -> in_taxonomy=False，保留紀錄但不計入彙整。
-    舊欄位 secondary_* / final_secondary_* 存第一個次要分類的鏡像值。
+    子表是次要分類唯一的保存位置；Response_Classification 舊的單值鏡像
+    欄位（secondary_* / final_secondary_*）已於 2026-09 資料庫整理時移除。
 
 【讀取】
-    get_secondaries(row, kind)：子表有資料就用子表；舊資料（沒有子表列）
-    由舊欄位推導，大類別缺漏時用該列當時的分類架構查回來（舊資料只有
-    secondary_sub_category 也能正確彙整）。
+    get_secondaries(row, kind)：只讀子表。
+    舊資料在舊欄位移除前，由 backfill_legacy_secondaries()（app 啟動時
+    執行）一次搬進子表。
     effective_secondaries(row)：modified -> 人工 final；其餘 -> AI 且
     in_taxonomy。Workspace、Report、Export、Chat 追問、Admin 審核都
     透過 effective_view()（見 effective_classification_service）讀同一份。
@@ -108,8 +109,8 @@ def resolve_secondaries(items, category_lookup, primary_sub_category=None) -> li
 
 
 def legacy_fields(resolved) -> dict:
-    """舊欄位鏡像：第一個「在分類架構裡」的次要分類（跟以前一樣，查不到
-    就不填）。"""
+    """AI 結果 dict 的相容 key：第一個「在分類架構裡」的次要分類（查不到
+    就不填）。只用在記憶體裡的分類結果 / API 回應，不寫入資料庫。"""
     first = next((s for s in resolved or [] if s.get("in_taxonomy")), None)
     return {
         "secondary_main_category": first["main_category"] if first else None,
@@ -124,7 +125,7 @@ def legacy_fields(resolved) -> dict:
 # ═══════════════════════════════════════════════════════════════
 
 def attach_ai_secondaries(row, resolved, taxonomy_version_id):
-    """新建的分類列：寫入 AI 次要分類子表 + 舊欄位鏡像。"""
+    """新建的分類列：寫入 AI 次要分類子表。"""
     for position, item in enumerate(resolved or []):
         row.secondaries.append(Response_Classification_Secondary(
             kind=SECONDARY_KIND_AI, position=position,
@@ -133,16 +134,10 @@ def attach_ai_secondaries(row, resolved, taxonomy_version_id):
             methodology=item.get("methodology"), citation=item.get("citation"),
             in_taxonomy=bool(item.get("in_taxonomy")),
         ))
-    mirror = legacy_fields(resolved)
-    row.secondary_main_category = mirror["secondary_main_category"]
-    row.secondary_sub_category = mirror["secondary_sub_category"]
-    row.secondary_methodology = mirror["secondary_methodology"]
-    row.secondary_citation = mirror["secondary_citation"]
 
 
 def set_final_secondaries(row, items, admin_id=None):
-    """人工最終次要分類（modified）：取代這筆列既有的 final 子表列，並寫入
-    final_secondary_* 鏡像。items: [{"main_category", "sub_category",
+    """人工最終次要分類（modified）：取代這筆列既有的 final 子表列。items: [{"main_category", "sub_category",
     "methodology"?, "citation"?, "taxonomy_category_id"?}]（呼叫端已驗證）。"""
     for child in [c for c in row.secondaries if c.kind == SECONDARY_KIND_FINAL]:
         row.secondaries.remove(child)
@@ -162,9 +157,6 @@ def set_final_secondaries(row, items, admin_id=None):
             in_taxonomy=True, created_by_admin_id=admin_id,
         ))
         position += 1
-    finals = [c for c in row.secondaries if c.kind == SECONDARY_KIND_FINAL]
-    row.final_secondary_main_category = finals[0].main_category if finals else None
-    row.final_secondary_sub_category = finals[0].sub_category if finals else None
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -182,18 +174,9 @@ def _lookup_for(row):
 
 
 def get_secondaries(row, kind=SECONDARY_KIND_AI) -> list:
-    children = getattr(row, "secondaries", None)
-    if children:
-        own = sorted((c for c in children if c.kind == kind), key=lambda c: c.position)
-        if own:
-            return [c.to_dict() for c in own]
-
-    # 舊資料（沒有這一種的子表列）：由舊欄位推導。新資料的舊欄位是子表的
-    # 鏡像，沒有次要分類時一定是 NULL，所以這裡不會重複產生。
-    return [
-        dict(item, taxonomy_version_id=getattr(row, "taxonomy_version_id", None), position=0)
-        for item in _legacy_items(row, kind)
-    ]
+    children = getattr(row, "secondaries", None) or []
+    own = sorted((c for c in children if c.kind == kind), key=lambda c: c.position)
+    return [c.to_dict() for c in own]
 
 
 def effective_secondaries(row, primary_sub_category=None) -> list:
@@ -215,46 +198,87 @@ def effective_secondaries(row, primary_sub_category=None) -> list:
 # ═══════════════════════════════════════════════════════════════
 # 舊資料回填（runtime migration；冪等）
 # ═══════════════════════════════════════════════════════════════
+#
+# Response_Classification 舊的單值欄位已經從 model 移除，但正式資料庫在
+# 執行清理 SQL（backend/db_cleanup/）之前仍然有這些欄位。app 啟動時用
+# 原生 SQL 讀舊欄位、把「還沒有子表列」的資料搬進子表；舊欄位不存在
+# （已經清掉）時直接略過。
+
+LEGACY_SECONDARY_COLUMNS = (
+    "secondary_main_category", "secondary_sub_category",
+    "secondary_methodology", "secondary_citation",
+    "final_secondary_main_category", "final_secondary_sub_category",
+)
+
+
+def _legacy_columns_present() -> set:
+    from sqlalchemy import inspect
+
+    try:
+        columns = inspect(db.session.get_bind()).get_columns("Response_Classification")
+    except Exception:
+        return set()
+    names = {c["name"] for c in columns}
+    return {c for c in LEGACY_SECONDARY_COLUMNS if c in names}
+
+
+class _LegacyRow:
+    """ORM 列 + 舊欄位值（舊欄位已不在 model 上）。給 _legacy_items 查表用。"""
+
+    def __init__(self, row, legacy):
+        self._row = row
+        self._legacy = legacy
+
+    def __getattr__(self, name):
+        if name in LEGACY_SECONDARY_COLUMNS:
+            return self._legacy.get(name)
+        return getattr(self._row, name)
+
 
 def backfill_legacy_secondaries(batch_size=500, logger=None) -> dict:
     """把舊欄位（secondary_sub_category / final_secondary_sub_category）
     轉成子表列，只處理「還沒有對應 kind 子表列」的分類，所以重複執行不會
     重複寫入；(classification_id, kind, position) 唯一索引擋併發重複。
-
-    不改動、不刪除任何既有欄位的值；只在 secondary_main_category 原本是
-    NULL 且能從分類架構查到時補上（修正舊資料缺大類別、彙整被略過的問題）。
+    只讀舊欄位、不改寫舊欄位。舊欄位已移除時回傳 {"skipped": True}。
     """
-    from sqlalchemy import and_, exists
+    from sqlalchemy import text
     from sqlalchemy.exc import IntegrityError
 
     from classification_models import Response_Classification
 
-    stats = {"ai": 0, "final": 0, "main_filled": 0, "conflicts": 0}
-    for kind, column in ((SECONDARY_KIND_AI, Response_Classification.secondary_sub_category),
-                         (SECONDARY_KIND_FINAL, Response_Classification.final_secondary_sub_category)):
-        has_child = exists().where(and_(
-            Response_Classification_Secondary.classification_id == Response_Classification.classification_id,
-            Response_Classification_Secondary.kind == kind,
-        ))
+    present = _legacy_columns_present()
+    stats = {"ai": 0, "final": 0, "conflicts": 0}
+    if not present:
+        stats["skipped"] = True
+        if logger:
+            logger.info("[SECONDARY_BACKFILL] legacy columns not present, skipped")
+        return stats
+
+    select_cols = ", ".join(f"`{c}`" for c in sorted(present))
+    for kind, column in ((SECONDARY_KIND_AI, "secondary_sub_category"),
+                         (SECONDARY_KIND_FINAL, "final_secondary_sub_category")):
+        if column not in present:
+            continue
         last_id = 0
         while True:
-            rows = (
-                Response_Classification.query
-                .filter(column.isnot(None), column != "", ~has_child,
-                        Response_Classification.classification_id > last_id)
-                .order_by(Response_Classification.classification_id.asc())
-                .limit(batch_size).all()
-            )
+            rows = db.session.execute(text(
+                f"SELECT rc.`classification_id`, {select_cols} FROM `Response_Classification` rc "
+                f"WHERE rc.`{column}` IS NOT NULL AND rc.`{column}` <> '' "
+                "AND rc.`classification_id` > :last_id "
+                "AND NOT EXISTS (SELECT 1 FROM `Response_Classification_Secondary` s "
+                "WHERE s.`classification_id` = rc.`classification_id` AND s.`kind` = :kind) "
+                "ORDER BY rc.`classification_id` ASC LIMIT :limit"
+            ), {"last_id": last_id, "kind": kind, "limit": batch_size}).mappings().all()
             if not rows:
                 break
-            last_id = rows[-1].classification_id
-            for row in rows:
-                legacy = _legacy_item(row, kind)
+            last_id = rows[-1]["classification_id"]
+            for raw in rows:
+                row = db.session.get(Response_Classification, raw["classification_id"])
+                if row is None:
+                    continue
+                legacy = _legacy_item(_LegacyRow(row, dict(raw)), kind)
                 if legacy is None:
                     continue
-                if kind == SECONDARY_KIND_AI and not row.secondary_main_category and legacy["main_category"]:
-                    row.secondary_main_category = legacy["main_category"]
-                    stats["main_filled"] += 1
                 db.session.add(Response_Classification_Secondary(
                     classification_id=row.classification_id, kind=kind, position=0,
                     main_category=legacy["main_category"], sub_category=legacy["sub_category"],
@@ -268,9 +292,28 @@ def backfill_legacy_secondaries(batch_size=500, logger=None) -> dict:
             except IntegrityError:
                 db.session.rollback()  # 另一個 process 同時在回填：交給它
                 stats["conflicts"] += 1
+            db.session.expire_all()
     if logger:
         logger.info("[SECONDARY_BACKFILL] %s", stats)
     return stats
+
+
+def count_unmigrated_legacy_secondaries() -> int:
+    """清理 SQL 執行前的安全檢查：還有幾筆舊欄位資料沒有對應子表列。"""
+    from sqlalchemy import text
+
+    present = _legacy_columns_present()
+    total = 0
+    for kind, column in ((SECONDARY_KIND_AI, "secondary_sub_category"),
+                         (SECONDARY_KIND_FINAL, "final_secondary_sub_category")):
+        if column not in present:
+            continue
+        total += db.session.execute(text(
+            f"SELECT COUNT(*) FROM `Response_Classification` rc WHERE rc.`{column}` IS NOT NULL "
+            f"AND rc.`{column}` <> '' AND NOT EXISTS (SELECT 1 FROM `Response_Classification_Secondary` s "
+            "WHERE s.`classification_id` = rc.`classification_id` AND s.`kind` = :kind)"
+        ), {"kind": kind}).scalar() or 0
+    return total
 
 
 def _legacy_item(row, kind):
@@ -279,7 +322,7 @@ def _legacy_item(row, kind):
 
 
 def _legacy_items(row, kind):
-    """舊欄位 -> 次要分類（最多一個）。可以吃 ORM 列，也可以吃測試替身。"""
+    """舊欄位 -> 次要分類（最多一個）。row 需提供舊欄位屬性（_LegacyRow）。"""
     if kind == SECONDARY_KIND_FINAL:
         sub = getattr(row, "final_secondary_sub_category", None)
         main = getattr(row, "final_secondary_main_category", None)

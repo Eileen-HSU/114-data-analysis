@@ -15,7 +15,7 @@ AI 回傳的真實結構：
     5. 人工修改後使用 final secondary results（AI 原始的保留）
     6. re-analysis 不遺失歷史次要分類
     另外：舊格式相容、AI 大類別寫錯會被校正、不在分類架構的次要分類保留但
-    不計入、舊資料（只有 secondary_sub_category）可以彙整、回填冪等。
+    不計入、舊欄位資料在清理 SQL 執行前能完整搬進子表、回填冪等。
 
 執行方式：
     cd backend
@@ -103,8 +103,9 @@ with app.app_context():
     check("第 3 個：不在分類架構 -> in_taxonomy=False、保留紀錄", children[2].sub_category == "不存在的子類"
           and not children[2].in_taxonomy and children[2].taxonomy_category_id is None)
     r0 = db.session.get(m.Response_Classification, R0)
-    check("舊欄位鏡像第一個（含大類別，不再是 NULL）",
-          (r0.secondary_main_category, r0.secondary_sub_category, r0.secondary_methodology) == ("職涯發展", "A1 教育訓練", "Method A1"))
+    r0d = r0.to_dict()
+    check("API 相容 key 取第一個次要分類（含大類別）",
+          (r0d["secondary_main_category"], r0d["secondary_sub_category"], r0d["secondary_methodology"]) == ("職涯發展", "A1 教育訓練", "Method A1"))
     c1 = m.Response_Classification_Secondary.query.filter_by(classification_id=R1).all()
     check("回答 1（舊格式）：1 列、大類別由分類架構補上",
           len(c1) == 1 and (c1[0].main_category, c1[0].sub_category) == ("薪酬福利", "C1 薪資") and c1[0].in_taxonomy)
@@ -168,7 +169,8 @@ with app.app_context():
     check("final 子表：2 列、created_by_admin_id、category identity",
           len(finals) == 2 and all(c.created_by_admin_id == 1 and c.in_taxonomy for c in finals)
           and finals[0].taxonomy_category_id == CAT_ID["A1 教育訓練"])
-    check("final_secondary_* 鏡像第一個", (r1.final_secondary_main_category, r1.final_secondary_sub_category) == ("職涯發展", "A1 教育訓練"))
+    r1d = r1.to_dict()
+    check("API 相容 key final_secondary_* 取第一個", (r1d["final_secondary_main_category"], r1d["final_secondary_sub_category"]) == ("職涯發展", "A1 教育訓練"))
     view = effective_view(r1)
     check("effective 用人工 final（A1、E1），不是 AI 的 C1",
           [s["sub_category"] for s in view["secondary_categories"]] == ["A1 教育訓練", "E1 設施"])
@@ -241,42 +243,55 @@ with app.app_context():
     new = m.Response_Classification.query.filter_by(response_id=old.response_id, attempt_no=2).one()
     check("新 attempt 有自己的次要分類", [c.sub_category for c in new.secondaries] == ["A2 升遷制度"])
 
-print("\n========== 相容：舊資料只有 secondary_sub_category ==========")
+print("\n========== 舊欄位回填（清理 SQL 執行前的正式資料庫）==========")
 with app.app_context():
+    from sqlalchemy import text
+    from services.secondary_classification_service import (
+        LEGACY_SECONDARY_COLUMNS, backfill_legacy_secondaries, count_unmigrated_legacy_secondaries,
+    )
+
+    check("舊欄位不存在時回填直接略過", backfill_legacy_secondaries().get("skipped") is True)
+
+    # 模擬還沒執行清理 SQL 的舊資料庫：舊欄位仍在，舊資料只有舊欄位、沒有子表列
+    for col in LEGACY_SECONDARY_COLUMNS:
+        db.session.execute(text(f"ALTER TABLE Response_Classification ADD COLUMN {col} TEXT"))
     legacy = m.Response_Classification(
         source_type="user_upload", upload_batch_id=BATCH, uploaded_answer_id=rows[0].uploaded_answer_id,
         question_id="legacy", answer_text="舊資料", segment_start=0, segment_end=3,
-        main_category="職涯發展", sub_category="A2 升遷制度", secondary_sub_category="C1 薪資",
+        main_category="職涯發展", sub_category="A2 升遷制度",
         status="completed", review_status="confirmed", taxonomy_version_id=VID,
     )
     legacy_final = m.Response_Classification(
         source_type="user_upload", upload_batch_id=BATCH, uploaded_answer_id=rows[0].uploaded_answer_id,
         question_id="legacy2", answer_text="舊資料二", segment_start=0, segment_end=4,
         main_category="職涯發展", sub_category="A2 升遷制度", status="completed", review_status="modified",
-        final_main_category="職涯發展", final_sub_category="A1 教育訓練", final_secondary_sub_category="E1 設施",
+        final_main_category="職涯發展", final_sub_category="A1 教育訓練",
         taxonomy_version_id=VID,
     )
     db.session.add_all([legacy, legacy_final])
     db.session.commit()
-    check("前置：舊資料沒有子表列、沒有次要大類別",
-          not legacy.secondaries and legacy.secondary_main_category is None)
+    db.session.execute(text("UPDATE Response_Classification SET secondary_sub_category = 'C1 薪資' "
+                            "WHERE classification_id = :id"), {"id": legacy.classification_id})
+    db.session.execute(text("UPDATE Response_Classification SET final_secondary_sub_category = 'E1 設施' "
+                            "WHERE classification_id = :id"), {"id": legacy_final.classification_id})
+    db.session.commit()
+    check("前置：2 筆舊資料尚未搬到子表", count_unmigrated_legacy_secondaries() == 2)
+
+    first = backfill_legacy_secondaries()
+    second = backfill_legacy_secondaries()
+    check("回填：ai 1 列、final 1 列", first["ai"] == 1 and first["final"] == 1)
+    check("回填冪等：第二次 0 列", second["ai"] == 0 and second["final"] == 0)
+    check("回填後沒有未搬移的資料（可以安全執行清理 SQL）", count_unmigrated_legacy_secondaries() == 0)
+    db.session.expire_all()
+    legacy = db.session.get(m.Response_Classification, legacy.classification_id)
+    legacy_final = db.session.get(m.Response_Classification, legacy_final.classification_id)
     view = effective_view(legacy, include_methodology=True)
-    check("讀取時由分類架構補出大類別（可以進彙整）",
+    check("回填後由分類架構補出大類別與方法（可以進彙整）",
           [(s["main_category"], s["sub_category"], s["methodology"]) for s in view["secondary_categories"]]
           == [("薪酬福利", "C1 薪資", "Method C1")])
-    check("舊 modified 的 final 次要分類也能讀", [s["sub_category"] for s in effective_view(legacy_final)["secondary_categories"]] == ["E1 設施"])
+    check("舊 modified 的 final 次要分類也搬過來", [s["sub_category"] for s in effective_view(legacy_final)["secondary_categories"]] == ["E1 設施"])
     from services.aggregation_service import build_aggregation
     agg = {(g["main_category"], g["sub_category"]): g for g in build_aggregation("user_upload", upload_batch_id=BATCH)}
     check("舊資料的次要分類進入 report 彙整", legacy.classification_id in [i["classification_id"] for i in agg[("薪酬福利", "C1 薪資")]["items"]])
-
-    from services.secondary_classification_service import backfill_legacy_secondaries
-    first = backfill_legacy_secondaries()
-    second = backfill_legacy_secondaries()
-    check("回填：ai 1 列、final 1 列、補上次要大類別", first["ai"] == 1 and first["final"] == 1 and first["main_filled"] == 1)
-    check("回填冪等：第二次 0 列", second["ai"] == 0 and second["final"] == 0)
-    db.session.expire_all()
-    legacy = db.session.get(m.Response_Classification, legacy.classification_id)
-    check("回填後舊欄位原值不變、大類別補上", legacy.secondary_sub_category == "C1 薪資" and legacy.secondary_main_category == "薪酬福利")
-    check("回填後讀到同樣結果（不重複）", [s["sub_category"] for s in effective_view(legacy)["secondary_categories"]] == ["C1 薪資"])
 
 finish()

@@ -49,7 +49,8 @@ from classification_models import (
 from services.review_ai_service import build_review_reply
 from services import audit_service
 from services.effective_classification_service import is_failed
-from services.secondary_classification_service import get_secondaries, set_final_secondaries
+from services.secondary_classification_service import get_secondaries, legacy_fields, set_final_secondaries
+
 from services.report_service import (
     OUTDATED_BULK_REVIEW_ACTION,
     OUTDATED_CLASSIFICATION_CONFIRMED,
@@ -100,6 +101,12 @@ def _admin_display_name(admin_id):
     「查不到名字但仍帶 id」。"""
     admin = db.session.get(Admin, admin_id)
     return admin.admin_name if admin else None
+
+
+def _first_ai_secondary(classification) -> dict:
+    """第一個「在分類架構裡」的 AI 次要分類（secondary_main_category /
+    secondary_sub_category / ...），來源是 Response_Classification_Secondary。"""
+    return legacy_fields(get_secondaries(classification))
 
 
 def _load_classification(classification_id):
@@ -202,14 +209,14 @@ def _taxonomy_categories(classification):
                 "citation": classification.citation,
             },
             *(
-                [{
-                    "main_category": classification.secondary_main_category,
-                    "sub_category": classification.secondary_sub_category,
-                    "methodology": classification.secondary_methodology,
-                    "citation": classification.secondary_citation,
-                }]
-                if classification.secondary_sub_category
-                else []
+                {
+                    "main_category": s["main_category"],
+                    "sub_category": s["sub_category"],
+                    "methodology": s["methodology"],
+                    "citation": s["citation"],
+                }
+                for s in get_secondaries(classification)
+                if s.get("in_taxonomy")
             ),
         ]
     return [
@@ -471,7 +478,7 @@ def send_message(classification_id, admin_id, message_text):
     candidate_sub = latest_candidate_msg.candidate_sub_category if latest_candidate_msg else classification.sub_category
     candidate_secondary_sub = (
         latest_candidate_msg.candidate_secondary_sub_category if latest_candidate_msg
-        else classification.secondary_sub_category
+        else _first_ai_secondary(classification)["secondary_sub_category"]
     )
 
     history = [
@@ -492,7 +499,7 @@ def send_message(classification_id, admin_id, message_text):
         segment_text=_segment_text(classification),
         ai_main_category=classification.main_category,
         ai_sub_category=classification.sub_category,
-        ai_secondary_sub_category=classification.secondary_sub_category,
+        ai_secondary_sub_category=_first_ai_secondary(classification)["secondary_sub_category"],
         ai_reasoning=classification.reasoning,
         candidate_sub_category=candidate_sub,
         candidate_secondary_sub_category=candidate_secondary_sub,
@@ -609,8 +616,9 @@ def confirm_candidate(classification_id, admin_id):
         # review_status 仍然是 modified。
         final_main = classification.main_category
         final_sub = classification.sub_category
-        final_secondary_main = classification.secondary_main_category
-        final_secondary_sub = classification.secondary_sub_category
+        first_ai = _first_ai_secondary(classification)
+        final_secondary_main = first_ai["secondary_main_category"]
+        final_secondary_sub = first_ai["secondary_sub_category"]
         final_reasoning = classification.reasoning
 
     # Primary == Secondary 正規化（跟 classify_v2 / review_ai_service 一致）
