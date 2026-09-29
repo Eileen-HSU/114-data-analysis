@@ -57,7 +57,6 @@ export function AuthProvider({ children }) {
             ...currentUser,
             avatar: data.avatar_url || "",
             email_2fa_enabled: data.email_2fa_enabled === true,
-            language: ["zh-TW", "en"].includes(data.language) ? data.language : currentUser.language,
           };
           localStorage.setItem(AUTH_KEY, JSON.stringify(nextUser));
           return nextUser;

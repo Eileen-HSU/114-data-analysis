@@ -110,7 +110,6 @@ export default function ProfilePage() {
     location: "",
     bio: "",
     createdAt: "",
-    language: language,
   });
   const [editProfile, setEditProfile] = useState(profile);
   const twoFactorStorageKey = `${TWO_FACTOR_KEY_PREFIX}_${getUserStorageId(user)}`;
@@ -183,7 +182,6 @@ export default function ProfilePage() {
         location:  profileCache.location     || "",
         bio:       profileCache.bio          || "",
         createdAt: profileCache.created_at   || "",
-        language:  profileCache.language     || language,
       };
       setProfile(loaded);
       if (!profileLoadedRef.current) {
@@ -207,7 +205,6 @@ export default function ProfilePage() {
           location:  data.location     || "",
           bio:       data.bio          || "",
           createdAt: data.created_at   || "",
-          language:  data.language     || language,
         };
         setProfile(loaded);
         if (!profileLoadedRef.current) {

@@ -5,6 +5,7 @@ import Navbar from "../../components/feature/Navbar";
 import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
 import DeadlineDateTimePicker from "../../components/feature/DeadlineDateTimePicker";
 import { useAuth } from "../../hooks/AuthContext";
+import { readLanguagePreference } from "../../context/languagePreference";
 import { useActivity } from "../../hooks/ActivityContext";
 import axios from "axios";
 import { apiUrl } from "../../lib/api";
@@ -351,14 +352,7 @@ export default function CreateSurveyPage() {
             {/* runtime language detection for English-mode */}
             {(() => {
               function getLang() {
-                try {
-                  const l = localStorage.getItem("dataanalysis_language");
-                  const nav = (navigator && (navigator.language || navigator.userLanguage)) || "";
-                  const lang = (l || nav || "zh-TW").toLowerCase();
-                  return lang.startsWith("en") ? "en" : "zh";
-                } catch (e) {
-                  return "zh";
-                }
+                return readLanguagePreference() === "en" ? "en" : "zh";
               }
               const lang = getLang();
               return (
@@ -369,7 +363,7 @@ export default function CreateSurveyPage() {
               );
             })()}
             <div className="invite-code-box">
-              <div className="invite-code-label">{(() => { try { const l = localStorage.getItem("dataanalysis_language") || navigator.language || ""; return (l && l.toLowerCase().startsWith("en")) ? "Invite Code" : "邀請碼"; } catch { return "邀請碼"; } })()}</div>
+              <div className="invite-code-label">{(() => { try { const l = readLanguagePreference(); return (l && l.toLowerCase().startsWith("en")) ? "Invite Code" : "邀請碼"; } catch { return "邀請碼"; } })()}</div>
               <div className="invite-code-value">{generatedCode}</div>
             </div>
             <button
@@ -380,11 +374,11 @@ export default function CreateSurveyPage() {
               }}
             >
               <i className={copiedCode ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
-              {(() => { try { const l = localStorage.getItem("dataanalysis_language") || navigator.language || ""; return (copiedCode ? ((l.toLowerCase().startsWith("en")) ? "Copied" : "已複製") : ((l.toLowerCase().startsWith("en")) ? "Copy invite code" : "複製邀請碼")); } catch { return copiedCode ? "已複製" : "複製邀請碼"; } })()}
+              {(() => { try { const l = readLanguagePreference(); return (copiedCode ? ((l.toLowerCase().startsWith("en")) ? "Copied" : "已複製") : ((l.toLowerCase().startsWith("en")) ? "Copy invite code" : "複製邀請碼")); } catch { return copiedCode ? "已複製" : "複製邀請碼"; } })()}
             </button>
             <div className="invite-link-box">
-              <div className="invite-code-label">{(() => { try { const l = localStorage.getItem("dataanalysis_language") || navigator.language || ""; return (l.toLowerCase().startsWith("en")) ? "Fill Link" : "填寫連結"; } catch { return "填寫連結"; } })()}</div>
-              <div className="invite-link-value">{shareLink || (() => { try { const l = localStorage.getItem("dataanalysis_language") || navigator.language || ""; return l.toLowerCase().startsWith("en") ? "Generating short link..." : "短連結產生中..."; } catch { return "短連結產生中..."; } })()}</div>
+              <div className="invite-code-label">{(() => { try { const l = readLanguagePreference(); return (l.toLowerCase().startsWith("en")) ? "Fill Link" : "填寫連結"; } catch { return "填寫連結"; } })()}</div>
+              <div className="invite-link-value">{shareLink || (() => { try { const l = readLanguagePreference(); return l.toLowerCase().startsWith("en") ? "Generating short link..." : "短連結產生中..."; } catch { return "短連結產生中..."; } })()}</div>
             </div>
             <button
               className={`copy-code-btn ${copiedLink ? "copied" : ""}`}
@@ -396,7 +390,7 @@ export default function CreateSurveyPage() {
               }}
             >
               <i className={copiedLink ? "ri-checkbox-circle-line" : "ri-link"}></i>
-              {(() => { try { const l = localStorage.getItem("dataanalysis_language") || navigator.language || ""; return (copiedLink ? ((l.toLowerCase().startsWith("en")) ? "Link copied" : "已複製連結") : ((l.toLowerCase().startsWith("en")) ? "Copy fill link" : "複製填寫連結")); } catch { return copiedLink ? "已複製連結" : "複製填寫連結"; } })()}
+              {(() => { try { const l = readLanguagePreference(); return (copiedLink ? ((l.toLowerCase().startsWith("en")) ? "Link copied" : "已複製連結") : ((l.toLowerCase().startsWith("en")) ? "Copy fill link" : "複製填寫連結")); } catch { return copiedLink ? "已複製連結" : "複製填寫連結"; } })()}
             </button>
             <div className="d-flex gap-3">
               <a href={buildSurveyFillPath(generatedCode)} className="btn-generate" style={{ flex: 1, padding: "14px", textDecoration: "none", justifyContent: "center" }}>

@@ -6,6 +6,7 @@ import DeadlineDateTimePicker from "../../../components/feature/DeadlineDateTime
 import { buildExternalSurveyShortUrl, buildSurveyFillUrl } from "../../../lib/surveyLinks";
 import { useAuth } from "../../../hooks/AuthContext";
 import { useLanguage } from "../../../context/LanguageContext";
+import { readLanguagePreference } from "../../../context/languagePreference";
 import { apiUrl } from "../../../lib/api";
 // 【修正】原本這裡有 import buildSurveyChatContent，用來組出使用者訊息的完整文字內容，現在改成簡短一行不再需要這個函式，拿掉未使用的 import。
 
@@ -38,14 +39,7 @@ function getNextDeadlineMin() {
 
 // runtime language detection (reads user's selected language from localStorage)
 function getLang() {
-  try {
-    const l = (typeof window !== "undefined" && window.localStorage.getItem("dataanalysis_language")) || "";
-    const nav = (typeof navigator !== "undefined" && (navigator.language || navigator.userLanguage)) || "";
-    const lang = (l || nav || "").toLowerCase();
-    return lang.startsWith("en") ? "en" : "zh";
-  } catch (e) {
-    return "zh";
-  }
+  return readLanguagePreference() === "en" ? "en" : "zh";
 }
 
 function formatDeadline(value) {

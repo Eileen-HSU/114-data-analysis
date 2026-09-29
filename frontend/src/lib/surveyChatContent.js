@@ -1,3 +1,5 @@
+import { readLanguagePreference } from "../context/languagePreference";
+
 function normalizeSurveyDetail(survey = {}, questions, responses) {
   const code = survey.code || survey.access_code || "";
   return {
@@ -20,14 +22,7 @@ function normalizeSurveyDetail(survey = {}, questions, responses) {
 }
 
 function getLang() {
-  try {
-    const v = localStorage.getItem("dataanalysis_language");
-    if (v) return v;
-    const nav = (navigator.language || navigator.userLanguage || "").toLowerCase();
-    return nav.startsWith("zh") ? "zh" : "en";
-  } catch (e) {
-    return "en";
-  }
+  return readLanguagePreference();
 }
 
 function t(zh, en) {

@@ -1,11 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { interfaceEnglish } from "./interfaceEnglish";
-import { resolveLanguagePreference } from "./languagePreference";
+import { LANGUAGE_STORAGE_KEY, readLanguagePreference } from "./languagePreference";
 import { useAuth } from "../hooks/AuthContext";
 import { apiUrl, installLanguageAwareFetch } from "../lib/api";
 
-const STORAGE_KEY = "dataanalysis_language";
 const copy = {
   "zh-TW": {
     project: "專案管理", assistant: "分析助理", survey: "問卷調查", login: "登入", signup: "註冊",
@@ -221,12 +220,9 @@ function translateLegacyInterface(language) {
 const LanguageContext = createContext({ language: "zh-TW", setLanguage: () => {}, t: (key) => key });
 
 export function LanguageProvider({ children }) {
-  const { user, updateUser } = useAuth();
-  const [language, setLanguageState] = useState(() => resolveLanguagePreference(localStorage.getItem(STORAGE_KEY)));
-  useEffect(() => {
-    // Authentication and profile responses must never change the active language.
-    localStorage.setItem(STORAGE_KEY, language);
-  }, [language]);
+  // Auth is used only to authorize a profile save after a manual UI choice.
+  const { user } = useAuth();
+  const [language, setLanguageState] = useState(readLanguagePreference);
   useLayoutEffect(() => { document.documentElement.lang = language; }, [language]);
   useEffect(() => {
     installLanguageAwareFetch();
@@ -250,11 +246,12 @@ export function LanguageProvider({ children }) {
   }, [language]);
   const setLanguage = useCallback(async (next) => {
     if (!["zh-TW", "en"].includes(next)) return;
-    setLanguageState(next); localStorage.setItem(STORAGE_KEY, next); updateUser?.({ language: next });
+    setLanguageState(next);
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, next);
     if (user?.token && user?.user_id) {
       try { await fetch(apiUrl(`/api/profile/${user.user_id}`), { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${user.token}`, "Accept-Language": next }, body: JSON.stringify({ language: next }) }); } catch { /* local preference remains available offline */ }
     }
-  }, [user?.token, user?.user_id, updateUser]);
+  }, [user?.token, user?.user_id]);
   const value = useMemo(() => ({ language, setLanguage, t: (key) => copy[language]?.[key] || copy["zh-TW"][key] || key }), [language, setLanguage]);
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }
