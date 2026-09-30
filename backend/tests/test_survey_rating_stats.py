@@ -461,7 +461,15 @@ check(
     len(list(_rating_ws_check.conditional_formatting)) == 0,
 )
 
-rating_sheet_rows = sheets_with_rating["評分題統計"]
+_rating_all_rows = sheets_with_rating["評分題統計"]
+check("評分題統計第 1 列是指向分類結果分頁的提示",
+      _rating_all_rows[0][0] == "→ 分類結果在第二個分頁「分類結果」（點這裡或下方的分頁標籤即可切換）")
+check("提示可以點擊，連到分類結果分頁的 A1", _rating_ws_check["A1"].hyperlink is not None
+      and _rating_ws_check["A1"].hyperlink.location == "'分類結果'!A1")
+check("提示下方第 2 列留白", _rating_all_rows[1] == [None] * 6)
+check("打開檔案時第一個看到的是評分題統計（提示所在的分頁）", _wb_check.active.title == "評分題統計")
+# 以下原有的版面斷言都以第 3 列（提示＋空白之後）為區塊起點
+rating_sheet_rows = _rating_all_rows[2:]
 check("Q 編號＋題目全文出現在題目列（同一格，橫跨整個區塊寬度）", rating_sheet_rows[0][0] == "Q1　課程整體滿意度")
 check("平均分數行格式為「平均分數：」＋「2.7 / 5」兩個儲存格", rating_sheet_rows[1][0] == "平均分數：" and rating_sheet_rows[1][1] == "2.7 / 5")
 check("有效回答行格式為「有效回答：」＋「3 份」", rating_sheet_rows[2][0] == "有效回答：" and rating_sheet_rows[2][1] == "3 份")
@@ -472,8 +480,8 @@ check(
 )
 check("分布區第二列裡 5 分那格是「1 人」", rating_sheet_rows[5][5] == "1 人")
 
-average_value_cell = _rating_ws_check.cell(row=2, column=2)
-title_cell_check = _rating_ws_check.cell(row=1, column=1)
+average_value_cell = _rating_ws_check.cell(row=4, column=2)
+title_cell_check = _rating_ws_check.cell(row=3, column=1)
 check(
     "只有平均分數這個關鍵數字用粉色強調，題目列文字是深灰色（不是整條高飽和桃紅底白字）",
     average_value_cell.font.color.rgb in ("FFF43F5E", "00F43F5E")
@@ -495,7 +503,7 @@ two_question_stats = sample_rating_stats + [
 ]
 xlsx_two_questions = build_xlsx([], title="分類結果", rating_stats=two_question_stats)
 sheets_two_questions, _ = read_xlsx_sheets(xlsx_two_questions)
-two_q_rows = sheets_two_questions["評分題統計"]
+two_q_rows = sheets_two_questions["評分題統計"][2:]  # 跳過提示＋空白列
 check(
     "第一題區塊佔用第 1~6 列（題目、平均分、有效回答、空白、分布表頭、分布數值）",
     two_q_rows[0][0] == "Q1　課程整體滿意度" and two_q_rows[5][0] == "1 人",
@@ -514,10 +522,41 @@ try:
     check("rows=[] 時 build_xlsx 不拋例外，評分題統計 sheet 仍正常產生", "評分題統計" in sheets_rating_only)
     check(
         "rows=[] 時評分題統計內容仍然正確（不因為分類結果是空的而跟著壞掉）",
-        sheets_rating_only["評分題統計"][1][1] == "2.7 / 5",
+        sheets_rating_only["評分題統計"][3][1] == "2.7 / 5",
     )
 except Exception as e:
     check(f"rows=[] 時 build_xlsx 不拋例外（實際拋出：{e!r}）", False)
+
+print("\n--- D2b：問卷原始回覆匯出（build_survey_xlsx）也有提示，指向問卷分頁 ---")
+from services.export_file_service import build_survey_xlsx
+import openpyxl as _openpyxl
+_survey_xlsx = build_survey_xlsx(
+    title="期末課程回饋",
+    questions=[{"id": "q1", "type": "rating", "title": "課程整體滿意度"},
+               {"id": "q2", "type": "short", "title": "其他建議"}],
+    responses=[{"answers": {"q1": 4, "q2": "很好"}, "respondent_identity": None, "submitted_at": None}],
+    identity_mode="anonymous",
+)
+_survey_wb = _openpyxl.load_workbook(io.BytesIO(_survey_xlsx))
+check("問卷匯出分頁順序：評分題統計、問卷分頁", _survey_wb.sheetnames == ["評分題統計", "期末課程回饋"])
+check("問卷匯出提示文字指向問卷分頁",
+      _survey_wb["評分題統計"]["A1"].value == "→ 問卷回覆內容在第二個分頁「期末課程回饋」（點這裡或下方的分頁標籤即可切換）")
+check("問卷匯出提示連結到問卷分頁", _survey_wb["評分題統計"]["A1"].hyperlink.location == "'期末課程回饋'!A1")
+check("問卷分頁本身不受影響（第一列仍是表頭）", _survey_wb["期末課程回饋"]["A1"].value == "受試者")
+
+_survey_no_rating = _openpyxl.load_workbook(io.BytesIO(build_survey_xlsx(
+    title="純文字問卷", questions=[{"id": "q2", "type": "short", "title": "其他建議"}],
+    responses=[{"answers": {"q2": "很好"}, "respondent_identity": None, "submitted_at": None}],
+    identity_mode="anonymous",
+)))
+check("沒有評分題時只有問卷分頁、不會出現提示", _survey_no_rating.sheetnames == ["純文字問卷"])
+
+_quote_wb = _openpyxl.load_workbook(io.BytesIO(build_survey_xlsx(
+    title="Tom's survey", questions=[{"id": "q1", "type": "rating", "title": "滿意度"}],
+    responses=[{"answers": {"q1": 5}, "respondent_identity": None, "submitted_at": None}],
+    identity_mode="anonymous",
+)))
+check("分頁名稱含單引號時連結仍正確跳脫", _quote_wb["評分題統計"]["A1"].hyperlink.location == "'Tom''s survey'!A1")
 
 print("\n--- D3：沒有 rating_stats（None）-> Excel 輸出跟新增這個參數之前完全一樣（regression）---")
 xlsx_no_rating = build_xlsx(sample_classification_rows, title="分類結果")

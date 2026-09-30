@@ -25,6 +25,7 @@ from zoneinfo import ZoneInfo
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.hyperlink import Hyperlink
 from openpyxl.drawing.image import Image as OpenpyxlImage
 from PIL import Image, ImageDraw, ImageFont
 from docx import Document
@@ -125,7 +126,7 @@ def build_xlsx(rows: list, title: str = "分類結果", rating_stats: list | Non
     # rating_stats 為 None 或空陣列時完全不執行這段，既有分類結果 sheet
     # （上面已經建置完成）逐位元組不變。
     if rating_stats:
-        _write_rating_stats_sheet(wb, rating_stats, index=0)
+        _write_rating_stats_sheet(wb, rating_stats, index=0, content_sheet_title=ws.title, content_label="分類結果")
         wb.active = 0
 
     buf = io.BytesIO()
@@ -133,7 +134,8 @@ def build_xlsx(rows: list, title: str = "分類結果", rating_stats: list | Non
     return buf.getvalue()
 
 
-def _write_rating_stats_sheet(wb, rating_stats: list, *, index: int = 0):
+def _write_rating_stats_sheet(wb, rating_stats: list, *, index: int = 0, content_sheet_title: str | None = None,
+                              content_label: str = "完整內容"):
     """在既有 workbook 裡插入一張「評分題統計」sheet：極簡正式報表版型，
     每一題一個獨立區塊，不使用圖表、不使用 data bar、不做卡片式底色
     區塊，整體以白／淡粉／深灰為主色，只有平均分數這個關鍵數字用
@@ -155,6 +157,13 @@ def _write_rating_stats_sheet(wb, rating_stats: list, *, index: int = 0):
     建置邏輯（COLUMN_HEADERS、_row_values、合併儲存格）完全獨立，
     不共用、也不會互相影響。Word（build_docx／_write_rating_stats_blocks）
     完全沒有被這次改動觸及。
+
+    content_sheet_title／content_label：真正內容所在的分頁名稱，以及
+    提示裡怎麼稱呼它（例如「問卷回覆內容」「分類結果」）。
+    有傳入時，在第 1 列放一行提示「…在第二個分頁「X」」，點一下就會
+    跳到那個分頁；第 2 列留白，題目區塊從第 3 列開始。這張 sheet 是
+    打開檔案時第一個看到的分頁，沒有提示的話，使用者很容易以為檔案
+    裡只有統計、找不到原始內容。
     """
     ws = wb.create_sheet(title="評分題統計", index=index)
 
@@ -178,6 +187,20 @@ def _write_rating_stats_sheet(wb, rating_stats: list, *, index: int = 0):
         ws.column_dimensions[get_column_letter(col_idx)].width = width
 
     current_row = 1
+    if content_sheet_title:
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=HEADER_SPAN)
+        hint_cell = ws.cell(
+            row=1, column=1,
+            value=f"→ {content_label}在第二個分頁「{content_sheet_title}」（點這裡或下方的分頁標籤即可切換）",
+        )
+        # Excel 內部連結：分頁名稱裡的單引號要寫成兩個單引號
+        escaped_title = content_sheet_title.replace("'", "''")
+        hint_cell.hyperlink = Hyperlink(ref=hint_cell.coordinate, location=f"'{escaped_title}'!A1")
+        hint_cell.font = Font(name="微軟正黑體", bold=True, size=11, color="FFF43F5E", underline="single")
+        hint_cell.alignment = Alignment(vertical="center", horizontal="left")
+        ws.row_dimensions[1].height = 24
+        current_row = 3  # 第 2 列留白，題目區塊從第 3 列開始
+
     for stat in rating_stats:
         distribution = stat.get("distribution") or {}
         question_number = stat.get("question_number")
@@ -897,7 +920,9 @@ def build_survey_xlsx(*, title: str, questions: list, responses: list, identity_
 
     rating_stats = _build_survey_rating_stats(questions, responses)
     if rating_stats:
-        _write_rating_stats_sheet(wb, rating_stats, index=0)
+        _write_rating_stats_sheet(
+            wb, rating_stats, index=0, content_sheet_title=ws.title, content_label="問卷回覆內容",
+        )
         wb.active = 0
 
     buf = io.BytesIO()
