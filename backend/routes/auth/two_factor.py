@@ -9,7 +9,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from extensions import db
 from models import Admin, AdminVerification, User, UserVerification
 from routes.auth.admin_guard import build_admin_token
-from routes.auth.pwd import send_password_email_via_resend, taiwan_now
+from routes.auth.pwd import send_email_via_brevo, taiwan_now
 
 two_factor_bp = Blueprint('two_factor', __name__)
 
@@ -94,7 +94,7 @@ def send_2fa_code():
         _last_otp_sent[email] = time.time()
         subject = "【DataAnalysis】您的雙因子驗證碼"
         message_body = f"您的驗證碼為：{otp}\n請於 10 分鐘內輸入。若非本人操作請忽略。"
-        send_password_email_via_resend(email, subject, message_body)
+        send_email_via_brevo(email, subject, message_body)
         return jsonify({"message": "若此信箱已註冊，驗證碼將會寄出"}), 200
     except Exception as e:
         db.session.rollback()

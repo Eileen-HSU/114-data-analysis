@@ -10,7 +10,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from extensions import db
 from models import Admin, AdminVerification, User, UserVerification
 from routes.auth.admin_guard import build_admin_pre_auth_token, build_admin_token
-from routes.auth.pwd import send_password_email_via_resend, taiwan_now
+from routes.auth.pwd import send_email_via_brevo, taiwan_now
 
 login_bp = Blueprint("login", __name__)
 
@@ -126,7 +126,7 @@ def login():
             db.session.commit()  
 
             try:
-                send_password_email_via_resend(
+                send_email_via_brevo(
                     user.email,
                     "DataAnalysis 登入驗證碼",
                     f"您好，\n\n您的登入驗證碼是：{otp}\n\n請在 10 分鐘內完成驗證。",
@@ -196,7 +196,7 @@ def _login_admin(admin: Admin):
         db.session.commit()
 
         try:
-            send_password_email_via_resend(
+            send_email_via_brevo(
                 admin.email,
                 "DataAnalysis 管理員登入驗證碼",
                 f"您好，\n\n您的管理員登入驗證碼是：{otp}\n\n請在 10 分鐘內完成驗證。",

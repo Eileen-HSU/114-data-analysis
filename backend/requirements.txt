@@ -10,7 +10,6 @@ cryptography==42.0.8
 python-dotenv==1.0.1
 Werkzeug==3.0.3
 gunicorn
-resend
 PyJWT
 APScheduler
 sib-api-v3-sdk

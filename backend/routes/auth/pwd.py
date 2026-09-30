@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import html
 import logging
 import os
 import secrets
@@ -10,6 +11,13 @@ from extensions import db
 from models import User, UserVerification
 
 pwd_bp = Blueprint("pwd", __name__)
+
+# 寄信一律走 Brevo（交易信 API），環境變數：
+#   BREVO_API_KEY     必填
+#   BREVO_FROM_EMAIL  必填，需是 Brevo 上已驗證的寄件者
+#   BREVO_FROM_NAME   選填，預設 DataAnalysis
+# sib_api_v3_sdk 採延後 import：沒設定寄信的環境（本機、CI 測試）不需要
+# 真的載入 SDK，也不會因為缺少 key 而讓整個 app 啟動失敗。
 _brevo_client = None
 _brevo_sender: dict | None = None
 
@@ -21,7 +29,7 @@ def taiwan_now():
 def _get_brevo_client():
     global _brevo_client, _brevo_sender
     if _brevo_client is None:
-        import sib_api_v3_sdk  # 延後 import，見上方說明
+        import sib_api_v3_sdk  # 延後 import，見檔案開頭說明
 
         api_key = os.getenv("BREVO_API_KEY", "").strip()
         if not api_key:
@@ -41,12 +49,13 @@ def _get_brevo_client():
     return _brevo_client, _brevo_sender
 
 
-def send_password_email_via_resend(recipient: str, subject: str, body_text: str):
+def send_email_via_brevo(recipient: str, subject: str, body_text: str):
+    """用 Brevo 寄出一封純文字＋HTML 的交易信；失敗時拋 RuntimeError。"""
     import sib_api_v3_sdk  # 延後 import，見檔案開頭說明
     from sib_api_v3_sdk.rest import ApiException
 
     api_instance, sender = _get_brevo_client()
-    html_body = "<p>" + body_text.replace("\n", "<br>") + "</p>"
+    html_body = "<p>" + html.escape(body_text).replace("\n", "<br>") + "</p>"
     send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
         to=[{"email": recipient}],
         sender=sender,
@@ -134,7 +143,7 @@ def send_otp():
                 f"此驗證碼將在 10 分鐘後失效。\n"
                 f"如果您沒有發起這個請求，請忽略此信件。"
             )
-        send_password_email_via_resend(email, subject, message_body)
+        send_email_via_brevo(email, subject, message_body)
         return jsonify({"message": f"{action_text}驗證碼已寄出"}), 200
 
     except Exception as e:
