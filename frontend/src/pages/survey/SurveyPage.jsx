@@ -626,8 +626,8 @@ export default function SurveyPage({ pptOnly = false }) {
                 </div>
                 <div className="entry-card-copy">
                   <span className="entry-card-kicker">{t("AI 生成","AI generation")}</span>
-                  <h2 className="entry-card-title">{t("上傳 PPT/PDF 生成問卷","Generate a survey from PPT/PDF")}</h2>
-                  <p className="entry-card-desc">{t("依簡報或 PDF 重點產生相容草稿，講師可先編修，再儲存成正式問卷。","Create an editable draft from a presentation or PDF; instructors can edit first, then save as a survey.")}</p>
+                  <h2 className="entry-card-title">{t("智能問卷","SurveyCraft AI")}</h2>
+                  <p className="entry-card-desc">{t("上傳 PPT 或 PDF，由 AI 擷取文件重點並自動生成問卷草稿，可再編修後儲存使用。","Upload a PPT or PDF and let AI extract key content to automatically generate an editable survey draft.")}</p>
                 </div>
                 <span className="entry-card-arrow"><i className="ri-sparkling-line"></i></span>
               </a>

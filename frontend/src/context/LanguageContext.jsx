@@ -152,6 +152,7 @@ Object.assign(legacyEnglish, {
   "講師可先編修、再 Save 成正式問卷。": "Review and edit it before saving it as a survey.",
   "問卷紀錄": "Survey history", "顯示近期 Create 的問卷與回覆狀態。": "Shows recently created surveys and their response status.",
   "AI 生成": "AI generation", "AI 問卷草稿": "AI survey draft", "從 PPT/PDF 建立問卷": "Create a survey from PPT/PDF",
+  "智能問卷": "SurveyCraft AI", "上傳 PPT 或 PDF，由 AI 擷取文件重點並自動生成問卷草稿，可再編修後儲存使用。": "Upload a PPT or PDF and let AI extract key content to automatically generate an editable survey draft.",
   "上傳 PPT 或 PDF 檔案": "Upload a PPT or PDF file", "支援 .ppt、.pptx、.pdf": "Supports .ppt, .pptx, and .pdf",
   "問卷主題": "Survey topic", "重點方向": "Focus", "題目數量": "Number of questions",
   "允許題型": "Allowed question types", "開始生成": "Generate", "生成中...": "Generating…",
