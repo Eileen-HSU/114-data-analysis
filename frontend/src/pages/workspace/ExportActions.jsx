@@ -25,7 +25,8 @@ export default function ExportActions({ rows, ratingStats, chatId, sourceFilenam
     return () => cancelAnimationFrame(frame);
   }, [pendingFormat, error]);
 
-  async function generate(format) {
+  async function generate(format, event) {
+    if (event?.detail > 1) return;
     if (busyRef.current) return;
     setError("");
     if (!chatId) {
@@ -71,7 +72,7 @@ export default function ExportActions({ rows, ratingStats, chatId, sourceFilenam
     <div className="export-generation" aria-busy={!!pendingFormat}>
       <div className="assistant-output-actions assistant-output-actions--multi">
         {["xlsx", "docx"].map((format) => (
-          <button key={format} className="assistant-export-btn" type="button" disabled={!!pendingFormat} onClick={() => generate(format)}>
+          <button key={format} className="assistant-export-btn" type="button" disabled={!!pendingFormat} onClick={(event) => generate(format, event)}>
             <i className={pendingFormat === format ? "ri-loader-4-line ri-spin" : format === "xlsx" ? "ri-file-excel-2-line" : "ri-file-word-2-line"} />
             <span data-localized>{pendingFormat === format ? (isEnglish ? "Generating…" : "生成中...") : `${isEnglish ? "Export to" : "匯出成"} ${format === "xlsx" ? "Excel" : "Word"}`}</span>
           </button>

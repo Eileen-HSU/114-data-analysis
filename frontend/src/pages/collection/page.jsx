@@ -151,7 +151,8 @@ export default function CollectionPage() {
     setExportNotice(`已將檔案重新命名為「${data.export_name}」。`);
   };
 
-  const handleDownloadExport = async (exportItem) => {
+  const handleDownloadExport = async (exportItem, event) => {
+    if (event?.detail > 1) return;
     const exportId = String(exportItem.export_id);
     if (downloadLocksRef.current.has(exportId)) return;
     downloadLocksRef.current.add(exportId);

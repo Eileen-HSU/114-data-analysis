@@ -325,7 +325,8 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
     }, 450);
   };
 
-  const handleExportSurvey = async (format) => {
+  const handleExportSurvey = async (format, event) => {
+    if (event?.detail > 1) return;
     const accessCode = currentSurvey.code || currentSurvey.access_code || currentSurvey.shortCode || currentSurvey.short_code;
     if (!accessCode || !user?.token || exportLockRef.current) return;
 
@@ -460,8 +461,8 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
                   </button>
                   {isExportMenuOpen && (
                     <div className="sdp-export-menu" role="menu">
-                      <button type="button" onClick={() => handleExportSurvey("xlsx")} role="menuitem" disabled={isExporting}><i className="ri-file-excel-2-line"></i>Excel (.xlsx)</button>
-                      <button type="button" onClick={() => handleExportSurvey("docx")} role="menuitem" disabled={isExporting}><i className="ri-file-word-2-line"></i>Word (.docx)</button>
+                      <button type="button" onClick={(event) => handleExportSurvey("xlsx", event)} role="menuitem" disabled={isExporting}><i className="ri-file-excel-2-line"></i>Excel (.xlsx)</button>
+                      <button type="button" onClick={(event) => handleExportSurvey("docx", event)} role="menuitem" disabled={isExporting}><i className="ri-file-word-2-line"></i>Word (.docx)</button>
                     </div>
                   )}
                   {exportError && <span className="sdp-export-error" role="status">{exportError}</span>}

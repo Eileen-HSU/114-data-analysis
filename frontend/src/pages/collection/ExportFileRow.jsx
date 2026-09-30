@@ -79,7 +79,7 @@ export default function ExportFileRow({ item, onDownload, downloading = false, o
         </form>
       ) : (
         <>
-          <button type="button" className="export-download-target" onClick={() => onDownload(item)} disabled={downloading} title="點擊下載">
+          <button type="button" className="export-download-target" onClick={(event) => onDownload(item, event)} disabled={downloading} title="點擊下載">
             <i className={`${downloading ? "ri-loader-4-line ri-spin" : "ri-file-text-line"} export-list-item-icon`} />
             <div className="export-list-item-info">
               <span className="export-column-label"><InterfaceText>{"匯出檔案"}</InterfaceText></span>
