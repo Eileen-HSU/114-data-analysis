@@ -10,6 +10,10 @@ const ALLOWED_TYPES = new Set(["short", "rating"]);
 const ACTIVE_TASK_STATUSES = new Set(["queued", "processing", "pending", "running", "started"]);
 const FAILED_TASK_STATUSES = new Set(["failed", "error"]);
 
+function isPdfFile(file) {
+  return Boolean(file && (file.type === "application/pdf" || /\.pdf$/i.test(file.name || "")));
+}
+
 function withTimeout(timeoutMs) {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
@@ -20,7 +24,7 @@ function parseApiError(status, data) {
   const detail = data?.traceback ? `\n\n${data.traceback}` : "";
   if (data?.error) return `${data.error}${detail}`;
   if (status === 401) return "請先登入後再使用 AI 問卷功能。";
-  if (status === 413) return "檔案太大，請上傳 25MB 以下的 PPT/PDF。";
+  if (status === 413) return "檔案太大，請上傳 25MB 以下的 PDF。";
   if (status === 429) return "AI API 額度暫時不足，請稍後再試。";
   if (status === 503) return "AI 服務尚未完成設定，請檢查後端環境變數與套件。";
   if (status >= 500) return "AI 服務發生錯誤，請查看 Server Log。";
@@ -107,7 +111,8 @@ export function toCompatibleSurveyPayload(draft) {
 }
 
 export async function startSurveyGenerationTask({ file, config, token }) {
-  if (!file) throw new Error("請先上傳 PPT 或 PDF 檔案。");
+  if (!file) throw new Error("請先上傳 PDF 檔案。");
+  if (!isPdfFile(file)) throw new Error("檔案格式不支援，請上傳 .pdf。");
   if (!token) throw new Error("請先登入後再使用 AI 問卷功能。");
 
   const formData = new FormData();

@@ -36,6 +36,10 @@ const presetEnglishLabels = {
 
 const PPT_DRAFT_STORAGE_PREFIX = "ppt-survey-draft:";
 
+function isPdfFile(file) {
+  return Boolean(file && (file.type === "application/pdf" || /\.pdf$/i.test(file.name || "")));
+}
+
 function getSurveyTime(createdAt) {
   const time = new Date(createdAt || 0).getTime();
   return Number.isNaN(time) ? 0 : time;
@@ -329,7 +333,7 @@ export default function SurveyPage({ pptOnly = false }) {
 
   const handleGenerateDraft = async () => {
     if (!pptFile) {
-      setPptError("請先上傳 PPT 或 PDF 檔案。");
+      setPptError(t("請先上傳 PDF 檔案。", "Please upload a PDF file first."));
       return;
     }
 
@@ -552,7 +556,7 @@ export default function SurveyPage({ pptOnly = false }) {
         <Navbar />
         <div className="survey-page" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
           <LoginRequiredModal
-            message="請先登入後再使用 PPT/PDF 產生問卷功能。"
+            message="請先登入後再使用智能問卷功能。"
             onLogin={() => navigate("/login")}
             onCancel={() => navigate("/survey")}
           />
@@ -619,7 +623,7 @@ export default function SurveyPage({ pptOnly = false }) {
                     }
                   }, 0);
                 }}
-                aria-label={t("上傳 PPT/PDF 生成問卷", "Generate a survey from PPT/PDF")}
+                aria-label={t("智能問卷", "SurveyCraft AI")}
               >
                 <div className="entry-card-icon ppt-icon">
                   <i className="ri-slideshow-3-line"></i>
@@ -627,7 +631,7 @@ export default function SurveyPage({ pptOnly = false }) {
                 <div className="entry-card-copy">
                   <span className="entry-card-kicker">{t("AI 生成","AI generation")}</span>
                   <h2 className="entry-card-title">{t("智能問卷","SurveyCraft AI")}</h2>
-                  <p className="entry-card-desc">{t("上傳 PPT 或 PDF，由 AI 擷取文件重點並自動生成問卷草稿，可再編修後儲存使用。","Upload a PPT or PDF and let AI extract key content to automatically generate an editable survey draft.")}</p>
+                  <p className="entry-card-desc">{t("上傳 PDF，由 AI 擷取文件重點並自動生成問卷草稿，可再編修後儲存使用。","Upload a PDF and let AI extract key content to automatically generate an editable survey draft.")}</p>
                 </div>
                 <span className="entry-card-arrow"><i className="ri-sparkling-line"></i></span>
               </a>
@@ -702,13 +706,13 @@ export default function SurveyPage({ pptOnly = false }) {
                   {t("返回問卷中心", "Back to survey center")}
                 </button>
                 <span aria-hidden="true">|</span>
-                <strong>{t("上傳 PPT/PDF 生成問卷", "Generate a survey from PPT/PDF")}</strong>
+                <strong>{t("智能問卷", "SurveyCraft AI")}</strong>
               </nav>
             )}
             <header className="ppt-modal-header">
               <div>
-                <span className="entry-card-kicker">{t("教材 AI 問卷草稿","PPT AI survey draft")}</span>
-                <h2>{t("上傳 PPT/PDF 生成問卷","Generate a survey from PPT/PDF")}</h2>
+                <span className="entry-card-kicker">{t("AI 問卷草稿","AI survey draft")}</span>
+                <h2>{t("智能問卷","SurveyCraft AI")}</h2>
               </div>
               <button className="ppt-icon-btn" onClick={closePptModal} type="button" aria-label={t("關閉","Close")}> 
                 <i className="ri-close-line"></i>
@@ -718,19 +722,56 @@ export default function SurveyPage({ pptOnly = false }) {
             <div className={`ppt-modal-body ${(isPptPage || pptDraft) ? "ppt-modal-body-with-chat" : ""}`}>
               <div className="ppt-main-editor-column">
               <div className="ppt-config-panel">
-                <label className="ppt-upload-zone">
+                <label
+                  className="ppt-upload-zone"
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    const droppedFile = event.dataTransfer.files?.[0] || null;
+                    if (droppedFile && !isPdfFile(droppedFile)) {
+                      setPptFile(null);
+                      setPptFileName("");
+                      setPptError(t("檔案格式不支援，請上傳 .pdf。", "Unsupported file format. Please upload a .pdf file."));
+                      return;
+                    }
+                    setPptFile(droppedFile);
+                    setPptFileName(droppedFile?.name || "");
+                    setPptError("");
+                  }}
+                >
                   <input
                     type="file"
-                    accept=".ppt,.pptx,.pdf,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                    accept=".pdf,application/pdf"
                     onChange={(event) => {
                       const selectedFile = event.target.files?.[0] || null;
+                      if (selectedFile && !isPdfFile(selectedFile)) {
+                        setPptFile(null);
+                        setPptFileName("");
+                        setPptError(t("檔案格式不支援，請上傳 .pdf。", "Unsupported file format. Please upload a .pdf file."));
+                        event.target.value = "";
+                        return;
+                      }
                       setPptFile(selectedFile);
                       setPptFileName(selectedFile?.name || "");
+                      setPptError("");
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      const droppedFile = event.dataTransfer.files?.[0] || null;
+                      if (droppedFile && !isPdfFile(droppedFile)) {
+                        setPptFile(null);
+                        setPptFileName("");
+                        setPptError(t("檔案格式不支援，請上傳 .pdf。", "Unsupported file format. Please upload a .pdf file."));
+                        return;
+                      }
+                      setPptFile(droppedFile);
+                      setPptFileName(droppedFile?.name || "");
+                      setPptError("");
                     }}
                   />
                   <i className="ri-upload-cloud-2-line"></i>
-                  <strong>{pptFile?.name || pptFileName || t("選擇 PPT 或 PDF 檔案","Choose a PPT or PDF file")}</strong>
-                  <span>{t("支援 .ppt、.pptx 與 .pdf","Supports .ppt, .pptx and .pdf")}</span>
+                  <strong>{pptFile?.name || pptFileName || t("選擇 PDF 檔案","Select a PDF file")}</strong>
+                  <span>{t("支援 .pdf","Supports .pdf")}</span>
                 </label>
 
                 <div className="ppt-quick-settings">
@@ -792,7 +833,7 @@ export default function SurveyPage({ pptOnly = false }) {
                   {isGenerating ? (
                   <div className="ppt-loading-state" data-localized>
                     <i className="ri-loader-4-line"></i>
-                    <strong>{t("AI 正在整理教材重點","AI is summarizing presentation highlights")}</strong>
+                    <strong>{t("AI 正在整理文件重點","AI is summarizing document highlights")}</strong>
                     <span><InterfaceText>{pptTaskStatus || "背景任務處理中，系統會自動查詢結果。"}</InterfaceText></span>
                   </div>
                 ) : pptDraft ? (
@@ -878,7 +919,7 @@ export default function SurveyPage({ pptOnly = false }) {
                   <div className="ppt-empty-state">
                     <i className="ri-file-text-line"></i>
                     <strong>{t("問卷草稿預覽","Draft preview")}</strong>
-                    <span>{t("上傳 PPT 或 PDF 並開始生成後，草稿會顯示在這裡。","Upload a PPT or PDF and start generating; the draft will appear here.")}</span>
+                    <span>{t("上傳 PDF 並開始生成後，草稿會顯示在這裡。","Upload a PDF and start generating; the draft will appear here.")}</span>
                   </div>
                   )}
                 </div>
@@ -956,7 +997,7 @@ export default function SurveyPage({ pptOnly = false }) {
             <div className="ppt-leave-dialog-icon"><i className="ri-draft-line"></i></div>
             <div>
               <h2 id="ppt-leave-dialog-title">{t("尚未匯入系統問卷", "Survey not imported yet")}</h2>
-              <p>{t("離開後目前的 PPT 問卷草稿將不會保存。確定要離開嗎？", "Leaving will discard the current PPT survey draft. Are you sure you want to leave?")}</p>
+              <p>{t("離開後目前的問卷草稿將不會保存。確定要離開嗎？", "Leaving will discard the current survey draft. Are you sure you want to leave?")}</p>
             </div>
             <div className="ppt-leave-dialog-actions">
               <button className="ppt-secondary-btn" type="button" onClick={() => setIsLeavePptDialogOpen(false)}>{t("繼續編輯", "Keep editing")}</button>
