@@ -1,6 +1,7 @@
 """
 測試腳本：對 backend/routes/classifications/classification.py 的兩條路由
-（POST /api/survey-response、POST /api/classification/upload）做端到端測試。
+（POST /api/classification/upload）做端到端測試，並確認已移除的
+legacy 路由 POST /api/survey-response 不會再被註冊回來。
 
 用真實的 Flask app + 真實的 SQLAlchemy model（只建立分類相關資料表，
 避開專案裡其他跟這次功能無關、在 SQLite 上編譯會失敗的 MySQL 專屬型別
@@ -129,60 +130,13 @@ def auth_header(user_id):
 
 
 # ═══════════════════════════════════════════════════════════════
-# 測試 A：Survey 路由端到端
+# 測試 A：legacy POST /api/survey-response 已移除
 # ═══════════════════════════════════════════════════════════════
-print("========== Survey：端到端測試 ==========")
+print("========== legacy /api/survey-response 已移除 ==========")
 
-SURVEY_ANSWER = "王小明覺得主管很願意聽取意見，但工作量太大，希望增加人力"
-MASKED_SURVEY_ANSWER = mask_pii(SURVEY_ANSWER)
-print(f"masked = {MASKED_SURVEY_ANSWER!r}")
-
-with app.app_context():
-    template = m.Survey_Template(user_id=1, title="測試問卷", access_code="TEST1", question_json={
-        "items": [
-            {"id": "q1", "type": "short", "title": "對主管的建議", "question_type": "leadership_and_dept"},
-            {"id": "q2", "type": "short", "title": "沒有 routing 結果的題目", "question_type": None},
-        ]
-    })
-    db.session.add(template)
-    db.session.commit()
-    template_id = template.template_id
-
-q({"segments": [MASKED_SURVEY_ANSWER[:MASKED_SURVEY_ANSWER.index("，但")], MASKED_SURVEY_ANSWER[MASKED_SURVEY_ANSWER.index("，但") + 1:]]})
-q({"classifications": [
-    {"index": 0, "main_category": "主管領導", "sub_category": "A2 回饋與溝通",
-     "secondary_sub_category": None, "reasoning": "r1", "summary": "s1", "confidence": "high"},
-    {"index": 1, "main_category": "部門合作", "sub_category": "B2 支援協作",
-     "secondary_sub_category": None, "reasoning": "r2", "summary": "s2", "confidence": "high"},
-]})
-
-resp = client.post("/api/survey-response", json={
-    "template_id": template_id,
-    "answer_json": {"answers": {
-        "q1": SURVEY_ANSWER,
-        "q2": "這題沒有 question_type，應該被跳過",
-    }},
-}, headers=auth_header(1))  # 路由自 ownership migration 起要求登入且為問卷 owner
-data = resp.get_json()
-
-check("HTTP 201", resp.status_code == 201)
-check("classified_question_count 為 1", data.get("classified_question_count") == 1)
-check("q2 出現在 skipped_question_ids", data.get("skipped_question_ids") == ["q2"])
-
-with app.app_context():
-    rc_rows = m.Response_Classification.query.filter_by(response_id=data["response_id"]).all()
-    rss_rows = m.Response_Segmentation_Status.query.filter_by(response_id=data["response_id"]).all()
-
-    check("寫入 2 筆 Response_Classification（一個 segment 一筆）", len(rc_rows) == 2)
-    check("寫入 1 筆 Response_Segmentation_Status", len(rss_rows) == 1)
-    check("Response_Classification.answer_text 是完整原文（非片段）", all(r.answer_text == SURVEY_ANSWER for r in rc_rows))
-    check("Response_Classification.response_id 正確帶入", all(r.response_id == data["response_id"] for r in rc_rows))
-    check("Response_Classification.upload_batch_id 為 None（survey 來源）", all(r.upload_batch_id is None for r in rc_rows))
-    check("Response_Classification.uploaded_answer_id 為 None（survey 來源）", all(r.uploaded_answer_id is None for r in rc_rows))
-    check("segment_start/segment_end 可以正確切出對應原文片段", any(
-        SURVEY_ANSWER[r.segment_start:r.segment_end] in SURVEY_ANSWER for r in rc_rows
-    ))
-    check("Response_Segmentation_Status.segmentation_status 為 completed", rss_rows[0].segmentation_status == "completed")
+resp = client.post("/api/survey-response", json={"template_id": 1, "answer_json": {"answers": {"q1": "x"}}},
+                   headers=auth_header(1))
+check("POST /api/survey-response -> 404", resp.status_code == 404)
 
 
 # ═══════════════════════════════════════════════════════════════

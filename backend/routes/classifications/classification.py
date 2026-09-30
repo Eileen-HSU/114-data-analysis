@@ -1,16 +1,8 @@
 """
 分類相關 API：
-  POST /api/survey-response              -> （legacy，見下方說明）
   POST /api/surveys/<access_code>/analyze -> 觸發整份問卷的批次分析
   POST /api/classification/upload         -> 上傳 Excel，批次分類
   GET  /api/classification/<response_id>  -> 查詢某份問卷的所有分類結果
-
-關於 /api/survey-response：
-    這支路由目前沒有被前端呼叫（真正的問卷填答路徑是
-    routes/surveys/survey.py 的 POST /api/surveys/<access_code>/responses，
-    那支只保存 answer_json，不做任何分類）。這支路由先保留、不刪除，
-    但新的批次分析（/analyze）完全不會呼叫它，兩者互不依賴。等新的
-    批次流程完整驗證過，再另外決定要不要清理這支孤兒端點。
 
 survey 批次分析的設計：
     填答階段（POST .../responses）只保存原始回答，不觸發任何 Gemini
@@ -59,7 +51,7 @@ from models import (
     Response_Segmentation_Status,
     Uploaded_Answer,
 )
-from services.classify_v2 import classify_existing_segments, classify_response_multi_segment, is_text_response, resolve_published_taxonomy_prompt
+from services.classify_v2 import classify_existing_segments, is_text_response, resolve_published_taxonomy_prompt
 from services import classification_attempt_service as attempt_service
 from services.secondary_classification_service import get_secondaries, legacy_fields
 from classification_models import SECONDARY_KIND_AI
@@ -101,7 +93,7 @@ def _resolve_taxonomy_for_topic(question_type: str):
     routing 判斷不出來、被視為 QUESTION_OTHER 的情況），回傳
     (None, None, None) 並印出診斷 log——呼叫端看到 None 三元組時必須
     跳過這批文字的分類（原始文字仍照舊寫入 Uploaded_Answer /
-    Survey_Response，不受影響），不可以 fallback 到 DYNAMIC_GENERAL_PROMPT
+    Survey_Response，不受影響），不可以 fallback 到任何內建的通用 prompt
     自創分類。沒有 taxonomy 的 Topic 之後要走 Taxonomy Generation
     （Phase C），不是 classification 當下 fallback。
     """
@@ -495,86 +487,6 @@ def _persist_segmentation_result(
     }
     classification_rows = build_classification_rows(scope, result["segments"], taxonomy_version_id, attempt_no=attempt_no)
     return status_row, classification_rows
-
-
-# ---------- 1. 系統問卷送出 ----------
-@classification_bp.route("/api/survey-response", methods=["POST"])
-def submit_survey_response():
-    auth_user_id, auth_error = verify_token(request)
-    if auth_error:
-        return jsonify({"error": "Unauthorized"}), 401
-
-    data = request.get_json(silent=True) or {}
-    template_id = data.get("template_id")
-    answers = (data.get("answer_json") or {}).get("answers", {})
-
-    if not template_id or not answers:
-        return jsonify({"error": "缺少 template_id 或 answers"}), 400
-
-    template = Survey_Template.query.get(template_id)
-    if template is None:
-        return jsonify({"error": "找不到這份問卷"}), 404
-    if template.user_id != auth_user_id:
-        return jsonify({"error": "無權限"}), 403
-
-    survey = Survey_Response(template_id=template_id, answer_json=data.get("answer_json"))
-    db.session.add(survey)
-    db.session.flush()  # 先取得 response_id，還沒 commit
-
-    # 建立 question_id -> question_type 對照（來自建立問卷時的 routing 結果）
-    question_type_map = {}
-    if template and template.question_json:
-        for item in template.question_json.get("items", []):
-            question_type_map[item.get("id")] = item.get("question_type")
-
-    all_classification_rows = []
-    classified_question_count = 0
-    skipped_question_ids = []
-
-    for question_id, answer in answers.items():
-        if not is_text_response(answer):
-            continue
-
-        question_type = question_type_map.get(question_id)
-        if not question_type:
-            # routing 沒有結果（None）或這題不在 question_json 裡：
-            # 跳過分類，原始回答本來就已經完整存在 survey.answer_json，不受影響
-            skipped_question_ids.append(question_id)
-            continue
-
-        taxonomy = _resolve_taxonomy_open(question_type, str(question_id), [str(answer)])
-        prompt_content, category_lookup, taxonomy_version_id = taxonomy["prompt"], taxonomy["lookup"], taxonomy["version_id"]
-        if prompt_content is None:
-            # 沒有 Published Taxonomy：這一題跳過分類，原始回答本來就
-            # 已經完整存在 survey.answer_json，不受影響（見需求文件
-            # Phase B 第 5 節：不可 fallback 到 DYNAMIC_GENERAL_PROMPT）
-            skipped_question_ids.append(question_id)
-            continue
-
-        answer_text = str(answer)
-        result = classify_response_multi_segment(
-            answer_text, prompt_content, question_type,
-            category_lookup=category_lookup, taxonomy_version_id=taxonomy_version_id,
-        )
-        _, rows = _persist_segmentation_result(
-            result,
-            source_type="survey",
-            answer_text=answer_text,
-            question_id=question_id,
-            response_id=survey.response_id,
-            taxonomy_version_id=taxonomy_version_id,
-        )
-        all_classification_rows.extend(rows)
-        classified_question_count += 1
-
-    db.session.commit()
-
-    return jsonify({
-        "response_id": survey.response_id,
-        "classified_question_count": classified_question_count,
-        "skipped_question_ids": skipped_question_ids,
-        "classifications": [r.to_dict() for r in all_classification_rows],
-    }), 201
 
 
 # ---------- 2. Excel 上傳分類 ----------
