@@ -1,5 +1,5 @@
 import InterfaceText from "../../components/feature/InterfaceText";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Navbar from "../../components/feature/Navbar";
 import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
@@ -56,6 +56,8 @@ export default function CollectionPage() {
   const [exportsList, setExportsList] = useState([]);
   const [exportSearch, setExportSearch] = useState("");
   const [exportNotice, setExportNotice] = useState("");
+  const [downloadingExportId, setDownloadingExportId] = useState(null);
+  const downloadLocksRef = useRef(new Set());
   const exportSearchTerm = exportSearch.trim().toLocaleLowerCase();
   const filteredExports = useMemo(() => exportsList.filter((item) =>
     String(item.export_name ?? "").toLocaleLowerCase().includes(exportSearchTerm)
@@ -150,6 +152,10 @@ export default function CollectionPage() {
   };
 
   const handleDownloadExport = async (exportItem) => {
+    const exportId = String(exportItem.export_id);
+    if (downloadLocksRef.current.has(exportId)) return;
+    downloadLocksRef.current.add(exportId);
+    setDownloadingExportId(exportId);
     try {
       const res = await fetch(apiUrl(`/api/exports/${exportItem.export_id}/download`), {
         headers: getAuthHeader(),
@@ -172,6 +178,9 @@ export default function CollectionPage() {
     } catch (err) {
       console.error("下載匯出檔案失敗：", err);
       alert("下載失敗，請稍後再試。");
+    } finally {
+      downloadLocksRef.current.delete(exportId);
+      setDownloadingExportId((current) => current === exportId ? null : current);
     }
   };
 
@@ -1003,7 +1012,7 @@ export default function CollectionPage() {
               ) : (
                 <div className="exports-list">
                   {filteredExports.map((item) => (
-                    <ExportFileRow key={item.export_id} item={item} onDownload={handleDownloadExport} onRename={handleRenameExport} onOpenChat={handleOpenExportChat} />
+                    <ExportFileRow key={item.export_id} item={item} onDownload={handleDownloadExport} downloading={downloadingExportId === String(item.export_id)} onRename={handleRenameExport} onOpenChat={handleOpenExportChat} />
                   ))}
                 </div>
               )}

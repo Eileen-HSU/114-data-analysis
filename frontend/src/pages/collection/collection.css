@@ -752,6 +752,7 @@
 .export-notice { color: #568377; font-size: 14px; margin-bottom: 16px; overflow-wrap: anywhere; }
 .export-list-item { cursor: default; }
 .export-download-target { display: flex; align-items: center; gap: 16px; flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.export-download-target:disabled { cursor: wait; opacity: .65; }
 .export-rename-btn { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; padding: 8px 12px; border: 1px solid #dce4ef; border-radius: 8px; background: #f8fafc; color: #7189a7; font-size: 13px; cursor: pointer; }
 .export-rename-btn:hover { background: #e6ecf4; }
 .export-rename-form { width: 100%; }

@@ -1,7 +1,7 @@
 import InterfaceText from "../../components/feature/InterfaceText";
 import { useState } from "react";
 
-export default function ExportFileRow({ item, onDownload, onRename, onOpenChat }) {
+export default function ExportFileRow({ item, onDownload, downloading = false, onRename, onOpenChat }) {
   const [opening, setOpening] = useState(false);
   const [sourceError, setSourceError] = useState("");
   const [editing, setEditing] = useState(false);
@@ -79,8 +79,8 @@ export default function ExportFileRow({ item, onDownload, onRename, onOpenChat }
         </form>
       ) : (
         <>
-          <button type="button" className="export-download-target" onClick={() => onDownload(item)} title="點擊下載">
-            <i className="ri-file-text-line export-list-item-icon" />
+          <button type="button" className="export-download-target" onClick={() => onDownload(item)} disabled={downloading} title="點擊下載">
+            <i className={`${downloading ? "ri-loader-4-line ri-spin" : "ri-file-text-line"} export-list-item-icon`} />
             <div className="export-list-item-info">
               <span className="export-column-label"><InterfaceText>{"匯出檔案"}</InterfaceText></span>
               <div className="export-list-item-name">{item.export_name}</div>
@@ -89,7 +89,7 @@ export default function ExportFileRow({ item, onDownload, onRename, onOpenChat }
                 {item.created_at ? `　${new Date(item.created_at).toLocaleString("zh-TW")}` : ""}
               </div>
             </div>
-            <i className="ri-download-2-line export-list-item-download" />
+            <i className={downloading ? "ri-loader-4-line ri-spin export-list-item-download" : "ri-download-2-line export-list-item-download"} />
           </button>
           <button type="button" className="export-rename-btn" onClick={startRename} aria-label={`重新命名 ${item.export_name}`}>
             <i className="ri-edit-line" /> <span><InterfaceText>{"重新命名"}</InterfaceText></span>

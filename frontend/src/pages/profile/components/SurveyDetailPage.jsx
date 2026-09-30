@@ -202,6 +202,7 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
   const [importSuccess, setImportSuccess] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const exportLockRef = useRef(false);
   const [exportError, setExportError] = useState("");
   const [copyCodeSuccess, setCopyCodeSuccess] = useState(false);
   const [copyLinkSuccess, setCopyLinkSuccess] = useState(false);
@@ -326,8 +327,9 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
 
   const handleExportSurvey = async (format) => {
     const accessCode = currentSurvey.code || currentSurvey.access_code || currentSurvey.shortCode || currentSurvey.short_code;
-    if (!accessCode || !user?.token || isExporting) return;
+    if (!accessCode || !user?.token || exportLockRef.current) return;
 
+    exportLockRef.current = true;
     setIsExporting(true);
     setExportError("");
     try {
@@ -458,8 +460,8 @@ export default function SurveyDetailPage({ survey, onBack, onUpdateDeadline, onI
                   </button>
                   {isExportMenuOpen && (
                     <div className="sdp-export-menu" role="menu">
-                      <button type="button" onClick={() => handleExportSurvey("xlsx")} role="menuitem"><i className="ri-file-excel-2-line"></i>Excel (.xlsx)</button>
-                      <button type="button" onClick={() => handleExportSurvey("docx")} role="menuitem"><i className="ri-file-word-2-line"></i>Word (.docx)</button>
+                      <button type="button" onClick={() => handleExportSurvey("xlsx")} role="menuitem" disabled={isExporting}><i className="ri-file-excel-2-line"></i>Excel (.xlsx)</button>
+                      <button type="button" onClick={() => handleExportSurvey("docx")} role="menuitem" disabled={isExporting}><i className="ri-file-word-2-line"></i>Word (.docx)</button>
                     </div>
                   )}
                   {exportError && <span className="sdp-export-error" role="status">{exportError}</span>}
