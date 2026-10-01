@@ -128,6 +128,10 @@ export default function NewCategoryPage() {
       const key = keyOf(item);
       const state = rowState[key] || {};
       const options = targets[item.topic_key] || [];
+      // AI 自動建立的主題（topic_key 以 auto_ 開頭，跟後端 list_topics_with_status 同規則）：
+      // 它的分類架構也是 AI 歸納、沒人審過的，「合併到既有類別」列出的都是 AI 編的類別，
+      // 所以先引導去決定主題（併入正式主題或發布），不在這裡加入或合併。
+      const undecidedTopic = String(item.topic_key || "").startsWith("auto_");
       return (
         <article key={key} className="review-card">
           <div className="review-card-top">
@@ -140,6 +144,13 @@ export default function NewCategoryPage() {
             {item.reasons[0] && <p><span className="review-field-label">{t("AI 理由", "AI reasoning")}</span>{item.reasons[0]}</p>}
           </div>
           {state.message && <p className={state.message.ok ? "review-batch-message" : "ai-admin-error"}>{state.message.text}</p>}
+          {undecidedTopic ? (
+            <div className="admin-undecided">
+              <p>{t("這是 AI 自動建立的主題，分類架構也是 AI 自己歸納、還沒有人審過的，所以現在沒有可靠的類別能合併。請先把主題併入正式主題（或發布成正式主題），再回來處理。",
+                "This is an auto topic whose taxonomy was drafted by the AI and hasn't been reviewed, so there's nothing reliable to merge into yet. Merge the topic into an official one (or publish it) first.")}</p>
+              <button className="primary" onClick={() => navigate(`/admin/ai/topics/${item.topic_key}`)}>{t("先處理這個主題", "Handle this topic first")}</button>
+            </div>
+          ) : (
           <div className="review-card-actions">
             <button className="review-btn-primary" disabled={state.busy} onClick={() => adopt(item)}>{t("加入分類架構", "Add to taxonomy")}</button>
             <select value={state.target || ""} disabled={state.busy}
@@ -150,6 +161,7 @@ export default function NewCategoryPage() {
             </select>
             <button disabled={state.busy || !state.target} onClick={() => merge(item)}>{t("合併", "Merge")}</button>
           </div>
+          )}
         </article>
       );
     })}

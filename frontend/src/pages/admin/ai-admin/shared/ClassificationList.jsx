@@ -18,15 +18,19 @@ const newBatchId = () => (
 // 分頁、計數、篩選全部由後端處理（GET /api/admin/ai/classifications 回傳
 // total / status_counts），畫面上的數字永遠是「全部符合條件的資料」，不是
 // 目前頁面。所有操作成功後都重新向後端讀取，不在前端假裝修改 state。
-export default function ClassificationList({ topicParam, onOpenReview, refreshSignal }) {
+export default function ClassificationList({
+  topicParam, onOpenReview, refreshSignal, initialTab, initialConfirmedSource, initialNeedsReviewOnly = false,
+}) {
   const { user } = useAuth();
   const token = user?.token;
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState("pending_review");
-  const [needsReviewOnly, setNeedsReviewOnly] = useState(false);
+  const [activeTab, setActiveTab] = useState(STATE_TABS.includes(initialTab) ? initialTab : "pending_review");
+  const [needsReviewOnly, setNeedsReviewOnly] = useState(Boolean(initialNeedsReviewOnly));
   // 「已確認」分頁的篩選：all / auto（只看自動通過，抽查用）/ human（只看人工確認）
-  const [confirmedSource, setConfirmedSource] = useState("all");
+  const [confirmedSource, setConfirmedSource] = useState(
+    ["all", "auto", "human"].includes(initialConfirmedSource) ? initialConfirmedSource : "all",
+  );
   const [backfillBusy, setBackfillBusy] = useState(false);
   const [page, setPage] = useState(1);
   const [data, setData] = useState({ classifications: [], total: 0, total_pages: 0, status_counts: {} });

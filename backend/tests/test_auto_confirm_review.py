@@ -333,4 +333,43 @@ with app.app_context():
                        if c.sub_category == "餐飲滿意").definition
     check("沒填定義時使用判斷規則句型的預設定義", default_def == "當回覆主要涉及「餐飲滿意」相關內容時，歸入此類別。")
 
+print("\n========== 8. AI 管理首頁彙整（overview）==========")
+with app.app_context():
+    m.Response_Classification.query.delete()
+    m.Uploaded_Answer.query.delete()
+    m.Response_Segmentation_Status.query.delete()
+    db.session.commit()
+    ov_version = m.Taxonomy_Version.query.filter_by(topic_key="custom_topic", status="published").one().version_id
+    auto_draft = seed_topic("auto_overview", status="draft")
+    ids = seed_upload_batch("batch-ov", [f"t{i}" for i in range(8)], question_type="custom_topic")
+    seed_classification(ids[0], "batch-ov", "t0", "Main A", "A1 Original", version_id=ov_version,
+                        confidence=0.5, needs_human_review=True, review_flag_reason="low_confidence")
+    seed_classification(ids[1], "batch-ov", "t1", "Main C", "新類別甲", version_id=ov_version,
+                        status="new_category", needs_human_review=True, review_flag_reason="new_category_proposed")
+    seed_classification(ids[2], "batch-ov", "t2", "Main C", "新類別甲", version_id=ov_version,
+                        status="new_category", needs_human_review=True, review_flag_reason="new_category_proposed")
+    seed_classification(ids[3], "batch-ov", "t3", "Main A", "A1 Original", version_id=ov_version,
+                        review_status="confirmed", auto_confirmed=True)
+    seed_classification(ids[4], "batch-ov", "t4", "Main A", "A1 Original", version_id=ov_version,
+                        review_status="confirmed")
+    seed_classification(ids[5], "batch-ov", "t5", "Main X", "X1", version_id=auto_draft)
+    seed_classification(ids[6], "batch-ov", "t6", None, None, version_id=ov_version, status="failed")
+    # 被取代的舊結果：放在還有有效結果（t3）的回答上，不影響其他計數
+    seed_classification(ids[3], "batch-ov", "t3", "Main A", "A1 Original", version_id=ov_version, status="superseded")
+    m.Uploaded_Answer.query.filter_by(id=ids[7]).delete()
+    db.session.commit()
+check("非管理員不能看 overview", client.get("/api/admin/ai/overview", headers=user_header(1)).status_code in (401, 403))
+ov = client.get("/api/admin/ai/overview", headers=admin_header(1)).get_json()
+check("需要人判斷：低信心 1 + 新類別 2 = 3", ov["needs_person"]["needs_judgement"] == 3
+      and ov["needs_person"]["low_confidence"] == 1)
+check("新類別以組計算（同一類別 2 筆算 1 組）", ov["needs_person"]["new_category_groups"] == 1)
+check("沒被標記的待審（暫定分類）另外計算", ov["needs_person"]["other_pending"] == 1
+      and ov["needs_person"]["total"] == 4)
+check("自動通過 1 筆（人工確認、失敗、被取代的都不算）", ov["auto_confirmed"]["total"] == 1)
+check("分類失敗算在無法分類", ov["cannot_classify"]["failed"] == 1)
+check("每個主題的數字",
+      ov["topics"]["custom_topic"] == {"needs_judgement": 3, "other_pending": 0, "low_confidence": 1,
+                                       "auto_confirmed": 1, "new_category_groups": 1}
+      and ov["topics"]["auto_overview"]["other_pending"] == 1)
+
 finish()

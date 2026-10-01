@@ -1,10 +1,13 @@
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import ClassificationList from "../shared/ClassificationList";
 import ReviewConversation from "./ReviewConversation";
 
 export default function ReviewPanel() {
   const { topicKey } = useParams();
+  // 從首頁連過來時可以指定初始分頁，例如 ?state=confirmed&source=auto（抽查自動通過）
+  // 或 ?state=pending_review&flagged=1（只看需要人工判斷的）。
+  const [searchParams] = useSearchParams();
   // selected 為 null 時顯示清單；有值時顯示該筆的審核對話面板。
   // mode="start"：從「開始審核」進入，會嘗試 start；
   // mode="view"：從已鎖定狀態的「查看審核歷史」進入，純唯讀。
@@ -29,6 +32,9 @@ export default function ReviewPanel() {
     <ClassificationList
       topicParam={topicKey}
       refreshSignal={refreshSignal}
+      initialTab={searchParams.get("state") || undefined}
+      initialConfirmedSource={searchParams.get("source") || undefined}
+      initialNeedsReviewOnly={searchParams.get("flagged") === "1"}
       onOpenReview={(classificationId, mode) => setSelected({ classificationId, mode })}
     />
   );

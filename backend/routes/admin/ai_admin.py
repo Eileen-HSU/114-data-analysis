@@ -543,6 +543,17 @@ def merge_new_category():
     return jsonify(result), 200
 
 
+@ai_admin_bp.get("/overview")
+def overview():
+    """AI 管理首頁的待辦彙整（見 services/admin_overview_service.py）。"""
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    from services.admin_overview_service import build_overview
+
+    return jsonify(build_overview()), 200
+
+
 @ai_admin_bp.post("/classifications/auto-confirm")
 def auto_confirm_existing():
     """把已經存在、符合自動通過條件但還在待審的結果補做自動通過
