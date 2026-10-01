@@ -22,6 +22,7 @@ export const OUTDATED_REASONS = [
   "classification_rerun",
   "bulk_review_action",
   "taxonomy_published",
+  "new_results_added",
 ];
 
 // 清單上的分頁籤（in_review 是 pending_review 的子集合，另外以 badge 顯示，
@@ -69,6 +70,7 @@ export const outdatedReasonLabel = (reason) => ({
   classification_rerun: t("有回答被重新分類", "An answer was re-classified"),
   bulk_review_action: t("批次審核操作", "Bulk review action"),
   taxonomy_published: t("Taxonomy 發布新版本", "A new taxonomy version was published"),
+  new_results_added: t("有新的分析結果加入", "New analysis results were added"),
   no_completed_report: t("尚未產生任何報告", "No report generated yet"),
   last_generation_failed: t("上一次產生失敗", "Last generation failed"),
   outdated: t("資料已變更", "Data changed"),
@@ -88,7 +90,7 @@ export const errorMessage = (e) => {
     TAXONOMY_UNAVAILABLE: t("這個主題目前沒有已發布的分類架構。", "This topic has no published taxonomy."),
     TAXONOMY_VERSION_NOT_USABLE: t("只能使用已發布或已封存的分類架構版本。", "Only published or archived taxonomy versions can be used."),
     TAXONOMY_PUBLISH_CONFLICT: t("另一位管理員剛剛發布了版本，請重新整理後再試。", "Another admin just published; refresh and retry."),
-    REPORT_NOT_READY: t("目前沒有已確認的分類結果，無法產生報告。", "No confirmed classifications yet."),
+    REPORT_NOT_READY: t("目前沒有可以納入報告的分類結果。", "No classification results to report yet."),
     NEW_CATEGORY_NEEDS_DECISION: t("這筆是 AI 提出的新類別，請到「新類別候選」加入、合併或排除。", "This is an AI-proposed category. Add, merge or exclude it under New Category Candidates."),
     NEEDS_HUMAN_JUDGEMENT: t("這筆需要人工判斷，請逐筆確認。", "This item needs human judgement. Confirm it individually."),
     DRAFT_IN_PROGRESS: t("這個主題有還沒發布的分類架構草稿。請先到該主題的「分類架構」發布或刪除草稿，再加入新類別。", "This topic has an unpublished taxonomy draft. Publish or delete it in the topic's Taxonomy tab first."),

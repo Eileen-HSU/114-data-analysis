@@ -13,7 +13,7 @@
     4. AI 歸納失敗：不亂分類，維持未分類並寫明原因
     5. 新類別候選：Admin 列表、一鍵採用（加入、發布、回答一起確認）、合併到既有類別
     6. 審核：新類別出現在可選清單；不能用快速確認／批次確認直接按掉
-    7. 正式報告只納入人工確認過的結果
+    7. 正式報告不等人工審核：待審的結果（含暫定分類）也納入
     8. OPEN_CLASSIFICATION_ENABLED=0：回到封閉式行為
 
 執行方式：
@@ -243,14 +243,16 @@ check("仍在新類別候選清單", any(i["sub_category"] == "動物陪伴" for
     "/api/admin/ai/new-categories", headers=admin_header(1)).get_json()["items"]))
 
 
-print("\n========== 7. 正式報告只納入人工確認過的 ==========")
+print("\n========== 7. 正式報告不等人工審核 ==========")
 with app.app_context():
     from services.report_service import get_readiness
     batch = m.Response_Classification.query.get(new_cat_cid).upload_batch_id
     readiness = get_readiness("user_upload", upload_batch_id=batch)
     check("確認後的新類別計入 eligible", readiness["eligible"] == 1)
     auto_batch = m.Uploaded_Answer.query.filter_by(question_type=auto_key).first().upload_batch_id
-    check("暫定分類未確認前 eligible=0", get_readiness("user_upload", upload_batch_id=auto_batch)["eligible"] == 0)
+    auto_readiness = get_readiness("user_upload", upload_batch_id=auto_batch)
+    check("暫定分類的待審結果也納入報告（eligible = 待審筆數 > 0）",
+          auto_readiness["eligible"] > 0 and auto_readiness["eligible"] == auto_readiness["pending_review"])
 
 
 print("\n========== 8. 關閉開放模式 ==========")

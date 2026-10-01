@@ -53,7 +53,6 @@ from services.secondary_classification_service import get_secondaries, legacy_fi
 
 from services.report_service import (
     OUTDATED_BULK_REVIEW_ACTION,
-    OUTDATED_CLASSIFICATION_CONFIRMED,
     OUTDATED_CLASSIFICATION_EXCLUDED,
     OUTDATED_CLASSIFICATION_MODIFIED,
     OUTDATED_CLASSIFICATION_REOPENED,
@@ -610,9 +609,8 @@ def confirm_original(classification_id, admin_id, batch_id=None, action=None, _a
         before=before, after=audit_service.classification_state(classification),
         batch_id=batch_id,
     )
-    mark_reports_outdated_for_classification(
-        classification, OUTDATED_BULK_REVIEW_ACTION if batch_id else OUTDATED_CLASSIFICATION_CONFIRMED,
-    )
+    # 不標記報告過期：待審／自動通過的結果本來就以同樣的類別算在報告裡，
+    # 確認之後報告內容完全不變（見 effective_classification_service.REPORT_ELIGIBLE_REVIEW_STATUSES）。
     _commit_or_rollback()
     return classification
 
@@ -791,6 +789,9 @@ def reopen_review(classification_id, admin_id, reason=None):
 
     now = taiwan_now()
     before = audit_service.classification_state(classification)
+    # 已修改 -> 回到 AI 原始類別；已排除 -> 重新納入報告。這兩種會改變報告內容，
+    # 已確認（人工或自動）的重新開啟則不會（待審的也算在報告裡）。
+    changes_report = classification.review_status in (REVIEW_STATUS_MODIFIED, REVIEW_STATUS_EXCLUDED)
     _close_reviews(actives, REVIEW_SESSION_CLOSED, "reopen_cleanup", now)
 
     classification.review_status = REVIEW_STATUS_PENDING
@@ -805,7 +806,8 @@ def reopen_review(classification_id, admin_id, reason=None):
         before=before, after=audit_service.classification_state(classification),
         reason=reason,
     )
-    mark_reports_outdated_for_classification(classification, OUTDATED_CLASSIFICATION_REOPENED)
+    if changes_report:
+        mark_reports_outdated_for_classification(classification, OUTDATED_CLASSIFICATION_REOPENED)
     _commit_or_rollback()
     return review
 
@@ -930,8 +932,7 @@ def batch_confirm(classification_ids, admin_id, batch_id=None):
             sources.add(classification_source(row))
             confirmed.append(cid)
 
-        if confirmed:
-            mark_reports_outdated_for_sources(sources, OUTDATED_BULK_REVIEW_ACTION)
+        # 不標記報告過期：理由同 confirm_original（確認不改變報告內容）
         db.session.commit()
     except Exception:
         db.session.rollback()

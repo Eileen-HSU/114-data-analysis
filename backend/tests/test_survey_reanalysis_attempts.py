@@ -256,18 +256,19 @@ with app.app_context():
     cells = " ".join(str(c.value) for ws_ in wb.worksheets for r in ws_.iter_rows() for c in r if c.value)
 check("匯出不含舊 attempt 的類別", "舊子類 X" not in cells and "C1 薪資" in cells)
 
-# report：只收已確認（人工或自動通過）的 current 列
+# report：收所有 current 的有效列（待審、自動通過、人工確認、修改）
 with app.app_context():
     for r in m.Response_Classification.query.filter_by(response_id=RID["R4"]).all():
         r.review_status = "confirmed"  # 包含 superseded 的舊列：確認它們仍被排除
     db.session.commit()
 GEMINI_QUEUE.clear()
-q(*[{"summary": "報告摘要"}] * 3)  # C1 薪資、A2 升遷制度、A1 教育訓練 三個 group
+q(*[{"summary": "報告摘要"}] * 4)  # C1 薪資、A2 升遷制度、A1 教育訓練、E1 設施 四個 group
 resp = client.post(f"/api/admin/ai/reports/survey/{TEMPLATE_ID}/generate", headers=admin_header(1))
 # eligible 只算 current：人工的 R1A、R2A + R4 新的 2 段 + 這次新分析、高信心自動通過的
-# R1／R2 失敗片段重試結果與 R6 第一次分析（3 段）= 7；superseded 的舊列不計入
-check("report 產生 201（eligible 只算 current = 7，含自動通過的 3 段）",
-      resp.status_code == 201 and resp.get_json()["report"]["eligible_count_at_generation"] == 7)
+# R1／R2 失敗片段重試結果與 R6 第一次分析（3 段）+ 待審的 E1 設施（R2、R3、R5 各 1 段，
+# 報告不等人工審核）= 10；superseded 的舊列、excluded、failed 都不計入
+check("report 產生 201（eligible 只算 current = 10，含自動通過與待審）",
+      resp.status_code == 201 and resp.get_json()["report"]["eligible_count_at_generation"] == 10)
 detail = client.get(f"/api/admin/ai/reports/detail/{resp.get_json()['report']['report_id']}", headers=admin_header(1)).get_json()
 agg = {(a["main_category"], a["sub_category"]): a for a in detail["aggregations"]}
 check("report 不含 superseded 的舊類別", ("舊大類", "舊子類 X") not in agg)
@@ -343,5 +344,46 @@ with app.app_context():
     db.session.commit()
     check("寫入時發現已被審核 -> blocked，confirmed 列仍生效",
           out.outcome == attempt_service.OUTCOME_BLOCKED and db.session.get(m.Response_Classification, late.classification_id).status == "completed")
+
+print("\n========== 9. 分析新的回覆會讓既有報告過期（new_results_added）==========")
+# 報告不等人工審核，新回覆的分析結果會直接進入下一版報告，所以既有報告要提示需要重新產生。
+# 用獨立的問卷，避免前面還在重試的回答（rerun）影響過期原因。
+with app.app_context():
+    new_tpl = m.Survey_Template(user_id=1, title="新回覆", access_code="NEWR1", question_json={"items": [
+        {"id": "q1", "type": "short", "title": "對公司的建議", "question_type": "career"},
+    ]})
+    db.session.add(new_tpl)
+    db.session.flush()
+    NEW_TPL_ID = new_tpl.template_id
+    db.session.add(m.Survey_Response(template_id=NEW_TPL_ID, answer_json={"answers": {"q1": "希望增加教育訓練"}}))
+    db.session.add(m.Report(
+        source_type="survey", template_id=NEW_TPL_ID, version=1, generated_by=1, status="completed",
+        is_outdated=False, eligible_count_at_generation=0, pending_count_at_generation=0,
+        excluded_count_at_generation=0,
+    ))
+    db.session.commit()
+
+
+def new_tpl_report():
+    with app.app_context():
+        r = m.Report.query.filter_by(template_id=NEW_TPL_ID).one()
+        return r.is_outdated, r.outdated_reason
+
+
+GEMINI_QUEUE.clear()
+q({"segments": [mask_pii("希望增加教育訓練")]})
+cls_q(("職涯發展", "A1 教育訓練"))
+resp = client.post("/api/surveys/NEWR1/analyze", headers=user_header(1))
+check("新回覆 analyze 200、分析 1 則", resp.status_code == 200 and resp.get_json()["newly_classified_count"] == 1)
+check("既有報告標記過期，原因是 new_results_added", new_tpl_report() == (True, "new_results_added"))
+
+with app.app_context():
+    r = m.Report.query.filter_by(template_id=NEW_TPL_ID).one()
+    r.is_outdated, r.outdated_reason, r.outdated_at = False, None, None
+    db.session.commit()
+GEMINI_QUEUE.clear()
+resp = client.post("/api/surveys/NEWR1/analyze", headers=user_header(1))
+check("沒有新回覆時再 analyze：沒有新結果", resp.status_code == 200 and resp.get_json()["newly_classified_count"] == 0)
+check("沒有新結果時報告維持最新", new_tpl_report() == (False, None))
 
 finish()

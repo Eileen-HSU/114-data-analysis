@@ -63,8 +63,13 @@ CLASSIFICATION_STATUS_SUPERSEDED = "superseded"
 # 這些 status 永遠不是「成功的分類結果」，任何統計都不能計入。
 NON_COUNTABLE_STATUSES = frozenset({CLASSIFICATION_STATUS_FAILED, CLASSIFICATION_STATUS_SUPERSEDED})
 
-# Report 正式快照只收人工確認過的結果。
-REPORT_ELIGIBLE_REVIEW_STATUSES = (REVIEW_STATUS_CONFIRMED, REVIEW_STATUS_MODIFIED)
+# 人工（或系統自動）確認過的審核狀態。is_human_reviewed 另外排除自動通過。
+REVIEWED_STATUSES = (REVIEW_STATUS_CONFIRMED, REVIEW_STATUS_MODIFIED)
+
+# Report 正式快照收哪些結果：待審的也算。報告不等人工審核——審核是
+# 「發現錯了可以改」，不是「沒審就不能用」。只排除 excluded（人工決定不納入）
+# 與 failed / superseded（見 NON_COUNTABLE_STATUSES）。
+REPORT_ELIGIBLE_REVIEW_STATUSES = (REVIEW_STATUS_PENDING, REVIEW_STATUS_CONFIRMED, REVIEW_STATUS_MODIFIED)
 
 
 class EffectiveClassificationError(ValueError):
@@ -145,7 +150,7 @@ def effective_view(row, include_methodology: bool = False) -> dict | None:
     view["review_status"] = review_status
     auto_confirmed = bool(getattr(row, "auto_confirmed", False))
     view["auto_confirmed"] = auto_confirmed
-    view["is_human_reviewed"] = review_status in REPORT_ELIGIBLE_REVIEW_STATUSES and not auto_confirmed
+    view["is_human_reviewed"] = review_status in REVIEWED_STATUSES and not auto_confirmed
 
     if include_methodology:
         view.update(_methodology_fields(row, view))
@@ -222,8 +227,8 @@ def _methodology_lookup_for(row):
 
 
 def get_effective_classification(classification) -> dict:
-    """Report 正式快照專用的嚴格版本：只接受 confirmed / modified 且
-    status 可計入的列，其他一律 EffectiveClassificationError。
+    """Report 正式快照專用的嚴格版本：只接受 pending_review / confirmed /
+    modified 且 status 可計入的列，其他一律 EffectiveClassificationError。
 
     Returns:
         {
@@ -238,7 +243,7 @@ def get_effective_classification(classification) -> dict:
             f"review_status={getattr(classification, 'review_status', None)!r} / "
             f"status={getattr(classification, 'status', None)!r}（classification_id="
             f"{getattr(classification, 'classification_id', None)}）沒有 effective "
-            "classification，只有 confirmed/modified 且非 failed 才有；呼叫端應該先用 "
+            "classification，只有 pending_review/confirmed/modified 且非 failed 才有；呼叫端應該先用 "
             "fetch_classifications_in_scope(review_statuses=[...]) 篩選過。"
         )
     view = effective_view(classification, include_methodology=True)

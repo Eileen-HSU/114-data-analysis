@@ -3,7 +3,7 @@
 測試腳本：Aggregation Readiness + Aggregation（Phase 4）。
 
 涵蓋需求文件第二十七節測試項目 13~22：
-    13. pending_review 不納入
+    13. pending_review 也納入（報告不等人工審核）
     14. excluded 不納入
     15. confirmed 使用 AI original
     16. modified 使用 final
@@ -133,7 +133,7 @@ with app.app_context():
     )
     db.session.add(rc3)
 
-    # r4：pending_review，不應該出現在 aggregation 或 eligible
+    # r4：pending_review，報告不等人工審核，所以也要出現在 aggregation 與 eligible
     r4 = m.Survey_Response(template_id=template_a_id, answer_json={"answers": {"q1": "還沒審核"}})
     db.session.add(r4)
     db.session.commit()
@@ -231,7 +231,7 @@ check("confirmed 為 3（rc1a, rc1b, rc2）", readiness_a["confirmed"] == 3)
 check("modified 為 1（rc3）", readiness_a["modified"] == 1)
 check("pending_review 為 1（rc4）", readiness_a["pending_review"] == 1)
 check("excluded 為 1（rc5）", readiness_a["excluded"] == 1)
-check("eligible 為 4（confirmed+modified）", readiness_a["eligible"] == 4)
+check("eligible 為 5（pending+confirmed+modified）", readiness_a["eligible"] == 5)
 check("has_pending 為 True", readiness_a["has_pending"] is True)
 check("can_generate 為 True（eligible>0）", readiness_a["can_generate"] is True)
 
@@ -269,8 +269,8 @@ with app.app_context():
 
 by_key_a = {(g["main_category"], g["sub_category"]): g for g in agg_a}
 
-check("13. pending_review 不納入：group 裡完全找不到 r4 的 classification_id", not any(
-    item["response_id"] == r4_id for g in agg_a for item in g["items"]
+check("13. pending_review 也納入：r4 出現在 B2 group", any(
+    item["response_id"] == r4_id for item in by_key_a[("部門合作", "B2 支援協作")]["items"]
 ))
 check("14. excluded 不納入：group 裡完全找不到 r5 的 classification_id", not any(
     item["response_id"] == r5_id for g in agg_a for item in g["items"]
@@ -291,12 +291,12 @@ check(
     len([item for item in b2_group["items"] if item["response_id"] == r1_id]) == 2,
 )
 check(
-    "19. B2 這個 group 的 response_count 正確去重（r1/r2/r3 三份不同回答 = 3，不是 4 筆 segment 的數量）",
-    b2_group["response_count"] == 3,
+    "19. B2 這個 group 的 response_count 正確去重（r1/r2/r3/r4 四份不同回答 = 4，不是 5 筆 segment 的數量）",
+    b2_group["response_count"] == 4,
 )
 check(
-    "19. B2 這個 group 的 segment_count 是實際 item 數（r1 兩筆 + r2 一筆 + r3 一筆 = 4）",
-    b2_group["segment_count"] == 4,
+    "19. B2 這個 group 的 segment_count 是實際 item 數（r1 兩筆 + r2、r3、r4 各一筆 = 5）",
+    b2_group["segment_count"] == 5,
 )
 check("B2 group 的 methodology/citation 是查表結果，不是 None", b2_group["methodology"] == "互惠與責任承擔分析" and b2_group["citation"] == "cite-b2")
 

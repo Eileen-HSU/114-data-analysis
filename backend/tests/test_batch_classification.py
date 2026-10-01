@@ -216,6 +216,7 @@ with app.app_context():
         m.Survey_Template.__table__,
         m.Survey_Response.__table__,
         m.Response_Classification.__table__,
+        m.Report.__table__,  # 新回覆的分析結果會讓既有報告標記過期
         m.Response_Classification_Secondary.__table__,
         m.Response_Segmentation_Status.__table__,
         m.Uploaded_Answer.__table__,

@@ -249,7 +249,8 @@ with app.app_context():
     check("final_sub_category 仍為 None（confirmed 不寫 final_*）", rc.final_sub_category is None)
 
 with app.app_context():
-    check("confirm-original 觸發 Report v1 標記為 outdated", m.Report.query.get(report_v1_id).is_outdated is True)
+    # 確認不改變報告內容（待審的本來就以同樣類別算在報告裡），報告維持最新
+    check("confirm-original 不會讓 Report v1 過期", m.Report.query.get(report_v1_id).is_outdated is False)
 
 resp_dup = client.post(f"/api/classification/{cid1}/review/confirm-original", headers=admin_header(1))
 check("重複 confirm-original 回 409", resp_dup.status_code == 409)

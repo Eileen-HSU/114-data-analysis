@@ -171,7 +171,8 @@ with app.app_context():
     assert row.review_status == "pending_review"
     assert (row.main_category, row.sub_category, row.final_main_category, row.final_sub_category) == original_values
     assert m.Classification_Review_Message.query.filter_by(review_id=old_review_id).count() == 2
-    assert m.Report.query.first().is_outdated is True
+    # 重新開啟「已確認」的結果：回到待審但有效類別不變，報告內容不變，不過期
+    assert m.Report.query.first().is_outdated is False
 
 # Another admin cannot reopen while the new session is active.
 assert client.post(f"/api/classification/{cid}/review/reopen", headers=admin_header(2)).status_code == 409

@@ -6,7 +6,7 @@ P0-4：Admin Report lifecycle（後端 + DB 依據，不靠前端猜）。
     1. GET /api/admin/ai/reports：列出所有有分類結果的分析單位，含
        readiness、最新報告、needs_regeneration + 原因
     2. 尚未產生報告 -> needs_regeneration（no_completed_report）；readiness 不足
-       -> 產生時 400 REPORT_NOT_READY
+       -> 全部被排除、沒有可納入的結果時，產生回 400 REPORT_NOT_READY
     3. 產生 -> completed、version、taxonomy_version_ids、updated_at、audit
     4. 下列事件都讓報告 outdated，且 outdated_reason 寫進 DB：
        classification modified / excluded / reopened / rerun / bulk review / taxonomy publish
@@ -58,15 +58,26 @@ print("========== 1/2. 列表與 readiness ==========")
 resp = client.get("/api/admin/ai/reports", headers=admin_header(1))
 check("reports 200", resp.status_code == 200)
 item = next(i for i in resp.get_json()["items"] if i["upload_batch_id"] == BATCH)
-check("readiness：4 pending、eligible 0", item["readiness"]["pending_review"] == 4 and item["readiness"]["eligible"] == 0)
-check("沒有報告、也還不能產生 -> needs_regeneration=False", item["needs_regeneration"] is False and item["latest_report"] is None)
-resp = generate()
-check("readiness 不足 -> 400 REPORT_NOT_READY", resp.status_code == 400 and resp.get_json()["code"] == "REPORT_NOT_READY")
+# 報告不等人工審核：4 筆待審的結果直接可以產生報告
+check("readiness：4 pending、eligible 4（待審也算）",
+      item["readiness"]["pending_review"] == 4 and item["readiness"]["eligible"] == 4
+      and item["readiness"]["can_generate"] is True)
+check("沒有報告、但已經可以產生 -> needs_regeneration（no_completed_report）",
+      item["needs_regeneration"] is True and item["regeneration_reason"] == "no_completed_report"
+      and item["latest_report"] is None)
 GEMINI_QUEUE.clear()
 client.post("/api/classification/review/batch-confirm", headers=admin_header(1), json={"classification_ids": cids[:3]})
-check("有 eligible 但沒報告 -> needs_regeneration（no_completed_report）",
+check("確認之後仍然需要產生第一份報告（no_completed_report）",
       unit()["needs_regeneration"] is True and unit()["regeneration_reason"] == "no_completed_report")
 check("非 admin 不能存取", client.get("/api/admin/ai/reports").status_code == 401)
+
+# 全部都被人工排除：沒有任何可以納入報告的結果 -> 不能產生
+with app.app_context():
+    empty_ids = seed_upload_batch("batch-all-excluded", ["不相關"], question_type="report_topic")
+    seed_classification(empty_ids[0], "batch-all-excluded", "不相關", "Main A", "A1 Original",
+                        version_id=version_id, review_status="excluded")
+resp = client.post("/api/admin/ai/reports/user_upload/batch-all-excluded/generate", headers=admin_header(1))
+check("全部排除 -> 400 REPORT_NOT_READY", resp.status_code == 400 and resp.get_json()["code"] == "REPORT_NOT_READY")
 
 
 print("\n========== 3. 產生 ==========")

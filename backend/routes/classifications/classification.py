@@ -992,6 +992,9 @@ def analyze_survey(access_code):
             qdiag["segment_retries"] += 1
 
         rerun_happened = False
+        # 報告不等審核、待審的結果也會進報告，所以第一次分析新回覆也要讓
+        # 既有報告知道資料變了（重新分析另外用 classification_rerun 原因）。
+        new_results_added = False
         for work_scope, plan, result, retry_ids in work:
             outcome = attempt_service.apply_attempt(
                 work_scope, result, taxonomy_version_id, plan["expected_attempt_no"], plan["mode"],
@@ -1000,6 +1003,7 @@ def analyze_survey(access_code):
             if outcome.applied:
                 newly_classified_count += 1
                 rerun_happened = rerun_happened or plan["mode"] != attempt_service.MODE_NEW
+                new_results_added = new_results_added or plan["mode"] == attempt_service.MODE_NEW
                 if plan["mode"] == attempt_service.MODE_RETRY_SEGMENTS:
                     # 目前生效的列：重新查一次（被取代的失敗片段已經 superseded）
                     fresh = attempt_service.current_rows(work_scope)
@@ -1020,9 +1024,14 @@ def analyze_survey(access_code):
 
         # 每題一個 transaction：這題的所有 attempt 一起生效
         db.session.commit()
-        if rerun_happened:
-            from services.report_service import OUTDATED_CLASSIFICATION_RERUN, mark_reports_outdated_for_sources
-            mark_reports_outdated_for_sources([("survey", template_id, None)], OUTDATED_CLASSIFICATION_RERUN)
+        if rerun_happened or new_results_added:
+            from services.report_service import (
+                OUTDATED_CLASSIFICATION_RERUN, OUTDATED_NEW_RESULTS, mark_reports_outdated_for_sources,
+            )
+            mark_reports_outdated_for_sources(
+                [("survey", template_id, None)],
+                OUTDATED_CLASSIFICATION_RERUN if rerun_happened else OUTDATED_NEW_RESULTS,
+            )
             db.session.commit()
 
         analyzed_question_ids.append(question_id)

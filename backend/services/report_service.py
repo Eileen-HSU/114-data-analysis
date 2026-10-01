@@ -64,6 +64,7 @@ from services.aggregated_summary_service import build_aggregated_summary
 from services.effective_classification_service import (
     CLASSIFICATION_STATUS_FAILED,
     NON_COUNTABLE_STATUSES,
+    REPORT_ELIGIBLE_REVIEW_STATUSES,
 )
 
 _MAX_VERSION_CLAIM_ATTEMPTS = 5
@@ -117,7 +118,8 @@ def get_readiness(source_type, template_id=None, upload_batch_id=None) -> dict:
     modified = counts[REVIEW_STATUS_MODIFIED]
     excluded = counts[REVIEW_STATUS_EXCLUDED]
     pending = counts[REVIEW_STATUS_PENDING]
-    eligible = confirmed + modified
+    # 待審的也進報告（見 effective_classification_service.REPORT_ELIGIBLE_REVIEW_STATUSES）
+    eligible = pending + confirmed + modified
 
     return {
         "total": len(rows),
@@ -163,6 +165,7 @@ OUTDATED_CLASSIFICATION_REOPENED = "classification_reopened"
 OUTDATED_CLASSIFICATION_RERUN = "classification_rerun"
 OUTDATED_BULK_REVIEW_ACTION = "bulk_review_action"
 OUTDATED_TAXONOMY_PUBLISHED = "taxonomy_published"
+OUTDATED_NEW_RESULTS = "new_results_added"  # 第一次分析新的回覆，結果直接進報告
 
 
 def classification_source(classification):
@@ -324,7 +327,7 @@ def generate_report(source_type, auth_user_id, template_id=None, upload_batch_id
 def _taxonomy_versions_in_scope(source_type, template_id, upload_batch_id):
     rows = fetch_classifications_in_scope(
         source_type=source_type, template_id=template_id, upload_batch_id=upload_batch_id,
-        review_statuses=[REVIEW_STATUS_CONFIRMED, REVIEW_STATUS_MODIFIED],
+        review_statuses=list(REPORT_ELIGIBLE_REVIEW_STATUSES),
         exclude_statuses=list(NON_COUNTABLE_STATUSES),
     )
     ids = sorted({str(r.taxonomy_version_id) for r in rows if r.taxonomy_version_id is not None}, key=int)
@@ -337,7 +340,7 @@ def _generate(source_type, template_id, upload_batch_id, user_id=None, admin_id=
     readiness = get_readiness(source_type, template_id=template_id, upload_batch_id=upload_batch_id)
     if not readiness["can_generate"]:
         raise ReportError(
-            "目前沒有任何 eligible（confirmed + modified）資料，無法產生報告",
+            "目前沒有任何可以納入報告的分類結果，無法產生報告",
             400,
             code="REPORT_NOT_READY",
         )
@@ -439,6 +442,7 @@ OUTDATED_REASON_LABELS = {
     OUTDATED_CLASSIFICATION_RERUN: "有回答被重新分類",
     OUTDATED_BULK_REVIEW_ACTION: "批次審核操作",
     OUTDATED_TAXONOMY_PUBLISHED: "Taxonomy 發布新版本",
+    OUTDATED_NEW_RESULTS: "有新的分析結果加入",
 }
 
 

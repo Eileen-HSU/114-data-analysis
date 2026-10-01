@@ -212,7 +212,9 @@ resp_confirm = client.post(
 check("confirm-original HTTP 200", resp_confirm.status_code == 200)
 
 with app.app_context():
-    check("confirm-original 後，v1 被標記為 outdated", m.Report.query.get(v1_id).is_outdated is True)
+    # 確認不改變報告內容（待審的本來就以同樣類別算在報告裡），所以不會讓報告過期。
+    # 新回覆被分析時才會標記過期（new_results_added），那是分析流程的責任。
+    check("confirm-original 不會讓 v1 過期（內容不變）", m.Report.query.get(v1_id).is_outdated is False)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -272,9 +274,9 @@ with app.app_context():
 
 
 # ═══════════════════════════════════════════════════════════════
-# 測試 28：pending 存在時仍可在明確允許後只使用 eligible records
+# 測試 28：pending 的結果也納入報告（報告不等人工審核）
 # ═══════════════════════════════════════════════════════════════
-print("\n========== 測試 28：pending 存在時，eligible-only 產生 ==========")
+print("\n========== 測試 28：pending 的結果也納入報告 ==========")
 
 with app.app_context():
     r_pending = m.Survey_Response(template_id=template_id, answer_json={"answers": {"q1": "還沒審核的意見"}})
@@ -292,7 +294,7 @@ with app.app_context():
 resp_readiness2 = client.get(f"/api/reports/survey/{template_id}/readiness", headers=auth_header(1))
 readiness2 = resp_readiness2.get_json()
 check("readiness has_pending 為 True", readiness2["has_pending"] is True)
-check("readiness eligible 沒有把 pending 算進去（仍是 3：rc1,rc2,rc3）", readiness2["eligible"] == 3)
+check("readiness eligible 包含 pending（rc1,rc2,rc3 + pending = 4）", readiness2["eligible"] == 4)
 
 q({"summary": "受訪者希望部門間能有更多實質支援。"})
 q({"summary": "受訪者希望主管能更主動給予回饋。"})
@@ -302,13 +304,13 @@ resp_gen3 = client.post(f"/api/reports/survey/{template_id}/generate", headers=a
 v3_data = resp_gen3.get_json()
 check("generate HTTP 201（即使有 pending 也能明確產生）", resp_gen3.status_code == 201)
 check("v3 pending_count_at_generation 正確記錄為 1", v3_data["pending_count_at_generation"] == 1)
-check("v3 eligible_count_at_generation 為 3（不含 pending）", v3_data["eligible_count_at_generation"] == 3)
+check("v3 eligible_count_at_generation 為 4（含 pending）", v3_data["eligible_count_at_generation"] == 4)
 
 resp_v3_detail = client.get(f"/api/reports/{v3_data['report_id']}", headers=auth_header(1))
 v3_detail = resp_v3_detail.get_json()
 check(
-    "v3 snapshot 完全不包含 pending 那筆的內容",
-    not any(
+    "v3 snapshot 包含 pending 那筆的內容",
+    any(
         item["original_answer_text"] == "還沒審核的意見"
         for agg in v3_detail["aggregations"] for item in agg["items"]
     ),

@@ -90,15 +90,11 @@ def backfill_existing(admin_id, dry_run=True, limit=5000) -> dict:
       那代表有人已經在看，不應該被系統搶先定案。
     - 被新分析取代的舊 attempt（superseded）不動（status 不是 completed）。
     - dry_run=True 只回傳會影響的筆數，不寫入。
-    - 實際執行時逐筆寫 audit（admin_id = 觸發的管理員），相關報告標記過期。
+    - 實際執行時逐筆寫 audit（admin_id = 觸發的管理員）。報告不會過期：
+      待審的結果本來就算在報告裡，自動通過不改變報告內容。
     """
     from classification_models import Classification_Review
     from services import audit_service
-    from services.report_service import (
-        OUTDATED_BULK_REVIEW_ACTION,
-        classification_source,
-        mark_reports_outdated_for_sources,
-    )
 
     reviewed_ids = db.session.query(Classification_Review.classification_id).distinct()
     rows = (
@@ -125,7 +121,6 @@ def backfill_existing(admin_id, dry_run=True, limit=5000) -> dict:
         return result
 
     now = taiwan_now()
-    sources = set()
     try:
         for row in eligible:
             before = audit_service.classification_state(row)
@@ -134,8 +129,6 @@ def backfill_existing(admin_id, dry_run=True, limit=5000) -> dict:
                 ACTION_AUTO_CONFIRM_BACKFILL, audit_service.ENTITY_CLASSIFICATION, row.classification_id, admin_id,
                 before=before, after=audit_service.classification_state(row),
             )
-            sources.add(classification_source(row))
-        mark_reports_outdated_for_sources(sources, OUTDATED_BULK_REVIEW_ACTION)
         db.session.commit()
     except Exception:
         db.session.rollback()

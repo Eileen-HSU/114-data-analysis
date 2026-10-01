@@ -83,6 +83,14 @@ def report_state():
         return r.is_outdated, r.outdated_reason
 
 
+def reset_report():
+    """讓報告回到「最新」，下一個斷言才能證明某個動作有沒有讓它過期。"""
+    with app.app_context():
+        r = m.Report.query.filter_by(upload_batch_id="batch-sm").first()
+        r.is_outdated, r.outdated_reason, r.outdated_at = False, None, None
+        db.session.commit()
+
+
 print("========== 1. start -> 返回列表 -> quick confirm ==========")
 check("start 200", client.post(f"/api/classification/{c_quick}/review/start", headers=admin_header(1)).status_code == 200)
 check("start 後有 1 個 active session", active_count(c_quick) == 1)
@@ -100,7 +108,8 @@ qa = audits(c_quick, "quick_confirm")
 check("quick_confirm audit：admin=1、before=pending_review、after=confirmed",
       len(qa) == 1 and qa[0]["admin_id"] == 1 and qa[0]["before_state"]["review_status"] == "pending_review"
       and qa[0]["after_state"]["review_status"] == "confirmed")
-check("報告被標記 outdated（reason=classification_confirmed）", report_state() == (True, "classification_confirmed"))
+# 確認不改變報告內容（待審的本來就以同樣類別算在報告裡），報告維持最新
+check("快速確認不會讓報告過期", report_state() == (False, None))
 
 resp_dup = client.post(f"/api/classification/{c_quick}/review/confirm-original", headers=admin_header(1))
 check("重試 confirm-original -> 409 ALREADY_FINALIZED（不重複寫入）",
@@ -122,7 +131,8 @@ ra = audits(c_stale, "reopen")
 check("reopen audit：原狀態 confirmed、原因、admin",
       len(ra) == 1 and ra[0]["before_state"]["review_status"] == "confirmed"
       and ra[0]["reason"] == "資料有誤" and ra[0]["admin_id"] == 1)
-check("報告 outdated_reason=classification_reopened", report_state() == (True, "classification_reopened"))
+# 重新開啟「已確認」的結果：回到待審但類別不變，報告內容不變
+check("重新開啟已確認的結果不會讓報告過期", report_state() == (False, None))
 resp_retry = client.post(f"/api/classification/{c_stale}/review/reopen", headers=admin_header(1))
 check("reopen 重試冪等：200 且回傳同一個 session", resp_retry.status_code == 200 and resp_retry.get_json()["review_id"] == resp.get_json()["review_id"])
 check("重試後仍只有 1 個 active、1 筆 reopen audit", active_count(c_stale) == 1 and len(audits(c_stale, "reopen")) == 1)
@@ -183,6 +193,7 @@ check("Alice 重複 start 冪等（仍 1 個 active）",
 
 
 print("\n========== 7. batch confirm ==========")
+reset_report()
 client.post(f"/api/classification/{c_batch[1]}/review/start", headers=admin_header(1))  # 自己的空 session 要被關閉
 payload = {"classification_ids": c_batch + [999999], "batch_id": "batch-001"}
 resp = client.post("/api/classification/review/batch-confirm", headers=admin_header(1), json=payload)
@@ -196,7 +207,7 @@ check("不存在的 ID 被跳過（CLASSIFICATION_NOT_FOUND）", skipped.get(999
 check("batch confirm 關閉自己的空 session", active_count(c_batch[1]) == 0)
 ba = audits(c_batch[0], "batch_confirm")
 check("batch audit 帶 batch_id 與 admin", len(ba) == 1 and ba[0]["batch_id"] == "batch-001" and ba[0]["admin_id"] == 1)
-check("報告 outdated_reason=bulk_review_action", report_state() == (True, "bulk_review_action"))
+check("批次確認不會讓報告過期（內容不變）", report_state() == (False, None))
 resp = client.post("/api/classification/review/batch-confirm", headers=admin_header(1), json=payload)
 check("同 batch_id 重試：already_done、沒有新確認", sorted(resp.get_json()["already_done_ids"]) == sorted(c_batch[:2])
       and resp.get_json()["confirmed_ids"] == [])

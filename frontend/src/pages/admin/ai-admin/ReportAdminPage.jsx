@@ -140,8 +140,8 @@ export default function ReportAdminPage() {
             <p><span className="review-field-label">{t("建立 / 最後更新", "Created / updated")}</span>
               {formatTime(r?.generated_at)} / {formatTime(r?.updated_at)}</p>
             <p><span className="review-field-label">{t("資料就緒度", "Readiness")}</span>
-              {t(`可用 ${readiness.eligible ?? 0}（已確認 ${readiness.confirmed ?? 0}、已修改 ${readiness.modified ?? 0}）・待處理 ${readiness.pending_review ?? 0}・已排除 ${readiness.excluded ?? 0}・失敗 ${readiness.failed ?? 0}`,
-                `Eligible ${readiness.eligible ?? 0} (confirmed ${readiness.confirmed ?? 0}, modified ${readiness.modified ?? 0}) · pending ${readiness.pending_review ?? 0} · excluded ${readiness.excluded ?? 0} · failed ${readiness.failed ?? 0}`)}</p>
+              {t(`納入報告 ${readiness.eligible ?? 0}・已排除 ${readiness.excluded ?? 0}・失敗 ${readiness.failed ?? 0}`,
+                `Included ${readiness.eligible ?? 0} · excluded ${readiness.excluded ?? 0} · failed ${readiness.failed ?? 0}`)}</p>
             {u.latest_completed_report?.is_outdated && (
               <p className="review-flag-badge">⚠ {t("已過期：", "Outdated: ")}{outdatedReasonLabel(u.latest_completed_report.outdated_reason)}（{formatTime(u.latest_completed_report.outdated_at)}）</p>
             )}
@@ -149,12 +149,11 @@ export default function ReportAdminPage() {
               <p className="review-flag-badge">{outdatedReasonLabel(u.regeneration_reason)}</p>
             )}
             {r?.status === "failed" && <FailureNotice failure={u.latest_failure} fallback={r.error_detail} />}
-            {readiness.has_pending && <p><small>{t("仍有待處理的分類，報告只會包含已確認 / 已修改的結果。", "Pending items exist; only confirmed / modified results are included.")}</small></p>}
           </div>
           {msg && <p className={msg.ok ? "review-batch-message" : "ai-admin-error"}>{msg.text}</p>}
           <div className="review-card-actions">
             <button className="review-btn-primary" disabled={busy[key] || !readiness.can_generate} onClick={() => generate(u)}
-              title={!readiness.can_generate ? t("沒有已確認的分類結果", "No confirmed classifications") : ""}>
+              title={!readiness.can_generate ? t("目前沒有可以納入報告的分類結果", "No classification results to report yet") : ""}>
               {busy[key] ? t("產生中…", "Generating…") : r ? t("重新產生", "Regenerate") : t("產生報告", "Generate")}
             </button>
             {u.latest_completed_report && (
