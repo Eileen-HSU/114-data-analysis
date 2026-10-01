@@ -94,6 +94,7 @@ def get_readiness(source_type, template_id=None, upload_batch_id=None) -> dict:
         REVIEW_STATUS_EXCLUDED: 0,
     }
     failed = 0
+    auto_confirmed = 0
     for row in rows:
         # failed / superseded 不是成功的分類結果（見
         # effective_classification_service），即使 review_status 是
@@ -109,6 +110,8 @@ def get_readiness(source_type, template_id=None, upload_batch_id=None) -> dict:
         # 這樣的資料異常會反映成 total > 四類總和，方便事後排查。
         if row.review_status in counts:
             counts[row.review_status] += 1
+            if row.review_status == REVIEW_STATUS_CONFIRMED and getattr(row, "auto_confirmed", False):
+                auto_confirmed += 1
 
     confirmed = counts[REVIEW_STATUS_CONFIRMED]
     modified = counts[REVIEW_STATUS_MODIFIED]
@@ -119,6 +122,7 @@ def get_readiness(source_type, template_id=None, upload_batch_id=None) -> dict:
     return {
         "total": len(rows),
         "confirmed": confirmed,
+        "auto_confirmed": auto_confirmed,  # confirmed 之中由系統自動通過的筆數
         "modified": modified,
         "excluded": excluded,
         "pending_review": pending,

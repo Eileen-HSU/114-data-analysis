@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "./apiClient";
 import { t, reviewFlagReasonText } from "./taxStatus";
-import { STATE_TABS, errorMessage, stateLabel } from "./reviewStates";
+import { AUTO_CONFIRMED_LABEL, STATE_TABS, errorMessage, isAutoConfirmed, stateLabel } from "./reviewStates";
 import { FailureNotice, LoadingNotice } from "./StatusWidgets";
 import { useAuth } from "../../../../hooks/AuthContext";
 
@@ -20,9 +21,13 @@ const newBatchId = () => (
 export default function ClassificationList({ topicParam, onOpenReview, refreshSignal }) {
   const { user } = useAuth();
   const token = user?.token;
+  const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState("pending_review");
   const [needsReviewOnly, setNeedsReviewOnly] = useState(false);
+  // 「已確認」分頁的篩選：all / auto（只看自動通過，抽查用）/ human（只看人工確認）
+  const [confirmedSource, setConfirmedSource] = useState("all");
+  const [backfillBusy, setBackfillBusy] = useState(false);
   const [page, setPage] = useState(1);
   const [data, setData] = useState({ classifications: [], total: 0, total_pages: 0, status_counts: {} });
   const [loading, setLoading] = useState(false);
@@ -49,6 +54,9 @@ export default function ClassificationList({ topicParam, onOpenReview, refreshSi
       const params = new URLSearchParams({ state: activeTab, page: String(page), page_size: String(PAGE_SIZE) });
       if (topicParam) params.set("topic", topicParam);
       if (needsReviewOnly) params.set("needs_human_review", "true");
+      if (activeTab === "confirmed" && confirmedSource !== "all") {
+        params.set("auto_confirmed", confirmedSource === "auto" ? "true" : "false");
+      }
       const result = await api(`/api/admin/ai/classifications?${params}`, token);
       if (seq === requestSeq.current) setData(result);
     } catch (e) {
@@ -61,21 +69,26 @@ export default function ClassificationList({ topicParam, onOpenReview, refreshSi
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [topicParam, refreshSignal, activeTab, needsReviewOnly, page]);
+  }, [topicParam, refreshSignal, activeTab, needsReviewOnly, confirmedSource, page]);
 
   // 切換 topic / tab / 篩選 / 頁數時不保留上一個畫面的勾選：批次操作
   // 的對象永遠是「目前這一頁、使用者看得到並勾選的那些列」。
   useEffect(() => {
     setSelectedIds(new Set());
     setBatchMessage("");
-  }, [topicParam, activeTab, needsReviewOnly, page]);
+  }, [topicParam, activeTab, needsReviewOnly, confirmedSource, page]);
 
   useEffect(() => { setPage(1); }, [topicParam]);
 
   const rows = data.classifications || [];
   const counts = data.status_counts || {};
-  // in_review（有人正在審核）不開放勾選批次確認；後端也會逐筆拒絕。
-  const selectableRows = useMemo(() => rows.filter((row) => row.review_state === "pending_review"), [rows]);
+  // 只有一般待處理的項目可以勾選批次確認；後端也會逐筆拒絕其他的：
+  //   - in_review：有人正在審核
+  //   - needs_human_review：低信心、分類不完整等需要人看的，要逐筆確認
+  //   - AI 新類別：要到「新類別候選」加入、合併或排除
+  const selectableRows = useMemo(() => rows.filter((row) => (
+    row.review_state === "pending_review" && !row.needs_human_review && row.status !== "new_category"
+  )), [rows]);
   const highConfidenceRows = useMemo(
     () => selectableRows.filter((row) => typeof row.confidence === "number" && row.confidence >= HIGH_CONFIDENCE_THRESHOLD && !row.needs_human_review),
     [selectableRows],
@@ -187,6 +200,37 @@ export default function ClassificationList({ topicParam, onOpenReview, refreshSi
     }
   };
 
+  // 自動通過上線前就分析好的資料：先預覽筆數，確認後才寫入。
+  const runAutoConfirmBackfill = async () => {
+    if (backfillBusy) return;
+    setBackfillBusy(true);
+    setBatchMessage("");
+    setError("");
+    try {
+      const preview = await api("/api/admin/ai/classifications/auto-confirm", token, {
+        method: "POST", body: JSON.stringify({ dry_run: true }),
+      });
+      if (preview.eligible_count === 0) {
+        setBatchMessage(t("沒有符合自動通過條件的待處理資料。", "No pending items meet the auto-approval rules."));
+        return;
+      }
+      if (!window.confirm(t(
+        `有 ${preview.eligible_count} 筆待處理的結果符合自動通過條件（信心 ≥ 0.75、類別在已發布的分類架構內、沒有需要人工判斷的問題）。\n\n要把它們改成「自動通過」嗎？之後仍可在「已確認 › 自動通過」重新審核。`,
+        `${preview.eligible_count} pending items meet the auto-approval rules (confidence ≥ 0.75, category in the published taxonomy, nothing flagged).\n\nAuto-approve them? You can still re-review them under Confirmed › Auto-approved.`,
+      ))) return;
+      const result = await api("/api/admin/ai/classifications/auto-confirm", token, {
+        method: "POST", body: JSON.stringify({ dry_run: false }),
+      });
+      setBatchMessage(t(`已自動通過 ${result.eligible_count} 筆。`, `Auto-approved ${result.eligible_count} items.`)
+        + (result.limit_reached ? t("還有更多符合條件的資料，請再按一次。", " More remain; run it again.") : ""));
+      await load({ silent: true });
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBackfillBusy(false);
+    }
+  };
+
   const totalPages = Math.max(data.total_pages || 0, 1);
 
   return (
@@ -194,8 +238,8 @@ export default function ClassificationList({ topicParam, onOpenReview, refreshSi
       {error && <p className="ai-admin-error">{error}<button onClick={() => setError("")}>×</button></p>}
 
       <p className="review-workbench-intro">
-        {t("請快速確認 AI 分類結果；可勾選多筆一次維持 AI 分類，有疑問的項目再進入重新審核。",
-          "Review AI classifications quickly: batch-confirm items that look correct, and re-review only the questionable ones.")}
+        {t("AI 有把握、類別也在分類架構裡的結果會自動通過，這裡只剩需要人看的項目。標示「需人工審查」的請逐筆確認；自動通過的可在「已確認」分頁抽查。",
+          "Confident results whose category is in the taxonomy are approved automatically, so only items that need a person are left here. Confirm flagged items one by one; spot-check auto-approved ones under Confirmed.")}
       </p>
 
       <div className="review-tabs" role="tablist">
@@ -210,6 +254,22 @@ export default function ClassificationList({ topicParam, onOpenReview, refreshSi
       </div>
       {activeTab === "pending_review" && (counts.in_review ?? 0) > 0 && (
         <p className="review-secondary-filter"><small>{t(`其中 ${counts.in_review} 筆正在審核中`, `${counts.in_review} of these are currently in review`)}</small></p>
+      )}
+
+      {activeTab === "confirmed" && (
+        <div className="review-tabs review-tabs--sub" role="tablist" aria-label={t("確認方式", "Approved by")}>
+          {[
+            ["all", t("全部", "All")],
+            ["auto", `${AUTO_CONFIRMED_LABEL()} (${data.auto_confirmed_count ?? 0})`],
+            ["human", t("人工確認", "Confirmed by admin")],
+          ].map(([key, label]) => (
+            <button key={key} role="tab" aria-selected={confirmedSource === key}
+              className={`review-tab${confirmedSource === key ? " review-tab--active" : ""}`}
+              onClick={() => { setConfirmedSource(key); setPage(1); }}>
+              {label}
+            </button>
+          ))}
+        </div>
       )}
 
       <label className="review-secondary-filter">
@@ -238,7 +298,11 @@ export default function ClassificationList({ topicParam, onOpenReview, refreshSi
             <button type="button" className="review-btn-primary" disabled={batchBusy || excludeLegacyBusy || selectedCount === 0} onClick={runBatchConfirm}>
               {batchBusy ? t("批次處理中…", "Processing…") : t(`批次維持 AI 分類 (${selectedCount})`, `Keep AI classification (${selectedCount})`)}
             </button>
-            <button type="button" className="review-btn-danger" disabled={batchBusy || excludeLegacyBusy} onClick={runExcludeLegacy}>
+            <button type="button" disabled={batchBusy || excludeLegacyBusy || backfillBusy} onClick={runAutoConfirmBackfill}
+              title={t("把自動通過功能上線前就分析好、符合條件的待處理結果改成自動通過", "Apply auto-approval to pending items analysed before it was enabled")}>
+              {backfillBusy ? t("處理中…", "Working…") : t("套用自動通過到既有資料", "Auto-approve existing items")}
+            </button>
+            <button type="button" className="review-btn-danger" disabled={batchBusy || excludeLegacyBusy || backfillBusy} onClick={runExcludeLegacy}>
               {excludeLegacyBusy ? t("處理中…", "Working…") : t("排除舊版資料", "Exclude Legacy Data")}
             </button>
           </div>
@@ -272,6 +336,7 @@ export default function ClassificationList({ topicParam, onOpenReview, refreshSi
           onViewHistory={onOpenReview ? () => onOpenReview(row.classification_id, "view") : null}
           onReopen={() => reopen(row)}
           onRetry={() => retry(row)}
+          onOpenNewCategories={() => navigate("/admin/ai/new-categories")}
         />
       ))}
 
@@ -288,11 +353,16 @@ export default function ClassificationList({ topicParam, onOpenReview, refreshSi
 
 function ClassificationCard({
   row, selectable, selected, onToggleSelected, busy, error, onDismissError,
-  onAcceptOriginal, onExclude, onStartReview, onViewHistory, onReopen, onRetry,
+  onAcceptOriginal, onExclude, onStartReview, onViewHistory, onReopen, onRetry, onOpenNewCategories,
 }) {
-  const state = row.review_state || row.review_status;
+  const auto = isAutoConfirmed(row);
+  // 自動通過的結果在畫面上當成獨立狀態：顯示 AI 判斷與信心分數，
+  // 並可直接確認、重新審核或排除（後端不需要先重新開啟）。
+  const state = auto ? "auto_confirmed" : (row.review_state || row.review_status);
   const effective = row.effective_result;
   const isPendingLike = state === "pending_review" || state === "in_review";
+  const showsAiResult = isPendingLike || state === "auto_confirmed";
+  const isNewCategory = row.status === "new_category";
 
   return (
     <article className={`review-card${selected ? " review-card--selected" : ""}`}>
@@ -303,7 +373,7 @@ function ClassificationCard({
             <span className="sr-only">{t("選取這筆分類", "Select this classification")}</span>
           </label>
         )}
-        <b className={`review-status-tag review-status-tag--${state}`}>{stateLabel(state)}</b>
+        <b className={`review-status-tag review-status-tag--${state}`}>{auto ? AUTO_CONFIRMED_LABEL() : stateLabel(state)}</b>
         <span className="review-card-segment">{row.segment}</span>
       </div>
 
@@ -320,13 +390,17 @@ function ClassificationCard({
         </div>
       )}
 
-      {isPendingLike && (
+      {showsAiResult && (
         <div className="review-card-mid">
           <p><span className="review-field-label">{t("AI 大類別", "AI main category")}</span>{row.main_category || "—"}</p>
           <p><span className="review-field-label">{t("AI 子類別", "AI sub category")}</span>{row.sub_category || "—"}</p>
           <p><span className="review-field-label">{t("信心分數", "Confidence")}</span>{typeof row.confidence === "number" ? row.confidence.toFixed(2) : "—"}</p>
           {row.needs_human_review && (
             <p className="review-flag-badge">⚠ {t("需人工審查", "Needs human review")}{row.review_flag_reason && ` — ${reviewFlagReasonText(row.review_flag_reason)}`}</p>
+          )}
+          {auto && (
+            <p><small>{t("AI 有把握且類別在分類架構內，系統已自動通過。看起來正確可以按「確認無誤」；有疑問就重新審核。",
+              "The AI was confident and the category is in the taxonomy, so it was approved automatically. Confirm it if it looks right, or re-review it.")}</small></p>
           )}
         </div>
       )}
@@ -354,7 +428,21 @@ function ClassificationCard({
       {error && <p className="ai-admin-error">{error}<button onClick={onDismissError}>×</button></p>}
 
       <div className="review-card-actions">
-        {isPendingLike && (
+        {isPendingLike && isNewCategory && (
+          <>
+            <button className="review-btn-primary" disabled={busy} onClick={onOpenNewCategories}>{t("到新類別候選處理", "Open New Category Candidates")}</button>
+            {onStartReview && <button disabled={busy} onClick={onStartReview}>{state === "in_review" ? t("繼續審核", "Continue review") : t("改成既有類別", "Assign an existing category")}</button>}
+            <button disabled={busy} className="review-btn-danger" onClick={onExclude}>{t("不納入分析", "Exclude from analysis")}</button>
+          </>
+        )}
+        {state === "auto_confirmed" && (
+          <>
+            <button className="review-btn-primary" disabled={busy} onClick={onAcceptOriginal}>{t("確認無誤", "Confirm")}</button>
+            {onStartReview && <button disabled={busy} onClick={onStartReview}>{t("重新審核", "Re-review")}</button>}
+            <button disabled={busy} className="review-btn-danger" onClick={onExclude}>{t("不納入分析", "Exclude from analysis")}</button>
+          </>
+        )}
+        {isPendingLike && !isNewCategory && (
           <>
             <button className="review-btn-primary" disabled={busy} onClick={onAcceptOriginal}>{t("維持 AI 分類", "Keep AI classification")}</button>
             {onStartReview && <button disabled={busy} onClick={onStartReview}>{state === "in_review" ? t("繼續審核", "Continue review") : t("重新審核", "Re-review")}</button>}

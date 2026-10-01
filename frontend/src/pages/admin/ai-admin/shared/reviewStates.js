@@ -37,6 +37,11 @@ export const stateLabel = (state) => ({
   excluded: t("已排除", "Excluded"),
 }[state] || state);
 
+// 系統自動通過（review_status=confirmed + auto_confirmed=true）的顯示名稱，
+// 跟人工確認的「已確認」區分。規則見後端 services/auto_confirm_service.py。
+export const AUTO_CONFIRMED_LABEL = () => t("自動通過", "Auto-approved");
+export const isAutoConfirmed = (row) => row?.review_status === "confirmed" && Boolean(row?.auto_confirmed);
+
 export const unassignedKindLabel = (kind) => ({
   unrouted: t("未歸屬主題", "No topic"),
   failed: t("分類失敗", "Classification failed"),
@@ -84,6 +89,11 @@ export const errorMessage = (e) => {
     TAXONOMY_VERSION_NOT_USABLE: t("只能使用已發布或已封存的分類架構版本。", "Only published or archived taxonomy versions can be used."),
     TAXONOMY_PUBLISH_CONFLICT: t("另一位管理員剛剛發布了版本，請重新整理後再試。", "Another admin just published; refresh and retry."),
     REPORT_NOT_READY: t("目前沒有已確認的分類結果，無法產生報告。", "No confirmed classifications yet."),
+    NEW_CATEGORY_NEEDS_DECISION: t("這筆是 AI 提出的新類別，請到「新類別候選」加入、合併或排除。", "This is an AI-proposed category. Add, merge or exclude it under New Category Candidates."),
+    NEEDS_HUMAN_JUDGEMENT: t("這筆需要人工判斷，請逐筆確認。", "This item needs human judgement. Confirm it individually."),
+    DRAFT_IN_PROGRESS: t("這個主題有還沒發布的分類架構草稿。請先到該主題的「分類架構」發布或刪除草稿，再加入新類別。", "This topic has an unpublished taxonomy draft. Publish or delete it in the topic's Taxonomy tab first."),
+    CATEGORY_EXISTS: t("分類架構裡已經有這個類別，請改用「合併」。", "The taxonomy already has this category. Use Merge instead."),
+    ADOPT_FAILED: t("發布失敗，分類架構和回答都維持原樣。", "Publishing failed. The taxonomy and answers were left unchanged."),
   };
   return (code && known[code]) || e?.body?.message || e?.message || t("操作失敗", "Action failed");
 };

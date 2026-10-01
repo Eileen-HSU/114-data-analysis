@@ -351,6 +351,8 @@ def _existing_status(scope):
 def _is_human_finalized(row):
     if row.status in NON_COUNTABLE_STATUSES:
         return False
+    if getattr(row, "auto_confirmed", False):
+        return False  # 系統自動通過不是人工定案
     return row.review_status in (REVIEW_STATUS_CONFIRMED, REVIEW_STATUS_MODIFIED, REVIEW_STATUS_EXCLUDED)
 
 

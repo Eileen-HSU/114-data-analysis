@@ -177,7 +177,10 @@ with app.app_context():
     check("有效列只有 1 筆（不重複計數）", len(live) == 1 and live[0].status == "completed")
     from services.report_service import get_readiness
     readiness = get_readiness("user_upload", upload_batch_id="batch-failed")
-    check("readiness：failed=0、pending=1（superseded 不計）", readiness["failed"] == 0 and readiness["pending_review"] == 1)
+    # 重試後的新結果信心 0.93、類別在已發布架構內 -> 自動通過；舊的 failed 列 superseded 不計入
+    check("readiness：failed=0、只算 1 筆（superseded 不計）、新結果自動通過",
+          readiness["failed"] == 0 and readiness["pending_review"] == 0
+          and readiness["confirmed"] == 1 and readiness["auto_confirmed"] == 1)
 attempts = client.get(f"/api/admin/ai/classifications/{failed_cid}/attempts", headers=admin_header(1)).get_json()
 check("attempt history 2 筆 + retry audit", len(attempts["attempts"]) == 2 and attempts["audit"][-1]["action"] == "retry_failed")
 check("failed 分頁不再出現", failed_cid not in {i["classification_id"] for i in client.get(

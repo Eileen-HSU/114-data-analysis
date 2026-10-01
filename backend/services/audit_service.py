@@ -28,6 +28,7 @@ def classification_state(row) -> dict:
     """稽核用的 Response_Classification 狀態快照。"""
     return {
         "review_status": row.review_status,
+        "auto_confirmed": bool(getattr(row, "auto_confirmed", False)),
         "status": row.status,
         "main_category": row.main_category,
         "sub_category": row.sub_category,

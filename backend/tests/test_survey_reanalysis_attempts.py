@@ -256,16 +256,18 @@ with app.app_context():
     cells = " ".join(str(c.value) for ws_ in wb.worksheets for r in ws_.iter_rows() for c in r if c.value)
 check("匯出不含舊 attempt 的類別", "舊子類 X" not in cells and "C1 薪資" in cells)
 
-# report：只收人工確認過的 current 列
+# report：只收已確認（人工或自動通過）的 current 列
 with app.app_context():
     for r in m.Response_Classification.query.filter_by(response_id=RID["R4"]).all():
         r.review_status = "confirmed"  # 包含 superseded 的舊列：確認它們仍被排除
     db.session.commit()
 GEMINI_QUEUE.clear()
-q(*[{"summary": "報告摘要"}] * 2)  # C1 薪資、A2 升遷制度 兩個 group
+q(*[{"summary": "報告摘要"}] * 3)  # C1 薪資、A2 升遷制度、A1 教育訓練 三個 group
 resp = client.post(f"/api/admin/ai/reports/survey/{TEMPLATE_ID}/generate", headers=admin_header(1))
-check("report 產生 201（eligible 只算 current：R1A、R2A、R4 新的 2 段 = 4）",
-      resp.status_code == 201 and resp.get_json()["report"]["eligible_count_at_generation"] == 4)
+# eligible 只算 current：人工的 R1A、R2A + R4 新的 2 段 + 這次新分析、高信心自動通過的
+# R1／R2 失敗片段重試結果與 R6 第一次分析（3 段）= 7；superseded 的舊列不計入
+check("report 產生 201（eligible 只算 current = 7，含自動通過的 3 段）",
+      resp.status_code == 201 and resp.get_json()["report"]["eligible_count_at_generation"] == 7)
 detail = client.get(f"/api/admin/ai/reports/detail/{resp.get_json()['report']['report_id']}", headers=admin_header(1)).get_json()
 agg = {(a["main_category"], a["sub_category"]): a for a in detail["aggregations"]}
 check("report 不含 superseded 的舊類別", ("舊大類", "舊子類 X") not in agg)

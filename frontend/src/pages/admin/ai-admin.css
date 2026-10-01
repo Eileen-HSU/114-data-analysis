@@ -143,6 +143,8 @@ label { display:block; font-weight:800; margin:12px 0; } textarea,select { width
 }
 .review-status-tag--pending_review { background: #fff1f2; color: #be123c; } /* rose 當警示，未做大面積 */
 .review-status-tag--confirmed { background: #f0fdf4; color: #15803d; }
+/* 自動通過：跟人工確認同色系但用虛線框區分，提醒「還沒有人看過」 */
+.review-status-tag--auto_confirmed { background: #ffffff; color: #15803d; border: 1px dashed #86efac; }
 .review-status-tag--modified { background: #eff6ff; color: #1d4ed8; }
 .review-status-tag--excluded { background: #f8fafc; color: #64748b; }
 .review-status-tag--in_review { background: #fffbeb; color: #b45309; }
@@ -508,3 +510,7 @@ label { display:block; font-weight:800; margin:12px 0; } textarea,select { width
 /* 分類架構初始化（bootstrap）警告 */
 .ai-admin-health-warning { border: 1px solid #fca5a5; background: #fef2f2; color: #7f1d1d; border-radius: 10px; padding: 12px 16px; margin: 0 0 16px; }
 .ai-admin-health-warning p { margin: 4px 0; }
+
+/* 「已確認」分頁底下的子篩選（全部／自動通過／人工確認）：比主分頁小一階 */
+.review-tabs--sub { margin-top: -4px; }
+.review-tabs--sub .review-tab { font-size: 13px; padding: 6px 12px; }

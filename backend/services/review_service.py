@@ -360,9 +360,32 @@ def _require_own_or_no_active(classification_id, admin_id):
 
 
 def _stamp(classification, admin_id, now):
+    # 任何人工審核動作之後，這筆就不再是「系統自動通過」
+    classification.auto_confirmed = False
     classification.reviewed_by_admin_id = admin_id
     classification.reviewed_at = now
     classification.updated_at = now
+
+
+NEW_CATEGORY_STATUS = "new_category"  # 同 services.open_classification.NEW_CATEGORY_STATUS
+
+
+def _is_auto_confirmed(classification):
+    return classification.review_status == REVIEW_STATUS_CONFIRMED and bool(classification.auto_confirmed)
+
+
+def _is_finalized_by_human(classification):
+    """已人工定案（要先 reopen 才能再改）。系統自動通過的不算：Admin 可以
+    直接對它做單筆審核動作（確認、手動指定、排除、開始審核對話）。"""
+    return classification.review_status in _LOCKED_REVIEW_STATUSES and not _is_auto_confirmed(classification)
+
+
+def _new_category_error():
+    return ReviewError(
+        "這筆是 AI 提出的新類別，不能直接確認。請到「新類別候選」選擇採用、合併或排除。",
+        409,
+        code="NEW_CATEGORY_NEEDS_DECISION",
+    )
 
 
 def _already_finalized_error(classification):
@@ -421,6 +444,12 @@ def start_review(classification_id, admin_id):
     """
     classification = _lock_classification(classification_id)
     _reject_failed_classification(classification)
+
+    if _is_auto_confirmed(classification):
+        # 在系統自動通過的結果上開始審核對話 = 重新開啟（回到待審 + 新 session），
+        # 避免「狀態是已確認、卻同時有審核對話在進行」。
+        db.session.rollback()
+        return reopen_review(classification_id, admin_id, reason="start_review_on_auto_confirmed")
 
     if classification.review_status in _LOCKED_REVIEW_STATUSES:
         raise ReviewError(
@@ -533,8 +562,15 @@ def send_message(classification_id, admin_id, message_text):
 
 
 
-def confirm_original(classification_id, admin_id, batch_id=None, action=None):
+def confirm_original(classification_id, admin_id, batch_id=None, action=None, _allow_new_category=False):
     """pending_review / in_review（尚未送出任何訊息）-> confirmed。
+
+    - 系統自動通過（confirmed + auto_confirmed）-> 人工確認（auto_confirmed=False）。
+    - AI 提出的新類別（status=new_category）不能直接確認 -> 409
+      NEW_CATEGORY_NEEDS_DECISION：直接確認會讓這筆變成「已確認」，但類別
+      從來沒有加進分類架構，也會從「新類別候選」消失。請改用新類別的
+      採用（adopt，會一起確認）或合併（merge）。_allow_new_category 只給
+      new_category_service.adopt() 使用。
 
     - 自己持有、但還沒送出任何訊息的 in_progress session 會一併關閉
       （status=closed, closed_reason=quick_confirm）——修正「開始 review
@@ -546,8 +582,12 @@ def confirm_original(classification_id, admin_id, batch_id=None, action=None):
     classification = _lock_classification(classification_id)
     _reject_failed_classification(classification)
 
-    if classification.review_status in _LOCKED_REVIEW_STATUSES:
+    # 系統自動通過的結果可以直接「人工確認」：Admin 看過、同意 AI 的判斷，
+    # 這筆就變成人工確認（auto_confirmed=False，記錄審核人，受重新分析保護）。
+    if _is_finalized_by_human(classification):
         raise _already_finalized_error(classification)
+    if classification.status == NEW_CATEGORY_STATUS and not _allow_new_category:
+        raise _new_category_error()
 
     actives = _require_own_or_no_active(classification_id, admin_id)
     if any(_has_entered_current_conversation(r.review_id) for r in actives):
@@ -668,7 +708,7 @@ def confirm_manual(classification_id, admin_id, sub_category, secondary_sub_cate
     """
     classification = _lock_classification(classification_id)
     _reject_failed_classification(classification)
-    if classification.review_status in _LOCKED_REVIEW_STATUSES:
+    if _is_finalized_by_human(classification):  # 自動通過的可以直接處理
         raise _already_finalized_error(classification)
     actives = _require_own_or_no_active(classification_id, admin_id)
 
@@ -776,7 +816,7 @@ def exclude(classification_id, admin_id, reason=None):
     failed 也可以排除（明確決定捨棄這筆失敗結果）。"""
     classification = _lock_classification(classification_id)
 
-    if classification.review_status in _LOCKED_REVIEW_STATUSES:
+    if _is_finalized_by_human(classification):  # 自動通過的可以直接處理
         raise _already_finalized_error(classification)
 
     actives = _require_own_or_no_active(classification_id, admin_id)
@@ -810,7 +850,9 @@ def _normalize_batch_id(batch_id):
 
 
 def batch_confirm(classification_ids, admin_id, batch_id=None):
-    """一次確認多筆（維持 AI 原始分類）。在單一 transaction 裡處理：
+    """一次確認多筆（維持 AI 原始分類）。需要人工判斷的列（needs_human_review，
+    例如低信心、分類不完整）和 AI 提出的新類別不能批次確認，會回報在 skipped。
+    在單一 transaction 裡處理：
     每筆各自鎖定、檢查資格；不合格的逐筆回報原因（skipped），合格的
     一起 commit。同一個 batch_id 重試時，已經在這個 batch 被確認過的
     筆數回報 already_done，不會重複寫入 audit / 重複改狀態。"""
@@ -852,6 +894,18 @@ def batch_confirm(classification_ids, admin_id, batch_id=None):
                 continue
             if row.review_status in _LOCKED_REVIEW_STATUSES:
                 skipped.append({"classification_id": cid, "code": "ALREADY_FINALIZED", "message": f"已經是 {row.review_status}"})
+                continue
+            if row.status == NEW_CATEGORY_STATUS:
+                skipped.append({
+                    "classification_id": cid, "code": "NEW_CATEGORY_NEEDS_DECISION",
+                    "message": "AI 提出的新類別，請到「新類別候選」採用、合併或排除",
+                })
+                continue
+            if row.needs_human_review:
+                skipped.append({
+                    "classification_id": cid, "code": "NEEDS_HUMAN_JUDGEMENT",
+                    "message": f"需要人工判斷（{row.review_flag_reason or '已標記'}），請逐筆確認",
+                })
                 continue
             actives = _active_reviews(cid)
             other = next((r for r in actives if r.admin_id != admin_id), None)

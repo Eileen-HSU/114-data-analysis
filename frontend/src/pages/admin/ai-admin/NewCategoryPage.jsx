@@ -68,8 +68,8 @@ export default function NewCategoryPage() {
 
   const adopt = (item) => {
     const definition = window.prompt(
-      t(`把「${item.sub_category}」加進「${item.topic_title}」的分類架構草稿。\n請輸入這個類別的定義（可留空，之後在分類架構頁再補）：`,
-        `Add "${item.sub_category}" to the draft taxonomy of "${item.topic_title}".\nDefinition (optional):`),
+      t(`把「${item.sub_category}」加入「${item.topic_title}」的分類架構，並立刻發布。這 ${item.count} 筆回答會一起確認，之後類似的回答也會直接歸到這一類。\n\n請輸入這個類別的定義（AI 會用它判斷之後的回答；留空會用「當回覆主要涉及「${item.sub_category}」相關內容時，歸入此類別。」）：`,
+        `Add "${item.sub_category}" to the "${item.topic_title}" taxonomy and publish it now. These ${item.count} answers will be confirmed, and similar answers will be classified here from now on.\n\nDefinition (the AI uses it to classify future answers; leave blank for a default):`),
       "",
     );
     if (definition === null) return;
@@ -79,10 +79,22 @@ export default function NewCategoryPage() {
         topic_key: item.topic_key, main_category: item.main_category, sub_category: item.sub_category,
         definition: definition.trim() || undefined,
       }),
-    }), (r) => t(
-      `已加入草稿 v${r.taxonomy_version.version_number}，請到該主題的「分類架構」檢查後發布；這些回答可在審查清單確認。`,
-      `Added to draft v${r.taxonomy_version.version_number}. Review and publish it in the topic's Taxonomy tab.`,
-    ));
+    }), (r) => {
+      if (!r.published) {
+        // 主題還沒有已發布的分類架構（AI 自動建立的主題）：後端只加進草稿
+        return t(
+          `這個主題還沒有已發布的分類架構，已先加入草稿 v${r.taxonomy_version.version_number}，回答維持待處理。`,
+          `This topic has no published taxonomy yet, so it was added to draft v${r.taxonomy_version.version_number} and the answers stay pending.`,
+        );
+      }
+      const skipped = r.skipped?.length
+        ? t(`，${r.skipped.length} 筆未確認（${r.skipped[0].message}）`, `; ${r.skipped.length} not confirmed (${r.skipped[0].message})`)
+        : "";
+      return t(
+        `已加入並發布 v${r.taxonomy_version.version_number}，${r.confirmed_count} 筆回答已確認${skipped}。`,
+        `Added and published v${r.taxonomy_version.version_number}; ${r.confirmed_count} answers confirmed${skipped}.`,
+      );
+    });
   };
 
   const merge = (item) => {
@@ -106,8 +118,8 @@ export default function NewCategoryPage() {
   return <><Navbar /><main className="ai-admin-page">
     <NavLink to="/admin/ai" className="back">← {t("所有主題", "All topics")}</NavLink>
     <h1>{t("新類別候選", "New Category Candidates")}</h1>
-    <p><small>{t("AI 分類時遇到現有分類都不適合的內容，會提出新類別。採用後會加進該主題的分類架構草稿，發布後類似的回答就會直接歸到這一類；也可以合併到既有類別。",
-      "When no existing category fits, the AI proposes a new one. Adopt it into the topic's draft taxonomy, or merge it into an existing category.")}</small></p>
+    <p><small>{t("AI 分類時遇到現有分類都不適合的內容，會提出新類別。採用會把它加入分類架構並立刻發布，這些回答一起確認；如果其實就是某個既有類別，請用合併。",
+      "When no existing category fits, the AI proposes a new one. Adopting adds it to the taxonomy, publishes it and confirms these answers in one step. If it's really an existing category, merge it instead.")}</small></p>
     {error && <p className="ai-admin-error">{error}<button onClick={() => setError("")}>×</button></p>}
     {loading && <LoadingNotice />}
     {!loading && data.items.length === 0 && <p className="review-empty-hint">{t("目前沒有待處理的新類別。", "No new categories waiting.")}</p>}
@@ -129,7 +141,7 @@ export default function NewCategoryPage() {
           </div>
           {state.message && <p className={state.message.ok ? "review-batch-message" : "ai-admin-error"}>{state.message.text}</p>}
           <div className="review-card-actions">
-            <button className="review-btn-primary" disabled={state.busy} onClick={() => adopt(item)}>{t("採用為新類別", "Adopt as new category")}</button>
+            <button className="review-btn-primary" disabled={state.busy} onClick={() => adopt(item)}>{t("加入分類架構", "Add to taxonomy")}</button>
             <select value={state.target || ""} disabled={state.busy}
               onFocus={() => loadTargets(item)}
               onChange={(e) => setRowState((p) => ({ ...p, [key]: { ...(p[key] || {}), target: e.target.value } }))}>

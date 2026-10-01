@@ -167,6 +167,8 @@ def get_reviewed_examples(taxonomy_version_id, limit: int = DEFAULT_LIMIT) -> li
             .filter_by(
                 taxonomy_version_id=taxonomy_version_id,
                 review_status=REVIEW_STATUS_CONFIRMED,
+                # 自動通過是 AI 自己的判斷，不能當成人工校準過的範例餵回給 AI
+                auto_confirmed=False,
             )
             .order_by(Response_Classification.classification_id.desc())
         )

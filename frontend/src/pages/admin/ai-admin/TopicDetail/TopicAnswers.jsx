@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "../shared/apiClient";
-import { errorMessage, stateLabel } from "../shared/reviewStates";
+import { AUTO_CONFIRMED_LABEL, errorMessage, isAutoConfirmed, stateLabel } from "../shared/reviewStates";
 import { t } from "../shared/taxStatus";
 
 const answersUrl = (topicKey, params) =>
@@ -15,7 +15,9 @@ function AnswerItem({ item }) {
     <li className="topic-answer-item">
       <span className="topic-answer-text">「{item.segment_text}」</span>
       {item.review_status && item.review_status !== "pending_review" && (
-        <span className={`review-status-tag review-status-tag--${item.review_status}`}>{stateLabel(item.review_status)}</span>
+        isAutoConfirmed(item)
+          ? <span className="review-status-tag review-status-tag--auto_confirmed">{AUTO_CONFIRMED_LABEL()}</span>
+          : <span className={`review-status-tag review-status-tag--${item.review_status}`}>{stateLabel(item.review_status)}</span>
       )}
       {item.is_new_category && <span className="topic-tag">{t("AI 新類別", "New category")}</span>}
       {full && (
@@ -95,7 +97,8 @@ export function TopicSourceSummary({ data }) {
       </p>
       <p><small>
         {t(`共 ${data.total_answers} 則回答、${data.total_segments} 個片段`, `${data.total_answers} answers, ${data.total_segments} segments`)}
-        {" · "}{t(`已人工確認 ${data.reviewed_count}`, `${data.reviewed_count} reviewed`)}
+        {" · "}{t(`已人工確認 ${data.reviewed_count - (data.auto_confirmed_count || 0)}`, `${data.reviewed_count - (data.auto_confirmed_count || 0)} reviewed`)}
+        {(data.auto_confirmed_count || 0) > 0 && <>{" · "}{t(`自動通過 ${data.auto_confirmed_count}`, `${data.auto_confirmed_count} auto-approved`)}</>}
         {data.excluded_count > 0 && ` · ${t(`已排除 ${data.excluded_count}`, `${data.excluded_count} excluded`)}`}
         {data.failed_count > 0 && ` · ${t(`處理失敗 ${data.failed_count}`, `${data.failed_count} failed`)}`}
       </small></p>

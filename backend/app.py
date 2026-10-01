@@ -336,6 +336,10 @@ def ensure_runtime_schema():
             ensure_column("Response_Classification", "reviewed_by_admin_id", "`reviewed_by_admin_id` INT NULL")
             ensure_column("Response_Classification", "reviewed_at", "`reviewed_at` DATETIME NULL")
             ensure_column("Response_Classification", "updated_at", "`updated_at` DATETIME NULL")
+            ensure_column(
+                "Response_Classification", "auto_confirmed",
+                "`auto_confirmed` TINYINT(1) NOT NULL DEFAULT 0",
+            )
             ensure_column("Classification_Review", "closed_at", "`closed_at` DATETIME NULL")
             ensure_column("Classification_Review", "closed_reason", "`closed_reason` VARCHAR(30) NULL")
             ensure_column("Report", "outdated_reason", "`outdated_reason` VARCHAR(50) NULL")

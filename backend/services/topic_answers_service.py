@@ -83,7 +83,7 @@ def list_topic_answers(topic_key, per_category=5, main_category=None, sub_catego
 
     answers_by_source = {}
     groups = OrderedDict()
-    excluded = failed = reviewed = 0
+    excluded = failed = reviewed = auto_confirmed = 0
     failed_items = []
 
     for row in rows:
@@ -95,6 +95,7 @@ def list_topic_answers(topic_key, per_category=5, main_category=None, sub_catego
             "answer_text": row.answer_text,
             "source_question": label,
             "review_status": row.review_status,
+            "auto_confirmed": bool(row.auto_confirmed),
             "confidence": row.confidence,
             "is_new_category": row.status == "new_category",
         }
@@ -109,6 +110,8 @@ def list_topic_answers(topic_key, per_category=5, main_category=None, sub_catego
             continue
         if row.review_status in _REVIEWED:
             reviewed += 1
+            if row.auto_confirmed:
+                auto_confirmed += 1
         key = (view["main_category"] or "", view["sub_category"] or "")
         group = groups.setdefault(key, {"main_category": key[0], "sub_category": key[1], "count": 0, "items": []})
         group["count"] += 1
@@ -127,7 +130,8 @@ def list_topic_answers(topic_key, per_category=5, main_category=None, sub_catego
         "question_text": topic.question_text,
         "total_answers": len({k for keys in answers_by_source.values() for k in keys}),
         "total_segments": len(rows),
-        "reviewed_count": reviewed,
+        "reviewed_count": reviewed,  # 已確認／已修改（含自動通過）
+        "auto_confirmed_count": auto_confirmed,  # reviewed_count 之中由系統自動通過的筆數
         "excluded_count": excluded,
         "failed_count": failed,
         "failed_items": failed_items,

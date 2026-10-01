@@ -11,8 +11,8 @@
        立即分類（不再是零結果），回應標示 provisional / auto_topic
     3. 之後遇到類似資料：routing 把自動主題列為候選 -> 沿用，不重新歸納
     4. AI 歸納失敗：不亂分類，維持未分類並寫明原因
-    5. 新類別候選：Admin 列表、採用（加進可編輯草稿）、合併到既有類別
-    6. 審核：新類別出現在可選清單；「維持 AI 原始分類」可用
+    5. 新類別候選：Admin 列表、一鍵採用（加入、發布、回答一起確認）、合併到既有類別
+    6. 審核：新類別出現在可選清單；不能用快速確認／批次確認直接按掉
     7. 正式報告只納入人工確認過的結果
     8. OPEN_CLASSIFICATION_ENABLED=0：回到封閉式行為
 
@@ -179,13 +179,27 @@ check("列出新類別候選（主題、次數、範例）", cand is not None an
 resp = client.post("/api/admin/ai/new-categories/adopt", headers=admin_header(1), json={
     "topic_key": "custom_topic", "main_category": "Main C", "sub_category": "寵物友善環境",
 })
-check("採用 201：建立可編輯草稿", resp.status_code == 201 and resp.get_json()["draft_created"] is True)
-draft_id = resp.get_json()["taxonomy_version"]["version_id"]
+adopt_body = resp.get_json()
+check("一鍵採用 201：已發布", resp.status_code == 201 and adopt_body["published"] is True)
+check("一鍵採用：這一組回答一起確認", adopt_body["confirmed_ids"] == [new_cat_cid] and adopt_body["skipped"] == [])
+new_version_id = adopt_body["taxonomy_version"]["version_id"]
 with app.app_context():
-    draft = db.session.get(m.Taxonomy_Version, draft_id)
-    check("草稿包含原有類別 + 新類別", {c.sub_category for c in draft.categories} == {"A1 Original", "B1 Candidate", "寵物友善環境"})
-    check("已發布版本不受影響", {c.sub_category for c in db.session.get(m.Taxonomy_Version, version_id).categories} == {"A1 Original", "B1 Candidate"})
-    check("採用寫入 audit", m.Admin_Audit_Log.query.filter_by(action="adopt_new_category").count() == 1)
+    new_version = db.session.get(m.Taxonomy_Version, new_version_id)
+    check("新版本已發布，包含原有類別 + 新類別",
+          new_version.status == "published"
+          and {c.sub_category for c in new_version.categories} == {"A1 Original", "B1 Candidate", "寵物友善環境"})
+    old_version = db.session.get(m.Taxonomy_Version, version_id)
+    check("舊版本封存、內容不變",
+          old_version.status == "archived"
+          and {c.sub_category for c in old_version.categories} == {"A1 Original", "B1 Candidate"})
+    check("採用寫入 audit（分類架構一筆）", m.Admin_Audit_Log.query.filter_by(
+        action="adopt_new_category", entity_type="taxonomy_version").count() == 1)
+    adopted_row = db.session.get(m.Response_Classification, new_cat_cid)
+    check("採用確認的回答：confirmed、是人工（不是自動通過）、保留 AI 提出的類別",
+          adopted_row.review_status == "confirmed" and adopted_row.auto_confirmed is False
+          and adopted_row.reviewed_by_admin_id == 1 and adopted_row.sub_category == "寵物友善環境")
+check("採用後不再是候選", not any(i["sub_category"] == "寵物友善環境" for i in client.get(
+    "/api/admin/ai/new-categories", headers=admin_header(1)).get_json()["items"]))
 resp = client.post("/api/admin/ai/new-categories/adopt", headers=admin_header(1), json={
     "topic_key": "custom_topic", "main_category": "Main C", "sub_category": "寵物友善環境",
 })
@@ -209,8 +223,24 @@ check("合併後不再是候選", not any(i["sub_category"] == "工時過長" fo
 print("\n========== 6. 審核：新類別可選、可維持 AI 原始分類 ==========")
 state = client.get(f"/api/classification/{new_cat_cid}/review", headers=admin_header(1)).get_json()
 check("可選清單包含 AI 提出的新類別（proposed）", any(o["sub_category"] == "寵物友善環境" and o["proposed"] for o in state["taxonomy_options"]))
-resp = client.post(f"/api/classification/{new_cat_cid}/review/confirm-original", headers=admin_header(1))
-check("維持 AI 原始分類（新類別）-> confirmed", resp.status_code == 200 and resp.get_json()["review_status"] == "confirmed")
+with app.app_context():
+    ids = seed_upload_batch("batch-guard", ["希望可以帶狗上班"], question_type="custom_topic")
+    guard_cid = seed_classification(ids[0], "batch-guard", "希望可以帶狗上班", "Main C", "動物陪伴",
+                                    version_id=new_version_id, status="new_category")
+resp = client.post(f"/api/classification/{guard_cid}/review/confirm-original", headers=admin_header(1))
+check("新類別不能快速確認 -> 409 NEW_CATEGORY_NEEDS_DECISION",
+      resp.status_code == 409 and resp.get_json()["code"] == "NEW_CATEGORY_NEEDS_DECISION")
+resp = client.post("/api/classification/review/batch-confirm", headers=admin_header(1),
+                   json={"classification_ids": [guard_cid], "batch_id": "guard-batch"})
+body = resp.get_json() or {}
+check("新類別不能批次確認（回報在 skipped）",
+      resp.status_code == 200 and body.get("confirmed_ids") == []
+      and [x["code"] for x in body.get("skipped", [])] == ["NEW_CATEGORY_NEEDS_DECISION"])
+with app.app_context():
+    check("被擋下的新類別仍是待處理、仍在候選清單",
+          db.session.get(m.Response_Classification, guard_cid).review_status == "pending_review")
+check("仍在新類別候選清單", any(i["sub_category"] == "動物陪伴" for i in client.get(
+    "/api/admin/ai/new-categories", headers=admin_header(1)).get_json()["items"]))
 
 
 print("\n========== 7. 正式報告只納入人工確認過的 ==========")

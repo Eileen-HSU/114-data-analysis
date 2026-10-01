@@ -109,7 +109,7 @@ def effective_view(row, include_methodology: bool = False) -> dict | None:
             "main_category", "sub_category",
             "secondary_main_category", "secondary_sub_category",
             "reasoning", "summary",
-            "review_status", "is_human_reviewed",
+            "review_status", "is_human_reviewed", "auto_confirmed",
             # include_methodology=True 時才有（需要查 DB）：
             "methodology", "citation", "secondary_methodology", "secondary_citation",
         }
@@ -143,7 +143,9 @@ def effective_view(row, include_methodology: bool = False) -> dict | None:
     review_status = getattr(row, "review_status", None) or REVIEW_STATUS_PENDING
     view["summary"] = getattr(row, "summary", None)
     view["review_status"] = review_status
-    view["is_human_reviewed"] = review_status in REPORT_ELIGIBLE_REVIEW_STATUSES
+    auto_confirmed = bool(getattr(row, "auto_confirmed", False))
+    view["auto_confirmed"] = auto_confirmed
+    view["is_human_reviewed"] = review_status in REPORT_ELIGIBLE_REVIEW_STATUSES and not auto_confirmed
 
     if include_methodology:
         view.update(_methodology_fields(row, view))

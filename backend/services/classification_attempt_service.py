@@ -112,8 +112,12 @@ def current_rows(scope, lock=False):
 
 
 def protected_row_ids(rows):
-    """人工定案過、或曾經有 review 對話紀錄的列（重新分析不可取代）。"""
-    ids = {r.classification_id for r in rows if r.review_status in PROTECTED_REVIEW_STATUSES}
+    """人工定案過、或曾經有 review 對話紀錄的列（重新分析不可取代）。
+    系統自動通過（auto_confirmed）不算人工定案，不受保護。"""
+    ids = {
+        r.classification_id for r in rows
+        if r.review_status in PROTECTED_REVIEW_STATUSES and not getattr(r, "auto_confirmed", False)
+    }
     candidate_ids = [r.classification_id for r in rows if r.classification_id not in ids]
     if candidate_ids:
         reviewed = db.session.query(Classification_Review.classification_id).filter(

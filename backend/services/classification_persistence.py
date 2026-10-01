@@ -11,7 +11,7 @@ services/classification_attempt_service.py。
 import re
 import unicodedata
 
-from classification_models import Response_Classification
+from classification_models import REVIEW_STATUS_PENDING, Response_Classification
 from extensions import db
 
 _MAIN_CATEGORY_PREFIX_RE = re.compile(r"^大類別[:：]\s*")
@@ -124,6 +124,7 @@ def build_classification_rows(scope, segments, taxonomy_version_id, attempt_no=1
             methodology=seg.get("methodology"),
             citation=seg.get("citation"),
             status=seg.get("status"),
+            review_status=REVIEW_STATUS_PENDING,  # 明確寫入，自動通過的判斷才不會依賴 flush 時機
             taxonomy_version_id=taxonomy_version_id,
             confidence=_confidence(seg.get("confidence")),
             needs_human_review=needs_human_review,
@@ -133,4 +134,9 @@ def build_classification_rows(scope, segments, taxonomy_version_id, attempt_no=1
         attach_ai_secondaries(row, segment_secondaries(seg, lookup_factory), taxonomy_version_id)
         db.session.add(row)
         rows.append(row)
+
+    # 高信心、類別在已發布分類架構內的結果直接自動通過（見 auto_confirm_service）
+    from services.auto_confirm_service import apply_to_new_rows
+
+    apply_to_new_rows(rows)
     return rows

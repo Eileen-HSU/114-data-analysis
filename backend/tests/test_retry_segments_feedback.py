@@ -101,7 +101,10 @@ with app.app_context():
     new = m.Response_Classification.query.filter_by(response_id=old.response_id, attempt_no=2).one()
     check("失敗片段被取代（superseded，保留歷史）", old.status == "superseded")
     check("新列記錄實際使用的 taxonomy version", new.taxonomy_version_id == vid and new.sub_category == "A1 教育訓練")
-    confirmed = m.Response_Classification.query.filter_by(response_id=old.response_id, review_status="confirmed").one()
-    check("confirmed 片段不動", confirmed.status == "completed" and confirmed.review_status == "confirmed" and confirmed.attempt_no in (None, 1))
+    confirmed = m.Response_Classification.query.filter_by(
+        response_id=old.response_id, review_status="confirmed", auto_confirmed=False,
+    ).one()
+    check("人工 confirmed 片段不動", confirmed.status == "completed" and confirmed.review_status == "confirmed" and confirmed.attempt_no in (None, 1))
+    check("重試成功的新片段（高信心）自動通過", new.review_status == "confirmed" and new.auto_confirmed is True)
 
 finish()

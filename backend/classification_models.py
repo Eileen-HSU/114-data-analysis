@@ -501,6 +501,17 @@ class Response_Classification(db.Model):
     reviewed_at = db.Column(db.DateTime(timezone=True), nullable=True)
     updated_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
+    # ── 自動通過（additive-only）─────────────────────────────────
+    # True：review_status=confirmed 是系統依 services/auto_confirm_service.py
+    # 的規則自動設定的（高信心、類別在已發布的分類架構內），不是人工確認。
+    # 任何人工審核動作（確認、修改、排除、重新開啟）都會把它改回 False
+    # （見 review_service._stamp）。它會影響三件事：
+    #   - 不算「人工審核過」：不當成回饋給 Gemini 的審核範例、
+    #     effective_view 的 is_human_reviewed=False
+    #   - 不受重新分析的保護（人工定案才受保護）
+    #   - Admin 可以用清單篩選 auto_confirmed=true 找出來重新審核
+    auto_confirmed = db.Column(db.Boolean, nullable=False, default=False)
+
     # ── Attempt（additive-only）─────────────────────────────────
     # 這筆結果是這則回答的第幾次分析產生的（NULL = attempt 功能上線前
     # 的舊資料，視同第 1 次）。舊 attempt 的列保留（status=superseded），
@@ -579,6 +590,7 @@ class Response_Classification(db.Model):
             "review_flag_reason": self.review_flag_reason,
             "reviewed_by_admin_id": self.reviewed_by_admin_id,
             "reviewed_at": self.reviewed_at.isoformat() if self.reviewed_at else None,
+            "auto_confirmed": bool(self.auto_confirmed),
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "attempt_no": self.attempt_no,
             "secondary_categories": ai_secondaries,

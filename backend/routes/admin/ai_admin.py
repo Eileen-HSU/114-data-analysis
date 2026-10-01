@@ -100,6 +100,8 @@ def reviewed_classifications():
         topic             ：Topic.topic_key，或 "__unassigned__"
                             （question_id IS NULL / "other" 的舊資料）
         needs_human_review：true 只看被 Confidence Gate flag 的列
+        auto_confirmed    ：true 只看系統自動通過的列（重新審核用）；
+                            false 排除自動通過的列
         page / page_size  ：預設 1 / 50，page_size 上限 200
 
     回應：
@@ -142,6 +144,12 @@ def reviewed_classifications():
         base = base.filter(Response_Classification.needs_human_review.is_(True))
 
     status_counts = {s: base.filter(_state_clause(s)).count() for s in CLASSIFICATION_STATES}
+    auto_confirmed_count = base.filter(Response_Classification.auto_confirmed.is_(True)).count()
+    auto_confirmed_arg = request.args.get("auto_confirmed")
+    if auto_confirmed_arg == "true":
+        base = base.filter(Response_Classification.auto_confirmed.is_(True))
+    elif auto_confirmed_arg == "false":
+        base = base.filter(Response_Classification.auto_confirmed.is_(False))
 
     query = base
     if review_status:
@@ -205,6 +213,7 @@ def reviewed_classifications():
         "total": total,
         "total_pages": (total + page_size - 1) // page_size,
         "status_counts": status_counts,
+        "auto_confirmed_count": auto_confirmed_count,
     })
 
 
@@ -499,7 +508,10 @@ def list_new_categories():
 
 @ai_admin_bp.post("/new-categories/adopt")
 def adopt_new_category():
-    """Body: {topic_key, main_category, sub_category, definition?}"""
+    """一鍵採用：加入分類架構、發布、這一組回答全部確認（見 new_category_service.adopt）。
+    Body: {topic_key, main_category, sub_category, definition?}
+    回應 201：{published, taxonomy_version, category, confirmed_ids, confirmed_count, skipped, message}
+    409 DRAFT_IN_PROGRESS：這個主題有尚未發布的草稿，要先發布或刪除。"""
     admin, failure = _admin_or_error()
     if failure:
         return failure
@@ -529,6 +541,21 @@ def merge_new_category():
     except new_category_service.NewCategoryError as exc:
         return api_error(exc.code, exc.message, exc.http_status)
     return jsonify(result), 200
+
+
+@ai_admin_bp.post("/classifications/auto-confirm")
+def auto_confirm_existing():
+    """把已經存在、符合自動通過條件但還在待審的結果補做自動通過
+    （自動通過功能上線前分析的資料）。規則見 services/auto_confirm_service.py。
+    Body: {dry_run?: bool = true}。預設只預覽筆數，dry_run=false 才寫入。"""
+    admin, failure = _admin_or_error()
+    if failure:
+        return failure
+    from services.auto_confirm_service import backfill_existing
+
+    data = request.get_json(silent=True) or {}
+    dry_run = data.get("dry_run", True) is not False
+    return jsonify(backfill_existing(admin.admin_id, dry_run=dry_run)), 200
 
 
 @ai_admin_bp.get("/taxonomy")
