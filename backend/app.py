@@ -386,6 +386,8 @@ def ensure_integrity_followup_schema():
             # 系統健康狀態（taxonomy bootstrap 結果，Admin 頁顯示警告用）
             from models import System_Health_Status
             ensure_table(System_Health_Status)
+            from system_status import System_Error_Log
+            ensure_table(System_Error_Log)
             db.session.commit()
 
             # 重新分析 attempt 模型（services/classification_attempt_service.py）
@@ -492,25 +494,12 @@ def health():
     return jsonify({"status": "ok"}), 200
 
 
-@app.errorhandler(Exception)
-def handle_exception(e):
-    from werkzeug.exceptions import HTTPException
-    
-    if isinstance(e, HTTPException):
-        response = jsonify({
-            "error": e.description,
-            "type": str(type(e)),
-            "message": e.name,
-        })
-        return response, e.code   # ← 保留原始 status code
+# 錯誤處理與系統錯誤紀錄（手冊 4.3）：HTTP 錯誤維持原本的回應；非預期的 500
+# 不再把內部錯誤細節傳給瀏覽器，改成記進 System_Error_Log 並回傳錯誤編號。
+# 程式裡的 logging.error / logger.exception 也會寫進錯誤紀錄。
+from services.error_log_service import install as install_error_logging  # noqa: E402
 
-    # 非預期的 500
-    response = jsonify({
-        "error": str(e),
-        "type": str(type(e)),
-        "message": "伺服器發生錯誤，請稍後再試",
-    })
-    return response, 500
+install_error_logging(app)
 
 @app.before_request
 def handle_options():

@@ -21,6 +21,7 @@ import SandboxPanel from "../pages/admin/ai-admin/TopicDetail/SandboxPanel.jsx";
 import UnassignedReviewPage from "../pages/admin/ai-admin/UnassignedReviewPage.jsx";
 import ReportAdminPage from "../pages/admin/ai-admin/ReportAdminPage.jsx";
 import NewCategoryPage from "../pages/admin/ai-admin/NewCategoryPage.jsx";
+import SystemLogPage from "../pages/admin/ai-admin/SystemLogPage.jsx";
 
 import SharedWorkspacePage from "../pages/workspace/SharedWorkspacePage.jsx";
 
@@ -48,6 +49,7 @@ const routes = [
   { path: "/admin/ai/unassigned", element: <UnassignedReviewPage /> },
   { path: "/admin/ai/reports", element: <ReportAdminPage /> },
   { path: "/admin/ai/new-categories", element: <NewCategoryPage /> },
+  { path: "/admin/ai/system", element: <SystemLogPage /> },
   {
     path: "/admin/ai/topics/:topicKey",
     element: <TopicDetailLayout />,

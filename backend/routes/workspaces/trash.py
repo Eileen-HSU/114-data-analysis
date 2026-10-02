@@ -111,7 +111,23 @@ def hard_delete_expired_workspaces(app):
             print(f"[Scheduler] 永久刪除失敗：{e}")
 
 
+_scheduler = None
+
+
+def scheduler_running() -> bool:
+    """這個 process 的排程有沒有在跑（後台系統狀態用）。"""
+    return _scheduler is not None and _scheduler.running
+
+
+def _purge_error_logs(app):
+    from services.error_log_service import purge_old
+
+    with app.app_context():
+        purge_old()
+
+
 def start_scheduler(app):
+    global _scheduler
     scheduler = BackgroundScheduler()
     scheduler.add_job(
         hard_delete_expired_workspaces,
@@ -132,6 +148,9 @@ def start_scheduler(app):
         max_instances=1,
         coalesce=True,
     )
+    # 系統錯誤紀錄保留期限：已處理 90 天、未處理 180 天（見 services/error_log_service.py）
+    scheduler.add_job(_purge_error_logs, trigger="interval", hours=24, args=[app], id="purge_error_logs")
     if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
         scheduler.start()
+        _scheduler = scheduler
         print("[Scheduler] 自動永久刪除排程已啟動")

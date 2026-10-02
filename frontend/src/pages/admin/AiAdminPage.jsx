@@ -20,6 +20,7 @@ export default function AiAdminPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [bootstrapHealth, setBootstrapHealth] = useState(null);
+  const [systemStatus, setSystemStatus] = useState(null);
   // 兩個背景工作：全部重試（無法分類）、AI 再確認（低信心）
   const bulk = useBackgroundJob("/api/admin/ai/unassigned/retry-all", token, setError, () => loadAll());
   const recheck = useBackgroundJob("/api/admin/ai/second-opinion", token, setError, () => loadAll());
@@ -48,6 +49,7 @@ export default function AiAdminPage() {
     bulk.reload();
     recheck.reload();
     // 分類架構初始化（bootstrap）狀態：失敗不會讓網站停掉，所以要在這裡明顯提醒
+    api("/api/admin/ai/system/status", token).then(setSystemStatus).catch(() => setSystemStatus(null));
     api("/api/admin/ai/system/health", token)
       .then((d) => setBootstrapHealth(d.taxonomy_bootstrap || null))
       .catch(() => setBootstrapHealth(null));
@@ -85,6 +87,15 @@ export default function AiAdminPage() {
     {error && <p className="ai-admin-error">{error}<button onClick={() => setError("")}>×</button></p>}
     <BootstrapWarning health={bootstrapHealth} />
     {loading && <LoadingNotice text={t("正在載入待辦事項…", "Loading what needs attention…")} />}
+    {systemStatus && (systemStatus.errors.open_last_24h > 0 || !systemStatus.database.ok) && (
+      <p className="admin-system-alert" role="status">
+        {!systemStatus.database.ok
+          ? t("資料庫連線異常，部分功能可能無法使用。", "The database connection has a problem; some features may not work.")
+          : t(`最近 24 小時有 ${systemStatus.errors.open_last_24h} 種系統錯誤還沒處理。`,
+            `${systemStatus.errors.open_last_24h} system error types in the last 24 hours are unresolved.`)}
+        {" "}<button className="link-button" onClick={() => navigate("/admin/ai/system")}>{t("查看系統紀錄", "View system logs")}</button>
+      </p>
+    )}
 
     {overview && (
       <section className="admin-todo" aria-labelledby="admin-todo-title">
@@ -286,6 +297,10 @@ export default function AiAdminPage() {
         <button onClick={() => navigate("/admin/ai/unassigned")}>{t("其他 / 未歸屬資料", "Other / Unassigned Data")}</button>
         <button onClick={() => navigate("/admin/ai/new-categories")}>{t("新類別候選", "New Category Candidates")}</button>
         <button onClick={() => navigate("/admin/ai/reports")}>{t("報告管理", "Report Management")}</button>
+        <button onClick={() => navigate("/admin/ai/system")}>
+          {t("系統紀錄", "System logs")}
+          {systemStatus?.errors?.open > 0 && <span className="review-tab-count">{systemStatus.errors.open}</span>}
+        </button>
       </p>
     </section>
   </main></>;

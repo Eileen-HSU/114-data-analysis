@@ -587,3 +587,27 @@ label { display:block; font-weight:800; margin:12px 0; } textarea,select { width
 .admin-todo-card--judge .admin-bulk-status { background: #fffbeb; color: #78350f; }
 .admin-todo-card--judge .admin-bulk-bar { background: #fde68a; }
 .admin-todo-card--judge .admin-bulk-bar span { background: #d97706; }
+
+/* ── 系統紀錄頁（手冊 4.3）────────────────────────────────── */
+.admin-system-alert { margin: 16px 0 0; padding: 10px 14px; border-radius: 10px; background: #fef2f2; color: #7f1d1d; border: 1px solid #fecaca; }
+.syslog-status-list { list-style: none; margin: 0 0 16px; padding: 0; border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; }
+.syslog-status-row { display: flex; gap: 12px; padding: 14px 18px; border-bottom: 1px solid #f1f5f9; }
+.syslog-status-row:last-child { border-bottom: none; }
+.syslog-status-row p { margin: 2px 0 0; color: #475569; }
+.syslog-status-dot { flex-shrink: 0; width: 10px; height: 10px; margin-top: 6px; border-radius: 50%; }
+.syslog-status-row--ok .syslog-status-dot { background: #16a34a; }
+.syslog-status-row--bad .syslog-status-dot { background: #dc2626; }
+.syslog-filters { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px; }
+.syslog-filters label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #475569; font-weight: 600; }
+.syslog-filters select, .syslog-filters input { min-height: 36px; padding: 0 10px; border: 1px solid #cbd5e1; border-radius: 8px; font: inherit; }
+.syslog-message { margin: 8px 0 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; overflow-wrap: anywhere; }
+.syslog-fix { margin: 6px 0; padding: 8px 12px; border-radius: 8px; background: #f8fafc; color: #334155; }
+.syslog-detail { max-height: 320px; overflow: auto; margin: 8px 0; padding: 12px; border-radius: 8px; background: #0f172a; color: #e2e8f0; font-size: 12px; line-height: 1.5; white-space: pre; }
+.syslog-table-wrap { overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
+.syslog-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.syslog-table th, .syslog-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+.syslog-table th { color: #64748b; font-size: 13px; background: #f8fafc; white-space: nowrap; }
+.syslog-table td:first-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.syslog-diff-row td { background: #f8fafc; }
+.syslog-diff-row ul { margin: 0; padding-left: 18px; }
+.syslog-diff-row code { font-size: 12px; }

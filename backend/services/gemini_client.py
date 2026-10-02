@@ -1,6 +1,6 @@
 import contextvars
+import logging
 import os
-import traceback
 
 from google import genai
 from google.genai import types
@@ -93,6 +93,10 @@ class GenerativeModel:
                 contents=contents,
                 config=config,
             )
-        except Exception:
-            traceback.print_exc()
+        except Exception as exc:
+            # 寫進 log（也會進後台的系統錯誤紀錄；訊息裡帶錯誤內容，額度用完才會被
+            # 歸類成 AI_QUOTA_EXCEEDED。數字不同的同一種錯誤會合併成一筆累加次數）
+            logging.getLogger(__name__).error(
+                "Gemini 呼叫失敗（模型 %s）：%s", self.model_name, exc, exc_info=True,
+            )
             raise

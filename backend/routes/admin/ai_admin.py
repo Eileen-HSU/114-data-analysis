@@ -467,6 +467,94 @@ def merge_topic_into(topic_key):
         return _recovery_error(exc)
 
 
+# ── 系統紀錄（手冊 4.3）：系統狀態、錯誤紀錄、操作紀錄 ─────────────────
+
+def _page_args(default_size=50):
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+        page_size = min(200, max(1, int(request.args.get("page_size", default_size))))
+    except ValueError:
+        page, page_size = 1, default_size
+    return page, page_size
+
+
+@ai_admin_bp.get("/system/status")
+def system_status():
+    """資料庫、AI key、寄信、排程、背景工作、錯誤數量、分類架構初始化的狀態。
+    只回報有沒有設定，不回傳任何 key 的值。"""
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    from services.system_monitor_service import build_status
+
+    return jsonify(build_status()), 200
+
+
+@ai_admin_bp.get("/system/errors")
+def system_errors():
+    """系統錯誤紀錄。Query: status（open/resolved/ignored）、code、q（搜尋訊息或路徑）、page、page_size。"""
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    from services import error_log_service
+
+    page, page_size = _page_args()
+    return jsonify(error_log_service.list_errors(
+        status=request.args.get("status") or None, code=request.args.get("code") or None,
+        search=request.args.get("q") or None, page=page, page_size=page_size,
+    )), 200
+
+
+@ai_admin_bp.get("/system/errors/<int:error_id>")
+def system_error_detail(error_id):
+    """單筆錯誤，含去敏後的 stack trace。"""
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    from services import error_log_service
+
+    try:
+        return jsonify(error_log_service.get_error(error_id)), 200
+    except error_log_service.ErrorLogError as exc:
+        return api_error(exc.code, exc.message, exc.http_status)
+
+
+@ai_admin_bp.post("/system/errors/<int:error_id>/status")
+def system_error_set_status(error_id):
+    """標記錯誤：resolved（已處理）、ignored（忽略）、open（重新開啟）。Body: {status, note?}"""
+    admin, failure = _admin_or_error()
+    if failure:
+        return failure
+    from services import error_log_service
+
+    data = request.get_json(silent=True) or {}
+    try:
+        return jsonify(error_log_service.set_status(error_id, admin.admin_id, data.get("status"), data.get("note"))), 200
+    except error_log_service.ErrorLogError as exc:
+        return api_error(exc.code, exc.message, exc.http_status)
+
+
+@ai_admin_bp.get("/audit-logs")
+def audit_logs():
+    """操作紀錄總覽。Query: action、admin_id（數字或 system）、entity_type、entity_id、
+    date_from、date_to（YYYY-MM-DD，含當天）、page、page_size。"""
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    from services.system_monitor_service import MonitorError, list_audit_logs
+
+    page, page_size = _page_args()
+    try:
+        return jsonify(list_audit_logs(
+            action=request.args.get("action") or None, admin_id=request.args.get("admin_id"),
+            entity_type=request.args.get("entity_type") or None, entity_id=request.args.get("entity_id") or None,
+            date_from=request.args.get("date_from"), date_to=request.args.get("date_to"),
+            page=page, page_size=page_size,
+        )), 200
+    except MonitorError as exc:
+        return api_error(exc.code, exc.message, exc.http_status)
+
+
 @ai_admin_bp.get("/system/health")
 def system_health():
     """Admin：taxonomy bootstrap 狀態（失敗時間、安全的錯誤摘要、目前有沒有
