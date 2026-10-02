@@ -262,11 +262,16 @@ def run_job(job_id):
 
 
 def _run_in_thread(app, job_id):
+    from services import gemini_client
+
+    # 背景 thread 不會繼承請求的 context，要自己切換成 Admin 的 key
+    token = gemini_client.use_api_key(gemini_client.admin_api_key())
     with app.app_context():
         try:
             run_job(job_id)
         finally:
             db.session.remove()
+            gemini_client.reset_api_key(token)
 
 
 def start(admin_id, app=None, run_inline=False) -> dict:

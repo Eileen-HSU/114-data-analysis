@@ -1,3 +1,4 @@
+import contextvars
 import os
 import traceback
 
@@ -34,9 +35,37 @@ def configure(api_key=None, **_kwargs):
     _api_key = api_key or _api_key
 
 
+# ── 額度分流：Admin 觸發的 AI 呼叫改用另一個帳號的 key ─────────────────
+# Gemini 額度以帳號／專案計算，所以 Admin 的操作（審核對話、重新處理、
+# 全部重試、自動歸納分類架構、Admin 產生報告）用 ADMIN_GEMINI_API_KEY，
+# 就不會跟使用者上傳、問卷分析搶同一份額度。沒有設定時沿用原本的 key。
+#
+# 用 ContextVar 而不是改全域 _api_key：同一個 process 同時處理多個請求
+# （gunicorn gthread），只有這個請求／這條 thread 會切換，其他請求不受影響。
+_key_override = contextvars.ContextVar("gemini_api_key_override", default=None)
+
+
+def admin_api_key():
+    return os.getenv("ADMIN_GEMINI_API_KEY", "").strip() or None
+
+
+def use_api_key(api_key):
+    """在目前的 context 改用 api_key（None 表示沿用預設）。回傳 token 給 reset_api_key。"""
+    return _key_override.set(api_key or None)
+
+
+def reset_api_key(token):
+    _key_override.reset(token)
+
+
+def current_api_key():
+    return _key_override.get() or _api_key
+
+
 def _create_client():
-    if _api_key:
-        return genai.Client(api_key=_api_key)
+    api_key = current_api_key()
+    if api_key:
+        return genai.Client(api_key=api_key)
     return genai.Client()
 
 

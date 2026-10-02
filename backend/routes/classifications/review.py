@@ -35,6 +35,26 @@ from services import review_service
 
 review_bp = Blueprint("classification_review", __name__)
 
+
+# Admin 觸發的 AI 呼叫改用 ADMIN_GEMINI_API_KEY（另一個帳號的額度），
+# 見 services/gemini_client.py。請求結束一定還原，不影響同 thread 的下一個請求。
+@review_bp.before_request
+def _use_admin_gemini_key():
+    from flask import g
+    from services import gemini_client
+
+    g._admin_gemini_key_token = gemini_client.use_api_key(gemini_client.admin_api_key())
+
+
+@review_bp.teardown_request
+def _reset_admin_gemini_key(_exc):
+    from flask import g
+    from services import gemini_client
+
+    token = g.pop("_admin_gemini_key_token", None)
+    if token is not None:
+        gemini_client.reset_api_key(token)
+
 # 跟 routes/admin/ai_admin.py 的 _TOKEN_ERROR_STATUS 用同一套判斷：
 # token 本身有問題（不存在/過期/簽章錯）→ 401；token 有效但不是
 # admin（例如一般 User 的 token）→ 403。
