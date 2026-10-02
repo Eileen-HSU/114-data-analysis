@@ -118,11 +118,22 @@ export default function ClassificationList({
     }
   };
 
+  // 兩次 AI 判斷不一致時，一鍵採用第二意見（等同手動指定那個類別）
+  const adoptSecondOpinion = (row) => withRow(row.classification_id, () => api(
+    `/api/classification/${row.classification_id}/review/confirm-manual`, token, {
+      method: "POST",
+      body: JSON.stringify({
+        sub_category: row.second_opinion_sub_category,
+        reasoning: `採用 AI 第二意見：${row.second_opinion_reasoning || ""}`.trim(),
+      }),
+    },
+  ));
+
   const reopen = (row) => {
     const reason = window.prompt(
       t(
-        `確定要重新開啟這筆「${stateLabel(row.review_status)}」分類的審核嗎？\n它會回到待處理，既有審核歷史保留；使用過這筆結果的報表會被標記為需要更新。\n\n請輸入重新開啟的原因：`,
-        `Reopen this ${stateLabel(row.review_status)} classification? It returns to Pending, history is kept, and affected reports are marked outdated.\n\nReason:`,
+        `確定要重新開啟這筆「${stateLabel(row.review_status)}」分類的審核嗎？\n它會回到待處理，既有審核歷史保留。原本是「已修改」或「已排除」的話，使用過這筆結果的報表會被標記為需要更新。\n\n請輸入重新開啟的原因：`,
+        `Reopen this ${stateLabel(row.review_status)} classification? It returns to Pending and history is kept. If it was modified or excluded, affected reports are marked outdated.\n\nReason:`,
       ),
       "",
     );
@@ -341,6 +352,7 @@ export default function ClassificationList({
           onReopen={() => reopen(row)}
           onRetry={() => retry(row)}
           onOpenNewCategories={() => navigate("/admin/ai/new-categories")}
+          onAdoptSecondOpinion={() => adoptSecondOpinion(row)}
         />
       ))}
 
@@ -358,6 +370,7 @@ export default function ClassificationList({
 function ClassificationCard({
   row, selectable, selected, onToggleSelected, busy, error, onDismissError,
   onAcceptOriginal, onExclude, onStartReview, onViewHistory, onReopen, onRetry, onOpenNewCategories,
+  onAdoptSecondOpinion,
 }) {
   const auto = isAutoConfirmed(row);
   // 自動通過的結果在畫面上當成獨立狀態：顯示 AI 判斷與信心分數，
@@ -367,6 +380,7 @@ function ClassificationCard({
   const isPendingLike = state === "pending_review" || state === "in_review";
   const showsAiResult = isPendingLike || state === "auto_confirmed";
   const isNewCategory = row.status === "new_category";
+  const aiDisagreed = row.second_opinion_status === "disagreed";
 
   return (
     <article className={`review-card${selected ? " review-card--selected" : ""}`}>
@@ -403,8 +417,20 @@ function ClassificationCard({
             <p className="review-flag-badge">⚠ {t("需人工審查", "Needs human review")}{row.review_flag_reason && ` — ${reviewFlagReasonText(row.review_flag_reason)}`}</p>
           )}
           {auto && (
-            <p><small>{t("AI 有把握且類別在分類架構內，系統已自動通過。看起來正確可以按「確認無誤」；有疑問就重新審核。",
-              "The AI was confident and the category is in the taxonomy, so it was approved automatically. Confirm it if it looks right, or re-review it.")}</small></p>
+            <p><small>{row.second_opinion_status === "agreed"
+              ? t("第一次 AI 沒有把握，但更強的模型再判斷一次結果相同，系統已自動通過。有疑問可以重新審核。",
+                "The first pass was unsure, but a stronger model independently reached the same answer, so it was approved automatically. Re-review it if in doubt.")
+              : t("AI 有把握且類別在分類架構內，系統已自動通過。看起來正確可以按「確認無誤」；有疑問就重新審核。",
+                "The AI was confident and the category is in the taxonomy, so it was approved automatically. Confirm it if it looks right, or re-review it.")}</small></p>
+          )}
+          {aiDisagreed && (
+            <div className="review-second-opinion">
+              <p><span className="review-field-label">{t("AI 第二意見", "AI second opinion")}</span>
+                {row.second_opinion_sub_category
+                  ? `${row.second_opinion_main_category} / ${row.second_opinion_sub_category}`
+                  : t("認為清單裡的類別都不適合", "None of the categories fit")}</p>
+              {row.second_opinion_reasoning && <p><small>{row.second_opinion_reasoning}</small></p>}
+            </div>
           )}
         </div>
       )}
@@ -448,7 +474,14 @@ function ClassificationCard({
         )}
         {isPendingLike && !isNewCategory && (
           <>
-            <button className="review-btn-primary" disabled={busy} onClick={onAcceptOriginal}>{t("維持 AI 分類", "Keep AI classification")}</button>
+            {aiDisagreed && row.second_opinion_sub_category && (
+              <button className="review-btn-primary" disabled={busy} onClick={onAdoptSecondOpinion}>
+                {t("採用第二意見", "Use second opinion")}
+              </button>
+            )}
+            <button className={aiDisagreed ? "" : "review-btn-primary"} disabled={busy} onClick={onAcceptOriginal}>
+              {aiDisagreed ? t("維持第一次的分類", "Keep first classification") : t("維持 AI 分類", "Keep AI classification")}
+            </button>
             {onStartReview && <button disabled={busy} onClick={onStartReview}>{state === "in_review" ? t("繼續審核", "Continue review") : t("重新審核", "Re-review")}</button>}
             <button disabled={busy} className="review-btn-danger" onClick={onExclude}>{t("不納入分析", "Exclude from analysis")}</button>
           </>

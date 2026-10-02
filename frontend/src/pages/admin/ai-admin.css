@@ -579,3 +579,11 @@ label { display:block; font-weight:800; margin:12px 0; } textarea,select { width
 .admin-bulk-status p { margin: 0; color: inherit; }
 .admin-bulk-bar { height: 6px; margin: 8px 0; border-radius: 999px; background: #fecaca; overflow: hidden; }
 .admin-bulk-bar span { display: block; height: 100%; background: #dc2626; transition: width 0.4s ease; }
+
+/* 兩次 AI 判斷不一致時的第二意見 */
+.review-second-opinion { margin-top: 6px; padding: 8px 12px; border-left: 3px solid #f59e0b; background: #fffbeb; border-radius: 6px; }
+.review-second-opinion p { margin: 2px 0; }
+/* 在「需要人判斷」（琥珀色）卡片裡的進度用琥珀色，不要用代表緊急的紅色 */
+.admin-todo-card--judge .admin-bulk-status { background: #fffbeb; color: #78350f; }
+.admin-todo-card--judge .admin-bulk-bar { background: #fde68a; }
+.admin-todo-card--judge .admin-bulk-bar span { background: #d97706; }

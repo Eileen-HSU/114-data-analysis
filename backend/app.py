@@ -340,6 +340,14 @@ def ensure_runtime_schema():
                 "Response_Classification", "auto_confirmed",
                 "`auto_confirmed` TINYINT(1) NOT NULL DEFAULT 0",
             )
+            # AI 第二意見（services/second_opinion_service.py）
+            ensure_column("Response_Classification", "second_opinion_status", "`second_opinion_status` VARCHAR(20) NULL")
+            ensure_column("Response_Classification", "second_opinion_main_category",
+                          "`second_opinion_main_category` VARCHAR(100) NULL")
+            ensure_column("Response_Classification", "second_opinion_sub_category",
+                          "`second_opinion_sub_category` VARCHAR(100) NULL")
+            ensure_column("Response_Classification", "second_opinion_reasoning", "`second_opinion_reasoning` TEXT NULL")
+            ensure_column("Response_Classification", "second_opinion_at", "`second_opinion_at` DATETIME NULL")
             ensure_column("Classification_Review", "closed_at", "`closed_at` DATETIME NULL")
             ensure_column("Classification_Review", "closed_reason", "`closed_reason` VARCHAR(30) NULL")
             ensure_column("Report", "outdated_reason", "`outdated_reason` VARCHAR(50) NULL")
@@ -400,6 +408,7 @@ def ensure_integrity_followup_schema():
             ensure_table(Response_Classification_Secondary)
             from models import Bulk_Retry_Job
             ensure_table(Bulk_Retry_Job)
+            ensure_column("Bulk_Retry_Job", "kind", "`kind` VARCHAR(30) NOT NULL DEFAULT 'retry'")
             db.session.commit()
             # 舊欄位 -> 子表（只處理還沒有子表列的分類，重複啟動不會重複寫入）
             from services.secondary_classification_service import backfill_legacy_secondaries

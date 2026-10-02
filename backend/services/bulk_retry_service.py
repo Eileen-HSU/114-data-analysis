@@ -48,6 +48,11 @@ STALE_AFTER = timedelta(minutes=5)
 _TRANSIENT_CODES = {"AI_QUOTA_EXCEEDED", "AI_SERVICE_BUSY", "AI_TIMEOUT"}
 _RETRY_REASON = "全部重試（背景）"
 
+KIND_RETRY = "retry"
+KIND_SECOND_OPINION = "second_opinion"   # 見 services/second_opinion_service.py
+KINDS = (KIND_RETRY, KIND_SECOND_OPINION)
+SYSTEM_ADMIN_ID = 0                     # 排程自動開始的工作（沒有管理員）
+
 # 測試會換掉這兩個，避免真的等待
 _sleep = time.sleep
 
@@ -77,8 +82,9 @@ def _is_stale(job) -> bool:
     return now - heartbeat > STALE_AFTER
 
 
-def _latest_job():
-    return Bulk_Retry_Job.query.order_by(Bulk_Retry_Job.job_id.desc()).first()
+def _latest_job(kind=KIND_RETRY):
+    return (Bulk_Retry_Job.query.filter(Bulk_Retry_Job.kind == kind)
+            .order_by(Bulk_Retry_Job.job_id.desc()).first())
 
 
 def job_view(job):
@@ -97,8 +103,16 @@ def remaining_counts() -> dict:
             "total": counts[KIND_FAILED] + counts[KIND_UNROUTED]}
 
 
-def status() -> dict:
-    return {"job": job_view(_latest_job()), "remaining": remaining_counts()}
+def _remaining(kind) -> dict:
+    if kind == KIND_SECOND_OPINION:
+        from services.second_opinion_service import eligible_count
+
+        return {"total": eligible_count()}
+    return remaining_counts()
+
+
+def status(kind=KIND_RETRY) -> dict:
+    return {"job": job_view(_latest_job(kind)), "remaining": _remaining(kind)}
 
 
 # ── 下一筆要處理的 ──────────────────────────────────────────────────
@@ -198,6 +212,12 @@ def run_job(job_id):
     """在目前的 app context 裡把工作跑完（背景 thread 或測試直接呼叫）。"""
     job = db.session.get(Bulk_Retry_Job, job_id)
     admin_id = job.started_by_admin_id
+    if job.kind == KIND_SECOND_OPINION:
+        from services import second_opinion_service
+
+        next_item, process = second_opinion_service.next_item, second_opinion_service.process
+    else:
+        next_item, process = _next_item, _process
     tried = set()
     transient_tries = {}
     consecutive_quota = 0
@@ -209,13 +229,13 @@ def run_job(job_id):
             if job.cancel_requested:
                 _finish(job, BULK_RETRY_CANCELLED)
                 return
-            nxt = _next_item(tried)
+            nxt = next_item(tried)
             if nxt is None:
                 _finish(job, BULK_RETRY_COMPLETED)
                 return
             kind, item_id, key = nxt
 
-            outcome, code, message = _process(kind, item_id, admin_id)
+            outcome, code, message = process(kind, item_id, admin_id)
             job = db.session.get(Bulk_Retry_Job, job_id)
             job.heartbeat_at = taiwan_now()
 
@@ -226,7 +246,7 @@ def run_job(job_id):
                 transient_tries[key] = transient_tries.get(key, 0) + 1
                 if consecutive_quota >= MAX_CONSECUTIVE_QUOTA:
                     _finish(job, BULK_RETRY_PAUSED_QUOTA,
-                            "AI 額度用完或服務暫時無法使用，已自動暫停。額度恢復後再按一次「全部重試」即可接續。")
+                            "AI 額度用完或服務暫時無法使用，已自動暫停。額度恢復後再按一次即可接續。")
                     return
                 if transient_tries[key] >= MAX_CONSECUTIVE_QUOTA:
                     # 同一筆一直遇到暫時性錯誤：這次工作先放過它
@@ -274,21 +294,21 @@ def _run_in_thread(app, job_id):
             gemini_client.reset_api_key(token)
 
 
-def start(admin_id, app=None, run_inline=False) -> dict:
-    """開始一個新的全部重試工作。已經有執行中（且沒有中斷）的工作 -> 409。"""
-    latest = _latest_job()
+def start(admin_id, app=None, run_inline=False, kind=KIND_RETRY) -> dict:
+    """開始一個新的背景工作（全部重試或 AI 再確認）。同一種已經有執行中（且沒有中斷）的 -> 409。"""
+    latest = _latest_job(kind)
     if latest is not None and latest.status == BULK_RETRY_RUNNING:
         if not _is_stale(latest):
             raise BulkRetryError("BULK_RETRY_RUNNING", "已經有一個全部重試正在執行中", 409, job_view(latest))
         _finish(latest, BULK_RETRY_FAILED, "執行中的 worker 已經重啟，工作中斷（已處理好的資料不受影響）")
 
-    remaining = remaining_counts()
+    remaining = _remaining(kind)
     if remaining["total"] == 0:
-        raise BulkRetryError("NOTHING_TO_RETRY", "目前沒有需要重試的資料", 409)
+        raise BulkRetryError("NOTHING_TO_RETRY", "目前沒有需要處理的資料", 409)
 
     now = taiwan_now()
     job = Bulk_Retry_Job(
-        status=BULK_RETRY_RUNNING, started_by_admin_id=admin_id, total_at_start=remaining["total"],
+        kind=kind, status=BULK_RETRY_RUNNING, started_by_admin_id=admin_id, total_at_start=remaining["total"],
         started_at=now, heartbeat_at=now,
     )
     db.session.add(job)
@@ -304,13 +324,39 @@ def start(admin_id, app=None, run_inline=False) -> dict:
     return job_view(db.session.get(Bulk_Retry_Job, job_id))
 
 
-def cancel(admin_id) -> dict:
-    job = _latest_job()
+def cancel(admin_id, kind=KIND_RETRY) -> dict:
+    job = _latest_job(kind)
     if job is None or job.status != BULK_RETRY_RUNNING:
-        raise BulkRetryError("NOT_RUNNING", "目前沒有執行中的全部重試", 409)
+        raise BulkRetryError("NOT_RUNNING", "目前沒有執行中的背景工作", 409)
     if _is_stale(job):
         _finish(job, BULK_RETRY_CANCELLED)
     else:
         job.cancel_requested = True
         db.session.commit()
     return job_view(job)
+
+
+def scheduled_second_opinion(app):
+    """排程呼叫（app.py，每 10 分鐘）：有需要 AI 再確認的資料、而且沒有正在跑的，
+    就在這條排程 thread 裡直接跑完。用 Admin 的 Gemini key（系統背景工作，
+    不佔使用者的額度）。多個 worker 各自有排程時，start() 的「同一種只能有
+    一個執行中」會擋掉重複的。額度用完而暫停的，下一次排程會自動接續。"""
+    from services import gemini_client
+
+    token = gemini_client.use_api_key(gemini_client.admin_api_key())
+    with app.app_context():
+        try:
+            from services.second_opinion_service import eligible_count
+
+            if eligible_count() == 0:
+                return
+            start(SYSTEM_ADMIN_ID, run_inline=True, kind=KIND_SECOND_OPINION)
+        except BulkRetryError:
+            pass  # 已經有一個在跑，或剛好沒有資料
+        except Exception:  # noqa: BLE001 — 排程不能因為一次失敗就停掉
+            logger.exception("scheduled second opinion failed")
+            db.session.rollback()
+        finally:
+            db.session.remove()
+            gemini_client.reset_api_key(token)
+

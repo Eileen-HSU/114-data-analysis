@@ -335,6 +335,10 @@ with app.app_context():
 
 print("\n========== 8. AI 管理首頁彙整（overview）==========")
 with app.app_context():
+    # 前面各段留下的審核對話也要清掉：SQLite 會重複使用被刪掉的 id，
+    # 殘留的對話紀錄會讓新的列看起來「有人審核過」
+    m.Classification_Review_Message.query.delete()
+    m.Classification_Review.query.delete()
     m.Response_Classification.query.delete()
     m.Uploaded_Answer.query.delete()
     m.Response_Segmentation_Status.query.delete()
@@ -362,6 +366,8 @@ check("非管理員不能看 overview", client.get("/api/admin/ai/overview", hea
 ov = client.get("/api/admin/ai/overview", headers=admin_header(1)).get_json()
 check("需要人判斷：低信心 1 + 新類別 2 = 3", ov["needs_person"]["needs_judgement"] == 3
       and ov["needs_person"]["low_confidence"] == 1)
+check("低信心那筆在等 AI 再確認", ov["needs_person"]["awaiting_second_opinion"] == 1
+      and ov["needs_person"]["ai_disagreement"] == 0)
 check("新類別以組計算（同一類別 2 筆算 1 組）", ov["needs_person"]["new_category_groups"] == 1)
 check("沒被標記的待審（暫定分類）另外計算", ov["needs_person"]["other_pending"] == 1
       and ov["needs_person"]["total"] == 4)
@@ -369,7 +375,7 @@ check("自動通過 1 筆（人工確認、失敗、被取代的都不算）", o
 check("分類失敗算在無法分類", ov["cannot_classify"]["failed"] == 1)
 check("每個主題的數字",
       ov["topics"]["custom_topic"] == {"needs_judgement": 3, "other_pending": 0, "low_confidence": 1,
-                                       "auto_confirmed": 1, "new_category_groups": 1}
+                                       "ai_disagreement": 0, "auto_confirmed": 1, "new_category_groups": 1}
       and ov["topics"]["auto_overview"]["other_pending"] == 1)
 
 finish()

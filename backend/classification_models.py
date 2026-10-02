@@ -512,6 +512,18 @@ class Response_Classification(db.Model):
     #   - Admin 可以用清單篩選 auto_confirmed=true 找出來重新審核
     auto_confirmed = db.Column(db.Boolean, nullable=False, default=False)
 
+    # ── AI 第二意見（additive-only，見 services/second_opinion_service.py）──
+    # 低信心的結果交給更強的模型獨立再判斷一次：
+    #   agreed    ：兩次判斷一致 -> 自動通過（auto_confirmed=True）
+    #   disagreed ：不一致 -> 維持待審，second_opinion_* 留給人工參考
+    #   failed    ：第二意見本身失敗（例如回應格式錯），不再自動重試
+    # NULL：還沒做過（或不需要做）。
+    second_opinion_status = db.Column(db.String(20), nullable=True)
+    second_opinion_main_category = db.Column(db.String(100), nullable=True)
+    second_opinion_sub_category = db.Column(db.String(100), nullable=True)
+    second_opinion_reasoning = db.Column(db.Text, nullable=True)
+    second_opinion_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
     # ── Attempt（additive-only）─────────────────────────────────
     # 這筆結果是這則回答的第幾次分析產生的（NULL = attempt 功能上線前
     # 的舊資料，視同第 1 次）。舊 attempt 的列保留（status=superseded），
@@ -591,6 +603,11 @@ class Response_Classification(db.Model):
             "reviewed_by_admin_id": self.reviewed_by_admin_id,
             "reviewed_at": self.reviewed_at.isoformat() if self.reviewed_at else None,
             "auto_confirmed": bool(self.auto_confirmed),
+            "second_opinion_status": self.second_opinion_status,
+            "second_opinion_main_category": self.second_opinion_main_category,
+            "second_opinion_sub_category": self.second_opinion_sub_category,
+            "second_opinion_reasoning": self.second_opinion_reasoning,
+            "second_opinion_at": self.second_opinion_at.isoformat() if self.second_opinion_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "attempt_no": self.attempt_no,
             "secondary_categories": ai_secondaries,
@@ -841,6 +858,9 @@ class Bulk_Retry_Job(db.Model):
     __tablename__ = "Bulk_Retry_Job"
 
     job_id = db.Column(db.Integer, primary_key=True)
+    # retry：全部重試；second_opinion：AI 再確認低信心結果。兩種共用同一套
+    # 背景執行、額度退避、停止／中斷機制（見 services/bulk_retry_service.py）。
+    kind = db.Column(db.String(30), nullable=False, default="retry")
     status = db.Column(db.String(20), nullable=False, default=BULK_RETRY_RUNNING)
     started_by_admin_id = db.Column(db.Integer, nullable=False)
     total_at_start = db.Column(db.Integer, nullable=False, default=0)
@@ -858,6 +878,7 @@ class Bulk_Retry_Job(db.Model):
     def to_dict(self):
         return {
             "job_id": self.job_id,
+            "kind": self.kind,
             "status": self.status,
             "started_by_admin_id": self.started_by_admin_id,
             "total_at_start": self.total_at_start,

@@ -31,6 +31,8 @@ REASON_CLASSIFICATION_INCOMPLETE = "classification_incomplete"
 REASON_METHODOLOGY_NOT_FOUND = "methodology_not_found"
 REASON_INVALID_CONFIDENCE = "invalid_confidence"
 REASON_LOW_CONFIDENCE = "low_confidence"
+# 低信心的結果經 AI 第二意見後，兩次判斷不一致（services/second_opinion_service.py）
+REASON_AI_DISAGREEMENT = "ai_disagreement"
 
 
 def evaluate_confidence_gate(segment: dict):

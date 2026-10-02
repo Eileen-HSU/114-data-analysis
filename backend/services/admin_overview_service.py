@@ -4,7 +4,9 @@ AI 管理首頁「今天需要處理的事」用的彙整數字（GET /api/admin
 把散在各頁的待辦數量一次算好，依「Admin 要做什麼」分三類：
     cannot_classify ：無法分類（未歸屬主題、分類失敗）—— 這些回答目前沒有任何結果
     needs_person    ：需要人處理的待審結果
-        needs_judgement：低信心、分類不完整、AI 新類別等（needs_human_review / status=new_category）
+        needs_judgement：低信心、AI 兩次判斷不一致、分類不完整、AI 新類別等
+                         （needs_human_review / status=new_category）。低信心的會先由
+                         AI 再確認（awaiting_second_opinion），一致就自動通過
         other_pending  ：沒有被標記、但還在待審（AI 自動主題的暫定分類、
                          自動通過上線前的舊資料）
     auto_confirmed  ：系統已自動通過，可以抽查
@@ -44,6 +46,7 @@ def _topic_counts():
             func.sum(case((db.and_(pending, flagged), 1), else_=0)),
             func.sum(case((db.and_(pending, ~flagged), 1), else_=0)),
             func.sum(case((db.and_(pending, Response_Classification.review_flag_reason == "low_confidence"), 1), else_=0)),
+            func.sum(case((db.and_(pending, Response_Classification.review_flag_reason == "ai_disagreement"), 1), else_=0)),
             func.sum(case((auto, 1), else_=0)),
         )
         .select_from(Response_Classification)
@@ -57,9 +60,10 @@ def _topic_counts():
             "needs_judgement": int(judgement or 0),
             "other_pending": int(other or 0),
             "low_confidence": int(low or 0),
+            "ai_disagreement": int(disagree or 0),
             "auto_confirmed": int(auto_count or 0),
         }
-        for topic_key, judgement, other, low, auto_count in rows
+        for topic_key, judgement, other, low, disagree, auto_count in rows
     }
 
 
@@ -87,13 +91,14 @@ def _new_category_groups():
 
 def build_overview() -> dict:
     from services.admin_recovery_service import KIND_FAILED, KIND_UNROUTED, unassigned_counts
+    from services.second_opinion_service import eligible_count as second_opinion_eligible_count
 
     unassigned = unassigned_counts()
     per_topic = _topic_counts()
     new_groups = _new_category_groups()
 
     # 沒有分類架構版本的舊資料（topic_key=None）也算進總數，但不歸到任何主題卡片
-    totals = {"needs_judgement": 0, "other_pending": 0, "low_confidence": 0, "auto_confirmed": 0}
+    totals = {"needs_judgement": 0, "other_pending": 0, "low_confidence": 0, "ai_disagreement": 0, "auto_confirmed": 0}
     for counts in per_topic.values():
         for key in totals:
             totals[key] += counts[key]
@@ -102,7 +107,8 @@ def build_overview() -> dict:
     for topic_key in set(per_topic) | set(new_groups):
         if topic_key is None:
             continue
-        counts = per_topic.get(topic_key, {"needs_judgement": 0, "other_pending": 0, "low_confidence": 0, "auto_confirmed": 0})
+        counts = per_topic.get(topic_key, {"needs_judgement": 0, "other_pending": 0, "low_confidence": 0,
+                                           "ai_disagreement": 0, "auto_confirmed": 0})
         topics[topic_key] = {**counts, "new_category_groups": new_groups.get(topic_key, 0)}
 
     return {
@@ -114,6 +120,9 @@ def build_overview() -> dict:
         "needs_person": {
             "needs_judgement": totals["needs_judgement"],
             "low_confidence": totals["low_confidence"],
+            # 低信心之中還在等 AI 再確認的（排程會自動處理）；AI 兩次不一致的才真的需要人
+            "awaiting_second_opinion": second_opinion_eligible_count(),
+            "ai_disagreement": totals["ai_disagreement"],
             "new_category_groups": sum(new_groups.values()),
             "other_pending": totals["other_pending"],
             "total": totals["needs_judgement"] + totals["other_pending"],

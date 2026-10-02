@@ -299,6 +299,50 @@ def bulk_retry_cancel():
     return jsonify({"job": job}), 200
 
 
+# ── AI 再確認（第二意見，見 services/second_opinion_service.py）──────────
+# 排程每 10 分鐘會自動處理；這裡讓 Admin 看進度、立刻開始（例如舊資料）或停止。
+
+@ai_admin_bp.get("/second-opinion")
+def second_opinion_status():
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    from services import bulk_retry_service
+
+    return jsonify(bulk_retry_service.status(kind=bulk_retry_service.KIND_SECOND_OPINION)), 200
+
+
+@ai_admin_bp.post("/second-opinion")
+def second_opinion_start():
+    admin, failure = _admin_or_error()
+    if failure:
+        return failure
+    from flask import current_app
+    from services import bulk_retry_service
+
+    try:
+        job = bulk_retry_service.start(
+            admin.admin_id, app=current_app._get_current_object(), kind=bulk_retry_service.KIND_SECOND_OPINION,
+        )
+    except bulk_retry_service.BulkRetryError as exc:
+        return _bulk_retry_error(exc)
+    return jsonify({"job": job}), 202
+
+
+@ai_admin_bp.post("/second-opinion/cancel")
+def second_opinion_cancel():
+    admin, failure = _admin_or_error()
+    if failure:
+        return failure
+    from services import bulk_retry_service
+
+    try:
+        job = bulk_retry_service.cancel(admin.admin_id, kind=bulk_retry_service.KIND_SECOND_OPINION)
+    except bulk_retry_service.BulkRetryError as exc:
+        return _bulk_retry_error(exc)
+    return jsonify({"job": job}), 200
+
+
 @ai_admin_bp.get("/unassigned")
 def list_unassigned():
     _, failure = _admin_or_error()

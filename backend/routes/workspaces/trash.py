@@ -120,6 +120,18 @@ def start_scheduler(app):
         args    = [app],
         id      = "hard_delete_workspaces",
     )
+    # AI 第二意見：每 10 分鐘檢查有沒有低信心、需要再確認的結果（見 services/second_opinion_service.py）
+    from services.bulk_retry_service import scheduled_second_opinion
+
+    scheduler.add_job(
+        scheduled_second_opinion,
+        trigger="interval",
+        minutes=10,
+        args=[app],
+        id="second_opinion",
+        max_instances=1,
+        coalesce=True,
+    )
     if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
         scheduler.start()
         print("[Scheduler] 自動永久刪除排程已啟動")

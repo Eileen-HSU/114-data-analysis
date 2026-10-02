@@ -20,6 +20,7 @@ const reviewFlagReasonTextEn = (reason) => ({
   methodology_not_found: "Returned sub-category not in current taxonomy",
   classification_incomplete: "Incomplete classification result",
   new_category_proposed: "AI proposed a new category",
+  ai_disagreement: "Two AI checks disagreed",
 }[reason] || reason);
 const reviewFlagReasonTextZh = (reason) => ({
   low_confidence: "信心分數偏低",
@@ -27,5 +28,6 @@ const reviewFlagReasonTextZh = (reason) => ({
   methodology_not_found: "AI 回傳的子類別不在目前分類清單中",
   classification_incomplete: "分類結果不完整",
   new_category_proposed: "AI 提出新類別（不在目前清單中）",
+  ai_disagreement: "兩次 AI 判斷不一致",
 }[reason] || reason);
 export const reviewFlagReasonText = (reason) => (getLang() === "zh" ? reviewFlagReasonTextZh(reason) : reviewFlagReasonTextEn(reason));
