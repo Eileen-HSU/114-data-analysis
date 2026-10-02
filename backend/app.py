@@ -398,6 +398,8 @@ def ensure_integrity_followup_schema():
             # 次要分類子表（一筆分類可以有多個次要分類，含 taxonomy category identity）
             from models import Response_Classification_Secondary
             ensure_table(Response_Classification_Secondary)
+            from models import Bulk_Retry_Job
+            ensure_table(Bulk_Retry_Job)
             db.session.commit()
             # 舊欄位 -> 子表（只處理還沒有子表列的分類，重複啟動不會重複寫入）
             from services.secondary_classification_service import backfill_legacy_secondaries

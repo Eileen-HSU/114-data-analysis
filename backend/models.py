@@ -10,6 +10,7 @@ from classification_models import (
     Classification_Review,
     Classification_Review_Message,
     Response_Classification_Secondary,
+    Bulk_Retry_Job,
 )
 from report import Report, Report_Aggregation, Report_Aggregation_Item
 from taxonomy import Topic, Taxonomy_Version, Taxonomy_Category

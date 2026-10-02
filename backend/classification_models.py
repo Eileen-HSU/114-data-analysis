@@ -825,3 +825,50 @@ class Classification_Review_Message(db.Model):
             "candidate_reasoning": self.candidate_reasoning,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
+
+
+# ── 全部重試（背景工作）的進度紀錄 ─────────────────────────────────
+# 見 services/bulk_retry_service.py。同一時間只會有一個執行中的工作；
+# heartbeat_at 太久沒更新代表執行它的 worker 已經重啟，視為中斷。
+BULK_RETRY_RUNNING = "running"
+BULK_RETRY_COMPLETED = "completed"          # 每一筆都試過了
+BULK_RETRY_PAUSED_QUOTA = "paused_quota"    # 連續遇到 AI 額度用完，自動暫停
+BULK_RETRY_CANCELLED = "cancelled"          # 管理員按了停止
+BULK_RETRY_FAILED = "failed"                # 工作本身發生非預期錯誤
+
+
+class Bulk_Retry_Job(db.Model):
+    __tablename__ = "Bulk_Retry_Job"
+
+    job_id = db.Column(db.Integer, primary_key=True)
+    status = db.Column(db.String(20), nullable=False, default=BULK_RETRY_RUNNING)
+    started_by_admin_id = db.Column(db.Integer, nullable=False)
+    total_at_start = db.Column(db.Integer, nullable=False, default=0)
+    processed = db.Column(db.Integer, nullable=False, default=0)
+    succeeded = db.Column(db.Integer, nullable=False, default=0)
+    still_failed = db.Column(db.Integer, nullable=False, default=0)
+    skipped = db.Column(db.Integer, nullable=False, default=0)
+    quota_waits = db.Column(db.Integer, nullable=False, default=0)
+    cancel_requested = db.Column(db.Boolean, nullable=False, default=False)
+    last_error = db.Column(db.Text, nullable=True)
+    started_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    heartbeat_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    finished_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    def to_dict(self):
+        return {
+            "job_id": self.job_id,
+            "status": self.status,
+            "started_by_admin_id": self.started_by_admin_id,
+            "total_at_start": self.total_at_start,
+            "processed": self.processed,
+            "succeeded": self.succeeded,
+            "still_failed": self.still_failed,
+            "skipped": self.skipped,
+            "quota_waits": self.quota_waits,
+            "cancel_requested": bool(self.cancel_requested),
+            "last_error": self.last_error,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "heartbeat_at": self.heartbeat_at.isoformat() if self.heartbeat_at else None,
+            "finished_at": self.finished_at.isoformat() if self.finished_at else None,
+        }

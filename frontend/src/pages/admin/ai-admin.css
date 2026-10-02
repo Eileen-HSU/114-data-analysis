@@ -573,3 +573,9 @@ label { display:block; font-weight:800; margin:12px 0; } textarea,select { width
   .admin-candidate-list li { grid-template-columns: 1fr; gap: 4px; }
   .admin-auto-topics li { flex-direction: column; align-items: flex-start; }
 }
+
+/* 全部重試的進度 */
+.admin-bulk-status { margin: 0; padding: 10px 12px; border-radius: 10px; background: #fef2f2; color: #7f1d1d; }
+.admin-bulk-status p { margin: 0; color: inherit; }
+.admin-bulk-bar { height: 6px; margin: 8px 0; border-radius: 999px; background: #fecaca; overflow: hidden; }
+.admin-bulk-bar span { display: block; height: 100%; background: #dc2626; transition: width 0.4s ease; }

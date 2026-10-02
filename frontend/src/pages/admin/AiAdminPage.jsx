@@ -20,6 +20,47 @@ export default function AiAdminPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [bootstrapHealth, setBootstrapHealth] = useState(null);
+  // 全部重試（背景工作）的進度：{ job, remaining }
+  const [bulk, setBulk] = useState(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const bulkRunning = bulk?.job?.status === "running" && !bulk.job.interrupted;
+
+  const loadBulk = async () => {
+    try {
+      setBulk(await api("/api/admin/ai/unassigned/retry-all", token));
+    } catch {
+      setBulk(null);
+    }
+  };
+
+  const startBulkRetry = async () => {
+    const total = overview?.cannot_classify?.total ?? 0;
+    if (!window.confirm(t(
+      `要在背景把這 ${total} 筆重新分析一次嗎？\n\n會使用 Gemini 額度。系統會自動配合額度調整速度，額度不足時會放慢或自動暫停。執行期間可以離開這個頁面，隨時回來看進度。`,
+      `Re-analyse these ${total} items in the background?\n\nThis uses Gemini quota. The speed adjusts to the quota automatically and pauses if it runs out. You can leave this page and come back any time.`,
+    ))) return;
+    setBulkBusy(true);
+    try {
+      await api("/api/admin/ai/unassigned/retry-all", token, { method: "POST" });
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBulkBusy(false);
+      loadBulk();
+    }
+  };
+
+  const cancelBulkRetry = async () => {
+    setBulkBusy(true);
+    try {
+      await api("/api/admin/ai/unassigned/retry-all/cancel", token, { method: "POST" });
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBulkBusy(false);
+      loadBulk();
+    }
+  };
 
   const loadAll = async () => {
     setLoading(true);
@@ -39,9 +80,23 @@ export default function AiAdminPage() {
     }
   };
 
+  // 執行中每 5 秒更新一次進度；結束時重新載入首頁數字
+  useEffect(() => {
+    if (!canAccess || !bulkRunning) return undefined;
+    const timer = setInterval(async () => {
+      const next = await api("/api/admin/ai/unassigned/retry-all", token).catch(() => null);
+      if (!next) return;
+      setBulk(next);
+      if (next.job?.status !== "running") loadAll();
+    }, 5000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canAccess, bulkRunning]);
+
   useEffect(() => {
     if (!canAccess) return;
     loadAll();
+    loadBulk();
     // 分類架構初始化（bootstrap）狀態：失敗不會讓網站停掉，所以要在這裡明顯提醒
     api("/api/admin/ai/system/health", token)
       .then((d) => setBootstrapHealth(d.taxonomy_bootstrap || null))
@@ -94,9 +149,19 @@ export default function AiAdminPage() {
             <p>{t("這些回答目前沒有任何結果：", "These answers have no result yet: ")}
               {t(`判斷不出主題 ${overview.cannot_classify.unrouted}、分類失敗 ${overview.cannot_classify.failed}。`,
                 `${overview.cannot_classify.unrouted} without a topic, ${overview.cannot_classify.failed} failed.`)}</p>
+            <BulkRetryStatus bulk={bulk} />
             <div className="admin-todo-actions">
-              <button className="primary" disabled={overview.cannot_classify.total === 0} onClick={() => navigate("/admin/ai/unassigned")}>
-                {t("去處理", "Resolve")}
+              {bulkRunning ? (
+                <button disabled={bulkBusy || bulk.job.cancel_requested} onClick={cancelBulkRetry}>
+                  {bulk.job.cancel_requested ? t("停止中…", "Stopping…") : t("停止", "Stop")}
+                </button>
+              ) : (
+                <button className="primary" disabled={bulkBusy || overview.cannot_classify.total === 0} onClick={startBulkRetry}>
+                  {bulkBusy ? t("處理中…", "Working…") : t("全部重試", "Retry all")}
+                </button>
+              )}
+              <button disabled={overview.cannot_classify.total === 0} onClick={() => navigate("/admin/ai/unassigned")}>
+                {t("逐筆查看", "View one by one")}
               </button>
             </div>
           </article>
@@ -250,6 +315,37 @@ export default function AiAdminPage() {
       </p>
     </section>
   </main></>;
+}
+
+
+// 全部重試的進度／上一次的結果。沒有任何紀錄時不顯示。
+function BulkRetryStatus({ bulk }) {
+  const job = bulk?.job;
+  if (!job) return null;
+  const counts = t(`成功 ${job.succeeded}、仍失敗 ${job.still_failed}${job.skipped ? `、跳過 ${job.skipped}` : ""}`,
+    `${job.succeeded} fixed, ${job.still_failed} still failing${job.skipped ? `, ${job.skipped} skipped` : ""}`);
+  if (job.status === "running" && !job.interrupted) {
+    const percent = job.total_at_start ? Math.min(100, Math.round((job.processed / job.total_at_start) * 100)) : 0;
+    return (
+      <div className="admin-bulk-status" role="status" aria-live="polite">
+        <p><b>{t(`正在重試… ${job.processed} / ${job.total_at_start}`, `Retrying… ${job.processed} / ${job.total_at_start}`)}</b></p>
+        <div className="admin-bulk-bar"><span style={{ width: `${percent}%` }} /></div>
+        <p><small>{counts}{job.quota_waits > 0 && t("。AI 額度不足，已自動放慢速度。", ". AI quota is tight, so it slowed down.")}</small></p>
+      </div>
+    );
+  }
+  const summary = {
+    completed: t(`上次全部重試已完成：${counts}。`, `Last retry finished: ${counts}.`),
+    paused_quota: t(`上次全部重試因 AI 額度用完自動暫停（${counts}）。額度恢復後再按一次即可接續。`,
+      `Last retry paused because the AI quota ran out (${counts}). Press it again once quota is back.`),
+    cancelled: t(`上次全部重試已停止（${counts}）。`, `Last retry was stopped (${counts}).`),
+    failed: t(`上次全部重試發生錯誤（${counts}）。可以再按一次。`, `Last retry hit an error (${counts}). Try again.`),
+  }[job.status];
+  const text = job.interrupted
+    ? t(`上次全部重試中斷了（${counts}），可以再按一次接續，已處理好的不會重做。`,
+      `The last retry was interrupted (${counts}). Press it again to continue; finished items won't be redone.`)
+    : summary;
+  return text ? <p className="admin-bulk-status"><small>{text}</small></p> : null;
 }
 
 

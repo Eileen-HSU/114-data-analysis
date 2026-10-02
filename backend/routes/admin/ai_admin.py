@@ -229,6 +229,56 @@ def _optional_int(value):
     return int(value)
 
 
+# ── 全部重試（背景，見 services/bulk_retry_service.py）────────────────
+
+def _bulk_retry_error(exc):
+    extra = {"job": exc.job} if exc.job else {}
+    return api_error(exc.code, exc.message, exc.http_status, **extra)
+
+
+@ai_admin_bp.get("/unassigned/retry-all")
+def bulk_retry_status():
+    """目前／最近一次全部重試的進度，以及還剩多少無法分類的資料。"""
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    from services import bulk_retry_service
+
+    return jsonify(bulk_retry_service.status()), 200
+
+
+@ai_admin_bp.post("/unassigned/retry-all")
+def bulk_retry_start():
+    """在背景把所有分類失敗、判斷不出主題的資料重跑一遍。202：已開始；
+    409 BULK_RETRY_RUNNING：已經有一個在跑；409 NOTHING_TO_RETRY：沒有資料。"""
+    admin, failure = _admin_or_error()
+    if failure:
+        return failure
+    from flask import current_app
+    from services import bulk_retry_service
+
+    try:
+        job = bulk_retry_service.start(admin.admin_id, app=current_app._get_current_object())
+    except bulk_retry_service.BulkRetryError as exc:
+        return _bulk_retry_error(exc)
+    return jsonify({"job": job}), 202
+
+
+@ai_admin_bp.post("/unassigned/retry-all/cancel")
+def bulk_retry_cancel():
+    """停止執行中的全部重試（處理完目前這一筆就停）。"""
+    admin, failure = _admin_or_error()
+    if failure:
+        return failure
+    from services import bulk_retry_service
+
+    try:
+        job = bulk_retry_service.cancel(admin.admin_id)
+    except bulk_retry_service.BulkRetryError as exc:
+        return _bulk_retry_error(exc)
+    return jsonify({"job": job}), 200
+
+
 @ai_admin_bp.get("/unassigned")
 def list_unassigned():
     _, failure = _admin_or_error()

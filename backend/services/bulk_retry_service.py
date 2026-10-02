@@ -1,0 +1,311 @@
+"""
+「全部重試」：在背景把無法分類的資料一次重跑一遍。
+
+處理的資料（跟 Admin「其他／未歸屬資料」頁相同，見 admin_recovery_service）：
+    1. 分類失敗的結果（failed）         -> retry_failed_classification
+    2. 分析過但沒有任何結果的上傳回答    -> retry_failed_answer
+    3. 判斷不出主題的上傳回答（unrouted）-> reroute_answer
+每一筆都會走跟手動按「重新處理／重新判斷主題」一模一樣的流程與 audit。
+
+規則：
+    - 每次都「重新查下一筆還沒處理好的」，不預先列清單：同一則回答的多個
+      失敗片段，重試一次就整則重新處理，不會被重複重試。
+    - 每一筆在同一次工作裡最多試一次；真的失敗（AI 回答格式錯、資料有問題）
+      就記成 still_failed 繼續下一筆，不會無限重跑。
+    - AI 額度用完（429）或服務暫時不可用（503）不算這筆失敗：等一下、放慢
+      速度、之後再試同一筆。連續 MAX_CONSECUTIVE_QUOTA 次都是額度問題就
+      自動暫停（paused_quota），避免一直白打。
+    - 速度自動調整：順利時逐步加快（最快每筆間隔 BULK_RETRY_MIN_DELAY_SECONDS），
+      遇到額度問題就放慢。免費方案（每分鐘 15 次）跟付費方案都適用。
+    - 同一時間只會有一個執行中的工作。執行它的 worker 重啟的話，heartbeat
+      會停止更新，超過 STALE_AFTER 就視為中斷，可以重新開始；已經處理好的
+      資料不會再被處理（它們已經不是失敗狀態了）。
+"""
+
+import logging
+import os
+import threading
+import time
+from datetime import timedelta
+
+from classification_models import (
+    BULK_RETRY_CANCELLED,
+    BULK_RETRY_COMPLETED,
+    BULK_RETRY_FAILED,
+    BULK_RETRY_PAUSED_QUOTA,
+    BULK_RETRY_RUNNING,
+    Bulk_Retry_Job,
+)
+from extensions import db, taiwan_now
+
+logger = logging.getLogger(__name__)
+
+MAX_CONSECUTIVE_QUOTA = 5
+QUOTA_BACKOFF_SECONDS = 60
+MAX_DELAY_SECONDS = 30.0
+STALE_AFTER = timedelta(minutes=5)
+# 暫時性的 AI 問題（failure_explainer 的 code）：等一下再試，不算這筆失敗
+_TRANSIENT_CODES = {"AI_QUOTA_EXCEEDED", "AI_SERVICE_BUSY", "AI_TIMEOUT"}
+_RETRY_REASON = "全部重試（背景）"
+
+# 測試會換掉這兩個，避免真的等待
+_sleep = time.sleep
+
+
+def _min_delay() -> float:
+    try:
+        return max(0.0, float(os.environ.get("BULK_RETRY_MIN_DELAY_SECONDS", "2")))
+    except ValueError:
+        return 2.0
+
+
+class BulkRetryError(Exception):
+    def __init__(self, code, message, http_status=409, job=None):
+        super().__init__(message)
+        self.code, self.message, self.http_status, self.job = code, message, http_status, job
+
+
+# ── 狀態 ──────────────────────────────────────────────────────────
+
+def _is_stale(job) -> bool:
+    if job.heartbeat_at is None:
+        return True
+    heartbeat = job.heartbeat_at
+    now = taiwan_now()
+    if heartbeat.tzinfo is None and now.tzinfo is not None:
+        now = now.replace(tzinfo=None)
+    return now - heartbeat > STALE_AFTER
+
+
+def _latest_job():
+    return Bulk_Retry_Job.query.order_by(Bulk_Retry_Job.job_id.desc()).first()
+
+
+def job_view(job):
+    if job is None:
+        return None
+    data = job.to_dict()
+    data["interrupted"] = job.status == BULK_RETRY_RUNNING and _is_stale(job)
+    return data
+
+
+def remaining_counts() -> dict:
+    from services.admin_recovery_service import KIND_FAILED, KIND_UNROUTED, unassigned_counts
+
+    counts = unassigned_counts()
+    return {"failed": counts[KIND_FAILED], "unrouted": counts[KIND_UNROUTED],
+            "total": counts[KIND_FAILED] + counts[KIND_UNROUTED]}
+
+
+def status() -> dict:
+    return {"job": job_view(_latest_job()), "remaining": remaining_counts()}
+
+
+# ── 下一筆要處理的 ──────────────────────────────────────────────────
+
+def _scope_key(row):
+    if row.uploaded_answer_id is not None:
+        return ("answer", row.uploaded_answer_id)
+    return ("survey", row.response_id, row.question_id)
+
+
+def _next_item(tried):
+    """回傳 (kind, id, scope_key)；沒有了回傳 None。tried 是這次工作已經
+    處理過（成功或真的失敗）的 scope_key 集合。"""
+    from services.admin_recovery_service import (
+        _failed_query, _unrouted_answers_query, _zero_segment_failed_answers_query,
+    )
+    from classification_models import Response_Classification, Uploaded_Answer
+
+    for row in _failed_query().order_by(Response_Classification.classification_id.asc()).yield_per(200):
+        key = _scope_key(row)
+        if key not in tried:
+            return "failed_classification", row.classification_id, key
+    for answer in _zero_segment_failed_answers_query().order_by(Uploaded_Answer.id.asc()).yield_per(200):
+        key = ("answer", answer.id)
+        if key not in tried:
+            return "failed_answer", answer.id, key
+    for answer in _unrouted_answers_query().order_by(Uploaded_Answer.id.asc()).yield_per(200):
+        key = ("answer", answer.id)
+        if key not in tried:
+            return "unrouted_answer", answer.id, key
+    return None
+
+
+def _process(kind, item_id, admin_id):
+    """處理一筆。回傳 (outcome, failure_code, message)，outcome 是
+    success / failed / transient / skipped。"""
+    from services.admin_recovery_service import (
+        RecoveryError, reroute_answer, retry_failed_answer, retry_failed_classification,
+    )
+    from services.failure_explainer import explain_failure
+
+    try:
+        if kind == "failed_classification":
+            result = retry_failed_classification(item_id, admin_id, reason=_RETRY_REASON)
+            ok, failure = result.get("succeeded"), result.get("failure")
+        elif kind == "failed_answer":
+            result = retry_failed_answer(item_id, admin_id, reason=_RETRY_REASON)
+            ok, failure = result.get("succeeded"), result.get("failure")
+        else:
+            from services.question_routing_service import (
+                ROUTING_ERROR_RATE_LIMITED, ROUTING_ERROR_SERVICE_UNAVAILABLE, ROUTING_ERROR_TIMEOUT,
+            )
+
+            result = reroute_answer(item_id, admin_id)
+            ok = bool(result.get("routed")) and result.get("succeeded", True) is not False
+            failure = result.get("failure")
+            routing_error = result.get("routing_error")
+            if not ok and routing_error in (ROUTING_ERROR_RATE_LIMITED, ROUTING_ERROR_SERVICE_UNAVAILABLE,
+                                            ROUTING_ERROR_TIMEOUT):
+                return "transient", "AI_QUOTA_EXCEEDED" if routing_error == ROUTING_ERROR_RATE_LIMITED else "AI_SERVICE_BUSY", \
+                    "判斷主題時 AI 暫時無法使用"
+            if not ok and failure is None:
+                failure = {"code": routing_error or "ROUTING_UNDETERMINED",
+                           "message": result.get("routing_reason") or "判斷不出主題"}
+    except RecoveryError as exc:
+        db.session.rollback()
+        return "skipped", exc.code, exc.message
+    except Exception as exc:  # noqa: BLE001 — 單筆的非預期錯誤不能讓整個工作停下來
+        db.session.rollback()
+        failure = explain_failure(str(exc)) or {}
+        code = failure.get("code")
+        if code in _TRANSIENT_CODES:
+            return "transient", code, failure.get("message")
+        logger.exception("bulk retry item failed: %s %s", kind, item_id)
+        return "failed", code or "UNEXPECTED_ERROR", str(exc)[:500]
+
+    if ok:
+        return "success", None, None
+    code = (failure or {}).get("code")
+    if code in _TRANSIENT_CODES:
+        return "transient", code, (failure or {}).get("message")
+    return "failed", code, (failure or {}).get("message")
+
+
+# ── 執行 ──────────────────────────────────────────────────────────
+
+def _finish(job, status_value, message=None):
+    job.status = status_value
+    job.finished_at = taiwan_now()
+    job.heartbeat_at = job.finished_at
+    if message:
+        job.last_error = message
+    db.session.commit()
+
+
+def run_job(job_id):
+    """在目前的 app context 裡把工作跑完（背景 thread 或測試直接呼叫）。"""
+    job = db.session.get(Bulk_Retry_Job, job_id)
+    admin_id = job.started_by_admin_id
+    tried = set()
+    transient_tries = {}
+    consecutive_quota = 0
+    delay = _min_delay()
+
+    try:
+        while True:
+            db.session.refresh(job)
+            if job.cancel_requested:
+                _finish(job, BULK_RETRY_CANCELLED)
+                return
+            nxt = _next_item(tried)
+            if nxt is None:
+                _finish(job, BULK_RETRY_COMPLETED)
+                return
+            kind, item_id, key = nxt
+
+            outcome, code, message = _process(kind, item_id, admin_id)
+            job = db.session.get(Bulk_Retry_Job, job_id)
+            job.heartbeat_at = taiwan_now()
+
+            if outcome == "transient":
+                consecutive_quota += 1
+                job.quota_waits += 1
+                job.last_error = message
+                transient_tries[key] = transient_tries.get(key, 0) + 1
+                if consecutive_quota >= MAX_CONSECUTIVE_QUOTA:
+                    _finish(job, BULK_RETRY_PAUSED_QUOTA,
+                            "AI 額度用完或服務暫時無法使用，已自動暫停。額度恢復後再按一次「全部重試」即可接續。")
+                    return
+                if transient_tries[key] >= MAX_CONSECUTIVE_QUOTA:
+                    # 同一筆一直遇到暫時性錯誤：這次工作先放過它
+                    tried.add(key)
+                    job.still_failed += 1
+                    job.processed += 1
+                db.session.commit()
+                delay = min(MAX_DELAY_SECONDS, delay * 2 + 5)
+                _sleep(QUOTA_BACKOFF_SECONDS)
+                continue
+
+            consecutive_quota = 0
+            tried.add(key)
+            job.processed += 1
+            if outcome == "success":
+                job.succeeded += 1
+                delay = max(_min_delay(), delay * 0.8)
+            elif outcome == "skipped":
+                job.skipped += 1
+                job.last_error = message
+            else:
+                job.still_failed += 1
+                job.last_error = message
+            db.session.commit()
+            if delay:
+                _sleep(delay)
+    except Exception as exc:  # noqa: BLE001
+        db.session.rollback()
+        logger.exception("bulk retry job %s crashed", job_id)
+        job = db.session.get(Bulk_Retry_Job, job_id)
+        if job is not None:
+            _finish(job, BULK_RETRY_FAILED, f"背景工作發生錯誤：{str(exc)[:300]}")
+
+
+def _run_in_thread(app, job_id):
+    with app.app_context():
+        try:
+            run_job(job_id)
+        finally:
+            db.session.remove()
+
+
+def start(admin_id, app=None, run_inline=False) -> dict:
+    """開始一個新的全部重試工作。已經有執行中（且沒有中斷）的工作 -> 409。"""
+    latest = _latest_job()
+    if latest is not None and latest.status == BULK_RETRY_RUNNING:
+        if not _is_stale(latest):
+            raise BulkRetryError("BULK_RETRY_RUNNING", "已經有一個全部重試正在執行中", 409, job_view(latest))
+        _finish(latest, BULK_RETRY_FAILED, "執行中的 worker 已經重啟，工作中斷（已處理好的資料不受影響）")
+
+    remaining = remaining_counts()
+    if remaining["total"] == 0:
+        raise BulkRetryError("NOTHING_TO_RETRY", "目前沒有需要重試的資料", 409)
+
+    now = taiwan_now()
+    job = Bulk_Retry_Job(
+        status=BULK_RETRY_RUNNING, started_by_admin_id=admin_id, total_at_start=remaining["total"],
+        started_at=now, heartbeat_at=now,
+    )
+    db.session.add(job)
+    db.session.commit()
+    job_id = job.job_id
+
+    if run_inline:
+        run_job(job_id)
+    else:
+        thread = threading.Thread(target=_run_in_thread, args=(app, job_id), daemon=True,
+                                  name=f"bulk-retry-{job_id}")
+        thread.start()
+    return job_view(db.session.get(Bulk_Retry_Job, job_id))
+
+
+def cancel(admin_id) -> dict:
+    job = _latest_job()
+    if job is None or job.status != BULK_RETRY_RUNNING:
+        raise BulkRetryError("NOT_RUNNING", "目前沒有執行中的全部重試", 409)
+    if _is_stale(job):
+        _finish(job, BULK_RETRY_CANCELLED)
+    else:
+        job.cancel_requested = True
+        db.session.commit()
+    return job_view(job)
