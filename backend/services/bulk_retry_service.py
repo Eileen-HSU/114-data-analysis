@@ -123,23 +123,59 @@ def _scope_key(row):
     return ("survey", row.response_id, row.question_id)
 
 
-def _next_item(tried):
-    """回傳 (kind, id, scope_key)；沒有了回傳 None。tried 是這次工作已經
-    處理過（成功或真的失敗）的 scope_key 集合。"""
+def attempt_cutoff(exclude_job_id=None):
+    """最近一次「完整跑完」的全部重試（排程或 Admin 按的都算）的結束時間。
+    比它更早建立的無法分類資料都已經被重試過一次；沒有跑完過的 -> None（全部都還沒試）。"""
+    query = Bulk_Retry_Job.query.filter(Bulk_Retry_Job.kind == KIND_RETRY, Bulk_Retry_Job.status == BULK_RETRY_COMPLETED)
+    if exclude_job_id is not None:
+        query = query.filter(Bulk_Retry_Job.job_id != exclude_job_id)
+    job = query.order_by(Bulk_Retry_Job.finished_at.desc()).first()
+    return job.finished_at if job else None
+
+
+def _untried_queries(since):
+    """(失敗分類列, 零片段失敗回答, 判斷不出主題回答) 三個 query；since 不是 None 時
+    只留 since 之後才出現的（還沒被自動重試過的）。"""
     from services.admin_recovery_service import (
         _failed_query, _unrouted_answers_query, _zero_segment_failed_answers_query,
     )
     from classification_models import Response_Classification, Uploaded_Answer
 
-    for row in _failed_query().order_by(Response_Classification.classification_id.asc()).yield_per(200):
+    failed, zero, unrouted = _failed_query(), _zero_segment_failed_answers_query(), _unrouted_answers_query()
+    if since is not None:
+        failed = failed.filter(Response_Classification.created_at > since)
+        zero = zero.filter(Uploaded_Answer.created_at > since)
+        unrouted = unrouted.filter(Uploaded_Answer.created_at > since)
+    return failed, zero, unrouted
+
+
+def retry_split() -> dict:
+    """無法分類的資料分成兩半：
+        pending      ：還沒被自動重試過 -> 系統排程會處理，不需要人
+        still_failed ：已經自動重試過（最近一次跑完的重試之前就存在）仍然失敗 -> 才需要人
+    pending + still_failed == remaining_counts()['total']"""
+    total = remaining_counts()["total"]
+    pending = sum(q.count() for q in _untried_queries(attempt_cutoff()))
+    pending = min(pending, total)
+    return {"pending": pending, "still_failed": total - pending, "total": total}
+
+
+def _next_item(tried, since=None):
+    """回傳 (kind, id, scope_key)；沒有了回傳 None。tried 是這次工作已經
+    處理過（成功或真的失敗）的 scope_key 集合。since：排程自動重試只處理
+    這個時間之後才出現的資料（已經自動重試過的不再重試，避免每次排程都白打）。"""
+    from classification_models import Response_Classification, Uploaded_Answer
+
+    failed_q, zero_q, unrouted_q = _untried_queries(since)
+    for row in failed_q.order_by(Response_Classification.classification_id.asc()).yield_per(200):
         key = _scope_key(row)
         if key not in tried:
             return "failed_classification", row.classification_id, key
-    for answer in _zero_segment_failed_answers_query().order_by(Uploaded_Answer.id.asc()).yield_per(200):
+    for answer in zero_q.order_by(Uploaded_Answer.id.asc()).yield_per(200):
         key = ("answer", answer.id)
         if key not in tried:
             return "failed_answer", answer.id, key
-    for answer in _unrouted_answers_query().order_by(Uploaded_Answer.id.asc()).yield_per(200):
+    for answer in unrouted_q.order_by(Uploaded_Answer.id.asc()).yield_per(200):
         key = ("answer", answer.id)
         if key not in tried:
             return "unrouted_answer", answer.id, key
@@ -217,7 +253,9 @@ def run_job(job_id):
 
         next_item, process = second_opinion_service.next_item, second_opinion_service.process
     else:
-        next_item, process = _next_item, _process
+        # 排程（系統）自動開始的重試只處理還沒被自動重試過的；Admin 手動按的照舊處理全部
+        since = attempt_cutoff(exclude_job_id=job_id) if admin_id == SYSTEM_ADMIN_ID else None
+        next_item, process = (lambda tried: _next_item(tried, since=since)), _process
     tried = set()
     transient_tries = {}
     consecutive_quota = 0
@@ -360,3 +398,25 @@ def scheduled_second_opinion(app):
             db.session.remove()
             gemini_client.reset_api_key(token)
 
+
+
+def scheduled_auto_retry(app):
+    """排程呼叫（app.py，每 15 分鐘）：無法分類的資料自動批次重試，不用等 Admin 按「全部重試」。
+    只處理還沒被自動重試過的（見 retry_split）；重試後仍失敗的才會出現在「需要人工決策」。
+    跟手動全部重試共用同一種工作（kind=retry），同時只會有一個在跑。"""
+    from services import gemini_client
+
+    token = gemini_client.use_api_key(gemini_client.admin_api_key())
+    with app.app_context():
+        try:
+            if retry_split()["pending"] == 0:
+                return
+            start(SYSTEM_ADMIN_ID, run_inline=True, kind=KIND_RETRY)
+        except BulkRetryError:
+            pass
+        except Exception:  # noqa: BLE001
+            logger.exception("scheduled auto retry failed")
+            db.session.rollback()
+        finally:
+            db.session.remove()
+            gemini_client.reset_api_key(token)

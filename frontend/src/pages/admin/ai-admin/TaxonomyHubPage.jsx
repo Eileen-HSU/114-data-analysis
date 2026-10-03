@@ -36,7 +36,8 @@ export default function TaxonomyHubPage() {
   }, []);
 
   const counts = (key) => overview?.topics?.[key] || {};
-  const pending = (key) => (counts(key).needs_judgement || 0) + (counts(key).other_pending || 0);
+  // 只算需要人工逐筆處理的；系統自動處理中的、新類別（另有群組數）不算
+  const pending = (key) => counts(key).needs_judgement || 0;
   const byTodo = (a, b) => pending(b.topic_key) - pending(a.topic_key) || a.title.localeCompare(b.title);
   const all = topics || [];
   const official = all.filter((x) => !x.merged_into && !x.is_auto_topic).sort(byTodo);

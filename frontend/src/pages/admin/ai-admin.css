@@ -661,7 +661,7 @@ details.tax-more .tax-field { display: block; margin-bottom: 10px; }
 .admin-nav-link { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; color: var(--ink-2); text-decoration: none; font-weight: 600; }
 .admin-nav-link i { font-size: 18px; color: var(--muted); }
 .admin-nav-link:hover { background: #f3f4f6; }
-.admin-nav-link--active { background: var(--ink); color: #fff; }
+.admin-nav-link--active { background: var(--ink); color: #fff; font-weight: 700; box-shadow: inset 3px 0 0 #9ca3af; }
 .admin-nav-link--active i { color: #fff; }
 .admin-shell .admin-main { margin: 0 0 0 220px; padding: 32px 40px 64px; max-width: 1080px; width: 100%; box-sizing: border-box; }
 
@@ -670,8 +670,12 @@ details.tax-more .tax-field { display: block; margin-bottom: 10px; }
 .admin-page-header p { margin: 0; color: var(--muted); max-width: 70ch; line-height: 1.6; }
 .admin-page-actions { display: flex; gap: 8px; flex-shrink: 0; }
 .admin-hub .admin-page > h1 { display: none; }   /* 嵌在分頁裡的頁面不重複顯示標題 */
-.admin-breadcrumb { margin: 0 0 6px; color: var(--muted); font-size: 14px; }
-.admin-breadcrumb a { color: var(--muted); }
+.admin-breadcrumb { margin: 0 0 8px; color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+.admin-breadcrumb ol { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.admin-breadcrumb li { display: inline-flex; align-items: center; gap: 6px; }
+.admin-breadcrumb a { color: var(--muted); text-decoration: none; }
+.admin-breadcrumb a:hover { color: var(--ink); text-decoration: underline; }
+.admin-breadcrumb-sep { color: #d1d5db; }
 .admin-link-button { margin-left: auto; font-size: 14px; color: var(--ink); font-weight: 600; }
 .admin-muted { color: var(--muted); font-size: 14px; }
 
@@ -680,7 +684,9 @@ details.tax-more .tax-field { display: block; margin-bottom: 10px; }
 .admin-tab--active { color: var(--ink); border-bottom-color: var(--ink); }
 .admin-tab-count { margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: #f3f4f6; color: var(--ink-2); font-size: 12px; }
 
-.admin-summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.admin-summary-section { margin: 0 0 28px; }
+.admin-summary-section-title { margin: 0 0 14px; padding-bottom: 8px; border-bottom: 1px solid var(--line); font-size: 13px; font-weight: 700; letter-spacing: .04em; color: var(--muted); }
+.admin-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .admin-summary-card { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left; padding: 18px; border: 1px solid var(--line);
   border-radius: 12px; background: #fff; color: var(--ink-2); font-weight: 400; cursor: pointer; transition: border-color .15s; }
 .admin-summary-card:hover { border-color: var(--ink); }
@@ -688,6 +694,9 @@ details.tax-more .tax-field { display: block; margin-bottom: 10px; }
 .admin-summary-value { font-size: 34px; font-weight: 700; line-height: 1.1; color: var(--ink); font-variant-numeric: tabular-nums; }
 .admin-summary-text { font-size: 14px; color: var(--muted); line-height: 1.5; }
 .admin-summary-action { margin-top: auto; padding-top: 6px; font-size: 14px; font-weight: 600; color: var(--ink); }
+.admin-summary-card--auto { cursor: default; background: var(--soft); }
+.admin-summary-card--auto:hover { border-color: var(--line); }
+.admin-spotcheck { margin: 10px 0 0; }
 .admin-summary-card--alert { border-left: 3px solid var(--alert); }
 .admin-summary-card--warn { border-left: 3px solid var(--ink); }
 
@@ -717,6 +726,8 @@ details.admin-section-block > summary { cursor: pointer; }
 .admin-shell .topic-tag { background: #f3f4f6; color: var(--ink-2); }
 .admin-shell .topic-card, .admin-shell .admin-card, .admin-shell .review-card { box-shadow: none; border-color: var(--line); }
 .admin-shell a { color: var(--ink); }
+.admin-shell .admin-breadcrumb a { color: var(--muted); }
+.admin-shell .admin-breadcrumb a:hover { color: var(--ink); }
 .admin-shell .admin-nav-link { color: var(--ink-2); }
 .admin-shell .admin-nav-link--active, .admin-shell .admin-nav-link--active i { color: #fff; }
 .admin-shell .admin-bulk-status, .admin-shell .admin-todo-card--judge .admin-bulk-status { background: var(--soft); color: var(--ink-2); }
@@ -724,6 +735,7 @@ details.admin-section-block > summary { cursor: pointer; }
 .admin-shell .admin-bulk-bar span, .admin-shell .admin-todo-card--judge .admin-bulk-bar span { background: var(--ink); }
 
 @media (max-width: 860px) {
+  .admin-summary-grid { grid-template-columns: 1fr; }
   .admin-sidebar { position: static; width: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 10px; }
   .admin-sidebar-title { display: none; }
   .admin-sidebar nav { flex-direction: row; overflow-x: auto; }

@@ -120,6 +120,7 @@ def reviewed_classifications():
         topic             ：Topic.topic_key，或 "__unassigned__"
                             （question_id IS NULL / "other" 的舊資料）
         needs_human_review：true 只看被 Confidence Gate flag 的列
+        queue             ：human 或單一種人工桶，只看需要人工處理的待審（見 queue_clause）
         auto_confirmed    ：true 只看系統自動通過的列（重新審核用）；
                             false 排除自動通過的列
         page / page_size  ：預設 1 / 50，page_size 上限 200
@@ -162,6 +163,13 @@ def reviewed_classifications():
         ).filter(Taxonomy_Version.topic_key == topic)
     if request.args.get("needs_human_review") == "true":
         base = base.filter(Response_Classification.needs_human_review.is_(True))
+    # queue=human：待審只留需要人工逐筆處理的（系統處理中的不算人工工作）；
+    # 也可以指定單一種（ai_disagreement / second_opinion_failed / other）。見 admin_overview_service.bucket_expr
+    from services.admin_overview_service import queue_clause
+
+    queue = queue_clause(request.args.get("queue"))
+    if queue is not None:
+        base = base.filter(queue)
 
     status_counts = {s: base.filter(_state_clause(s)).count() for s in CLASSIFICATION_STATES}
     auto_confirmed_count = base.filter(Response_Classification.auto_confirmed.is_(True)).count()

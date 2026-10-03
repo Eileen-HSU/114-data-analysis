@@ -20,7 +20,7 @@ const newBatchId = () => (
 // total / status_counts），畫面上的數字永遠是「全部符合條件的資料」，不是
 // 目前頁面。所有操作成功後都重新向後端讀取，不在前端假裝修改 state。
 export default function ClassificationList({
-  topicParam, onOpenReview, refreshSignal, initialTab, initialConfirmedSource, initialNeedsReviewOnly = false,
+  topicParam, onOpenReview, refreshSignal, initialTab, initialConfirmedSource, initialNeedsReviewOnly = true, queue = "human",
 }) {
   const [promptDialog, askText] = useTextPrompt();
   const { user } = useAuth();
@@ -38,7 +38,8 @@ export default function ClassificationList({
   const listUrl = () => {
     const params = new URLSearchParams({ state: activeTab, page: String(page), page_size: String(PAGE_SIZE) });
     if (topicParam) params.set("topic", topicParam);
-    if (needsReviewOnly) params.set("needs_human_review", "true");
+    // 待審只留需要人工逐筆處理的；系統自動處理中（等 AI 再確認、等自動通過）、新類別群組不列在這裡
+    if (needsReviewOnly) params.set("queue", queue);
     if (activeTab === "confirmed" && confirmedSource !== "all") {
       params.set("auto_confirmed", confirmedSource === "auto" ? "true" : "false");
     }
@@ -300,7 +301,7 @@ export default function ClassificationList({
 
       <label className="review-secondary-filter">
         <input type="checkbox" checked={needsReviewOnly} onChange={(e) => { setNeedsReviewOnly(e.target.checked); setPage(1); }} />
-        {t("只看需人工審核的項目", "Only show items needing human review")}
+        {t("只看需要人工處理的項目（隱藏系統自動處理中）", "Only items needing a person (hide ones the system is handling)")}
       </label>
 
       {activeTab === "pending_review" && (

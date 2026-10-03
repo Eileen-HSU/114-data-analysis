@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import Navbar from "../../../../components/feature/Navbar";
 import { useAuth } from "../../../../hooks/AuthContext";
 import { t } from "./taxStatus";
@@ -13,9 +13,56 @@ const NAV = [
   { to: "/admin/ai/system", icon: "ri-settings-3-line", zh: "系統管理", en: "System" },
 ];
 
+const SYSTEM_VIEWS = {
+  status: ["系統狀態", "System status"], jobs: ["背景工作", "Background jobs"],
+  errors: ["錯誤紀錄", "Error log"], audit: ["操作紀錄", "Activity log"],
+};
+
+// 依目前網址（路徑 + ?view=）決定麵包屑；總覽與主題詳細頁不在這裡處理
+// （主題詳細頁需要主題名稱，由 TopicDetailLayout 自己組）。
+function crumbsFor(pathname, view) {
+  const path = pathname.replace(/\/+$/, "");
+  if (path === "/admin/ai/review") {
+    return [{ label: t("分類審查", "Review"), to: "/admin/ai/review" },
+      { label: view === "unassigned" ? t("無法分類", "Can't classify") : t("待審查", "To review") }];
+  }
+  if (path === "/admin/ai/taxonomy") {
+    return view === "candidates"
+      ? [{ label: t("分類架構", "Taxonomy"), to: "/admin/ai/taxonomy" }, { label: t("新類別候選", "New category candidates") }]
+      : [{ label: t("分類架構", "Taxonomy") }];
+  }
+  if (path === "/admin/ai/reports") return [{ label: t("報告管理", "Reports") }];
+  if (path === "/admin/ai/system") {
+    const tab = SYSTEM_VIEWS[view] || SYSTEM_VIEWS.status;
+    return [{ label: t("系統管理", "System"), to: "/admin/ai/system" }, { label: t(...tab) }];
+  }
+  return null;
+}
+
+// 小型麵包屑：第一段「AI 管理」固定可點回總覽；最後一段是目前位置，不可點。
+export function AdminBreadcrumb({ items }) {
+  const all = [{ label: t("AI 管理", "AI Admin"), to: "/admin/ai" }, ...items];
+  return (
+    <nav className="admin-breadcrumb" aria-label={t("目前位置", "Breadcrumb")}>
+      <ol>
+        {all.map((item, i) => {
+          const last = i === all.length - 1;
+          return <li key={`${i}-${item.label}`}>
+            {item.to && !last ? <Link to={item.to}>{item.label}</Link>
+              : <span aria-current={last ? "page" : undefined}>{item.label}</span>}
+            {!last && <span className="admin-breadcrumb-sep" aria-hidden="true">/</span>}
+          </li>;
+        })}
+      </ol>
+    </nav>
+  );
+}
+
 export default function AdminLayout() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const [searchParams] = useSearchParams();
+  const crumbs = crumbsFor(pathname, searchParams.get("view"));
   const { user, isLoggedIn } = useAuth();
   const canAccess = isLoggedIn && user?.account_type === "admin";
 
@@ -41,6 +88,7 @@ export default function AdminLayout() {
         </nav>
       </aside>
       <main className="ai-admin-page admin-main">
+        {crumbs && <AdminBreadcrumb items={crumbs} />}
         <Outlet />
       </main>
     </div>

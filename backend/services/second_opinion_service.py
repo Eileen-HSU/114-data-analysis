@@ -73,8 +73,15 @@ def eligible_query():
     """需要第二意見的列（見檔案開頭第 1 點）。分類架構是否已發布在處理時再檢查。"""
     from classification_models import Classification_Review
 
+    from models import Taxonomy_Version
+    from taxonomy import TAXONOMY_VERSION_STATUS_PUBLISHED
+
     reviewed_ids = db.session.query(Classification_Review.classification_id).distinct()
+    # 分類架構還沒發布的（AI 自動主題的暫定分類）處理時一定會被跳過，不算「等 AI 再確認」
+    published_ids = db.session.query(Taxonomy_Version.version_id).filter(
+        Taxonomy_Version.status == TAXONOMY_VERSION_STATUS_PUBLISHED)
     return Response_Classification.query.filter(
+        Response_Classification.taxonomy_version_id.in_(published_ids),
         Response_Classification.review_status == REVIEW_STATUS_PENDING,
         Response_Classification.status == "completed",
         Response_Classification.review_flag_reason == REASON_LOW_CONFIDENCE,

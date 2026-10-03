@@ -18,6 +18,7 @@ import AiAdminPage from "../pages/admin/AiAdminPage.jsx";
 import TopicDetailLayout from "../pages/admin/ai-admin/TopicDetail/TopicDetailLayout.jsx";
 import TaxonomyPanel from "../pages/admin/ai-admin/TopicDetail/TaxonomyPanel.jsx";
 import { TopicReviewRedirect } from "../pages/admin/ai-admin/TopicDetail/TopicDetailLayout.jsx";
+import AnswersPanel from "../pages/admin/ai-admin/TopicDetail/AnswersPanel.jsx";
 import SandboxPanel from "../pages/admin/ai-admin/TopicDetail/SandboxPanel.jsx";
 import ReportAdminPage from "../pages/admin/ai-admin/ReportAdminPage.jsx";
 import AdminLayout from "../pages/admin/ai-admin/shared/AdminLayout.jsx";
@@ -65,6 +66,7 @@ const routes = [
         element: <TopicDetailLayout />,
         children: [
           { index: true, element: <TaxonomyPanel /> },
+          { path: "answers", element: <AnswersPanel /> },
           { path: "sandbox", element: <SandboxPanel /> },
           { path: "review", element: <TopicReviewRedirect /> },
         ],

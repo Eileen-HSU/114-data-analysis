@@ -8,7 +8,7 @@ export default function ReviewPanel({ topic }) {
   const params = useParams();
   const topicKey = topic !== undefined ? (topic || undefined) : params.topicKey;
   // 從首頁連過來時可以指定初始分頁，例如 ?state=confirmed&source=auto（抽查自動通過）
-  // 或 ?state=pending_review&flagged=1（只看需要人工判斷的）。
+  // 或 ?queue=ai_disagreement（只看 AI 判斷不一致的）。預設只列需要人工處理的待審；flagged=0 可看全部。
   const [searchParams] = useSearchParams();
   // selected 為 null 時顯示清單；有值時顯示該筆的審核對話面板。
   // mode="start"：從「開始審核」進入，會嘗試 start；
@@ -54,7 +54,8 @@ export default function ReviewPanel({ topic }) {
       refreshSignal={refreshSignal}
       initialTab={searchParams.get("state") || undefined}
       initialConfirmedSource={searchParams.get("source") || undefined}
-      initialNeedsReviewOnly={searchParams.get("flagged") === "1"}
+      initialNeedsReviewOnly={searchParams.get("flagged") !== "0"}
+      queue={searchParams.get("queue") || "human"}
       onOpenReview={open}
     />
     </div>

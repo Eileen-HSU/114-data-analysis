@@ -134,3 +134,20 @@ def backfill_existing(admin_id, dry_run=True, limit=5000) -> dict:
         db.session.rollback()
         raise
     return result
+
+
+def scheduled_backfill(app):
+    """排程呼叫（app.py，每 10 分鐘）：把符合條件、還在待審的舊資料補做自動通過。
+    不需要 Admin 按按鈕；不呼叫 AI。受 AUTO_CONFIRM_HIGH_CONFIDENCE 開關控制。"""
+    if not auto_confirm_enabled():
+        return
+    with app.app_context():
+        try:
+            backfill_existing(None, dry_run=False)
+        except Exception:  # noqa: BLE001 — 排程不能因為一次失敗就停掉
+            import logging
+
+            logging.getLogger(__name__).exception("scheduled auto-confirm backfill failed")
+            db.session.rollback()
+        finally:
+            db.session.remove()

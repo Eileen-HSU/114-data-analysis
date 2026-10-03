@@ -138,9 +138,10 @@ with app.app_context():
     db.session.commit()
 GEMINI_QUEUE.clear()
 GEMINI_CALLS.clear()
-job = run()
-check("只有分類架構未發布的那筆被看過，而且直接跳過、沒有呼叫 AI",
-      job["skipped"] == 1 and job["processed"] == 1 and len(GEMINI_CALLS) == 0)
+with app.app_context():
+    # 分類架構未發布的暫定分類處理時一定會跳過，所以一開始就不算「等 AI 再確認」
+    check("分類架構未發布的不算等 AI 再確認，沒有資料可處理，也沒有呼叫 AI",
+          sos.eligible_count() == 0 and len(GEMINI_CALLS) == 0)
 check("高信心、新類別、有人在審的都沒被動",
       all(row(c).second_opinion_status is None for c in (high, newcat, reviewing)))
 check("分類架構未發布的維持原樣", row(draft_row).second_opinion_status is None

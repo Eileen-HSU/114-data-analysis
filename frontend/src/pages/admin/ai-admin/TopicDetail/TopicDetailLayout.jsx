@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
-import { Navigate, NavLink, Outlet, useParams, useNavigate } from "react-router-dom";
+import { Navigate, NavLink, Outlet, useLocation, useParams, useNavigate } from "react-router-dom";
 import Navbar from "../../../../components/feature/Navbar";
 import { useAuth } from "../../../../hooks/AuthContext";
 import { api, peekCache } from "../shared/apiClient";
 import { t } from "../shared/taxStatus";
+import { AdminBreadcrumb } from "../shared/AdminLayout";
 
 export default function TopicDetailLayout() {
   const { topicKey } = useParams();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const { user, isLoggedIn } = useAuth();
   const canAccess = isLoggedIn && user?.account_type === "admin";
   const TOPICS_URL = "/api/admin/ai/taxonomy-topics";
@@ -27,10 +29,16 @@ export default function TopicDetailLayout() {
     return <><Navbar /><main className="ai-admin-empty"><h1>{t("僅管理者可存取 AI 管理介面", "AI admin access restricted to administrators")}</h1><button onClick={() => navigate("/workspace")}>{t("回到分析助理", "Back to Analysis Assistant")}</button></main></>;
   }
 
+  // 目前在主題的哪個次頁（分類架構頁本身不加最後一段）
+  const subPage = pathname.endsWith("/sandbox") ? t("沙盒測試", "Sandbox / Test")
+    : pathname.endsWith("/answers") ? t("回答範例", "Answers") : null;
+
   return <><div className="admin-page">
-    <p className="admin-breadcrumb">
-      <NavLink to="/admin/ai/taxonomy">{t("分類架構", "Taxonomy")}</NavLink> <span aria-hidden="true">/</span>
-    </p>
+    <AdminBreadcrumb items={[
+      { label: t("分類架構", "Taxonomy"), to: "/admin/ai/taxonomy" },
+      { label: topic?.title || topicKey, to: subPage ? `/admin/ai/topics/${topicKey}` : undefined },
+      ...(subPage ? [{ label: subPage }] : []),
+    ]} />
     <div className="topic-detail-header">
       <h1>{topic ? topic.title : <span className="admin-skeleton-line" aria-label={t("載入中", "Loading")} />}</h1>
       {topic?.is_auto_topic && <span className="topic-tag">{t("AI 自動主題", "Auto topic")}</span>}
@@ -43,6 +51,7 @@ export default function TopicDetailLayout() {
     </div>
     <nav className="topic-detail-tabs">
       <NavLink to={`/admin/ai/topics/${topicKey}`} end>{t("分類架構", "Taxonomy")}</NavLink>
+      <NavLink to={`/admin/ai/topics/${topicKey}/answers`}>{t("回答範例", "Answers")}</NavLink>
       <NavLink to={`/admin/ai/topics/${topicKey}/sandbox`}>{t("沙盒測試", "Sandbox / Test")}</NavLink>
     </nav>
     <Outlet />

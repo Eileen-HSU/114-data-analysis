@@ -364,18 +364,92 @@ with app.app_context():
     db.session.commit()
 check("非管理員不能看 overview", client.get("/api/admin/ai/overview", headers=user_header(1)).status_code in (401, 403))
 ov = client.get("/api/admin/ai/overview", headers=admin_header(1)).get_json()
-check("需要人判斷：低信心 1 + 新類別 2 = 3", ov["needs_person"]["needs_judgement"] == 3
-      and ov["needs_person"]["low_confidence"] == 1)
-check("低信心那筆在等 AI 再確認", ov["needs_person"]["awaiting_second_opinion"] == 1
+check("低信心那筆在等 AI 再確認，不算人工工作",
+      ov["auto_processing"]["awaiting_second_opinion"] == 1 and ov["needs_person"]["awaiting_second_opinion"] == 1
       and ov["needs_person"]["ai_disagreement"] == 0)
-check("新類別以組計算（同一類別 2 筆算 1 組）", ov["needs_person"]["new_category_groups"] == 1)
-check("沒被標記的待審（暫定分類）另外計算", ov["needs_person"]["other_pending"] == 1
-      and ov["needs_person"]["total"] == 4)
+check("新類別以組計算（同一類別 2 筆算 1 組）", ov["needs_person"]["new_category_groups"] == 1
+      and ov["needs_decision"]["new_category_groups"] == 1)
+check("待人工審查只算真的要人逐筆處理的：這批資料 0 筆", ov["needs_person"]["total"] == 0
+      and ov["needs_person"]["needs_judgement"] == 0)
+check("AI 自動主題的暫定分類算 1 個主題決策，不是 1 筆待審",
+      ov["needs_decision"]["provisional_topics"] == 1 and ov["needs_person"]["other_pending"] == 1)
+check("需要人工決策合計 = 新類別 1 組 + 暫定主題 1（失敗那筆還在系統重試，不算）", ov["needs_decision"]["total"] == 2)
 check("自動通過 1 筆（人工確認、失敗、被取代的都不算）", ov["auto_confirmed"]["total"] == 1)
-check("分類失敗算在無法分類", ov["cannot_classify"]["failed"] == 1)
+check("分類失敗算在無法分類；還沒被自動重試過所以是「系統重試中」，不是人工",
+      ov["cannot_classify"]["failed"] == 1 and ov["cannot_classify"]["retrying"] == 1
+      and ov["cannot_classify"]["still_failed"] == 0 and ov["auto_processing"]["unassigned_retrying"] == 1)
 check("每個主題的數字",
-      ov["topics"]["custom_topic"] == {"needs_judgement": 3, "other_pending": 0, "low_confidence": 1,
+      ov["topics"]["custom_topic"] == {"needs_judgement": 0, "other_pending": 0, "provisional": 0, "low_confidence": 1,
                                        "ai_disagreement": 0, "auto_confirmed": 1, "new_category_groups": 1}
-      and ov["topics"]["auto_overview"]["other_pending"] == 1)
+      and ov["topics"]["auto_overview"]["other_pending"] == 1 and ov["topics"]["auto_overview"]["provisional"] == 1)
+
+print("\n========== 9. 人工 / 自動分桶：每一筆待審只歸一個桶 ==========")
+with app.app_context():
+    ids2 = seed_upload_batch("batch-ov2", [f"u{i}" for i in range(6)], question_type="custom_topic")
+    seed_classification(ids2[0], "batch-ov2", "u0", "Main A", "A1 Original", version_id=ov_version,
+                        confidence=0.5, needs_human_review=True, review_flag_reason="ai_disagreement",
+                        second_opinion_status="disagreed")
+    seed_classification(ids2[1], "batch-ov2", "u1", "Main A", "A1 Original", version_id=ov_version,
+                        confidence=0.5, needs_human_review=True, review_flag_reason="low_confidence",
+                        second_opinion_status="failed")
+    seed_classification(ids2[2], "batch-ov2", "u2", None, None, version_id=ov_version,
+                        needs_human_review=True, review_flag_reason="classification_incomplete")
+    seed_classification(ids2[3], "batch-ov2", "u3", "Main A", "A1 Original", version_id=ov_version)  # 高信心舊資料
+    seed_classification(ids2[4], "batch-ov2", "u4", "Main A", "A1 Original", version_id=ov_version,
+                        needs_human_review=False)
+    m.Uploaded_Answer.query.filter_by(id=ids2[5]).delete()
+    db.session.commit()
+ov = client.get("/api/admin/ai/overview", headers=admin_header(1)).get_json()
+check("人工逐筆：不一致 1 + AI 再確認失敗 1 + 其他 1 = 3（待人工審查）",
+      ov["needs_person"]["total"] == 3 and ov["needs_decision"]["ai_disagreement"] == 1
+      and ov["needs_decision"]["second_opinion_failed"] == 1 and ov["needs_decision"]["other"] == 1)
+check("舊的高信心待審（2 筆）算等自動確認，不算人工",
+      ov["auto_processing"]["awaiting_auto_confirm"] == 2)
+check("自動重試仍失敗 = 無法分類重試仍失敗 0 + AI 再確認失敗 1",
+      ov["needs_decision"]["retry_failed"] == 1)
+check("需要人工決策合計 = 不一致 1 + 新類別 1 組 + 重試失敗 1 + 其他 1 + 暫定主題 1 = 5",
+      ov["needs_decision"]["total"] == 5)
+lst = client.get("/api/admin/ai/classifications?state=pending_review&queue=human&topic=custom_topic",
+                 headers=admin_header(1)).get_json()
+check("審查清單 queue=human 的筆數跟首頁待人工審查一致（3）", lst["total"] == 3
+      and lst["status_counts"]["pending_review"] == 3)
+lst2 = client.get("/api/admin/ai/classifications?state=pending_review&queue=ai_disagreement", headers=admin_header(1)).get_json()
+check("queue=ai_disagreement 只看不一致的", lst2["total"] == 1)
+lst3 = client.get("/api/admin/ai/classifications?state=confirmed&queue=human", headers=admin_header(1)).get_json()
+check("queue 不影響已確認分頁（抽查自動通過仍可用）", lst3["total"] >= 2 and lst3["auto_confirmed_count"] >= 1)
+
+print("\n========== 10. 排程：舊資料自動通過、無法分類自動重試 ==========")
+from services import auto_confirm_service as acs
+from services import bulk_retry_service as brs
+brs._sleep = lambda seconds: None
+acs.scheduled_backfill(app)
+ov = client.get("/api/admin/ai/overview", headers=admin_header(1)).get_json()
+check("排程補做自動通過後，等自動確認 0、自動通過 +2", ov["auto_processing"]["awaiting_auto_confirm"] == 0
+      and ov["auto_confirmed"]["total"] == 3)
+check("人工待處理不受自動通過影響", ov["needs_person"]["total"] == 3)
+with app.app_context():
+    before = brs.retry_split()
+check("自動重試前：1 筆失敗還沒重試過", before["pending"] == 1 and before["still_failed"] == 0)
+from admin_test_support import GEMINI_QUEUE
+GEMINI_QUEUE.clear()
+brs.scheduled_auto_retry(app)
+with app.app_context():
+    after = brs.retry_split()
+    job = brs._latest_job(brs.KIND_RETRY)
+check("自動重試跑過一次（系統帳號）", job is not None and job.started_by_admin_id == brs.SYSTEM_ADMIN_ID
+      and job.status == "completed")
+check("重試仍失敗的轉成「需要人工」，不會再被排程重打",
+      after["pending"] == 0 and after["still_failed"] == after["total"])
+jobs_before = brs.Bulk_Retry_Job.query.count() if False else None
+with app.app_context():
+    n1 = brs.Bulk_Retry_Job.query.count()
+brs.scheduled_auto_retry(app)
+with app.app_context():
+    n2 = brs.Bulk_Retry_Job.query.count()
+check("沒有新的未重試資料時，排程不會再開工作", n1 == n2)
+ov = client.get("/api/admin/ai/overview", headers=admin_header(1)).get_json()
+check("首頁：自動重試仍失敗 = 無法分類 + AI 再確認失敗", ov["needs_decision"]["unassigned_retry_failed"] == after["still_failed"]
+      and ov["needs_decision"]["retry_failed"] == after["still_failed"] + 1
+      and ov["auto_processing"]["unassigned_retrying"] == 0)
 
 finish()

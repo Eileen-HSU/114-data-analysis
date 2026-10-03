@@ -30,7 +30,7 @@ export default function ReviewHubPage() {
     const next = new URLSearchParams(searchParams);
     Object.entries(patch).forEach(([k, v]) => (v ? next.set(k, v) : next.delete(k)));
     // 切換篩選時不沿用首頁帶來的初始分頁參數
-    ["state", "source", "flagged"].forEach((k) => { if ("topic" in patch || "view" in patch) next.delete(k); });
+    ["state", "source", "flagged", "queue"].forEach((k) => { if ("topic" in patch || "view" in patch) next.delete(k); });
     setSearchParams(next, { replace: true });
   };
   const activeTopics = topics.filter((x) => !x.merged_into);
@@ -41,7 +41,7 @@ export default function ReviewHubPage() {
         "Check and correct AI classifications. Filter by topic; items that couldn't be classified are in the other tab.")} />
     <AdminTabs value={view} onChange={(key) => update({ view: key === "unassigned" ? "unassigned" : "" })} tabs={[
       { key: "review", label: t("待審查", "To review"), count: overview?.needs_person?.total },
-      { key: "unassigned", label: t("無法分類", "Can't classify"), count: overview?.cannot_classify?.total },
+      { key: "unassigned", label: t("無法分類", "Can't classify"), count: overview?.cannot_classify?.still_failed ?? overview?.cannot_classify?.total },
     ]} />
     {view === "review" ? <>
       <div className="admin-filter-bar">
@@ -54,6 +54,12 @@ export default function ReviewHubPage() {
         </label>
       </div>
       <ReviewPanel key={topic || "all"} topic={topic} />
-    </> : <UnassignedReviewPage />}
+    </> : <>
+      {(overview?.cannot_classify?.retrying ?? 0) > 0 && (
+        <p className="admin-muted">{t(`系統會自動重試 ${overview.cannot_classify.retrying} 筆，不需要處理；重試仍失敗的才需要人工。`,
+          `${overview.cannot_classify.retrying} items will be retried automatically. Only those that still fail need a person.`)}</p>
+      )}
+      <UnassignedReviewPage />
+    </>}
   </div>;
 }

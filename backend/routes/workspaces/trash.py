@@ -148,6 +148,15 @@ def start_scheduler(app):
         max_instances=1,
         coalesce=True,
     )
+    # 無法分類的資料自動批次重試（沿用「全部重試」，見 bulk_retry_service.scheduled_auto_retry）
+    from services.bulk_retry_service import scheduled_auto_retry
+    from services.auto_confirm_service import scheduled_backfill
+
+    scheduler.add_job(scheduled_auto_retry, trigger="interval", minutes=15, args=[app],
+                      id="auto_retry", max_instances=1, coalesce=True)
+    # 符合條件的舊待審資料自動通過（不呼叫 AI）
+    scheduler.add_job(scheduled_backfill, trigger="interval", minutes=10, args=[app],
+                      id="auto_confirm_backfill", max_instances=1, coalesce=True)
     # 系統錯誤紀錄保留期限：已處理 90 天、未處理 180 天（見 services/error_log_service.py）
     scheduler.add_job(_purge_error_logs, trigger="interval", hours=24, args=[app], id="purge_error_logs")
     if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
