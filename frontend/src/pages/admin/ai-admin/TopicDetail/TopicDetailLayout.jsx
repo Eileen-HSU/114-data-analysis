@@ -20,8 +20,11 @@ export default function TopicDetailLayout() {
   // 每個分頁都顯示目前在哪個主題（原本只有「分類架構」分頁看得到）
   useEffect(() => {
     if (!canAccess) return;
-    setTopic(findTopic(peekCache(TOPICS_URL)));
-    api(TOPICS_URL, user.token).then((data) => setTopic(findTopic(data))).catch(() => {});
+    const cachedTopics = peekCache(TOPICS_URL);
+    setTopic(findTopic(cachedTopics));
+    if (!cachedTopics) {
+      api(TOPICS_URL, user.token).then((data) => setTopic(findTopic(data))).catch(() => {});
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canAccess, topicKey]);
 
@@ -63,4 +66,3 @@ export function TopicReviewRedirect() {
   const { topicKey } = useParams();
   return <Navigate to={`/admin/ai/review?topic=${encodeURIComponent(topicKey)}`} replace />;
 }
-

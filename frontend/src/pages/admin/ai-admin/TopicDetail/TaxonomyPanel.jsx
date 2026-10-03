@@ -25,6 +25,7 @@ export default function TaxonomyPanel() {
   const [taxVersion, setTaxVersion] = useState(initial.version);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(!(initial.meta && initial.version));
+  const [answersLoading, setAnswersLoading] = useState(false);
   const [mergedTargetTitle, setMergedTargetTitle] = useState("");
   const [mergeResultText, setMergeResultText] = useState("");
   const [answers, setAnswers] = useState(initial.answers); // 這個主題底下的原始回答（證據）
@@ -37,10 +38,13 @@ export default function TaxonomyPanel() {
   };
 
   const loadAnswers = async () => {
+    setAnswersLoading(true);
     try {
       setAnswers(await loadTopicAnswers(topicKey, token));
     } catch {
       setAnswers(null); // 原始回答載入失敗不影響分類架構編輯
+    } finally {
+      setAnswersLoading(false);
     }
   };
 
@@ -48,7 +52,8 @@ export default function TaxonomyPanel() {
   // 不新增「單一 topic 版本清單」API——這次 IA 重構刻意不動 backend）
   const loadTopicMeta = async () => {
     try {
-      const data = await api("/api/admin/ai/taxonomy-topics", token);
+      const data = peekCache("/api/admin/ai/taxonomy-topics")
+        || await api("/api/admin/ai/taxonomy-topics", token);
       const mine = (data.topics || []).find((x) => x.topic_key === topicKey);
       setTopicMeta(mine || null);
       if (mine?.merged_into) {
@@ -64,7 +69,8 @@ export default function TaxonomyPanel() {
 
   const openVersion = async (versionId) => {
     try {
-      const data = await api(`/api/admin/ai/topics/${topicKey}/taxonomy/${versionId}`, token);
+      const path = `/api/admin/ai/topics/${topicKey}/taxonomy/${versionId}`;
+      const data = peekCache(path) || await api(path, token);
       setTaxVersion(data.taxonomy_version);
     } catch (e) {
       setError(e.message);
@@ -77,10 +83,10 @@ export default function TaxonomyPanel() {
     setTopicMeta(now.meta);
     setTaxVersion(now.version);
     setAnswers(now.answers);
+    setAnswersLoading(false);
     setLoading(!(now.meta && now.version));
     setMergeResultText("");
     setMergedTargetTitle("");
-    loadAnswers();
     (async () => {
       const meta = await loadTopicMeta();
       if (cancelled || !meta) { setLoading(false); return; }
@@ -274,6 +280,9 @@ export default function TaxonomyPanel() {
           : <>{TAX_EDITABLE_STATUSES.includes(taxVersion.status) && <button onClick={addTaxCategory}>{t("＋ 新增子類別", "＋ Add category")}</button>}<button className="primary" onClick={publishTaxVersion}>{t("發布這個版本", "Publish as production taxonomy")}</button></>}
         {taxVersion.status === "draft" && <button onClick={deleteTaxVersion}>{t("刪除草稿", "Delete draft")}</button>}
       </div>
+      {!answers && <button onClick={loadAnswers} disabled={answersLoading}>
+        {answersLoading ? t("載入回答範例…", "Loading answer examples…") : t("載入回答範例", "Load answer examples")}
+      </button>}
       {taxVersion.status === "published" && <p className="tax-legacy-note">{t("已發布版本唯讀，不可直接編輯；如需修改請先建立新草稿版本。", "Published versions are read-only. Create a new draft to make changes.")}</p>}
 
       {(taxVersion.categories || []).map((cat, i) => {

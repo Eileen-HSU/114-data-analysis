@@ -15,7 +15,6 @@ const OVERVIEW_URL = "/api/admin/ai/overview";
 function prefetchTopic(topic, token) {
   const versionId = topic.latest_draft_version?.version_id ?? topic.published_version?.version_id;
   if (versionId) prefetch(`/api/admin/ai/topics/${topic.topic_key}/taxonomy/${versionId}`, token);
-  prefetch(`/api/admin/ai/topics/${encodeURIComponent(topic.topic_key)}/answers?per_category=5`, token);
 }
 
 export default function TaxonomyHubPage() {

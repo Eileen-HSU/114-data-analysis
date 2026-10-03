@@ -28,9 +28,22 @@ export default function AiAdminPage() {
   const [reports, setReports] = useState(() => peekCache(REPORTS_URL) || null);
   const [status, setStatus] = useState(() => peekCache(STATUS_URL) || null);
   const [error, setError] = useState("");
+  const [overviewLoading, setOverviewLoading] = useState(false);
+
+  const loadOverview = async () => {
+    setOverviewLoading(true);
+    setError("");
+    try {
+      setOverview(await api(OVERVIEW_URL, token));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setOverviewLoading(false);
+    }
+  };
 
   useEffect(() => {
-    api(OVERVIEW_URL, token).then(setOverview).catch((e) => setError(e.message));
+    loadOverview();
     api(REPORTS_URL, token).then(setReports).catch(() => setReports(null));
     api(STATUS_URL, token).then(setStatus).catch(() => setStatus(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -38,7 +51,7 @@ export default function AiAdminPage() {
 
   const auto = overview?.auto_processing;
   const decide = overview?.needs_decision;
-  const errorsOpen = status?.errors?.open_last_24h ?? 0;
+  const errorsOpen = status?.errors?.open ?? 0;
   const dbOk = status?.database?.ok !== false;
   const bootFailed = status?.taxonomy_bootstrap?.status === "failed";
   const systemProblems = (dbOk ? 0 : 1) + (bootFailed ? 1 : 0) + errorsOpen;
@@ -93,12 +106,12 @@ export default function AiAdminPage() {
       action: t("前往報告", "Reports"), to: "/admin/ai/reports",
     },
     {
-      key: "system", group: "system", value: status ? systemProblems : "—", tone: systemProblems ? "alert" : "ok",
+      key: "system", group: "system", value: status ? systemProblems : "—", tone: !status || systemProblems ? "alert" : "ok",
       title: t("系統異常", "System issues"),
       text: !status ? t("無法取得系統狀態", "System status unavailable")
         : !dbOk ? t("資料庫連線異常", "Database connection problem")
           : bootFailed ? t("分類架構初始化失敗", "Taxonomy bootstrap failed")
-            : errorsOpen ? t(`最近 24 小時有 ${errorsOpen} 種錯誤未處理`, `${errorsOpen} unresolved error types in 24h`)
+            : errorsOpen ? t(`有 ${errorsOpen} 種錯誤尚未處理`, `${errorsOpen} unresolved error types`)
               : t("一切正常", "All good"),
       action: t("前往系統管理", "System"), to: "/admin/ai/system",
     },
@@ -108,7 +121,14 @@ export default function AiAdminPage() {
     <AdminPageHeader title={t("總覽", "Overview")}
       description={t("系統會自動處理大部分資料，這裡只需要處理例外。", "The system handles most data. Only exceptions need you.")} />
     {error && <p className="ai-admin-error">{error}<button onClick={() => setError("")}>×</button></p>}
-    {!overview ? <SkeletonCards count={3} /> : (
+    {!overview ? (
+      <>
+        <SkeletonCards count={3} />
+        <button className="admin-link-button" disabled={overviewLoading} onClick={loadOverview}>
+          {overviewLoading ? t("重試中…", "Retrying…") : t("重試載入總覽", "Retry overview")}
+        </button>
+      </>
+    ) : (
       <>
         {SECTIONS.map((section) => (
           <section key={section.key} className="admin-summary-section">

@@ -79,7 +79,9 @@ export default function SystemLogPage() {
   const token = user?.token;
   const canAccess = isLoggedIn && user?.account_type === "admin";
   const [searchParams, setSearchParams] = useSearchParams();
-  const [tab, setTab] = useState(() => (TABS.includes(searchParams.get("view")) ? searchParams.get("view") : "status"));
+  const requestedTab = searchParams.get("view");
+  const tab = TABS.includes(requestedTab) ? requestedTab : "status";
+  const changeTab = (key) => setSearchParams(key === "status" ? {} : { view: key });
 
   if (!canAccess) return <><Navbar /><main className="ai-admin-empty"><h1>{t("僅管理者可存取 AI 管理介面", "AI admin access restricted to administrators")}</h1><button onClick={() => navigate("/workspace")}>{t("回到分析助理", "Back to Analysis Assistant")}</button></main></>;
 
@@ -88,9 +90,9 @@ export default function SystemLogPage() {
       description={t("系統狀態（資料庫、排程、分類架構初始化）、背景工作、錯誤紀錄與操作紀錄。",
         "System status (database, scheduler, taxonomy bootstrap), background jobs, errors and the activity log.")} />
     <AdminTabs tabs={TABS.map((key) => ({ key, label: tabLabel(key) }))} value={tab}
-      onChange={(key) => { setTab(key); setSearchParams(key === "status" ? {} : { view: key }, { replace: true }); }} />
+      onChange={changeTab} />
     {tab === "jobs" && <BackgroundJobsPanel token={token} onError={() => {}} />}
-    {tab === "status" && <StatusTab token={token} onShowErrors={() => setTab("errors")} />}
+    {tab === "status" && <StatusTab token={token} onShowErrors={() => changeTab("errors")} />}
     {tab === "errors" && <ErrorsTab token={token} navigate={navigate} />}
     {tab === "audit" && <AuditTab token={token} />}
   </div></>;
@@ -150,7 +152,7 @@ function StatusTab({ token, onShowErrors }) {
         <StatusRow ok={boot.status !== "failed"} label={t("分類架構初始化", "Taxonomy bootstrap")}>
           {boot.status === "failed" ? t(`上次失敗：${boot.error_summary || ""}`, `Last run failed: ${boot.error_summary || ""}`) : t("正常。", "OK.")}
         </StatusRow>
-        <StatusRow ok={status.errors.open_last_24h === 0} label={t("錯誤", "Errors")}>
+        <StatusRow ok={status.errors.open === 0} label={t("錯誤", "Errors")}>
           {t(`最近 24 小時有 ${status.errors.open_last_24h} 種錯誤、總共 ${status.errors.open} 種還沒處理。`,
             `${status.errors.open_last_24h} error types in the last 24 hours; ${status.errors.open} unresolved in total.`)}
           {status.errors.open > 0 && <> <button className="link-button" onClick={onShowErrors}>{t("查看錯誤紀錄", "View errors")}</button></>}
