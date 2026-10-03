@@ -29,6 +29,8 @@ export default function TaxonomyPanel() {
   const [answersLoading, setAnswersLoading] = useState(false);
   const [mergedTargetTitle, setMergedTargetTitle] = useState("");
   const [mergeResultText, setMergeResultText] = useState("");
+  const [unmerging, setUnmerging] = useState(false);
+  const [unmergeResultText, setUnmergeResultText] = useState("");
   const [answers, setAnswers] = useState(initial.answers); // 這個主題底下的原始回答（證據）
   // 還沒完成的欄位儲存。發布／複製／刪除前要先等它們做完：欄位是「離開輸入框」
   // 才儲存，打完字直接按發布時，儲存跟發布會同時送出，發布可能先完成。
@@ -87,6 +89,7 @@ export default function TaxonomyPanel() {
     setAnswersLoading(false);
     setLoading(!(now.meta && now.version));
     setMergeResultText("");
+    setUnmergeResultText("");
     setMergedTargetTitle("");
     (async () => {
       const meta = await loadTopicMeta();
@@ -213,6 +216,37 @@ export default function TaxonomyPanel() {
     return text;
   };
 
+  // 解除合併：只清空 merged_into，只影響之後的新資料；已重新分類到目標主題的回答不會移回、
+  // 既有分類結果不會還原（後端 POST /topics/{key}/unmerge）。
+  const unmergeTopic = async () => {
+    if (!window.confirm(`${t("解除這個主題的合併？", "Undo the merge of this topic?")}\n\n${t(
+      "解除後只影響之後的新資料；已重新分類到目標主題的既有回答不會自動移回。",
+      "Undoing only affects new data from now on; existing answers already re-classified into the target topic are not moved back automatically.",
+    )}`)) return;
+    setUnmerging(true);
+    setUnmergeResultText("");
+    try {
+      const result = await api(`/api/admin/ai/topics/${encodeURIComponent(topicKey)}/unmerge`, token, { method: "POST" });
+      setMergeResultText("");
+      setTaxVersion(null);
+      const meta = await loadTopicMeta();
+      const versionId = meta?.latest_draft_version?.version_id ?? meta?.published_version?.version_id;
+      if (versionId) await openVersion(versionId);
+      await loadAnswers();
+      const restored = result.restored_version_ids?.length || 0;
+      setUnmergeResultText(t(
+        `已解除合併。已重新分類到目標主題的 ${result.answers_staying_on_target} 筆回答不會自動移回，只有之後的新資料會依這個主題處理。`
+          + (restored ? `已恢復 ${restored} 個草稿版本。` : "未恢復舊草稿（來源已有分類架構版本，或沒有可恢復的紀錄）。"),
+        `Merge undone. ${result.answers_staying_on_target} answer(s) already re-classified into the target topic are not moved back; only new data follows this topic from now on.`
+          + (restored ? ` ${restored} draft version(s) restored.` : " No old draft was restored (the topic already has a taxonomy version, or there is nothing to restore)."),
+      ));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setUnmerging(false);
+    }
+  };
+
   // 類別 -> 這一類的原始回答；不在目前版本分類架構裡的類別另外列出
   const groupKey = (main, sub) => `${main || ""}|${sub || ""}`;
   const groupFor = (cat) => (answers?.groups || []).find((g) => groupKey(g.main_category, g.sub_category) === groupKey(cat.main_category, cat.sub_category))
@@ -233,8 +267,14 @@ export default function TaxonomyPanel() {
           `This topic was merged into "${mergedTargetTitle}". Future uploads of the same column use that taxonomy.`)}</p>
         {mergeResultText && <p className="review-batch-message">{mergeResultText}</p>}
         <NavLink to={`/admin/ai/topics/${topicMeta.merged_into}`}>{t("前往該主題 →", "Open that topic →")}</NavLink>
+        {" "}
+        <button type="button" disabled={unmerging} onClick={unmergeTopic}>
+          {unmerging ? t("處理中…", "Working…") : t("解除合併", "Undo merge")}
+        </button>
+        <p><small>{t("解除後只影響之後的新資料；已重新分類到目標主題的既有回答不會自動移回。", "Undoing only affects new data from now on; answers already re-classified into the target topic are not moved back.")}</small></p>
       </div>
     )}
+    {unmergeResultText && <p className="review-batch-message" role="status">{unmergeResultText}</p>}
 
     {topicMeta && !topicMeta.merged_into && <TopicSourceSummary data={answers} />}
 

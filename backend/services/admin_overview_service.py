@@ -126,18 +126,22 @@ def _topic_counts():
 
 def _new_category_groups():
     """每個主題有幾組待決定的新類別（同一主題、同一大類別／子類別算一組）。"""
-    from models import Taxonomy_Version
+    from models import Taxonomy_Version, Topic
     from services.admin_recovery_service import _legacy_classification_clause
 
+    # 只算「正常現行候選」：legacy、主題不存在、主題已被合併的屬於殘留 bucket，
+    # 另外由 residual_new_category_groups 回報，不計入這個徽章。
     rows = (
         db.session.query(
             Taxonomy_Version.topic_key, Response_Classification.main_category, Response_Classification.sub_category,
         )
         .join(Taxonomy_Version, Response_Classification.taxonomy_version_id == Taxonomy_Version.version_id)
+        .join(Topic, Taxonomy_Version.topic_key == Topic.topic_key)
         .filter(
             Response_Classification.status == NEW_CATEGORY_STATUS,
             Response_Classification.review_status == REVIEW_STATUS_PENDING,
             ~_legacy_classification_clause(),
+            db.or_(Topic.merged_into.is_(None), Topic.merged_into == ""),
         )
         .distinct()
         .all()
@@ -146,6 +150,12 @@ def _new_category_groups():
     for topic_key, _main, _sub in rows:
         groups[topic_key] = groups.get(topic_key, 0) + 1
     return groups
+
+
+def residual_new_category_groups() -> int:
+    from services.new_category_service import residual_group_count
+
+    return residual_group_count()
 
 
 def build_overview() -> dict:
@@ -226,5 +236,7 @@ def build_overview() -> dict:
             "total": review_rows,
         },
         "auto_confirmed": {"total": totals[BUCKET_AUTO_CONFIRMED]},
+        # 殘留／舊新類別候選（legacy、找不到主題、主題已被合併）：不計入上面的新類別徽章
+        "residual_new_category_groups": residual_new_category_groups(),
         "topics": topics,
     }

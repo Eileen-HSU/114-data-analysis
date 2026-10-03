@@ -1004,3 +1004,152 @@ def merge_topic(source_topic_key, target_topic_key, admin_id):
         "skipped_count": len(skipped),
         "skipped": skipped[:100],
     }
+
+
+# ═══════════════════════════════════════════════════════════════
+# 解除主題合併（只影響未來 routing，不搬回已重新分類的回答）
+# ═══════════════════════════════════════════════════════════════
+
+ACTION_UNMERGE_TOPIC = "unmerge_topic"
+
+
+def _answer_unit(source_type, uploaded_answer_id, response_id, question_id):
+    """一則「回答」的識別：上傳資料看 uploaded_answer_id，問卷看 (response_id, question_id)。"""
+    if source_type == SOURCE_TYPE_USER_UPLOAD:
+        return ("upload", uploaded_answer_id)
+    return ("survey", response_id, question_id)
+
+
+def _live_units_on_versions(version_ids):
+    """這些版本底下目前有效（非 superseded）的回答。"""
+    if not version_ids:
+        return set()
+    rows = db.session.query(
+        Response_Classification.source_type, Response_Classification.uploaded_answer_id,
+        Response_Classification.response_id, Response_Classification.question_id,
+    ).filter(
+        Response_Classification.taxonomy_version_id.in_(version_ids),
+        db.or_(Response_Classification.status.is_(None),
+               Response_Classification.status != CLASSIFICATION_STATUS_SUPERSEDED),
+    ).all()
+    return {_answer_unit(*row) for row in rows}
+
+
+def _superseded_units_on_versions(version_ids):
+    """這些版本底下已被新結果取代（superseded）的回答，也就是當初搬走的那批。"""
+    if not version_ids:
+        return set()
+    rows = db.session.query(
+        Response_Classification.source_type, Response_Classification.uploaded_answer_id,
+        Response_Classification.response_id, Response_Classification.question_id,
+    ).filter(
+        Response_Classification.taxonomy_version_id.in_(version_ids),
+        Response_Classification.status == CLASSIFICATION_STATUS_SUPERSEDED,
+    ).all()
+    return {_answer_unit(*row) for row in rows}
+
+
+def _latest_merge_archived_version_ids(topic_key):
+    """最近一次「有封存版本」的 merge_topic audit 裡的 archived_version_ids。
+
+    重試併入（再次對同一主題 merge-into）時沒有東西可封存，會留下 archived_version_ids=[]
+    的 audit；那種紀錄跳過，往前找真正封存過版本的那一次。"""
+    from audit import Admin_Audit_Log
+
+    entries = (
+        Admin_Audit_Log.query
+        .filter_by(action=ACTION_MERGE_TOPIC, entity_type="topic", entity_id=str(topic_key))
+        .order_by(Admin_Audit_Log.audit_id.desc())
+        .all()
+    )
+    for entry in entries:
+        ids = (entry.after_state or {}).get("archived_version_ids") or []
+        if ids:
+            return [int(i) for i in ids]
+    return []
+
+
+def unmerge_topic(topic_key, admin_id):
+    """解除主題合併。語意刻意收得很窄：
+
+    1. 只清空 Topic.merged_into：之後同樣的資料不再被導向目標主題。
+    2. 不搬回已經重新分類到目標主題的回答，也不還原任何既有分類結果、
+       Uploaded_Answer.question_type、審核對話或報告狀態。
+    3. 來源主題目前沒有任何 active（非 archived）分類架構時，才把「最近一次 merge audit
+       封存的版本」恢復成 draft（一律 draft，不嘗試還原原本是 draft / in_review）並清掉
+       archived_at；已經有 active 版本就不動。
+    4. 寫 unmerge_topic audit，回傳有多少筆回答留在原本的 merge 目標。
+    """
+    from models import Taxonomy_Version, Topic
+    from taxonomy import TAXONOMY_VERSION_STATUS_ARCHIVED, TAXONOMY_VERSION_STATUS_DRAFT
+
+    topic = Topic.query.filter_by(topic_key=topic_key).with_for_update().first()
+    if topic is None:
+        raise RecoveryError("TOPIC_NOT_FOUND", "找不到主題", 404)
+    target_key = topic.merged_into
+    if not target_key:
+        raise RecoveryError("TOPIC_NOT_MERGED", "這個主題目前沒有被合併，不需要解除", 409)
+
+    try:
+        versions = Taxonomy_Version.query.filter_by(topic_key=topic_key).order_by(Taxonomy_Version.version_number).all()
+        source_version_ids = [v.version_id for v in versions]
+        target_version_ids = [v.version_id for v in Taxonomy_Version.query.filter_by(topic_key=target_key).all()]
+
+        # 留在目標主題、不會自動移回的回答：當初從這個來源搬走（來源版本下有 superseded 列），
+        # 而且現在在目標主題的版本下有有效結果。
+        moved_units = _superseded_units_on_versions(source_version_ids)
+        staying_on_target = len(moved_units & _live_units_on_versions(target_version_ids))
+        # 仍留在來源的回答（搬失敗 / 人工定案被跳過 / 還在候選）：解除後仍是來源主題的資料。
+        left_on_source = len(_live_units_on_versions(source_version_ids))
+
+        restored, restore_skipped = [], None
+        if any(v.status != TAXONOMY_VERSION_STATUS_ARCHIVED for v in versions):
+            restore_skipped = "ACTIVE_TAXONOMY_EXISTS"
+        else:
+            archived_ids = set(_latest_merge_archived_version_ids(topic_key))
+            if not archived_ids:
+                restore_skipped = "NO_ARCHIVED_VERSIONS_IN_MERGE_AUDIT"
+            else:
+                for version in versions:
+                    if version.version_id in archived_ids and version.status == TAXONOMY_VERSION_STATUS_ARCHIVED:
+                        version.status = TAXONOMY_VERSION_STATUS_DRAFT
+                        version.archived_at = None
+                        restored.append(version.version_id)
+                if not restored:
+                    restore_skipped = "ARCHIVED_VERSIONS_NOT_FOUND"
+
+        still_pointing_here = [
+            t.topic_key for t in Topic.query.filter(Topic.merged_into == topic_key).all()
+        ]
+        topic.merged_into = None
+        audit_service.record(
+            ACTION_UNMERGE_TOPIC, "topic", topic_key, admin_id,
+            before={"merged_into": target_key},
+            after={
+                "merged_into": None,
+                "restored_version_ids": restored,
+                "restore_skipped_reason": restore_skipped,
+                "answers_staying_on_target": staying_on_target,
+                "answers_left_on_source": left_on_source,
+            },
+            reason=f"解除主題 {topic_key} 對 {target_key} 的合併（只影響之後的新資料）",
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+
+    return {
+        "topic_key": topic_key,
+        "previous_merged_into": target_key,
+        "merged_into": None,
+        "restored_version_ids": restored,
+        "restore_skipped_reason": restore_skipped,
+        "answers_staying_on_target": staying_on_target,
+        "answers_left_on_source": left_on_source,
+        "topics_still_merged_into_this": still_pointing_here,
+        "message": (
+            f"已解除合併。已重新分類到「{target_key}」的 {staying_on_target} 筆回答不會自動移回，"
+            "只有之後的新資料會依這個主題處理。"
+        ),
+    }

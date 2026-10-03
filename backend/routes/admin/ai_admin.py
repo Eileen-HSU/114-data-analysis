@@ -475,6 +475,21 @@ def merge_topic_into(topic_key):
         return _recovery_error(exc)
 
 
+@ai_admin_bp.post("/topics/<topic_key>/unmerge")
+def unmerge_topic_route(topic_key):
+    """解除主題合併：只清空 merged_into（只影響之後的 routing），不搬回已重新分類的回答、
+    不還原既有分類結果。來源主題沒有 active 分類架構時，恢復合併時封存的版本為 draft。
+    回應包含 answers_staying_on_target（留在原合併目標、不會自動移回的回答數）。
+    409 TOPIC_NOT_MERGED：這個主題目前沒有被合併。"""
+    admin, failure = _admin_or_error()
+    if failure:
+        return failure
+    try:
+        return jsonify(recovery.unmerge_topic(topic_key, admin.admin_id)), 200
+    except recovery.RecoveryError as exc:
+        return _recovery_error(exc)
+
+
 # ── 系統紀錄（手冊 4.3）：系統狀態、錯誤紀錄、操作紀錄 ─────────────────
 
 def _page_args(default_size=50):
@@ -716,6 +731,26 @@ def list_new_categories():
     return jsonify(new_category_service.list_candidates(request.args.get("topic") or None))
 
 
+@ai_admin_bp.get("/new-categories/merge-targets")
+def new_category_merge_targets():
+    """「合併到既有類別」下拉的資料來源。
+    Query: topic（必填，候選群組的 topic_key）、main_category + sub_category（選填，限定單一群組）。
+    回應：topic_key / topic_title / version_id / version_number / version_status / categories，
+    以及版本不一致資訊（見 new_category_service.merge_targets）。"""
+    _, failure = _admin_or_error()
+    if failure:
+        return failure
+    try:
+        result = new_category_service.merge_targets(
+            request.args.get("topic") or None,
+            main_category=request.args.get("main_category"),
+            sub_category=request.args.get("sub_category"),
+        )
+    except new_category_service.NewCategoryError as exc:
+        return api_error(exc.code, exc.message, exc.http_status)
+    return jsonify(result), 200
+
+
 @ai_admin_bp.post("/new-categories/adopt")
 def adopt_new_category():
     """一鍵採用：加入分類架構、發布、這一組回答全部確認（見 new_category_service.adopt）。
@@ -747,6 +782,27 @@ def merge_new_category():
         result = new_category_service.merge(
             data.get("topic_key"), data.get("main_category"), data.get("sub_category"),
             data.get("target_sub_category"), admin.admin_id,
+        )
+    except new_category_service.NewCategoryError as exc:
+        return api_error(exc.code, exc.message, exc.http_status)
+    return jsonify(result), 200
+
+
+@ai_admin_bp.post("/new-categories/exclude")
+def exclude_residual_new_category():
+    """排除一組「殘留／舊候選」（只作用在殘留 bucket）。
+    Body: {topic_key (可為 null), main_category, sub_category, acknowledged: true, reason?, batch_id?}
+    排除後這些回答不再納入分析、彙整、匯出與報告，可用 reopen 復原，所以必須帶
+    acknowledged=true（否則 400 ACK_REQUIRED）。
+    回應：{batch_id, success_ids, skipped, failed, ...}（逐筆呼叫既有 review_service.exclude）。"""
+    admin, failure = _admin_or_error()
+    if failure:
+        return failure
+    data = request.get_json(silent=True) or {}
+    try:
+        result = new_category_service.exclude_residual(
+            data.get("topic_key"), data.get("main_category"), data.get("sub_category"), admin.admin_id,
+            acknowledged=data.get("acknowledged") is True, reason=data.get("reason"), batch_id=data.get("batch_id"),
         )
     except new_category_service.NewCategoryError as exc:
         return api_error(exc.code, exc.message, exc.http_status)
