@@ -7,7 +7,7 @@ P0-3 integration：routing failure 的上傳回答能被 Admin 看見並恢復�
 另外涵蓋：
     - Uploaded_Answer.question_type 在 routing 失敗時存 NULL（不再寫入 "other"），
       routing_status 精準記錄原因（unrouted / routing_failed / taxonomy_unavailable）
-    - 未分類頁三個分頁（unrouted / failed / legacy_other）分開計數，server-side 分頁
+    - 未分類頁現行佇列與 legacy 分頁分開計數，server-side 分頁
     - 指派 Topic 防止重複建立 classification（ALREADY_CLASSIFIED）
     - fail-closed：draft taxonomy 不可用、沒有 published taxonomy 的 Topic 不分類
     - failed retry：舊列 superseded（保留 attempt history）、不重複計數
@@ -130,7 +130,10 @@ check("重複指派 -> 409 ALREADY_CLASSIFIED（不重複建立）", resp.status
 with app.app_context():
     check("仍然只有 1 筆 classification", m.Response_Classification.query.filter_by(uploaded_answer_id=answer_ids[0]).count() == 1)
 body = client.get("/api/admin/ai/unassigned?kind=unrouted", headers=admin_header(1)).get_json()
-check("已處理的回答離開 unrouted 分頁", answer_ids[0] not in {i["id"] for i in body["items"]} and body["counts"]["unrouted"] == 1)
+check("已處理的回答離開 unrouted 分頁，剩餘資料仍由背景重試",
+      answer_ids[0] not in {i["id"] for i in body["items"]}
+      and body["counts"]["unrouted"] == 0
+      and body["retry_progress"]["pending_by_kind"]["unrouted"] == 1)
 detail = client.get(f"/api/admin/ai/unassigned/answers/{answer_ids[0]}", headers=admin_header(1)).get_json()
 check("answer detail 顯示處理狀態與 audit", detail["routing_status"] == "assigned" and len(detail["audit"]) == 1)
 
@@ -207,19 +210,48 @@ check("confirmed 的回答 reclassify -> 409 REPROCESS_BLOCKED_BY_REVIEW",
 
 
 print("\n========== 9. legacy question_id='other' ==========")
+overview_before_legacy = client.get("/api/admin/ai/overview", headers=admin_header(1)).get_json()
 with app.app_context():
     ids = seed_upload_batch("batch-legacy", ["舊流程的其他類資料"], question_type="other")
     legacy_cid = seed_classification(ids[0], "batch-legacy", "舊流程的其他類資料", "動態", "動態子類",
                                      version_id=None, question_id="other", confidence=None)
-check("legacy_other 分頁出現", legacy_cid in {i["classification_id"] for i in client.get(
-    "/api/admin/ai/unassigned?kind=legacy_other", headers=admin_header(1)).get_json()["items"]})
+    failed_legacy_id = seed_classification(ids[0], "batch-legacy", "舊流程的其他類資料", None, None,
+                                           version_id=None, question_id="other", confidence=None, status="failed")
+legacy_items = client.get("/api/admin/ai/unassigned?kind=legacy", headers=admin_header(1)).get_json()["items"]
+check("舊版資料分頁出現舊 question_id=other 分類", legacy_cid in {i["classification_id"] for i in legacy_items})
+check("taxonomy_version_id 為 NULL 的 legacy failure 留在舊版資料分頁",
+      failed_legacy_id in {i["classification_id"] for i in legacy_items})
+check("failed legacy classification 不混入現行失敗 queue",
+      failed_legacy_id not in {i["classification_id"] for i in client.get(
+          "/api/admin/ai/unassigned?kind=failed", headers=admin_header(1)).get_json()["items"]})
+current_review = client.get("/api/admin/ai/classifications?state=pending_review&queue=human",
+                            headers=admin_header(1)).get_json()
+overview_with_legacy = client.get("/api/admin/ai/overview", headers=admin_header(1)).get_json()
+check("legacy 分流不增加首頁現行人工審查 / 人工決策數",
+      current_review["total"] == overview_with_legacy["needs_person"]["total"]
+      and overview_before_legacy["needs_person"]["total"] == overview_with_legacy["needs_person"]["total"]
+      and overview_before_legacy["needs_decision"]["total"] == overview_with_legacy["needs_decision"]["total"])
 check("legacy 沒指定 topic -> 422 TOPIC_REQUIRED",
       client.post(f"/api/admin/ai/classifications/{legacy_cid}/reclassify", headers=admin_header(1), json={}).get_json()["code"] == "TOPIC_REQUIRED")
 classify_responses("舊流程的其他類資料")
 resp = client.post(f"/api/admin/ai/classifications/{legacy_cid}/reclassify", headers=admin_header(1), json={"topic_key": "custom_topic"})
 check("legacy 指派 Topic 重新分類 200", resp.status_code == 200 and resp.get_json()["classifications"][0]["taxonomy_version_id"] == version_id)
-check("legacy_other 分頁不再出現", legacy_cid not in {i["classification_id"] for i in client.get(
-    "/api/admin/ai/unassigned?kind=legacy_other", headers=admin_header(1)).get_json()["items"]})
+check("重新分類後該列不再出現在舊版資料分頁", legacy_cid not in {i["classification_id"] for i in client.get(
+    "/api/admin/ai/unassigned?kind=legacy", headers=admin_header(1)).get_json()["items"]})
+
+with app.app_context():
+    legacy_answer_ids = seed_upload_batch(
+        "batch-old-routing", ["舊版匯入欄位資料"], question_type=None, column="unknown_legacy_column"
+    )
+    legacy_answer = db.session.get(m.Uploaded_Answer, legacy_answer_ids[0])
+    legacy_answer.routing_status = None
+    db.session.commit()
+legacy_rows = client.get("/api/admin/ai/unassigned?kind=legacy", headers=admin_header(1)).get_json()["items"]
+check("unknown_legacy_column + NULL routing_status 進入舊版資料分頁",
+      legacy_answer_ids[0] in {item["id"] for item in legacy_rows if item.get("target") == "answer"})
+check("unknown_legacy_column 不計入現行未歸屬 queue",
+      legacy_answer_ids[0] not in {item["id"] for item in client.get(
+          "/api/admin/ai/unassigned?kind=unrouted", headers=admin_header(1)).get_json()["items"]})
 
 
 print("\n========== 10. AI 服務失敗：原因持久化，不留半套資料 ==========")

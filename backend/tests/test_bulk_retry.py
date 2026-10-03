@@ -21,7 +21,7 @@ from admin_test_support import (
 )
 import models as m
 from extensions import db, taiwan_now
-from services import bulk_retry_service as brs
+from services import admin_recovery_service as recovery, bulk_retry_service as brs
 from services.privacy_service import mask_pii
 
 app = create_app()
@@ -113,6 +113,21 @@ check("資料維持原樣、還在失敗清單", failed_count() == 1)
 with app.app_context():
     split = brs.retry_split()
 check("quota 暫時錯誤留在自動重試彙總，不進 still_failed", split["pending"] == 1 and split["still_failed"] == 0)
+with app.app_context():
+    for transient_code in ("AI_QUOTA_EXCEEDED", "AI_SERVICE_BUSY", "AI_TIMEOUT"):
+        brs._record_item_attempt(job["job_id"], ("answer", ids[0]), "failed", transient_code)
+        db.session.commit()
+        split = brs.retry_split()
+        listed = recovery.list_unassigned("failed")
+        check(f"歷史 {transient_code} failure 仍屬背景 retry，不列人工 queue",
+              split["pending"] == 1 and split["still_failed"] == 0 and listed["total"] == 0)
+    brs._record_item_attempt(job["job_id"], ("answer", ids[0]), "failed", "AI_AUTH_FAILED")
+    db.session.commit()
+    split = brs.retry_split()
+    listed = recovery.list_unassigned("failed")
+    check("AI_AUTH_FAILED（含缺少 GEMINI_API_KEY）顯示為系統阻塞，不算人工分類決策",
+          split["pending"] == 0 and split["still_failed"] == 0 and split["system_blocked"] == 1
+          and listed["total"] == 0)
 clear_failed()
 
 
@@ -222,6 +237,12 @@ with app.app_context():
         recovery.reroute_answer = lambda answer_id, admin_id, _r=result: _r
         outcome = brs._process("unrouted_answer", 1, 1)[0]
         check(f"重新判斷 {result} -> {expected}", outcome == expected)
+    recovery.reroute_answer = lambda answer_id, admin_id: {
+        "routed": False, "routing_error": "auth_or_config",
+    }
+    outcome, code, _ = brs._process("unrouted_answer", 1, 1)
+    check("routing 遇到缺少 GEMINI_API_KEY 記為 AI_AUTH_FAILED 系統阻塞",
+          outcome == "failed" and code == "AI_AUTH_FAILED")
 recovery.reroute_answer = original_reroute
 
 finish()

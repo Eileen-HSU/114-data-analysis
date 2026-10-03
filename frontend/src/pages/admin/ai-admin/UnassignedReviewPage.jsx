@@ -1,29 +1,33 @@
 import { useEffect, useRef, useState } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import Navbar from "../../../components/feature/Navbar";
 import { useAuth } from "../../../hooks/AuthContext";
 import { api } from "./shared/apiClient";
 import { t } from "./shared/taxStatus";
-import { UNASSIGNED_KINDS, errorMessage, unassignedKindLabel, unroutedReasonLabel } from "./shared/reviewStates";
+import { UNASSIGNED_KINDS, UNKNOWN_LEGACY_COLUMN, errorMessage, isLegacyTechnicalTopic, topicDisplayName, unassignedKindLabel, unroutedReasonLabel } from "./shared/reviewStates";
 import { FailureNotice, LoadingNotice } from "./shared/StatusWidgets";
 
 const PAGE_SIZE = 30;
-const sourceColumnLabel = (value) => (value === "unknown_legacy_column"
+const sourceColumnLabel = (value) => (value === UNKNOWN_LEGACY_COLUMN
   ? t("舊資料欄位（無法辨識）", "Unidentified legacy column")
   : value);
 
 // 未分類 / 失敗資料（後端 services/admin_recovery_service.py 定義）：
 //   unrouted     ：上傳回答沒有任何分類結果（找不到主題、taxonomy 不可用、routing 失敗…）
 //   failed       ：分類失敗（跟「沒有主題」是不同問題，分開處理）
-//   legacy_other ：舊流程 question_id = other 的分類結果
+//   legacy       ：可用明確舊欄位標記辨識的舊版 routing / classification 資料
 // 所有指派 / 重新處理都直接寫入 DB，完成後重新向後端讀取。
 export default function UnassignedReviewPage() {
   const navigate = useNavigate();
   const { user, isLoggedIn } = useAuth();
   const token = user?.token;
   const canAccess = isLoggedIn && user?.account_type === "admin";
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawRequestedKind = searchParams.get("kind");
+  const requestedKind = rawRequestedKind === "legacy_other" ? "legacy" : rawRequestedKind
+    || (searchParams.get("state") === "failed" ? "failed" : "unrouted");
 
-  const [kind, setKind] = useState("unrouted");
+  const [kind, setKind] = useState(() => UNASSIGNED_KINDS.includes(requestedKind) ? requestedKind : "unrouted");
   const [page, setPage] = useState(1);
   const [data, setData] = useState({ items: [], total: 0, counts: {} });
   const [topics, setTopics] = useState([]);
@@ -60,9 +64,17 @@ export default function UnassignedReviewPage() {
   }, [canAccess, kind, page]);
 
   useEffect(() => {
+    const nextKind = UNASSIGNED_KINDS.includes(requestedKind) ? requestedKind : "unrouted";
+    if (nextKind !== kind) {
+      setKind(nextKind);
+      setPage(1);
+    }
+  }, [kind, requestedKind]);
+
+  useEffect(() => {
     if (!canAccess) return;
     api("/api/admin/ai/taxonomy-topics", token)
-      .then((res) => setTopics((res.topics || []).filter((tp) => tp.published_version)))
+      .then((res) => setTopics((res.topics || []).filter((tp) => tp.published_version && !isLegacyTechnicalTopic(tp))))
       .catch((e) => setError(errorMessage(e)));
   }, [canAccess, token]);
 
@@ -139,16 +151,26 @@ export default function UnassignedReviewPage() {
   const totalPages = Math.max(Math.ceil((data.total || 0) / PAGE_SIZE), 1);
 
   return <><div className="admin-page">
-    <h1>{t("其他 / 未歸屬資料", "Other / Unassigned Data")}</h1>
-    <p><small>{t("系統判斷不出主題、主題沒有可用分類架構、分類失敗，以及舊版「其他」資料都會出現在這裡。可以指派主題、重新判斷主題或重新處理。",
-      "Answers without a topic, topics without a usable taxonomy, failed classifications and legacy \"other\" data. Assign a topic, re-route or reprocess.")}</small></p>
+    <h1>{t("無法分類與舊版資料", "Unclassified & legacy data")}</h1>
+    <p><small>{t("現行流程需要處理的資料與可辨識的舊版資料分開列示；暫時性 AI 服務錯誤由系統背景重試，不列入人工清單。",
+      "Current exceptions and identifiable legacy records are separated. Transient AI service errors are retried in the background, not listed for manual decisions.")}</small></p>
     {error && <p className="ai-admin-error">{error}<button onClick={() => setError("")}>×</button></p>}
     {message && <p className="review-batch-message">{message}</p>}
 
     <div className="review-tabs" role="tablist">
       {UNASSIGNED_KINDS.map((k) => (
         <button key={k} role="tab" aria-selected={kind === k} className={`review-tab${kind === k ? " review-tab--active" : ""}`}
-          onClick={() => { setKind(k); setPage(1); setMessage(""); }}>
+          onClick={() => {
+            setKind(k);
+            setPage(1);
+            setMessage("");
+            const next = new URLSearchParams(searchParams);
+            next.set("view", "unassigned");
+            next.set("kind", k);
+            next.delete("state");
+            next.delete("queue");
+            setSearchParams(next, { replace: true });
+          }}>
           {unassignedKindLabel(k)}<span className="review-tab-count">{data.counts?.[k] ?? 0}</span>
         </button>
       ))}
@@ -213,23 +235,27 @@ function UnassignedCard({ item, topics, busy, error, onDismissError, onAssign, o
         <b className={`review-status-tag review-status-tag--${item.kind === "failed" ? "failed" : "pending_review"}`}>
           {unassignedKindLabel(item.kind)}
         </b>
-        <span className="review-card-segment">{item.kind === "unrouted" ? item.answer_text : item.segment}</span>
+        <span className="review-card-segment">{item.target === "answer" ? item.answer_text : item.segment}</span>
       </div>
       <div className="review-card-mid">
         <p><span className="review-field-label">{t("原因", "Reason")}</span>
-          {item.kind === "failed" ? t("分類處理失敗", "Classification failed") : unroutedReasonLabel(item.reason)}</p>
+          {item.kind === "failed" ? t("分類處理失敗", "Classification failed")
+            : item.kind === "legacy" ? t("舊流程留下的未處理資料", "Unresolved data from a legacy workflow")
+              : unroutedReasonLabel(item.reason)}</p>
         {item.failure && <FailureNotice failure={item.failure} />}
         <p><span className="review-field-label">{t("處理狀態", "Processing status")}</span>{item.processing_status}</p>
-        {item.source_column && <p><span className="review-field-label">{t("來源欄位", "Source column")}</span>{sourceColumnLabel(item.source_column)}（{t("第", "row ")}{(item.row_index ?? 0) + 1}{t(" 列", "")}）</p>}
+        {item.source_column && <p><span className="review-field-label">{t("來源欄位", "Source column")}</span>{sourceColumnLabel(item.source_column)}（{t("第", "row ")}{(item.row_index ?? 0) + 1}{t(" 列", "")}）
+          {item.source_column === UNKNOWN_LEGACY_COLUMN && <details><summary>{t("技術資訊", "Technical details")}</summary><code>{item.source_column}</code></details>}
+        </p>}
       </div>
       {error && <p className="ai-admin-error">{error}<button onClick={onDismissError}>×</button></p>}
       <div className="review-card-actions">
         <select value={topicKey} disabled={busy} onChange={(e) => setTopicKey(e.target.value)}>
           <option value="">{item.kind === "failed" ? t("沿用原主題", "Keep original topic") : t("選擇主題…", "Choose a topic…")}</option>
-          {topics.map((tp) => <option key={tp.topic_key} value={tp.topic_key}>{tp.title}</option>)}
+          {topics.map((tp) => <option key={tp.topic_key} value={tp.topic_key}>{topicDisplayName(tp)}</option>)}
         </select>
         {selectedTopic && <small>{t("使用已發布版本", "Uses published version")} v{selectedTopic.published_version.version_number}</small>}
-        {item.kind === "unrouted" && (
+        {(item.kind === "unrouted" || (item.kind === "legacy" && item.target === "answer")) && (
           <>
             <button className="review-btn-primary" disabled={busy || !topicKey} onClick={() => onAssign(topicKey, selectedTopic?.published_version?.version_id)}>
               {busy ? t("處理中…", "Working…") : t("指派主題並分類", "Assign & classify")}
@@ -242,7 +268,7 @@ function UnassignedCard({ item, topics, busy, error, onDismissError, onAssign, o
             {busy ? t("處理中…", "Working…") : t("重新處理", "Retry")}
           </button>
         )}
-        {item.kind === "legacy_other" && (
+        {item.kind === "legacy" && item.target !== "answer" && (
           <button className="review-btn-primary" disabled={busy || !topicKey} onClick={() => onReclassify(topicKey)}>
             {busy ? t("處理中…", "Working…") : t("指派主題並重新分類", "Assign topic & re-classify")}
           </button>

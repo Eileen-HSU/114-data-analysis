@@ -5,7 +5,7 @@ import Navbar from "../../../components/feature/Navbar";
 import { useAuth } from "../../../hooks/AuthContext";
 import { api } from "./shared/apiClient";
 import { t } from "./shared/taxStatus";
-import { errorMessage } from "./shared/reviewStates";
+import { errorMessage, isLegacyTechnicalTopic, topicDisplayName } from "./shared/reviewStates";
 import { LoadingNotice } from "./shared/StatusWidgets";
 
 // 開放式分類的「新類別候選」：AI 分類時提出、不在目前分類清單裡的類別。
@@ -213,12 +213,14 @@ export default function NewCategoryPage() {
 
     {!loading && Object.entries(groupedItems).map(([topicKey, items]) => {
       const topic = topicByKey[topicKey];
+      const legacyTopic = isLegacyTechnicalTopic(topic || items[0].topic_title || topicKey);
       const undecidedTopic = topic
-        ? topic.is_auto_topic && !topic.merged_into
-        : topicKey.startsWith("auto_");
+        ? topic.is_auto_topic && !topic.merged_into && !legacyTopic
+        : topicKey.startsWith("auto_") && !legacyTopic;
       const selectedItems = items.filter((item) => selected[keyOf(item)]);
       return <section key={topicKey} className="admin-section-block">
-        <h2>{topic?.title || items[0].topic_title} <span className="admin-muted">({items.length})</span></h2>
+        <h2>{topicDisplayName(topic || items[0].topic_title)} <span className="admin-muted">({items.length})</span></h2>
+        {legacyTopic && <details><summary>{t("技術資訊", "Technical details")}</summary><code>{topicKey}</code></details>}
         {undecidedTopic ? (
           <div className="admin-undecided">
             <p>{t(
@@ -229,8 +231,8 @@ export default function NewCategoryPage() {
             <select value={topicTargets[topicKey] || ""} disabled={topicsLoading || topicBusy[topicKey]}
               onChange={(e) => setTopicTargets((state) => ({ ...state, [topicKey]: e.target.value }))}>
               <option value="">{t("選擇正式主題…", "Choose an official topic…")}</option>
-              {topics.filter((candidate) => candidate.topic_key !== topicKey && candidate.published_version && !candidate.merged_into)
-                .map((candidate) => <option key={candidate.topic_key} value={candidate.topic_key}>{candidate.title}</option>)}
+              {topics.filter((candidate) => candidate.topic_key !== topicKey && candidate.published_version && !candidate.merged_into && !isLegacyTechnicalTopic(candidate))
+                .map((candidate) => <option key={candidate.topic_key} value={candidate.topic_key}>{topicDisplayName(candidate)}</option>)}
             </select>
             <button className="primary" disabled={!topicTargets[topicKey] || topicBusy[topicKey]}
               onClick={() => mergeAutoTopic(topicKey)}>
@@ -269,7 +271,7 @@ export default function NewCategoryPage() {
             <span className="review-card-segment">{item.main_category} / {item.sub_category}</span>
           </div>
           <div className="review-card-mid">
-            <p><span className="review-field-label">{t("主題", "Topic")}</span>{item.topic_title}</p>
+            <p><span className="review-field-label">{t("主題", "Topic")}</span>{topicDisplayName(item.topic_title)}</p>
             {item.examples.map((ex, i) => <p key={i}><span className="review-field-label">{t("範例", "Example")}</span>{ex}</p>)}
             {item.reasons[0] && <p><span className="review-field-label">{t("AI 理由", "AI reasoning")}</span>{item.reasons[0]}</p>}
           </div>

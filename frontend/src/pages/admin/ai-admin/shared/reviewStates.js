@@ -13,7 +13,8 @@ import { t } from "./taxStatus";
 
 export const CLASSIFICATION_STATES = ["pending_review", "in_review", "failed", "confirmed", "modified", "excluded"];
 export const REVIEW_STATUSES = ["pending_review", "confirmed", "modified", "excluded"];
-export const UNASSIGNED_KINDS = ["unrouted", "failed", "legacy_other"];
+export const UNASSIGNED_KINDS = ["unrouted", "failed", "legacy"];
+export const UNKNOWN_LEGACY_COLUMN = "unknown_legacy_column";
 export const OUTDATED_REASONS = [
   "classification_confirmed",
   "classification_modified",
@@ -27,7 +28,7 @@ export const OUTDATED_REASONS = [
 
 // 清單上的分頁籤（in_review 是 pending_review 的子集合，另外以 badge 顯示，
 // 不另開分頁，避免同一筆出現在兩個分頁）。
-export const STATE_TABS = ["pending_review", "failed", "confirmed", "modified", "excluded"];
+export const STATE_TABS = ["pending_review", "confirmed", "modified", "excluded"];
 
 export const stateLabel = (state) => ({
   pending_review: t("待處理", "Pending"),
@@ -46,8 +47,21 @@ export const isAutoConfirmed = (row) => row?.review_status === "confirmed" && Bo
 export const unassignedKindLabel = (kind) => ({
   unrouted: t("未歸屬主題", "No topic"),
   failed: t("分類失敗", "Classification failed"),
-  legacy_other: t("舊版「其他」資料", "Legacy \"other\""),
+  legacy: t("舊版資料", "Legacy data"),
 }[kind] || kind);
+
+export const isLegacyTechnicalTopic = (topic) => {
+  const key = typeof topic === "string" ? topic : topic?.topic_key;
+  const title = typeof topic === "string" ? topic : topic?.title;
+  return Boolean(topic) && (key === UNKNOWN_LEGACY_COLUMN || title === UNKNOWN_LEGACY_COLUMN);
+};
+
+export const topicDisplayName = (topic) => {
+  const title = typeof topic === "string" ? topic : topic?.title;
+  return isLegacyTechnicalTopic(topic)
+    ? t("舊資料欄位（無法辨識）", "Unidentified legacy column")
+    : title || (typeof topic === "string" ? topic : topic?.topic_key) || "";
+};
 
 // Uploaded_Answer.routing_status / 未分類原因
 export const unroutedReasonLabel = (reason) => ({

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../shared/apiClient";
-import { errorMessage } from "../shared/reviewStates";
+import { errorMessage, topicDisplayName } from "../shared/reviewStates";
 import { FailureNotice } from "../shared/StatusWidgets";
 import TopicMovePicker from "../shared/TopicMovePicker";
 import { t, reviewFlagReasonText } from "../shared/taxStatus";
@@ -328,13 +328,13 @@ export default function ReviewConversation({ classificationId, mode = "start", o
         // 新主題的分類全部失敗：後端保留原本的結果（kept_previous），這筆沒有被移走。
         onChanged?.();
         throw new Error(t(
-          `移到「${target.title}」失敗，原本的分類結果維持不變：${result.failure?.message || ""}`,
-          `Moving to "${target.title}" failed; the original result was kept: ${result.failure?.message_en || ""}`,
+          `移到「${topicDisplayName(target)}」失敗，原本的分類結果維持不變：${result.failure?.message || ""}`,
+          `Moving to "${topicDisplayName(target)}" failed; the original result was kept: ${result.failure?.message_en || ""}`,
         ));
       }
-      setMoved({ title: target.title || target.topic_key, rows: result.classifications || [] });
+      setMoved({ title: topicDisplayName(target), rows: result.classifications || [] });
       onChanged?.();
-      return t(`已移到「${target.title}」`, `Moved to "${target.title}"`);
+      return t(`已移到「${topicDisplayName(target)}」`, `Moved to "${topicDisplayName(target)}"`);
     } finally {
       setBusyAction("");
     }
@@ -561,7 +561,7 @@ export default function ReviewConversation({ classificationId, mode = "start", o
               <section className="review-section review-move-topic">
                 <h3>{t("主題分錯了？移到其他主題", "Wrong topic? Move to another topic")}</h3>
                 <p className="review-empty-hint">
-                  {t("目前主題", "Current topic")}：<b>{reviewState?.topic?.title || reviewState?.topic?.topic_key || t("（未歸屬）", "(none)")}</b>
+                  {t("目前主題", "Current topic")}：<b>{reviewState?.topic ? topicDisplayName(reviewState.topic) : t("（未歸屬）", "(none)")}</b>
                   {" "}— {t("移過去後會用那個主題的分類架構重新分類整則回答。", "The whole answer is re-classified with the chosen topic's taxonomy.")}
                 </p>
                 <TopicMovePicker

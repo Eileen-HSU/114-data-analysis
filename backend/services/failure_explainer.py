@@ -11,6 +11,9 @@
 
 import re
 
+TRANSIENT_FAILURE_CODES = frozenset({"AI_QUOTA_EXCEEDED", "AI_SERVICE_BUSY", "AI_TIMEOUT"})
+NON_HUMAN_FAILURE_CODES = TRANSIENT_FAILURE_CODES | frozenset({"AI_AUTH_FAILED"})
+
 # (code, 判斷條件, 中文說明, English)
 _RULES = (
     (

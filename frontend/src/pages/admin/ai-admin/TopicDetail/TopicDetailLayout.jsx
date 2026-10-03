@@ -4,6 +4,7 @@ import Navbar from "../../../../components/feature/Navbar";
 import { useAuth } from "../../../../hooks/AuthContext";
 import { api, peekCache } from "../shared/apiClient";
 import { t } from "../shared/taxStatus";
+import { isLegacyTechnicalTopic, topicDisplayName } from "../shared/reviewStates";
 import { AdminBreadcrumb } from "../shared/AdminLayout";
 
 export default function TopicDetailLayout() {
@@ -39,12 +40,13 @@ export default function TopicDetailLayout() {
   return <><div className="admin-page">
     <AdminBreadcrumb items={[
       { label: t("分類架構", "Taxonomy"), to: "/admin/ai/taxonomy" },
-      { label: topic?.title || topicKey, to: subPage ? `/admin/ai/topics/${topicKey}` : undefined },
+      { label: topicDisplayName(topic || topicKey), to: subPage ? `/admin/ai/topics/${topicKey}` : undefined },
       ...(subPage ? [{ label: subPage }] : []),
     ]} />
     <div className="topic-detail-header">
-      <h1>{topic ? topic.title : <span className="admin-skeleton-line" aria-label={t("載入中", "Loading")} />}</h1>
-      {topic?.is_auto_topic && <span className="topic-tag">{t("AI 自動主題", "Auto topic")}</span>}
+      <h1>{topic ? topicDisplayName(topic) : <span className="admin-skeleton-line" aria-label={t("載入中", "Loading")} />}</h1>
+      {isLegacyTechnicalTopic(topic || topicKey) && <details><summary>{t("技術資訊", "Technical details")}</summary><code>{topic?.topic_key || topicKey}</code></details>}
+      {topic?.is_auto_topic && !isLegacyTechnicalTopic(topic || topicKey) && <span className="topic-tag">{t("AI 自動主題", "Auto topic")}</span>}
       {topic?.published_version
         ? <span className="topic-tag">{t(`使用中 v${topic.published_version.version_number}`, `Live v${topic.published_version.version_number}`)}</span>
         : topic && <span className="topic-tag topic-tag--draft">{t("尚未發布", "Not published")}</span>}

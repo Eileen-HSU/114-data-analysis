@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../../hooks/AuthContext";
 import { api, peekCache } from "./shared/apiClient";
 import { t } from "./shared/taxStatus";
+import { isLegacyTechnicalTopic, topicDisplayName } from "./shared/reviewStates";
 import { AdminPageHeader, AdminTabs } from "./shared/AdminLayout";
 import ReviewPanel from "./TopicDetail/ReviewPanel";
 import UnassignedReviewPage from "./UnassignedReviewPage";
@@ -15,7 +16,8 @@ export default function ReviewHubPage() {
   const { user } = useAuth();
   const token = user?.token;
   const [searchParams, setSearchParams] = useSearchParams();
-  const view = searchParams.get("view") === "unassigned" ? "unassigned" : "review";
+  const legacyFailedView = searchParams.get("state") === "failed";
+  const view = legacyFailedView || searchParams.get("view") === "unassigned" ? "unassigned" : "review";
   const topic = searchParams.get("topic") || "";
   const [topics, setTopics] = useState(() => peekCache(TOPICS_URL)?.topics || []);
   const [overview, setOverview] = useState(() => peekCache("/api/admin/ai/overview") || null);
@@ -26,6 +28,11 @@ export default function ReviewHubPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!legacyFailedView) return;
+    setSearchParams({ view: "unassigned", kind: "failed" }, { replace: true });
+  }, [legacyFailedView, setSearchParams]);
+
   const update = (patch) => {
     const next = new URLSearchParams(searchParams);
     Object.entries(patch).forEach(([k, v]) => (v ? next.set(k, v) : next.delete(k)));
@@ -33,7 +40,7 @@ export default function ReviewHubPage() {
     ["state", "source", "flagged", "queue"].forEach((k) => { if ("topic" in patch || "view" in patch) next.delete(k); });
     setSearchParams(next, { replace: true });
   };
-  const activeTopics = topics.filter((x) => !x.merged_into);
+  const activeTopics = topics.filter((x) => !x.merged_into && !isLegacyTechnicalTopic(x));
 
   return <div className="admin-hub">
     <AdminPageHeader title={t("分類審查", "Review")}
@@ -49,7 +56,7 @@ export default function ReviewHubPage() {
           <span>{t("主題", "Topic")}</span>
           <select value={topic} onChange={(e) => update({ topic: e.target.value })}>
             <option value="">{t("全部主題", "All topics")}</option>
-            {activeTopics.map((x) => <option key={x.topic_key} value={x.topic_key}>{x.title}</option>)}
+            {activeTopics.map((x) => <option key={x.topic_key} value={x.topic_key}>{topicDisplayName(x)}</option>)}
           </select>
         </label>
       </div>
@@ -58,6 +65,12 @@ export default function ReviewHubPage() {
       {(overview?.cannot_classify?.retrying ?? 0) > 0 && (
         <p className="admin-muted">{t(`系統會自動重試 ${overview.cannot_classify.retrying} 筆，不需要處理；重試仍失敗的才需要人工。`,
           `${overview.cannot_classify.retrying} items will be retried automatically. Only those that still fail need a person.`)}</p>
+      )}
+      {(overview?.auto_processing?.system_blocked ?? 0) > 0 && (
+        <p className="admin-muted">{t(
+          `${overview.auto_processing.system_blocked} 筆因 AI 金鑰／設定問題暫停，不列入人工分類決策；請由系統管理者修正設定後再重試。`,
+          `${overview.auto_processing.system_blocked} items are blocked by AI key/configuration issues, not human classification work. Ask a system administrator to fix the configuration before retrying.`,
+        )}</p>
       )}
       <UnassignedReviewPage />
     </>}

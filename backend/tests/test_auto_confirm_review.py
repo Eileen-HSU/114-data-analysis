@@ -371,6 +371,16 @@ check("新類別以組計算（同一類別 2 筆算 1 組）", ov["needs_person
       and ov["needs_decision"]["new_category_groups"] == 1)
 check("待人工審查只算真的要人逐筆處理的：這批資料 0 筆", ov["needs_person"]["total"] == 0
       and ov["needs_person"]["needs_judgement"] == 0)
+new_category_rows = client.get(
+    "/api/admin/ai/classifications?state=pending_review&topic=custom_topic",
+    headers=admin_header(1),
+).get_json()
+new_category_groups = client.get(
+    "/api/admin/ai/new-categories?topic=custom_topic",
+    headers=admin_header(1),
+).get_json()
+check("預設分類審查不接管 new_category；只由候選群組頁處理",
+      new_category_rows["total"] == 0 and len(new_category_groups["items"]) == 1)
 check("AI 自動主題的暫定分類算 1 個主題決策，不是 1 筆待審",
       ov["needs_decision"]["provisional_topics"] == 1 and ov["needs_person"]["other_pending"] == 1)
 check("需要人工決策合計 = 新類別 1 組 + 暫定主題 1（失敗那筆還在系統重試，不算）", ov["needs_decision"]["total"] == 2)
@@ -413,6 +423,11 @@ lst = client.get("/api/admin/ai/classifications?state=pending_review&queue=human
                  headers=admin_header(1)).get_json()
 check("審查清單 queue=human 的筆數跟首頁待人工審查一致（3）", lst["total"] == 3
       and lst["status_counts"]["pending_review"] == 3)
+lst_default = client.get("/api/admin/ai/classifications?state=pending_review&topic=custom_topic",
+                         headers=admin_header(1)).get_json()
+check("不指定 queue 時預設只回真正人工佇列，與首頁待人工數一致",
+      lst_default["total"] == ov["needs_person"]["total"]
+      and lst_default["status_counts"]["pending_review"] == ov["needs_person"]["total"])
 lst2 = client.get("/api/admin/ai/classifications?state=pending_review&queue=ai_disagreement", headers=admin_header(1)).get_json()
 check("queue=ai_disagreement 只看不一致的", lst2["total"] == 1)
 lst3 = client.get("/api/admin/ai/classifications?state=confirmed&queue=human", headers=admin_header(1)).get_json()

@@ -167,7 +167,7 @@ def reviewed_classifications():
     # 也可以指定單一種（ai_disagreement / second_opinion_failed / other）。見 admin_overview_service.bucket_expr
     from services.admin_overview_service import queue_clause
 
-    queue = queue_clause(request.args.get("queue"))
+    queue = queue_clause(request.args.get("queue") or "human")
     if queue is not None:
         base = base.filter(queue)
 

@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../../hooks/AuthContext";
 import { api, peekCache, prefetch } from "./shared/apiClient";
 import { t, taxStatusText } from "./shared/taxStatus";
+import { isLegacyTechnicalTopic, topicDisplayName } from "./shared/reviewStates";
 import { SkeletonCards } from "./shared/StatusWidgets";
 import { AdminPageHeader, AdminTabs } from "./shared/AdminLayout";
 import CreateTopicSection from "./CreateTopicSection";
@@ -39,15 +40,17 @@ export default function TaxonomyHubPage() {
   const pending = (key) => counts(key).needs_judgement || 0;
   const byTodo = (a, b) => pending(b.topic_key) - pending(a.topic_key) || a.title.localeCompare(b.title);
   const all = topics || [];
-  const official = all.filter((x) => !x.merged_into && !x.is_auto_topic).sort(byTodo);
-  const auto = all.filter((x) => !x.merged_into && x.is_auto_topic).sort(byTodo);
+  const legacy = all.filter((x) => !x.merged_into && isLegacyTechnicalTopic(x));
+  const official = all.filter((x) => !x.merged_into && !x.is_auto_topic && !isLegacyTechnicalTopic(x)).sort(byTodo);
+  const auto = all.filter((x) => !x.merged_into && x.is_auto_topic && !isLegacyTechnicalTopic(x)).sort(byTodo);
   const merged = all.filter((x) => x.merged_into);
-  const titleOf = (key) => all.find((x) => x.topic_key === key)?.title || key;
+  const titleOf = (key) => topicDisplayName(all.find((x) => x.topic_key === key) || key);
 
   const row = (topic) => (
     <li key={topic.topic_key} className="admin-row" onMouseEnter={() => prefetchTopic(topic, token)}>
       <div className="admin-row-main">
-        <b>{topic.title}</b>
+        <b>{topicDisplayName(topic)}</b>
+        {isLegacyTechnicalTopic(topic) && <details><summary>{t("技術資訊", "Technical details")}</summary><code>{topic.topic_key}</code></details>}
         <span className="admin-muted">
           {topic.published_version
             ? t(`使用中 v${topic.published_version.version_number}`, `Live v${topic.published_version.version_number}`)
@@ -94,13 +97,20 @@ export default function TaxonomyHubPage() {
           <ul className="admin-list">{auto.map(row)}</ul>
         </section>
       )}
+      {legacy.length > 0 && (
+        <section className="admin-section-block">
+          <h2>{t(`舊資料主題（${legacy.length}）`, `Legacy topics (${legacy.length})`)}</h2>
+          <p className="admin-muted">{t("這些是舊資料的技術歸屬，不列為一般 AI 自動主題。", "Technical topics retained for legacy data; not counted as regular auto topics.")}</p>
+          <ul className="admin-list">{legacy.map(row)}</ul>
+        </section>
+      )}
       {merged.length > 0 && (
         <details className="admin-section-block">
           <summary>{t(`已合併主題（${merged.length}）`, `Merged topics (${merged.length})`)}</summary>
           <ul className="admin-list">
             {merged.map((topic) => (
               <li key={topic.topic_key} className="admin-row">
-                <div className="admin-row-main"><b>{topic.title}</b>
+                <div className="admin-row-main"><b>{topicDisplayName(topic)}</b>
                   <span className="admin-muted">{t(`已併入「${titleOf(topic.merged_into)}」`, `Merged into "${titleOf(topic.merged_into)}"`)}</span></div>
                 <button onClick={() => navigate(`/admin/ai/topics/${topic.topic_key}`)}>{t("查看", "View")}</button>
               </li>

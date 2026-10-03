@@ -13,8 +13,8 @@ retry failed）。
                         taxonomy_unavailable 有 Topic 但沒有可用 published taxonomy
                     舊資料（routing_status IS NULL）依 question_type 推導：
                     NULL / "other" -> unrouted，其他 -> taxonomy_unavailable。
-    legacy_other  ：舊流程寫下、question_id IS NULL 或 = "other" 的
-                    Response_Classification（尚未被取代、尚未排除）。
+    legacy         ：依 source_column、routing_status、question_id 與
+                    taxonomy_version_id 明確辨識的舊版 routing / classification。
     failed        ：Response_Classification.status = failed（尚未排除），
                     以及「零片段失敗」的上傳回答：有 Response_Segmentation_Status
                     （拆分 / 分類失敗）但沒有任何目前生效的 Response_Classification
@@ -72,9 +72,11 @@ from services.effective_classification_service import (
 )
 
 KIND_UNROUTED = "unrouted"
-KIND_LEGACY_OTHER = "legacy_other"
+KIND_LEGACY = "legacy"
 KIND_FAILED = "failed"
-UNASSIGNED_KINDS = (KIND_UNROUTED, KIND_FAILED, KIND_LEGACY_OTHER)
+UNASSIGNED_KINDS = (KIND_UNROUTED, KIND_FAILED, KIND_LEGACY)
+LEGACY_SOURCE_COLUMN = "unknown_legacy_column"
+CURRENT_ROUTING_STATUSES = ("unrouted", "routing_failed", "no_topic_candidates", "taxonomy_unavailable")
 
 MAX_PAGE_SIZE = 100
 
@@ -97,6 +99,44 @@ def _unrouted_answers_query():
         Uploaded_Answer.query
         .outerjoin(Response_Segmentation_Status, Response_Segmentation_Status.uploaded_answer_id == Uploaded_Answer.id)
         .filter(Response_Segmentation_Status.id.is_(None))
+        .filter(
+            Uploaded_Answer.routing_status.in_(CURRENT_ROUTING_STATUSES),
+            Uploaded_Answer.source_column != LEGACY_SOURCE_COLUMN,
+        )
+    )
+
+
+def _legacy_routing_answers_query():
+    classifications = db.session.query(Response_Classification.classification_id).filter(
+        Response_Classification.uploaded_answer_id == Uploaded_Answer.id,
+        Response_Classification.review_status != REVIEW_STATUS_EXCLUDED,
+        db.or_(
+            Response_Classification.status.is_(None),
+            Response_Classification.status != CLASSIFICATION_STATUS_SUPERSEDED,
+        ),
+    )
+    return Uploaded_Answer.query.filter(
+        db.or_(
+            Uploaded_Answer.routing_status.is_(None),
+            Uploaded_Answer.source_column == LEGACY_SOURCE_COLUMN,
+        ),
+        ~classifications.exists(),
+    )
+
+
+def _legacy_classification_clause():
+    legacy_upload = db.session.query(Uploaded_Answer.id).filter(
+        Uploaded_Answer.id == Response_Classification.uploaded_answer_id,
+        db.or_(
+            Uploaded_Answer.routing_status.is_(None),
+            Uploaded_Answer.source_column == LEGACY_SOURCE_COLUMN,
+        ),
+    ).exists()
+    return db.or_(
+        Response_Classification.taxonomy_version_id.is_(None),
+        Response_Classification.question_id.is_(None),
+        Response_Classification.question_id == "other",
+        legacy_upload,
     )
 
 
@@ -104,6 +144,7 @@ def _failed_query():
     return Response_Classification.query.filter(
         Response_Classification.status == CLASSIFICATION_STATUS_FAILED,
         Response_Classification.review_status != REVIEW_STATUS_EXCLUDED,
+        ~_legacy_classification_clause(),
     )
 
 
@@ -123,12 +164,16 @@ def _zero_segment_failed_answers_query():
         Uploaded_Answer.query
         .join(Response_Segmentation_Status, Response_Segmentation_Status.uploaded_answer_id == Uploaded_Answer.id)
         .filter(~current_rows.exists())
+        .filter(
+            Uploaded_Answer.routing_status.isnot(None),
+            Uploaded_Answer.source_column != LEGACY_SOURCE_COLUMN,
+        )
     )
 
 
-def _legacy_other_query():
+def _legacy_classifications_query():
     return Response_Classification.query.filter(
-        db.or_(Response_Classification.question_id.is_(None), Response_Classification.question_id == "other"),
+        _legacy_classification_clause(),
         Response_Classification.review_status != REVIEW_STATUS_EXCLUDED,
         db.or_(
             Response_Classification.status.is_(None),
@@ -138,24 +183,40 @@ def _legacy_other_query():
 
 
 def _has_failed_retry_for_upload(answer_id):
+    from services.failure_explainer import NON_HUMAN_FAILURE_CODES
+
     return Bulk_Retry_Item_Attempt.query.filter(
         Bulk_Retry_Item_Attempt.scope_type == "upload",
         Bulk_Retry_Item_Attempt.uploaded_answer_id == answer_id,
         Bulk_Retry_Item_Attempt.outcome == "failed",
+        db.or_(
+            Bulk_Retry_Item_Attempt.failure_code.is_(None),
+            ~Bulk_Retry_Item_Attempt.failure_code.in_(NON_HUMAN_FAILURE_CODES),
+        ),
     ).exists()
 
 
 def _has_failed_retry_for_classification():
+    from services.failure_explainer import NON_HUMAN_FAILURE_CODES
+
     upload_attempt = Bulk_Retry_Item_Attempt.query.filter(
         Bulk_Retry_Item_Attempt.scope_type == "upload",
         Bulk_Retry_Item_Attempt.uploaded_answer_id == Response_Classification.uploaded_answer_id,
         Bulk_Retry_Item_Attempt.outcome == "failed",
+        db.or_(
+            Bulk_Retry_Item_Attempt.failure_code.is_(None),
+            ~Bulk_Retry_Item_Attempt.failure_code.in_(NON_HUMAN_FAILURE_CODES),
+        ),
     ).exists()
     survey_attempt = Bulk_Retry_Item_Attempt.query.filter(
         Bulk_Retry_Item_Attempt.scope_type == "survey",
         Bulk_Retry_Item_Attempt.response_id == Response_Classification.response_id,
         Bulk_Retry_Item_Attempt.question_id == Response_Classification.question_id,
         Bulk_Retry_Item_Attempt.outcome == "failed",
+        db.or_(
+            Bulk_Retry_Item_Attempt.failure_code.is_(None),
+            ~Bulk_Retry_Item_Attempt.failure_code.in_(NON_HUMAN_FAILURE_CODES),
+        ),
     ).exists()
     return db.or_(
         db.and_(Response_Classification.uploaded_answer_id.isnot(None), upload_attempt),
@@ -174,9 +235,18 @@ def derive_unrouted_reason(answer) -> str:
 def _answer_item(answer):
     data = answer.to_dict()
     data["kind"] = KIND_UNROUTED
+    data["target"] = "answer"
+    data["segment"] = answer.answer_text
     data["reason"] = derive_unrouted_reason(answer)
     data["processing_status"] = "not_classified"
     data["failure"] = routing_failure(answer.routing_status, answer.routing_detail)
+    return data
+
+
+def _legacy_answer_item(answer):
+    data = _answer_item(answer)
+    data["kind"] = KIND_LEGACY
+    data["reason"] = "legacy_routing_failure"
     return data
 
 
@@ -203,7 +273,7 @@ def _classification_item(row, kind):
     data["kind"] = kind
     data["target"] = "classification"
     data["segment"] = row.answer_text[row.segment_start:row.segment_end] if row.answer_text else ""
-    data["reason"] = (row.reasoning or "")[:500] if kind == KIND_FAILED else "legacy_question_other"
+    data["reason"] = (row.reasoning or "")[:500] if kind == KIND_FAILED else "legacy_classification"
     data["processing_status"] = row.status
     data["failure"] = explain_failure(row.reasoning) if kind == KIND_FAILED else None
     return data
@@ -213,11 +283,13 @@ def unassigned_counts() -> dict:
     return {
         KIND_UNROUTED: _unrouted_answers_query().count(),
         KIND_FAILED: _failed_query().count() + _zero_segment_failed_answers_query().count(),
-        KIND_LEGACY_OTHER: _legacy_other_query().count(),
+        KIND_LEGACY: _legacy_routing_answers_query().count() + _legacy_classifications_query().count(),
     }
 
 
 def list_unassigned(kind, page=1, page_size=50) -> dict:
+    if kind == "legacy_other":
+        kind = KIND_LEGACY
     if kind not in UNASSIGNED_KINDS:
         raise RecoveryError("INVALID_KIND", f"kind 只能是 {list(UNASSIGNED_KINDS)}", 400)
     page = max(int(page or 1), 1)
@@ -251,10 +323,25 @@ def list_unassigned(kind, page=1, page_size=50) -> dict:
             row_offset = max(offset - answer_total, 0)
             items += [_classification_item(r, kind) for r in rows_q.offset(row_offset).limit(remaining).all()]
     else:
-        query = _legacy_other_query().order_by(
+        answer_query = _legacy_routing_answers_query().order_by(
+            Uploaded_Answer.created_at.desc(), Uploaded_Answer.id.desc())
+        classification_query = _legacy_classifications_query().order_by(
             Response_Classification.created_at.desc(), Response_Classification.classification_id.desc())
-        total = query.count()
-        items = [_classification_item(r, kind) for r in query.offset((page - 1) * page_size).limit(page_size).all()]
+        answer_total = answer_query.count()
+        classification_total = classification_query.count()
+        total = answer_total + classification_total
+        offset = (page - 1) * page_size
+        answer_rows = answer_query.limit(offset + page_size).all()
+        classification_rows = classification_query.limit(offset + page_size).all()
+        merged = [
+            (answer.created_at, answer.id, _legacy_answer_item(answer))
+            for answer in answer_rows
+        ] + [
+            (row.created_at, row.classification_id, _classification_item(row, kind))
+            for row in classification_rows
+        ]
+        merged.sort(key=lambda entry: (entry[0], entry[1]), reverse=True)
+        items = [entry[2] for entry in merged[offset:offset + page_size]]
 
     counts = unassigned_counts()
     counts[KIND_UNROUTED] = retry_progress["still_failed_by_kind"][KIND_UNROUTED]

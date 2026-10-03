@@ -20,7 +20,7 @@ const newBatchId = () => (
 // total / status_counts），畫面上的數字永遠是「全部符合條件的資料」，不是
 // 目前頁面。所有操作成功後都重新向後端讀取，不在前端假裝修改 state。
 export default function ClassificationList({
-  topicParam, onOpenReview, refreshSignal, initialTab, initialConfirmedSource, initialNeedsReviewOnly = true, queue = "human",
+  topicParam, onOpenReview, refreshSignal, initialTab, initialConfirmedSource, queue = "human",
 }) {
   const [promptDialog, askText] = useTextPrompt();
   const { user } = useAuth();
@@ -28,7 +28,6 @@ export default function ClassificationList({
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState(STATE_TABS.includes(initialTab) ? initialTab : "pending_review");
-  const [needsReviewOnly, setNeedsReviewOnly] = useState(Boolean(initialNeedsReviewOnly));
   // 「已確認」分頁的篩選：all / auto（只看自動通過，抽查用）/ human（只看人工確認）
   const [confirmedSource, setConfirmedSource] = useState(
     ["all", "auto", "human"].includes(initialConfirmedSource) ? initialConfirmedSource : "all",
@@ -39,7 +38,7 @@ export default function ClassificationList({
     const params = new URLSearchParams({ state: activeTab, page: String(page), page_size: String(PAGE_SIZE) });
     if (topicParam) params.set("topic", topicParam);
     // 待審只留需要人工逐筆處理的；系統自動處理中（等 AI 再確認、等自動通過）、新類別群組不列在這裡
-    if (needsReviewOnly) params.set("queue", queue);
+    if (activeTab === "pending_review") params.set("queue", queue);
     if (activeTab === "confirmed" && confirmedSource !== "all") {
       params.set("auto_confirmed", confirmedSource === "auto" ? "true" : "false");
     }
@@ -84,14 +83,14 @@ export default function ClassificationList({
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [topicParam, refreshSignal, activeTab, needsReviewOnly, confirmedSource, page]);
+  }, [topicParam, refreshSignal, activeTab, confirmedSource, page]);
 
   // 切換 topic / tab / 篩選 / 頁數時不保留上一個畫面的勾選：批次操作
   // 的對象永遠是「目前這一頁、使用者看得到並勾選的那些列」。
   useEffect(() => {
     setSelectedIds(new Set());
     setBatchMessage("");
-  }, [topicParam, activeTab, needsReviewOnly, confirmedSource, page]);
+  }, [topicParam, activeTab, confirmedSource, page]);
 
   useEffect(() => { setPage(1); }, [topicParam]);
 
@@ -299,10 +298,6 @@ export default function ClassificationList({
         </div>
       )}
 
-      <label className="review-secondary-filter">
-        <input type="checkbox" checked={needsReviewOnly} onChange={(e) => { setNeedsReviewOnly(e.target.checked); setPage(1); }} />
-        {t("只看需要人工處理的項目（隱藏系統自動處理中）", "Only items needing a person (hide ones the system is handling)")}
-      </label>
 
       {activeTab === "pending_review" && (
         <div className="review-batch-bar">

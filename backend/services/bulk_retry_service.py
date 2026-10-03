@@ -42,6 +42,7 @@ from classification_models import (
     Bulk_Retry_Job,
 )
 from extensions import db, taiwan_now
+from services.failure_explainer import TRANSIENT_FAILURE_CODES
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ QUOTA_BACKOFF_SECONDS = 60
 MAX_DELAY_SECONDS = 30.0
 STALE_AFTER = timedelta(minutes=5)
 # 暫時性的 AI 問題（failure_explainer 的 code）：等一下再試，不算這筆失敗
-_TRANSIENT_CODES = {"AI_QUOTA_EXCEEDED", "AI_SERVICE_BUSY", "AI_TIMEOUT"}
+_TRANSIENT_CODES = TRANSIENT_FAILURE_CODES
 _RETRY_REASON = "全部重試（背景）"
 
 KIND_RETRY = "retry"
@@ -153,6 +154,10 @@ def _has_final_retry(scope_type, *, answer_id=None, response_id=None, question_i
     query = Bulk_Retry_Item_Attempt.query.filter(
         Bulk_Retry_Item_Attempt.scope_type == scope_type,
         Bulk_Retry_Item_Attempt.outcome == "failed",
+        db.or_(
+            Bulk_Retry_Item_Attempt.failure_code.is_(None),
+            ~Bulk_Retry_Item_Attempt.failure_code.in_(_TRANSIENT_CODES),
+        ),
     )
     if scope_type == "upload":
         query = query.filter(Bulk_Retry_Item_Attempt.uploaded_answer_id == answer_id)
@@ -162,6 +167,44 @@ def _has_final_retry(scope_type, *, answer_id=None, response_id=None, question_i
             Bulk_Retry_Item_Attempt.question_id == question_id,
         )
     return query.exists()
+
+
+def _has_system_blocked_retry(scope_type, *, answer_id=None, response_id=None, question_id=None):
+    query = Bulk_Retry_Item_Attempt.query.filter(
+        Bulk_Retry_Item_Attempt.scope_type == scope_type,
+        Bulk_Retry_Item_Attempt.outcome == "failed",
+        Bulk_Retry_Item_Attempt.failure_code == "AI_AUTH_FAILED",
+    )
+    if scope_type == "upload":
+        query = query.filter(Bulk_Retry_Item_Attempt.uploaded_answer_id == answer_id)
+    else:
+        query = query.filter(
+            Bulk_Retry_Item_Attempt.response_id == response_id,
+            Bulk_Retry_Item_Attempt.question_id == question_id,
+        )
+    return query.exists()
+
+
+def _has_system_blocked_retry_for_classification():
+    from classification_models import Response_Classification
+
+    upload_attempt = Bulk_Retry_Item_Attempt.query.filter(
+        Bulk_Retry_Item_Attempt.scope_type == "upload",
+        Bulk_Retry_Item_Attempt.uploaded_answer_id == Response_Classification.uploaded_answer_id,
+        Bulk_Retry_Item_Attempt.outcome == "failed",
+        Bulk_Retry_Item_Attempt.failure_code == "AI_AUTH_FAILED",
+    ).exists()
+    survey_attempt = Bulk_Retry_Item_Attempt.query.filter(
+        Bulk_Retry_Item_Attempt.scope_type == "survey",
+        Bulk_Retry_Item_Attempt.response_id == Response_Classification.response_id,
+        Bulk_Retry_Item_Attempt.question_id == Response_Classification.question_id,
+        Bulk_Retry_Item_Attempt.outcome == "failed",
+        Bulk_Retry_Item_Attempt.failure_code == "AI_AUTH_FAILED",
+    ).exists()
+    return db.or_(
+        db.and_(Response_Classification.uploaded_answer_id.isnot(None), upload_attempt),
+        db.and_(Response_Classification.uploaded_answer_id.is_(None), survey_attempt),
+    )
 
 
 def _untried_queries():
@@ -190,7 +233,11 @@ def _untried_queries():
 
 def retry_split() -> dict:
     """Split retryable records by their persisted per-scope attempt outcome."""
-    from services.admin_recovery_service import KIND_FAILED, KIND_UNROUTED
+    from services.admin_recovery_service import (
+        KIND_FAILED, KIND_UNROUTED, _failed_query, _unrouted_answers_query,
+        _zero_segment_failed_answers_query,
+    )
+    from classification_models import Uploaded_Answer
 
     failed_q, zero_q, unrouted_q = _untried_queries()
     counts = remaining_counts()
@@ -198,15 +245,27 @@ def retry_split() -> dict:
         KIND_FAILED: failed_q.count() + zero_q.count(),
         KIND_UNROUTED: unrouted_q.count(),
     }
+    system_blocked_by_kind = {
+        KIND_FAILED: _failed_query().filter(
+            _has_system_blocked_retry_for_classification()
+        ).count() + _zero_segment_failed_answers_query().filter(
+            _has_system_blocked_retry("upload", answer_id=Uploaded_Answer.id)
+        ).count(),
+        KIND_UNROUTED: _unrouted_answers_query().filter(
+            _has_system_blocked_retry("upload", answer_id=Uploaded_Answer.id)
+        ).count(),
+    }
     still_failed_by_kind = {
-        KIND_FAILED: max(counts[KIND_FAILED] - pending_by_kind[KIND_FAILED], 0),
-        KIND_UNROUTED: max(counts[KIND_UNROUTED] - pending_by_kind[KIND_UNROUTED], 0),
+        kind: max(counts[kind] - pending_by_kind[kind] - system_blocked_by_kind[kind], 0)
+        for kind in (KIND_FAILED, KIND_UNROUTED)
     }
     return {
         "pending": sum(pending_by_kind.values()),
         "still_failed": sum(still_failed_by_kind.values()),
+        "system_blocked": sum(system_blocked_by_kind.values()),
         "pending_by_kind": pending_by_kind,
         "still_failed_by_kind": still_failed_by_kind,
+        "system_blocked_by_kind": system_blocked_by_kind,
         "total": counts[KIND_FAILED] + counts[KIND_UNROUTED],
     }
 
@@ -249,13 +308,16 @@ def _process(kind, item_id, admin_id):
             ok, failure = result.get("succeeded"), result.get("failure")
         else:
             from services.question_routing_service import (
-                ROUTING_ERROR_RATE_LIMITED, ROUTING_ERROR_SERVICE_UNAVAILABLE, ROUTING_ERROR_TIMEOUT,
+                ROUTING_ERROR_AUTH_OR_CONFIG, ROUTING_ERROR_RATE_LIMITED,
+                ROUTING_ERROR_SERVICE_UNAVAILABLE, ROUTING_ERROR_TIMEOUT,
             )
 
             result = reroute_answer(item_id, admin_id)
             ok = bool(result.get("routed")) and result.get("succeeded", True) is not False
             failure = result.get("failure")
             routing_error = result.get("routing_error")
+            if not ok and routing_error == ROUTING_ERROR_AUTH_OR_CONFIG:
+                return "failed", "AI_AUTH_FAILED", "AI 服務金鑰未設定或無效"
             if not ok and routing_error in (ROUTING_ERROR_RATE_LIMITED, ROUTING_ERROR_SERVICE_UNAVAILABLE,
                                             ROUTING_ERROR_TIMEOUT):
                 return "transient", "AI_QUOTA_EXCEEDED" if routing_error == ROUTING_ERROR_RATE_LIMITED else "AI_SERVICE_BUSY", \

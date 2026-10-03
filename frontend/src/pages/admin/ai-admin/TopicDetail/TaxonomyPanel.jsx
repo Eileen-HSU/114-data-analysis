@@ -7,6 +7,7 @@ import TaxCategoryField from "../shared/TaxCategoryField";
 import TopicMovePicker from "../shared/TopicMovePicker";
 import { CategoryAnswers, OtherCategoryAnswers, TopicSourceSummary, answersUrl, loadTopicAnswers } from "./TopicAnswers";
 import { useAuth } from "../../../../hooks/AuthContext";
+import { topicDisplayName } from "../shared/reviewStates";
 
 export default function TaxonomyPanel() {
   const { topicKey } = useParams();
@@ -58,7 +59,7 @@ export default function TaxonomyPanel() {
       setTopicMeta(mine || null);
       if (mine?.merged_into) {
         const target = (data.topics || []).find((x) => x.topic_key === mine.merged_into);
-        setMergedTargetTitle(target?.title || mine.merged_into);
+        setMergedTargetTitle(topicDisplayName(target || mine.merged_into));
       }
       return mine || null;
     } catch (e) {
@@ -201,12 +202,12 @@ export default function TaxonomyPanel() {
       method: "POST",
       body: JSON.stringify({ target_topic_key: target.topic_key }),
     });
-    setMergedTargetTitle(target.title || target.topic_key);
+    setMergedTargetTitle(topicDisplayName(target));
     setTaxVersion(null);
     await loadTopicMeta();
     await loadAnswers();
     const skipped = result.skipped || [];
-    const text = t(`已併入「${target.title}」，重新分類 ${result.moved_count} 則回答`, `Merged into "${target.title}", re-classified ${result.moved_count} answer(s)`)
+    const text = t(`已併入「${topicDisplayName(target)}」，重新分類 ${result.moved_count} 則回答`, `Merged into "${topicDisplayName(target)}", re-classified ${result.moved_count} answer(s)`)
       + (skipped.length ? t(`；${skipped.length} 則未處理（${skipped[0].message}）`, `; ${skipped.length} skipped (${skipped[0].message})`) : "");
     setMergeResultText(text);
     return text;

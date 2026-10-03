@@ -1,19 +1,20 @@
 import { useEffect, useState } from "react";
 import { api } from "./apiClient";
-import { errorMessage } from "./reviewStates";
+import { errorMessage, isLegacyTechnicalTopic, topicDisplayName } from "./reviewStates";
 import { t } from "./taxStatus";
 
 // 可以當作「移到 / 併入」目標的主題：不是自己、沒有被合併、而且有分類架構可以用。
 export const movableTargets = (topics, currentKey) => (topics || []).filter((tp) =>
   tp.topic_key !== currentKey
   && !tp.merged_into
+  && !isLegacyTechnicalTopic(tp)
   && (tp.published_version || tp.latest_draft_version));
 
 export const topicLabel = (tp) => {
   const tags = [];
   if (tp.is_auto_topic) tags.push(t("自動主題", "auto"));
   if (!tp.published_version) tags.push(t("暫定分類", "provisional"));
-  return `${tp.title || tp.topic_key}${tags.length ? `（${tags.join("・")}）` : ""}`;
+  return `${topicDisplayName(tp)}${tags.length ? `（${tags.join("・")}）` : ""}`;
 };
 
 /**
@@ -40,10 +41,10 @@ export default function TopicMovePicker({ token, currentTopicKey, mode = "item",
   const submit = async () => {
     if (!chosen) return;
     const question = mode === "topic"
-      ? t(`把整個主題併入「${chosen.title}」？\n這個主題底下的回答會用「${chosen.title}」的分類架構重新分類，之後同樣的欄位也會直接歸到「${chosen.title}」。已人工確認的回答不會被動到。`,
-        `Merge this whole topic into "${chosen.title}"? Its answers will be re-classified with that taxonomy, and future uploads of the same column go there too. Reviewed answers are left untouched.`)
-      : t(`把這則回答移到「${chosen.title}」，並用該主題的分類架構重新分類？`,
-        `Move this answer to "${chosen.title}" and re-classify it with that topic's taxonomy?`);
+      ? t(`把整個主題併入「${topicDisplayName(chosen)}」？\n這個主題底下的回答會用「${topicDisplayName(chosen)}」的分類架構重新分類，之後同樣的欄位也會直接歸到「${topicDisplayName(chosen)}」。已人工確認的回答不會被動到。`,
+        `Merge this whole topic into "${topicDisplayName(chosen)}"? Its answers will be re-classified with that taxonomy, and future uploads of the same column go there too. Reviewed answers are left untouched.`)
+      : t(`把這則回答移到「${topicDisplayName(chosen)}」，並用該主題的分類架構重新分類？`,
+        `Move this answer to "${topicDisplayName(chosen)}" and re-classify it with that topic's taxonomy?`);
     if (!window.confirm(question)) return;
     setBusy(true);
     setMessage(null);

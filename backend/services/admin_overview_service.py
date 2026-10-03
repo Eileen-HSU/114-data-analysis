@@ -83,16 +83,25 @@ def queue_clause(queue):
         <某個人工桶>    ：只看那一種（例如 ai_disagreement）
     非待審的列（已確認、已排除…）不受影響。回傳 None 代表不篩選。"""
     R = Response_Classification
+    from services.admin_recovery_service import _legacy_classification_clause
+
     if queue == "human":
-        return db.or_(R.review_status != REVIEW_STATUS_PENDING, bucket_expr().in_(HUMAN_ROW_BUCKETS))
+        return db.or_(
+            R.review_status != REVIEW_STATUS_PENDING,
+            db.and_(bucket_expr().in_(HUMAN_ROW_BUCKETS), ~_legacy_classification_clause()),
+        )
     if queue in HUMAN_ROW_BUCKETS:
-        return db.or_(R.review_status != REVIEW_STATUS_PENDING, bucket_expr() == queue)
+        return db.or_(
+            R.review_status != REVIEW_STATUS_PENDING,
+            db.and_(bucket_expr() == queue, ~_legacy_classification_clause()),
+        )
     return None
 
 
 def _topic_counts():
     """{topic_key: {bucket: 筆數}}（topic_key=None 是沒有分類架構的舊資料）。"""
     from models import Taxonomy_Version
+    from services.admin_recovery_service import _legacy_classification_clause
 
     live = db.or_(
         Response_Classification.status.is_(None),
@@ -103,7 +112,7 @@ def _topic_counts():
         db.session.query(Taxonomy_Version.topic_key.label("topic_key"), bucket_expr().label("bucket"))
         .select_from(Response_Classification)
         .outerjoin(Taxonomy_Version, Response_Classification.taxonomy_version_id == Taxonomy_Version.version_id)
-        .filter(live)
+        .filter(live, ~_legacy_classification_clause())
         .subquery()
     )
     rows = db.session.query(inner.c.topic_key, inner.c.bucket, func.count()).group_by(inner.c.topic_key, inner.c.bucket).all()
@@ -118,6 +127,7 @@ def _topic_counts():
 def _new_category_groups():
     """每個主題有幾組待決定的新類別（同一主題、同一大類別／子類別算一組）。"""
     from models import Taxonomy_Version
+    from services.admin_recovery_service import _legacy_classification_clause
 
     rows = (
         db.session.query(
@@ -127,6 +137,7 @@ def _new_category_groups():
         .filter(
             Response_Classification.status == NEW_CATEGORY_STATUS,
             Response_Classification.review_status == REVIEW_STATUS_PENDING,
+            ~_legacy_classification_clause(),
         )
         .distinct()
         .all()
@@ -189,6 +200,7 @@ def build_overview() -> dict:
             "awaiting_second_opinion": totals[BUCKET_AWAITING_SECOND_OPINION],
             "awaiting_auto_confirm": totals[BUCKET_AWAITING_AUTO_CONFIRM],
             "unassigned_retrying": split["pending"],
+            "system_blocked": split["system_blocked"],
             "total": totals[BUCKET_AWAITING_SECOND_OPINION] + totals[BUCKET_AWAITING_AUTO_CONFIRM] + split["pending"],
         },
         # 需要人工決策：單位是「一次決策」（新類別、暫定主題以群組／主題計）
@@ -197,6 +209,7 @@ def build_overview() -> dict:
             "new_category_groups": sum(new_groups.values()),
             "retry_failed": retry_failed,
             "unassigned_retry_failed": split["still_failed"],
+            "unassigned_retry_failed_by_kind": split["still_failed_by_kind"],
             "second_opinion_failed": totals[BUCKET_SECOND_OPINION_FAILED],
             "other": totals[BUCKET_OTHER],
             "provisional_topics": provisional_topics,
