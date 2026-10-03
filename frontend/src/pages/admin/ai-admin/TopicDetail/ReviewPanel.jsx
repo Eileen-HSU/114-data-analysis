@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import ClassificationList from "../shared/ClassificationList";
 import ReviewConversation from "./ReviewConversation";
@@ -17,25 +17,44 @@ export default function ReviewPanel() {
   // 不需要使用者手動整理頁面。
   const [refreshSignal, setRefreshSignal] = useState(0);
 
-  if (selected) {
-    return (
+  // 開啟對話時清單不卸載（只隱藏），分頁、篩選、勾選都保留；關閉後回到原本的捲動位置。
+  // 原本會整個換掉清單，每審完一筆就回到第一頁。
+  const savedScroll = useRef(0);
+  const open = (classificationId, mode) => {
+    savedScroll.current = window.scrollY;
+    setSelected({ classificationId, mode });
+    window.scrollTo(0, 0);
+  };
+  const restoreScroll = useRef(false);
+  const close = () => {
+    restoreScroll.current = true;
+    setSelected(null);
+  };
+  useEffect(() => {
+    if (!selected && restoreScroll.current) {
+      restoreScroll.current = false;
+      requestAnimationFrame(() => window.scrollTo(0, savedScroll.current));
+    }
+  }, [selected]);
+
+  return <>
+    {selected && (
       <ReviewConversation
         classificationId={selected.classificationId}
         mode={selected.mode}
-        onClose={() => setSelected(null)}
+        onClose={close}
         onChanged={() => setRefreshSignal((n) => n + 1)}
       />
-    );
-  }
-
-  return (
+    )}
+    <div hidden={Boolean(selected)}>
     <ClassificationList
       topicParam={topicKey}
       refreshSignal={refreshSignal}
       initialTab={searchParams.get("state") || undefined}
       initialConfirmedSource={searchParams.get("source") || undefined}
       initialNeedsReviewOnly={searchParams.get("flagged") === "1"}
-      onOpenReview={(classificationId, mode) => setSelected({ classificationId, mode })}
+      onOpenReview={open}
     />
-  );
+    </div>
+  </>;
 }

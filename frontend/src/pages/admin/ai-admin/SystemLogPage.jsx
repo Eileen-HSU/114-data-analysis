@@ -1,3 +1,4 @@
+import { useTextPrompt } from "./shared/TextPromptDialog";
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import Navbar from "../../../components/feature/Navbar";
@@ -169,6 +170,7 @@ function StatusTab({ token, onShowErrors }) {
 
 
 function ErrorsTab({ token, navigate }) {
+  const [promptDialog, askText] = useTextPrompt();
   const [filters, setFilters] = useState({ status: "open", code: "", q: "" });
   const [page, setPage] = useState(1);
   const [data, setData] = useState(null);
@@ -204,9 +206,11 @@ function ErrorsTab({ token, navigate }) {
   const setStatus = async (row, status) => {
     let note;
     if (status !== "open") {
-      note = window.prompt(status === "resolved"
-        ? t("怎麼處理的？（可留空）", "How was it fixed? (optional)")
-        : t("為什麼忽略？（可留空）", "Why ignore it? (optional)"), "");
+      note = await askText(status === "resolved"
+        ? { title: t("標記為已處理", "Mark as resolved"), placeholder: t("怎麼處理的？（可留空）", "How was it fixed? (optional)"),
+          confirmLabel: t("標記已處理", "Resolve"), rows: 3 }
+        : { title: t("忽略這個錯誤", "Ignore this error"), placeholder: t("為什麼忽略？（可留空）", "Why ignore it? (optional)"),
+          confirmLabel: t("忽略", "Ignore"), rows: 3 });
       if (note === null) return;
     }
     setBusy((b) => ({ ...b, [row.error_id]: true }));
@@ -225,7 +229,7 @@ function ErrorsTab({ token, navigate }) {
   const update = (patch) => { setFilters((f) => ({ ...f, ...patch })); setPage(1); };
 
   return (
-    <section className="admin-section">
+    <section className="admin-section">{promptDialog}
       {error && <p className="ai-admin-error">{error}<button onClick={() => setError("")}>×</button></p>}
       <div className="syslog-filters">
         <label>{t("狀態", "Status")}

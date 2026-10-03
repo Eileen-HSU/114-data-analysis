@@ -1,3 +1,4 @@
+import { NavLink } from "react-router-dom";
 import { useState } from "react";
 import { api } from "../shared/apiClient";
 import { AUTO_CONFIRMED_LABEL, errorMessage, isAutoConfirmed, stateLabel } from "../shared/reviewStates";
@@ -56,9 +57,13 @@ export function CategoryAnswers({ topicKey, token, group }) {
     }
   };
 
+  // 這裡只是讓 Admin 編輯分類架構時參考實際回答（唯讀），預設收合；
+  // 要修改分類請到「分類審核」分頁，避免兩個地方都像可以處理回答。
   return (
-    <div className="topic-answers">
-      <b>{t(`這一類的原始回答（${group.count} 則）`, `Answers in this category (${group.count})`)}</b>
+    <details className="topic-answers">
+      <summary>{t(`這一類的回答（${group.count} 則，唯讀）`, `Answers in this category (${group.count}, read-only)`)}</summary>
+      <p><small>{t("這裡只供參考。要修改某筆回答的分類，請到", "For reference only. To change an answer's category, use")}{" "}
+        <NavLink to={`/admin/ai/topics/${topicKey}/review`}>{t("分類審核", "Review")}</NavLink>{t("。", ".")}</small></p>
       <ul>{items.map((item) => <AnswerItem key={item.classification_id} item={item} />)}</ul>
       {error && <p className="ai-admin-error">{error}</p>}
       {!all && group.count > group.items.length && (
@@ -69,7 +74,7 @@ export function CategoryAnswers({ topicKey, token, group }) {
       {all && group.count > all.length && (
         <p><small>{t(`只列出前 ${all.length} 則。`, `Showing the first ${all.length}.`)}</small></p>
       )}
-    </div>
+    </details>
   );
 }
 

@@ -1,7 +1,7 @@
 import { t } from "./taxStatus";
 
 // ─────────────────────────────────────────────────────────────
-// Admin 分類審查的狀態定義：必須跟後端逐字一致。
+// Admin 分類審核的狀態定義：必須跟後端逐字一致。
 //   - CLASSIFICATION_STATES：routes/admin/ai_admin.py 的 CLASSIFICATION_STATES
 //     （GET /api/admin/ai/classifications?state=... 與 status_counts 的 key）
 //   - REVIEW_STATUSES：classification_models.py 的 ALLOWED_REVIEW_STATUSES

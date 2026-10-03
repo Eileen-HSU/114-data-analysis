@@ -382,7 +382,7 @@ export default function ReviewConversation({ classificationId, mode = "start", o
             {r.status === "failed" ? t("AI 處理失敗，可在「處理失敗」分頁重新處理", "AI failed; retry it from the Failed tab") : `${r.main_category || "—"} / ${r.sub_category || "—"}`}
           </p>
         ))}
-        <p><small>{t("新的結果會出現在目標主題的「分類審查」清單，等待確認；舊的結果保留在歷史紀錄。", "The new result waits for review in the target topic's review list; the old one stays in history.")}</small></p>
+        <p><small>{t("新的結果會出現在目標主題的「分類審核」清單，等待確認；舊的結果保留在歷史紀錄。", "The new result waits for review in the target topic's review list; the old one stays in history.")}</small></p>
         <button onClick={onClose}>{t("← 返回列表", "← Back to list")}</button>
       </div>
     );
@@ -496,7 +496,7 @@ export default function ReviewConversation({ classificationId, mode = "start", o
                   {t("信心分數", "Confidence")}：{typeof classification.confidence === "number" ? classification.confidence.toFixed(2) : "—"}
                   {classification.needs_human_review && (
                     <span className="review-flag-badge">
-                      {" "}⚠ {t("需人工審查", "Needs human review")}
+                      {" "}⚠ {t("需人工審核", "Needs human review")}
                       {classification.review_flag_reason && ` — ${reviewFlagReasonText(classification.review_flag_reason)}`}
                     </span>
                   )}

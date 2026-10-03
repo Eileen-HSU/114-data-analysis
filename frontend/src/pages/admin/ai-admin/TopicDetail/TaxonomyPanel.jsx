@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, useParams } from "react-router-dom";
 import { api } from "../shared/apiClient";
 import { t, taxStatusText, TAX_EDITABLE_STATUSES } from "../shared/taxStatus";
@@ -19,6 +19,13 @@ export default function TaxonomyPanel() {
   const [mergedTargetTitle, setMergedTargetTitle] = useState("");
   const [mergeResultText, setMergeResultText] = useState("");
   const [answers, setAnswers] = useState(null); // 這個主題底下的原始回答（證據）
+  // 還沒完成的欄位儲存。發布／複製／刪除前要先等它們做完：欄位是「離開輸入框」
+  // 才儲存，打完字直接按發布時，儲存跟發布會同時送出，發布可能先完成。
+  const pendingSaves = useRef(new Set());
+  const flushPendingSaves = async () => {
+    if (document.activeElement && typeof document.activeElement.blur === "function") document.activeElement.blur();
+    await Promise.allSettled([...pendingSaves.current]);
+  };
 
   const loadAnswers = async () => {
     try {
@@ -76,11 +83,14 @@ export default function TaxonomyPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topicKey]);
 
-  const saveTaxCategory = async (categoryId, fields) => {
-    try {
+  const saveTaxCategory = (categoryId, fields) => {
+    const run = (async () => {
       const data = await api(`/api/admin/ai/topics/${topicKey}/taxonomy/${taxVersion.version_id}/categories/${categoryId}`, token, { method: "PUT", body: JSON.stringify(fields) });
       setTaxVersion((v) => ({ ...v, categories: v.categories.map((c) => (c.category_id === categoryId ? data.category : c)) }));
-    } catch (e) { setError(e.message); }
+    })();
+    pendingSaves.current.add(run);
+    run.catch((e) => setError(e.message)).finally(() => pendingSaves.current.delete(run));
+    return run; // 欄位用它顯示「已儲存／儲存失敗」
   };
   const addTaxCategory = async () => {
     try {
@@ -89,6 +99,9 @@ export default function TaxonomyPanel() {
     } catch (e) { setError(e.message); }
   };
   const deleteTaxCategory = async (categoryId) => {
+    const cat = taxVersion.categories.find((c) => c.category_id === categoryId);
+    if (!window.confirm(t(`確定要刪除「${cat?.main_category} / ${cat?.sub_category}」嗎？`,
+      `Delete "${cat?.main_category} / ${cat?.sub_category}"?`))) return;
     try {
       await api(`/api/admin/ai/topics/${topicKey}/taxonomy/${taxVersion.version_id}/categories/${categoryId}`, token, { method: "DELETE" });
       setTaxVersion((v) => ({ ...v, categories: v.categories.filter((c) => c.category_id !== categoryId) }));
@@ -105,13 +118,46 @@ export default function TaxonomyPanel() {
     } catch (e) { setError(e.message); }
   };
   const cloneTaxVersion = async () => {
+    await flushPendingSaves();
     try {
       const data = await api(`/api/admin/ai/topics/${topicKey}/taxonomy/${taxVersion.version_id}/clone`, token, { method: "POST" });
       setTaxVersion(data.taxonomy_version);
       await loadTopicMeta();
     } catch (e) { setError(e.message); }
   };
+  // 跟目前上線的版本比較，列出這次改了什麼，發布前讓 Admin 確認
+  const describeChanges = async () => {
+    const live = topicMeta?.published_version;
+    if (!live || live.version_id === taxVersion.version_id) return "";
+    try {
+      const data = await api(`/api/admin/ai/topics/${topicKey}/taxonomy/${live.version_id}`, token);
+      const before = new Map((data.taxonomy_version.categories || []).map((c) => [c.sub_category, c]));
+      const after = new Map((taxVersion.categories || []).map((c) => [c.sub_category, c]));
+      const fields = ["main_category", "definition", "include_rules", "exclude_rules", "boundary_rules"];
+      const added = [...after.keys()].filter((k) => !before.has(k));
+      const removed = [...before.keys()].filter((k) => !after.has(k));
+      const changed = [...after.keys()].filter((k) => before.has(k)
+        && fields.some((f) => (before.get(k)[f] || "") !== (after.get(k)[f] || "")));
+      const list = (names) => names.slice(0, 5).join("、") + (names.length > 5 ? "…" : "");
+      const lines = [
+        added.length && t(`新增 ${added.length}：${list(added)}`, `Added ${added.length}: ${list(added)}`),
+        removed.length && t(`刪除 ${removed.length}：${list(removed)}`, `Removed ${removed.length}: ${list(removed)}`),
+        changed.length && t(`修改 ${changed.length}：${list(changed)}`, `Changed ${changed.length}: ${list(changed)}`),
+      ].filter(Boolean);
+      return lines.length ? `\n\n${t(`跟目前上線的 v${live.version_number} 相比：`, `Compared with live v${live.version_number}:`)}\n${lines.join("\n")}`
+        : `\n\n${t(`跟目前上線的 v${live.version_number} 內容相同。`, `Same as live v${live.version_number}.`)}`;
+    } catch {
+      return "";
+    }
+  };
+
   const publishTaxVersion = async () => {
+    await flushPendingSaves();
+    const changes = await describeChanges();
+    if (!window.confirm(t(
+      `確定要發布 v${taxVersion.version_number} 嗎？\n發布後，之後的分類都會用這個版本，目前上線的版本會封存，相關報告會標記為需要更新。${changes}`,
+      `Publish v${taxVersion.version_number}? Future classifications use it, the live version is archived and related reports are marked outdated.${changes}`,
+    ))) return;
     try {
       const data = await api(`/api/admin/ai/topics/${topicKey}/taxonomy/${taxVersion.version_id}/publish`, token, { method: "POST" });
       setTaxVersion(data.taxonomy_version);
@@ -119,6 +165,7 @@ export default function TaxonomyPanel() {
     } catch (e) { setError(e.message); }
   };
   const deleteTaxVersion = async () => {
+    await flushPendingSaves();
     if (!window.confirm(t("確定要刪除此草稿版本嗎？刪除後無法復原。", "Are you sure you want to delete this draft version? This cannot be undone."))) return;
     try {
       await api(`/api/admin/ai/topics/${topicKey}/taxonomy/${taxVersion.version_id}`, token, { method: "DELETE" });
@@ -159,7 +206,6 @@ export default function TaxonomyPanel() {
 
   return <>
     {error && <p className="ai-admin-error">{error}<button onClick={() => setError("")}>×</button></p>}
-    <h2>{topicMeta?.title || topicKey}</h2>
 
     {!topicMeta && <div className="admin-card"><p>{t("找不到這個主題。", "Topic not found.")}</p></div>}
 

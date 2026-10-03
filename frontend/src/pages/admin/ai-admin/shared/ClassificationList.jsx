@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTextPrompt } from "./TextPromptDialog";
 import { api } from "./apiClient";
 import { t, reviewFlagReasonText } from "./taxStatus";
 import { AUTO_CONFIRMED_LABEL, STATE_TABS, errorMessage, isAutoConfirmed, stateLabel } from "./reviewStates";
@@ -21,6 +22,7 @@ const newBatchId = () => (
 export default function ClassificationList({
   topicParam, onOpenReview, refreshSignal, initialTab, initialConfirmedSource, initialNeedsReviewOnly = false,
 }) {
+  const [promptDialog, askText] = useTextPrompt();
   const { user } = useAuth();
   const token = user?.token;
   const navigate = useNavigate();
@@ -129,14 +131,15 @@ export default function ClassificationList({
     },
   ));
 
-  const reopen = (row) => {
-    const reason = window.prompt(
-      t(
-        `確定要重新開啟這筆「${stateLabel(row.review_status)}」分類的審核嗎？\n它會回到待處理，既有審核歷史保留。原本是「已修改」或「已排除」的話，使用過這筆結果的報表會被標記為需要更新。\n\n請輸入重新開啟的原因：`,
-        `Reopen this ${stateLabel(row.review_status)} classification? It returns to Pending and history is kept. If it was modified or excluded, affected reports are marked outdated.\n\nReason:`,
-      ),
-      "",
-    );
+  const reopen = async (row) => {
+    const reason = await askText({
+      title: t(`重新開啟這筆「${stateLabel(row.review_status)}」的審核`, `Reopen this ${stateLabel(row.review_status)} item`),
+      message: t("它會回到待處理，既有審核歷史保留。原本是「已修改」或「已排除」的話，使用過這筆結果的報表會被標記為需要更新。",
+        "It returns to Pending and history is kept. If it was modified or excluded, affected reports are marked outdated."),
+      placeholder: t("重新開啟的原因（可留空）", "Reason (optional)"),
+      confirmLabel: t("重新開啟", "Reopen"),
+      rows: 3,
+    });
     if (reason === null) return;
     withRow(row.classification_id, async () => {
       await api(`/api/classification/${row.classification_id}/review/reopen`, token, {
@@ -249,11 +252,11 @@ export default function ClassificationList({
   const totalPages = Math.max(data.total_pages || 0, 1);
 
   return (
-    <div className="review-workbench">
+    <div className="review-workbench">{promptDialog}
       {error && <p className="ai-admin-error">{error}<button onClick={() => setError("")}>×</button></p>}
 
       <p className="review-workbench-intro">
-        {t("AI 有把握、類別也在分類架構裡的結果會自動通過，這裡只剩需要人看的項目。標示「需人工審查」的請逐筆確認；自動通過的可在「已確認」分頁抽查。",
+        {t("AI 有把握、類別也在分類架構裡的結果會自動通過，這裡只剩需要人看的項目。標示「需人工審核」的請逐筆確認；自動通過的可在「已確認」分頁抽查。",
           "Confident results whose category is in the taxonomy are approved automatically, so only items that need a person are left here. Confirm flagged items one by one; spot-check auto-approved ones under Confirmed.")}
       </p>
 
@@ -289,7 +292,7 @@ export default function ClassificationList({
 
       <label className="review-secondary-filter">
         <input type="checkbox" checked={needsReviewOnly} onChange={(e) => { setNeedsReviewOnly(e.target.checked); setPage(1); }} />
-        {t("只看需人工審查的項目", "Only show items needing human review")}
+        {t("只看需人工審核的項目", "Only show items needing human review")}
       </label>
 
       {activeTab === "pending_review" && (
@@ -304,7 +307,7 @@ export default function ClassificationList({
             </button>
             <button type="button" disabled={batchBusy || excludeLegacyBusy || highConfidenceRows.length === 0}
               onClick={() => setSelectedIds(new Set(highConfidenceRows.map((r) => r.classification_id)))}
-              title={t(`選取本頁信心分數 ≥ ${HIGH_CONFIDENCE_THRESHOLD.toFixed(1)} 且不需人工審查的項目`, `Select items on this page with confidence ≥ ${HIGH_CONFIDENCE_THRESHOLD.toFixed(1)}`)}>
+              title={t(`選取本頁信心分數 ≥ ${HIGH_CONFIDENCE_THRESHOLD.toFixed(1)} 且不需人工審核的項目`, `Select items on this page with confidence ≥ ${HIGH_CONFIDENCE_THRESHOLD.toFixed(1)}`)}>
               {t(`選取高信心 (${highConfidenceRows.length})`, `Select high-confidence (${highConfidenceRows.length})`)}
             </button>
             <button type="button" disabled={batchBusy || excludeLegacyBusy || selectedCount === 0} onClick={() => setSelectedIds(new Set())}>
@@ -414,7 +417,7 @@ function ClassificationCard({
           <p><span className="review-field-label">{t("AI 子類別", "AI sub category")}</span>{row.sub_category || "—"}</p>
           <p><span className="review-field-label">{t("信心分數", "Confidence")}</span>{typeof row.confidence === "number" ? row.confidence.toFixed(2) : "—"}</p>
           {row.needs_human_review && (
-            <p className="review-flag-badge">⚠ {t("需人工審查", "Needs human review")}{row.review_flag_reason && ` — ${reviewFlagReasonText(row.review_flag_reason)}`}</p>
+            <p className="review-flag-badge">⚠ {t("需人工審核", "Needs human review")}{row.review_flag_reason && ` — ${reviewFlagReasonText(row.review_flag_reason)}`}</p>
           )}
           {auto && (
             <p><small>{row.second_opinion_status === "agreed"

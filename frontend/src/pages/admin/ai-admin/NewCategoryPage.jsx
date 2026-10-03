@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
+import { useTextPrompt } from "./shared/TextPromptDialog";
 import Navbar from "../../../components/feature/Navbar";
 import { useAuth } from "../../../hooks/AuthContext";
 import { api } from "./shared/apiClient";
@@ -11,6 +12,7 @@ import { LoadingNotice } from "./shared/StatusWidgets";
 // 採用 -> 加進該主題的分類架構草稿（到「分類架構」頁檢查後發布）；
 // 合併 -> 這組回答改成某個既有類別。
 export default function NewCategoryPage() {
+  const [promptDialog, askText] = useTextPrompt();
   const navigate = useNavigate();
   const { user, isLoggedIn } = useAuth();
   const token = user?.token;
@@ -66,12 +68,15 @@ export default function NewCategoryPage() {
     }
   };
 
-  const adopt = (item) => {
-    const definition = window.prompt(
-      t(`把「${item.sub_category}」加入「${item.topic_title}」的分類架構，並立刻發布。這 ${item.count} 筆回答會一起確認，之後類似的回答也會直接歸到這一類。\n\n請輸入這個類別的定義（AI 會用它判斷之後的回答；留空會用「當回覆主要涉及「${item.sub_category}」相關內容時，歸入此類別。」）：`,
-        `Add "${item.sub_category}" to the "${item.topic_title}" taxonomy and publish it now. These ${item.count} answers will be confirmed, and similar answers will be classified here from now on.\n\nDefinition (the AI uses it to classify future answers; leave blank for a default):`),
-      "",
-    );
+  const adopt = async (item) => {
+    const definition = await askText({
+      title: t(`把「${item.sub_category}」加入分類架構`, `Add "${item.sub_category}" to the taxonomy`),
+      message: t(`會加入「${item.topic_title}」並立刻發布，這 ${item.count} 筆回答會一起確認，之後類似的回答也會直接歸到這一類。\n定義會被 AI 拿來判斷之後的回答，建議寫清楚「什麼樣的回覆算這一類」。`,
+        `It is added to "${item.topic_title}" and published now. These ${item.count} answers are confirmed and similar answers will go here.\nThe AI uses the definition to classify future answers.`),
+      placeholder: t(`留空會用：當回覆主要涉及「${item.sub_category}」相關內容時，歸入此類別。`, "Leave blank for a default definition"),
+      confirmLabel: t("加入並發布", "Add and publish"),
+      rows: 6,
+    });
     if (definition === null) return;
     run(item, () => api("/api/admin/ai/new-categories/adopt", token, {
       method: "POST",
@@ -115,7 +120,7 @@ export default function NewCategoryPage() {
     return <><Navbar /><main className="ai-admin-empty"><h1>{t("僅管理者可存取 AI 管理介面", "AI admin access restricted to administrators")}</h1><button onClick={() => navigate("/workspace")}>{t("回到分析助理", "Back to Analysis Assistant")}</button></main></>;
   }
 
-  return <><Navbar /><main className="ai-admin-page">
+  return <>{promptDialog}<Navbar /><main className="ai-admin-page">
     <NavLink to="/admin/ai" className="back">← {t("所有主題", "All topics")}</NavLink>
     <h1>{t("新類別候選", "New Category Candidates")}</h1>
     <p><small>{t("AI 分類時遇到現有分類都不適合的內容，會提出新類別。採用會把它加入分類架構並立刻發布，這些回答一起確認；如果其實就是某個既有類別，請用合併。",

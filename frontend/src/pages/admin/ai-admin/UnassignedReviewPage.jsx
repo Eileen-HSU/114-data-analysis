@@ -81,7 +81,7 @@ export default function UnassignedReviewPage() {
     ? (result?.kept_previous
       ? t(`重新處理失敗，原本的結果維持不變：${result.failure?.message || ""}`, `Reprocessing failed; the previous result was kept: ${result.failure?.message_en || ""}`)
       : t(`已送出分類，但處理失敗：${result.failure?.message || ""}`, `Classification ran but failed: ${result.failure?.message_en || ""}`))
-    : t("已完成分類，結果已進入該主題的審查清單。", "Classified; results are now in the topic's review list."));
+    : t("已完成分類，結果已進入該主題的審核清單。", "Classified; results are now in the topic's review list."));
 
   const assign = (item, topicKey, versionId) => run(
     `a${item.id}`,

@@ -139,7 +139,7 @@ export default function SandboxPanel() {
                 <p>{t("方法論", "Methodology")}: {seg.methodology || "—"} · {t("引用", "Citation")}: {seg.citation || "—"}</p>
                 {seg.needs_human_review && (
                   <p className="review-flag-badge">
-                    ⚠ {t("建議人工審查", "Suggest human review")}
+                    ⚠ {t("建議人工審核", "Suggest human review")}
                     {seg.review_flag_reason && ` — ${reviewFlagReasonText(seg.review_flag_reason)}`}
                   </p>
                 )}

@@ -611,3 +611,25 @@ label { display:block; font-weight:800; margin:12px 0; } textarea,select { width
 .syslog-diff-row td { background: #f8fafc; }
 .syslog-diff-row ul { margin: 0; padding-left: 18px; }
 .syslog-diff-row code { font-size: 12px; }
+
+/* 取代 window.prompt 的輸入對話框 */
+.text-prompt-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+.text-prompt { width: min(560px, 100%); background: #fff; border-radius: 14px; padding: 20px 22px; box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25); }
+.text-prompt h3 { margin: 0 0 8px; }
+.text-prompt p { margin: 0 0 12px; color: #475569; line-height: 1.6; white-space: pre-line; }
+.text-prompt textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 10px; resize: vertical; }
+.text-prompt-actions { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+.text-prompt-actions small { margin-right: auto; color: #94a3b8; }
+
+/* 分類架構欄位的儲存狀態 */
+.tax-field-status { font-weight: 400; color: #64748b; margin-left: 6px; }
+.tax-field-status--ok { color: #15803d; }
+.tax-field-status--err { color: #b91c1c; }
+
+/* 主題頁標題列 */
+.topic-detail-header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 6px 0 10px; }
+.topic-detail-header h1 { margin: 0; font-size: 24px; }
+
+/* 分類架構頁裡的回答：預設收合、唯讀 */
+details.topic-answers > summary { cursor: pointer; font-weight: 700; color: #475569; }
+details.topic-answers[open] > summary { margin-bottom: 8px; }
