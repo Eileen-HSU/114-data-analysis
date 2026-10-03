@@ -4,7 +4,7 @@ import { api } from "../shared/apiClient";
 import { AUTO_CONFIRMED_LABEL, errorMessage, isAutoConfirmed, stateLabel } from "../shared/reviewStates";
 import { t } from "../shared/taxStatus";
 
-const answersUrl = (topicKey, params) =>
+export const answersUrl = (topicKey, params) =>
   `/api/admin/ai/topics/${encodeURIComponent(topicKey)}/answers?${new URLSearchParams(params).toString()}`;
 
 export const loadTopicAnswers = (topicKey, token) => api(answersUrl(topicKey, { per_category: 5 }), token);

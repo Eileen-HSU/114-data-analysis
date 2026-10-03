@@ -1,6 +1,20 @@
 import { apiUrl } from "../../../../lib/api";
 
+// ── 讀取快取：抓過的資料先拿來立刻顯示，同時在背景重新抓（畫面不用每次都等）。
+// 只快取 GET，任何寫入（POST/PUT/DELETE）成功後清空，避免顯示到改之前的資料。
+const responseCache = new Map();
+const MAX_CACHE_ENTRIES = 100;
+
+export const peekCache = (path) => responseCache.get(path);
+
+// 預先載入（例如滑鼠移到主題卡片上），失敗就算了
+export const prefetch = (path, token) => {
+  if (responseCache.has(path)) return;
+  api(path, token).catch(() => {});
+};
+
 export const api = async (path, token, options = {}) => {
+  const method = (options.method || "GET").toUpperCase();
   const response = await fetch(apiUrl(path), { ...options, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...(options.headers || {}) } });
   // 非 JSON 回應（例如 proxy 回的 HTML 錯誤頁）也要給出具體錯誤，不讓
   // response.json() 直接丟出難懂的 SyntaxError。
@@ -13,6 +27,12 @@ export const api = async (path, token, options = {}) => {
     error.status = response.status;
     error.body = body;
     throw error;
+  }
+  if (method === "GET") {
+    if (responseCache.size >= MAX_CACHE_ENTRIES) responseCache.delete(responseCache.keys().next().value);
+    responseCache.set(path, body);
+  } else {
+    responseCache.clear();
   }
   return body;
 };

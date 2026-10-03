@@ -106,7 +106,7 @@ export default function ReportAdminPage() {
   return <><Navbar /><main className="ai-admin-page">
     <NavLink to="/admin/ai" className="back">← {t("所有主題", "All topics")}</NavLink>
     <h1>{t("報告管理", "Report Management")}</h1>
-    <p><small>{t("報告是產生當下的快照；人工審核、重新分類或 Taxonomy 發布後，舊報告會被標記為需要重新產生。",
+    <p><small>{t("報告是產生當下的快照；人工審核、重新分類或 分類架構發布後，舊報告會被標記為需要重新產生。",
       "Reports are snapshots. Review changes, re-classification or taxonomy publishing mark older reports as outdated.")}</small></p>
     {error && <p className="ai-admin-error">{error}<button onClick={() => setError("")}>×</button></p>}
 
@@ -135,7 +135,7 @@ export default function ReportAdminPage() {
           <div className="review-card-mid">
             <p><span className="review-field-label">{t("最新報告", "Latest report")}</span>
               {r ? `v${r.version} · ${reportStatusLabel(r.status)}` : "—"}</p>
-            <p><span className="review-field-label">{t("Taxonomy 版本", "Taxonomy versions")}</span>
+            <p><span className="review-field-label">{t("分類架構版本", "Taxonomy versions")}</span>
               {r?.taxonomy_version_ids?.length ? r.taxonomy_version_ids.join(", ") : "—"}</p>
             <p><span className="review-field-label">{t("建立 / 最後更新", "Created / updated")}</span>
               {formatTime(r?.generated_at)} / {formatTime(r?.updated_at)}</p>

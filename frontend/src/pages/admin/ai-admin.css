@@ -633,3 +633,17 @@ label { display:block; font-weight:800; margin:12px 0; } textarea,select { width
 /* 分類架構頁裡的回答：預設收合、唯讀 */
 details.topic-answers > summary { cursor: pointer; font-weight: 700; color: #475569; }
 details.topic-answers[open] > summary { margin-bottom: 8px; }
+
+/* 載入骨架 */
+.admin-skeleton { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+.admin-skeleton-card { height: 96px; border-radius: 14px; background: linear-gradient(90deg, #f1f5f9 0%, #e2e8f0 50%, #f1f5f9 100%); background-size: 200% 100%; animation: admin-skeleton 1.2s ease-in-out infinite; }
+.admin-skeleton-line { display: inline-block; height: 1em; width: 12em; border-radius: 6px; background: #e2e8f0; vertical-align: middle; }
+@keyframes admin-skeleton { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .admin-skeleton-card { animation: none; } }
+
+/* 分類架構：每個類別預設只顯示定義，其他規則收在「更多規則」 */
+.tax-more { margin-top: 6px; }
+.tax-more > summary { cursor: pointer; color: #64748b; font-weight: 600; font-size: 14px; }
+.tax-more[open] > summary { margin-bottom: 8px; }
+.tax-field-grid > details.tax-more, .tax-field-grid > .tax-field:has(textarea) { grid-column: 1 / -1; }
+details.tax-more .tax-field { display: block; margin-bottom: 10px; }

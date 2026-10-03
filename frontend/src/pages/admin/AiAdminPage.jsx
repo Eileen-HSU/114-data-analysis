@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../../components/feature/Navbar";
 import { useAuth } from "../../hooks/AuthContext";
-import { api } from "./ai-admin/shared/apiClient";
+import { api, peekCache, prefetch } from "./ai-admin/shared/apiClient";
 import { t, taxStatusText } from "./ai-admin/shared/taxStatus";
 import CreateTopicSection from "./ai-admin/CreateTopicSection";
-import { LoadingNotice } from "./ai-admin/shared/StatusWidgets";
+import { SkeletonCards } from "./ai-admin/shared/StatusWidgets";
 import "./ai-admin.css";
 
 export default function AiAdminPage() {
@@ -14,11 +14,12 @@ export default function AiAdminPage() {
   const token = user?.token;
   const canAccess = isLoggedIn && user?.account_type === "admin";
 
-  const [topics, setTopics] = useState([]);
-  const [overview, setOverview] = useState(null);
-  const [newCategories, setNewCategories] = useState([]);
+  // 抓過的資料先立刻顯示，背景再更新（回到首頁不用等）
+  const [topics, setTopics] = useState(() => peekCache("/api/admin/ai/taxonomy-topics")?.topics || []);
+  const [overview, setOverview] = useState(() => peekCache("/api/admin/ai/overview") || null);
+  const [newCategories, setNewCategories] = useState(() => peekCache("/api/admin/ai/new-categories")?.items || []);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(() => !peekCache("/api/admin/ai/overview"));
   const [bootstrapHealth, setBootstrapHealth] = useState(null);
   const [systemStatus, setSystemStatus] = useState(null);
   // 兩個背景工作：全部重試（無法分類）、AI 再確認（低信心）
@@ -26,7 +27,7 @@ export default function AiAdminPage() {
   const recheck = useBackgroundJob("/api/admin/ai/second-opinion", token, setError, () => loadAll());
 
   const loadAll = async () => {
-    setLoading(true);
+    setLoading(!peekCache("/api/admin/ai/overview"));
     try {
       const [topicData, overviewData, candidateData] = await Promise.all([
         api("/api/admin/ai/taxonomy-topics", token),
@@ -86,8 +87,8 @@ export default function AiAdminPage() {
     </header>
     {error && <p className="ai-admin-error">{error}<button onClick={() => setError("")}>×</button></p>}
     <BootstrapWarning health={bootstrapHealth} />
-    {loading && <LoadingNotice text={t("正在載入待辦事項…", "Loading what needs attention…")} />}
-    {systemStatus && (systemStatus.errors.open_last_24h > 0 || !systemStatus.database.ok) && (
+    {loading && !overview && <SkeletonCards count={3} />}
+    {systemStatus?.errors && systemStatus?.database && (systemStatus.errors.open_last_24h > 0 || !systemStatus.database.ok) && (
       <p className="admin-system-alert" role="status">
         {!systemStatus.database.ok
           ? t("資料庫連線異常，部分功能可能無法使用。", "The database connection has a problem; some features may not work.")
@@ -239,7 +240,7 @@ export default function AiAdminPage() {
       </div>
       <div className="topic-grid">
         {officialTopics.map((topic) => (
-          <TopicCard key={topic.topic_key} topic={topic} counts={topicCounts(topic.topic_key)} navigate={navigate} />
+          <TopicCard key={topic.topic_key} topic={topic} counts={topicCounts(topic.topic_key)} navigate={navigate} token={token} />
         ))}
       </div>
     </section>
@@ -255,7 +256,7 @@ export default function AiAdminPage() {
           {autoTopics.map((topic) => {
             const counts = topicCounts(topic.topic_key);
             return (
-              <li key={topic.topic_key}>
+              <li key={topic.topic_key} onMouseEnter={() => prefetchTopic(topic, token)} onFocus={() => prefetchTopic(topic, token)}>
                 <div>
                   <b>{topic.title}</b>
                   <small>
@@ -396,12 +397,23 @@ function JobStatus({ data, labels }) {
 }
 
 
+// 滑鼠移到主題上就先抓好點進去要用的資料，點下去時畫面已經準備好
+function prefetchTopic(topic, token) {
+  const key = topic.topic_key;
+  const versionId = topic.latest_draft_version?.version_id ?? topic.published_version?.version_id;
+  if (versionId) prefetch(`/api/admin/ai/topics/${key}/taxonomy/${versionId}`, token);
+  prefetch(`/api/admin/ai/topics/${encodeURIComponent(key)}/answers?per_category=5`, token);
+  prefetch(`/api/admin/ai/classifications?state=pending_review&page=1&page_size=50&topic=${encodeURIComponent(key)}`, token);
+  prefetch(`/api/admin/ai/classifications?state=pending_review&page=1&page_size=50&topic=${encodeURIComponent(key)}&needs_human_review=true`, token);
+}
+
 // 正式主題卡片：直接顯示待辦，沒有待辦就說沒有，不用點進去找。
-function TopicCard({ topic, counts, navigate }) {
+function TopicCard({ topic, counts, navigate, token }) {
   const pending = counts.needs_judgement + counts.other_pending;
   const base = `/admin/ai/topics/${topic.topic_key}`;
   return (
-    <article className={`topic-card${pending > 0 ? " topic-card--todo" : ""}`}>
+    <article className={`topic-card${pending > 0 ? " topic-card--todo" : ""}`}
+      onMouseEnter={() => prefetchTopic(topic, token)} onFocus={() => prefetchTopic(topic, token)}>
       <h3>{topic.title}</h3>
       <p className="topic-card-tags">
         {topic.published_version

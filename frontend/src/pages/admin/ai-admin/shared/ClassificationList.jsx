@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTextPrompt } from "./TextPromptDialog";
-import { api } from "./apiClient";
+import { api, peekCache } from "./apiClient";
 import { t, reviewFlagReasonText } from "./taxStatus";
 import { AUTO_CONFIRMED_LABEL, STATE_TABS, errorMessage, isAutoConfirmed, stateLabel } from "./reviewStates";
-import { FailureNotice, LoadingNotice } from "./StatusWidgets";
+import { FailureNotice, SkeletonCards } from "./StatusWidgets";
 import { useAuth } from "../../../../hooks/AuthContext";
 
 const HIGH_CONFIDENCE_THRESHOLD = 0.9;
@@ -35,8 +35,19 @@ export default function ClassificationList({
   );
   const [backfillBusy, setBackfillBusy] = useState(false);
   const [page, setPage] = useState(1);
-  const [data, setData] = useState({ classifications: [], total: 0, total_pages: 0, status_counts: {} });
-  const [loading, setLoading] = useState(false);
+  const listUrl = () => {
+    const params = new URLSearchParams({ state: activeTab, page: String(page), page_size: String(PAGE_SIZE) });
+    if (topicParam) params.set("topic", topicParam);
+    if (needsReviewOnly) params.set("needs_human_review", "true");
+    if (activeTab === "confirmed" && confirmedSource !== "all") {
+      params.set("auto_confirmed", confirmedSource === "auto" ? "true" : "false");
+    }
+    return `/api/admin/ai/classifications?${params}`;
+  };
+  const EMPTY = { classifications: [], total: 0, total_pages: 0, status_counts: {} };
+  // 抓過的就先顯示；沒抓過的一開始就是「載入中」，不會先閃出「沒有資料」
+  const [data, setData] = useState(() => peekCache(listUrl()) || EMPTY);
+  const [loading, setLoading] = useState(() => !peekCache(listUrl()));
   const [error, setError] = useState("");
 
   const [rowBusy, setRowBusy] = useState({});
@@ -54,16 +65,13 @@ export default function ClassificationList({
   // 只有切換分頁 / 篩選 / 頁數才顯示「搜尋中」。
   const load = async ({ silent = false } = {}) => {
     const seq = ++requestSeq.current;
-    if (!silent) setLoading(true);
+    const url = listUrl();
+    const cached = peekCache(url);
+    if (cached && !silent) setData(cached);       // 先顯示上次的結果，背景更新
+    if (!silent) setLoading(!cached);
     try {
       setError("");
-      const params = new URLSearchParams({ state: activeTab, page: String(page), page_size: String(PAGE_SIZE) });
-      if (topicParam) params.set("topic", topicParam);
-      if (needsReviewOnly) params.set("needs_human_review", "true");
-      if (activeTab === "confirmed" && confirmedSource !== "all") {
-        params.set("auto_confirmed", confirmedSource === "auto" ? "true" : "false");
-      }
-      const result = await api(`/api/admin/ai/classifications?${params}`, token);
+      const result = await api(url, token);
       if (seq === requestSeq.current) setData(result);
     } catch (e) {
       if (seq === requestSeq.current) setError(errorMessage(e));
@@ -329,7 +337,7 @@ export default function ClassificationList({
 
       {batchMessage && <p className="review-batch-message">{batchMessage}</p>}
 
-      {loading && <LoadingNotice />}
+      {loading && <SkeletonCards />}
 
       {!loading && rows.length === 0 && (
         <p className="review-empty-hint">

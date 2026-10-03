@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useParams } from "react-router-dom";
-import { api } from "../shared/apiClient";
+import { api, peekCache } from "../shared/apiClient";
+import { SkeletonCards } from "../shared/StatusWidgets";
 import { t, taxStatusText, TAX_EDITABLE_STATUSES } from "../shared/taxStatus";
 import TaxCategoryField from "../shared/TaxCategoryField";
 import TopicMovePicker from "../shared/TopicMovePicker";
-import { CategoryAnswers, OtherCategoryAnswers, TopicSourceSummary, loadTopicAnswers } from "./TopicAnswers";
+import { CategoryAnswers, OtherCategoryAnswers, TopicSourceSummary, answersUrl, loadTopicAnswers } from "./TopicAnswers";
 import { useAuth } from "../../../../hooks/AuthContext";
 
 export default function TaxonomyPanel() {
@@ -12,13 +13,21 @@ export default function TaxonomyPanel() {
   const { user } = useAuth();
   const token = user?.token;
 
-  const [topicMeta, setTopicMeta] = useState(null); // 這個 topic 在 taxonomy-topics 列表裡的那一筆
-  const [taxVersion, setTaxVersion] = useState(null);
+  // 抓過的資料先拿來立刻顯示（首頁、上次進來時抓的），背景再更新
+  const cached = () => {
+    const meta = (peekCache("/api/admin/ai/taxonomy-topics")?.topics || []).find((x) => x.topic_key === topicKey) || null;
+    const versionId = meta?.latest_draft_version?.version_id ?? meta?.published_version?.version_id;
+    const version = versionId ? peekCache(`/api/admin/ai/topics/${topicKey}/taxonomy/${versionId}`)?.taxonomy_version : null;
+    return { meta, version: version || null, answers: peekCache(answersUrl(topicKey, { per_category: 5 })) || null };
+  };
+  const initial = cached();
+  const [topicMeta, setTopicMeta] = useState(initial.meta); // 這個 topic 在 taxonomy-topics 列表裡的那一筆
+  const [taxVersion, setTaxVersion] = useState(initial.version);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!(initial.meta && initial.version));
   const [mergedTargetTitle, setMergedTargetTitle] = useState("");
   const [mergeResultText, setMergeResultText] = useState("");
-  const [answers, setAnswers] = useState(null); // 這個主題底下的原始回答（證據）
+  const [answers, setAnswers] = useState(initial.answers); // 這個主題底下的原始回答（證據）
   // 還沒完成的欄位儲存。發布／複製／刪除前要先等它們做完：欄位是「離開輸入框」
   // 才儲存，打完字直接按發布時，儲存跟發布會同時送出，發布可能先完成。
   const pendingSaves = useRef(new Set());
@@ -64,11 +73,13 @@ export default function TaxonomyPanel() {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setTaxVersion(null);
+    const now = cached();
+    setTopicMeta(now.meta);
+    setTaxVersion(now.version);
+    setAnswers(now.answers);
+    setLoading(!(now.meta && now.version));
     setMergeResultText("");
     setMergedTargetTitle("");
-    setAnswers(null);
     loadAnswers();
     (async () => {
       const meta = await loadTopicMeta();
@@ -202,7 +213,7 @@ export default function TaxonomyPanel() {
   const taxKeys = new Set((taxVersion?.categories || []).map((c) => groupKey(c.main_category, c.sub_category)));
   const otherGroups = (answers?.groups || []).filter((g) => !taxKeys.has(groupKey(g.main_category, g.sub_category)));
 
-  if (loading) return <div className="admin-card"><p>{t("載入中...", "Loading...")}</p></div>;
+  if (loading) return <SkeletonCards count={4} />;
 
   return <>
     {error && <p className="ai-admin-error">{error}<button onClick={() => setError("")}>×</button></p>}
@@ -238,7 +249,8 @@ export default function TaxonomyPanel() {
     )}
 
     {topicMeta && taxVersion && <>
-      {(topicMeta.published_version || topicMeta.latest_draft_version) && (
+      {topicMeta.published_version && topicMeta.latest_draft_version
+        && topicMeta.published_version.version_id !== topicMeta.latest_draft_version.version_id && (
         <div className="admin-card" style={{ marginBottom: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <b>{t("查看版本：", "View version:")}</b>
           {topicMeta.published_version && (
@@ -254,11 +266,12 @@ export default function TaxonomyPanel() {
         </div>
       )}
 
-      <p><small>v{taxVersion.version_number} · {taxStatusText(taxVersion.status)} · {t("來源：", "Source:")} {taxVersion.source} · {t("建立於：", "Created:")} {taxVersion.created_at ? new Date(taxVersion.created_at).toLocaleString() : "—"}{taxVersion.published_at ? ` · ${t("發布於：", "Published:")} ${new Date(taxVersion.published_at).toLocaleString()}` : ""}</small></p>
+      <p><small>v{taxVersion.version_number} · {taxStatusText(taxVersion.status)} · {t("來源：", "Source:")} {({ manual: t("手動建立", "Manual"), ai_generated: t("AI 產生", "AI generated"),
+          migrated_legacy: t("舊版轉入", "Migrated") })[taxVersion.source] || taxVersion.source} · {t("建立於：", "Created:")} {taxVersion.created_at ? new Date(taxVersion.created_at).toLocaleString() : "—"}{taxVersion.published_at ? ` · ${t("發布於：", "Published:")} ${new Date(taxVersion.published_at).toLocaleString()}` : ""}</small></p>
 
       <div style={{ display: "flex", gap: 10, margin: "14px 0" }}>
         {taxVersion.status === "published" ? <button className="primary" onClick={cloneTaxVersion}>{t("建立新草稿版本（複製此版）", "Create new draft (clone this version)")}</button>
-          : <>{TAX_EDITABLE_STATUSES.includes(taxVersion.status) && <button onClick={addTaxCategory}>{t("＋ 新增子類別", "＋ Add category")}</button>}<button className="primary" onClick={publishTaxVersion}>{t("發布為正式 Taxonomy", "Publish as production taxonomy")}</button></>}
+          : <>{TAX_EDITABLE_STATUSES.includes(taxVersion.status) && <button onClick={addTaxCategory}>{t("＋ 新增子類別", "＋ Add category")}</button>}<button className="primary" onClick={publishTaxVersion}>{t("發布這個版本", "Publish as production taxonomy")}</button></>}
         {taxVersion.status === "draft" && <button onClick={deleteTaxVersion}>{t("刪除草稿", "Delete draft")}</button>}
       </div>
       {taxVersion.status === "published" && <p className="tax-legacy-note">{t("已發布版本唯讀，不可直接編輯；如需修改請先建立新草稿版本。", "Published versions are read-only. Create a new draft to make changes.")}</p>}
@@ -279,12 +292,15 @@ export default function TaxonomyPanel() {
             <TaxCategoryField cat={cat} field="main_category" label={t("大類別", "Main category")} onSave={saveTaxCategory} />
             <TaxCategoryField cat={cat} field="sub_category" label={t("子類別", "Sub category")} onSave={saveTaxCategory} />
             <TaxCategoryField cat={cat} field="definition" label={t("定義", "Definition")} multiline onSave={saveTaxCategory} />
-            <TaxCategoryField cat={cat} field="include_rules" label={t("納入規則", "Include rules")} multiline onSave={saveTaxCategory} />
-            <TaxCategoryField cat={cat} field="exclude_rules" label={t("排除規則", "Exclude rules")} multiline onSave={saveTaxCategory} />
-            <TaxCategoryField cat={cat} field="boundary_rules" label={t("與相近類別界線", "Boundary rules")} multiline onSave={saveTaxCategory} />
-            <TaxCategoryField cat={cat} field="methodology" label={t("方法論（可留白）", "Methodology (optional)")} onSave={saveTaxCategory} />
-            <TaxCategoryField cat={cat} field="citation" label={t("引用（可留白，不可捏造）", "Citation (optional, never fabricate)")} onSave={saveTaxCategory} />
-            {cat.source_raw_text && <p className="tax-legacy-note">{t("既有原文規則（僅供參考）：", "Legacy raw rule text (reference only):")} {cat.source_raw_text}</p>}
+            <details className="tax-more">
+              <summary>{t("更多規則（納入、排除、界線、方法論、引用）", "More rules (include, exclude, boundary, methodology, citation)")}</summary>
+              <TaxCategoryField cat={cat} field="include_rules" label={t("納入規則", "Include rules")} multiline onSave={saveTaxCategory} />
+              <TaxCategoryField cat={cat} field="exclude_rules" label={t("排除規則", "Exclude rules")} multiline onSave={saveTaxCategory} />
+              <TaxCategoryField cat={cat} field="boundary_rules" label={t("與相近類別界線", "Boundary rules")} multiline onSave={saveTaxCategory} />
+              <TaxCategoryField cat={cat} field="methodology" label={t("方法論（可留白）", "Methodology (optional)")} onSave={saveTaxCategory} />
+              <TaxCategoryField cat={cat} field="citation" label={t("引用（可留白，不可捏造）", "Citation (optional, never fabricate)")} onSave={saveTaxCategory} />
+              {cat.source_raw_text && <p className="tax-legacy-note">{t("既有原文規則（僅供參考）：", "Legacy raw rule text (reference only):")} {cat.source_raw_text}</p>}
+            </details>
           </div> : <div>
             <p>{t("定義", "Definition")}: {cat.definition || cat.source_raw_text || "—"}</p>
             {cat.include_rules && <p>{t("納入規則", "Include")}: {cat.include_rules}</p>}

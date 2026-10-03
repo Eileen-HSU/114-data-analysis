@@ -27,3 +27,13 @@ export function FailureNotice({ failure, fallback }) {
     </div>
   );
 }
+
+// 第一次載入時的骨架：保留版面位置，不先閃出「沒有資料」或錯誤的數字。
+export function SkeletonCards({ count = 3 }) {
+  return (
+    <div className="admin-skeleton" role="status" aria-label={t("載入中", "Loading")}>
+      {Array.from({ length: count }, (_, i) => <div key={i} className="admin-skeleton-card" />)}
+    </div>
+  );
+}
+

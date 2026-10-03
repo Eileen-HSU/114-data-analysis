@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useParams, useNavigate } from "react-router-dom";
 import Navbar from "../../../../components/feature/Navbar";
 import { useAuth } from "../../../../hooks/AuthContext";
-import { api } from "../shared/apiClient";
+import { api, peekCache } from "../shared/apiClient";
 import { t } from "../shared/taxStatus";
 
 export default function TopicDetailLayout() {
@@ -10,15 +10,16 @@ export default function TopicDetailLayout() {
   const navigate = useNavigate();
   const { user, isLoggedIn } = useAuth();
   const canAccess = isLoggedIn && user?.account_type === "admin";
-  const [topic, setTopic] = useState(null);
+  const TOPICS_URL = "/api/admin/ai/taxonomy-topics";
+  const findTopic = (data) => (data?.topics || []).find((x) => x.topic_key === topicKey) || null;
+  // 首頁抓過主題清單的話，標題直接顯示，不用等
+  const [topic, setTopic] = useState(() => findTopic(peekCache(TOPICS_URL)));
 
   // 每個分頁都顯示目前在哪個主題（原本只有「分類架構」分頁看得到）
   useEffect(() => {
     if (!canAccess) return;
-    setTopic(null);
-    api("/api/admin/ai/taxonomy-topics", user.token)
-      .then((data) => setTopic((data.topics || []).find((x) => x.topic_key === topicKey) || null))
-      .catch(() => setTopic(null));
+    setTopic(findTopic(peekCache(TOPICS_URL)));
+    api(TOPICS_URL, user.token).then((data) => setTopic(findTopic(data))).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canAccess, topicKey]);
 
@@ -29,7 +30,7 @@ export default function TopicDetailLayout() {
   return <><Navbar /><main className="ai-admin-page topic-detail-layout">
     <NavLink to="/admin/ai" className="back">← {t("AI 管理首頁", "AI admin home")}</NavLink>
     <div className="topic-detail-header">
-      <h1>{topic?.title || topicKey}</h1>
+      <h1>{topic ? topic.title : <span className="admin-skeleton-line" aria-label={t("載入中", "Loading")} />}</h1>
       {topic?.is_auto_topic && <span className="topic-tag">{t("AI 自動主題", "Auto topic")}</span>}
       {topic?.published_version
         ? <span className="topic-tag">{t(`使用中 v${topic.published_version.version_number}`, `Live v${topic.published_version.version_number}`)}</span>

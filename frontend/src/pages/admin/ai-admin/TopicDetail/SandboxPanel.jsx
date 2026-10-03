@@ -78,7 +78,7 @@ export default function SandboxPanel() {
     <div className="admin-card">
       <p className="sandbox-notice">
         <b>{t("這個沙盒不會寫入任何正式分析資料", "This sandbox does not write to any production data")}</b>
-        {t("——測試結果不會建立分類紀錄、不會影響已上傳的問卷回答，也不會發布或修改任何 Taxonomy 版本。", " — no classification record is created, no uploaded answers are affected, and no taxonomy version is modified or published.")}
+        {t("——測試結果不會建立分類紀錄、不會影響已上傳的問卷回答，也不會發布或修改任何 分類架構版本。", " — no classification record is created, no uploaded answers are affected, and no taxonomy version is modified or published.")}
       </p>
       <p className="sandbox-notice sandbox-notice-cost">
         {t("每次執行都會實際呼叫 Gemini AI（非免費），請避免不必要的重複測試。", "Each run makes a real call to the Gemini AI (not free) — avoid unnecessary repeated tests.")}
