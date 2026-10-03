@@ -81,14 +81,15 @@ resp = client.get("/api/admin/ai/unassigned?kind=unrouted", headers=admin_header
 body = resp.get_json()
 check("unassigned 200", resp.status_code == 200)
 listed = {i["id"]: i for i in body["items"]}
-check("兩筆 routing failure 回答都在 unrouted 分頁", set(answer_ids) <= set(listed))
-check("顯示原因 reason=unrouted", listed[answer_ids[0]]["reason"] == "unrouted")
-check("counts 分開計算", body["counts"]["unrouted"] == 2 and body["counts"]["failed"] == 0)
+check("尚未自動重試的 routing failure 不逐筆列給人工", not listed)
+check("自動重試進度只聚合顯示", body["retry_progress"]["pending_by_kind"]["unrouted"] == 2
+      and body["counts"]["unrouted"] == 0)
 check("非 admin 不能存取", client.get("/api/admin/ai/unassigned", headers=user_header(1)).status_code == 403)
 check("不合法 kind -> 400 INVALID_KIND",
       client.get("/api/admin/ai/unassigned?kind=nope", headers=admin_header(1)).get_json()["code"] == "INVALID_KIND")
 resp = client.get("/api/admin/ai/unassigned?kind=unrouted&page=2&page_size=1", headers=admin_header(1))
-check("server-side 分頁：page_size=1 第 2 頁 1 筆、total=2", len(resp.get_json()["items"]) == 1 and resp.get_json()["total"] == 2)
+check("人工清單沒有 still_failed 時不回傳自動重試中的資料",
+      len(resp.get_json()["items"]) == 0 and resp.get_json()["total"] == 0)
 
 
 print("\n========== 3. fail-closed：draft / 無 taxonomy ==========")
@@ -164,7 +165,15 @@ with app.app_context():
     ids = seed_upload_batch("batch-failed", ["這一則分類失敗"])
     failed_cid = seed_classification(ids[0], "batch-failed", "這一則分類失敗", None, None,
                                      version_id=version_id, status="failed")
-check("failed 分頁出現", failed_cid in {i["classification_id"] for i in client.get(
+check("尚未自動重試的 failed 分類不逐筆列給人工", failed_cid not in {i["classification_id"] for i in client.get(
+    "/api/admin/ai/unassigned?kind=failed", headers=admin_header(1)).get_json()["items"]})
+from services import bulk_retry_service
+original_retry_process = bulk_retry_service._process
+bulk_retry_service._process = lambda *_args: ("failed", "AI_RESPONSE_INVALID", "格式錯誤")
+with app.app_context():
+    bulk_retry_service.start(0, run_inline=True)
+bulk_retry_service._process = original_retry_process
+check("逐筆重試紀錄確認 still_failed 後出現在人工清單", failed_cid in {i["classification_id"] for i in client.get(
     "/api/admin/ai/unassigned?kind=failed", headers=admin_header(1)).get_json()["items"]})
 classify_responses("這一則分類失敗")
 resp = client.post(f"/api/admin/ai/classifications/{failed_cid}/retry", headers=admin_header(1))

@@ -893,3 +893,19 @@ class Bulk_Retry_Job(db.Model):
             "heartbeat_at": self.heartbeat_at.isoformat() if self.heartbeat_at else None,
             "finished_at": self.finished_at.isoformat() if self.finished_at else None,
         }
+
+
+class Bulk_Retry_Item_Attempt(db.Model):
+    """Latest background retry result for a stable answer / survey-question scope."""
+
+    __tablename__ = "Bulk_Retry_Item_Attempt"
+
+    scope_key = db.Column(db.String(255), primary_key=True)
+    job_id = db.Column(db.Integer, nullable=False, index=True)
+    scope_type = db.Column(db.String(20), nullable=False)
+    uploaded_answer_id = db.Column(db.Integer, nullable=True, index=True)
+    response_id = db.Column(db.Integer, nullable=True, index=True)
+    question_id = db.Column(db.String(255), nullable=True)
+    outcome = db.Column(db.String(20), nullable=False, index=True)
+    failure_code = db.Column(db.String(100), nullable=True)
+    attempted_at = db.Column(db.DateTime(timezone=True), nullable=False, default=taiwan_now)

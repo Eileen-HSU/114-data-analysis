@@ -8,6 +8,9 @@ import { UNASSIGNED_KINDS, errorMessage, unassignedKindLabel, unroutedReasonLabe
 import { FailureNotice, LoadingNotice } from "./shared/StatusWidgets";
 
 const PAGE_SIZE = 30;
+const sourceColumnLabel = (value) => (value === "unknown_legacy_column"
+  ? t("舊資料欄位（無法辨識）", "Unidentified legacy column")
+  : value);
 
 // 未分類 / 失敗資料（後端 services/admin_recovery_service.py 定義）：
 //   unrouted     ：上傳回答沒有任何分類結果（找不到主題、taxonomy 不可用、routing 失敗…）
@@ -29,6 +32,8 @@ export default function UnassignedReviewPage() {
   const [busy, setBusy] = useState({});
   const [rowError, setRowError] = useState({});
   const [detail, setDetail] = useState(null);
+  const retryingCount = data.retry_progress?.pending_by_kind?.[kind] ?? 0;
+  const stillFailedCount = data.retry_progress?.still_failed_by_kind?.[kind] ?? 0;
 
   const [loading, setLoading] = useState(false);
   const requestSeq = useRef(0);
@@ -148,6 +153,14 @@ export default function UnassignedReviewPage() {
         </button>
       ))}
     </div>
+    {(kind === "unrouted" || kind === "failed") && retryingCount > 0 && (
+      <p className="admin-muted">
+        {t(
+          `系統自動重試中 ${retryingCount} 筆；另有 ${stillFailedCount} 筆重試後仍失敗，列在下方供人工處理。`,
+          `${retryingCount} items are queued for automatic retry; ${stillFailedCount} that still failed are listed below for review.`,
+        )}
+      </p>
+    )}
 
     {loading && <LoadingNotice />}
 
@@ -207,7 +220,7 @@ function UnassignedCard({ item, topics, busy, error, onDismissError, onAssign, o
           {item.kind === "failed" ? t("分類處理失敗", "Classification failed") : unroutedReasonLabel(item.reason)}</p>
         {item.failure && <FailureNotice failure={item.failure} />}
         <p><span className="review-field-label">{t("處理狀態", "Processing status")}</span>{item.processing_status}</p>
-        {item.source_column && <p><span className="review-field-label">{t("來源欄位", "Source column")}</span>{item.source_column}（{t("第", "row ")}{(item.row_index ?? 0) + 1}{t(" 列", "")}）</p>}
+        {item.source_column && <p><span className="review-field-label">{t("來源欄位", "Source column")}</span>{sourceColumnLabel(item.source_column)}（{t("第", "row ")}{(item.row_index ?? 0) + 1}{t(" 列", "")}）</p>}
       </div>
       {error && <p className="ai-admin-error">{error}<button onClick={onDismissError}>×</button></p>}
       <div className="review-card-actions">

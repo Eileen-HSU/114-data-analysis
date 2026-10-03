@@ -413,8 +413,9 @@ def ensure_integrity_followup_schema():
             # 次要分類子表（一筆分類可以有多個次要分類，含 taxonomy category identity）
             from models import Response_Classification_Secondary
             ensure_table(Response_Classification_Secondary)
-            from models import Bulk_Retry_Job
+            from classification_models import Bulk_Retry_Item_Attempt, Bulk_Retry_Job
             ensure_table(Bulk_Retry_Job)
+            ensure_table(Bulk_Retry_Item_Attempt)
             ensure_column("Bulk_Retry_Job", "kind", "`kind` VARCHAR(30) NOT NULL DEFAULT 'retry'")
             db.session.commit()
             # 舊欄位 -> 子表（只處理還沒有子表列的分類，重複啟動不會重複寫入）

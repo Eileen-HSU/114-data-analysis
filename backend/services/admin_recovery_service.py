@@ -54,6 +54,7 @@ from models import (
     Uploaded_Answer,
 )
 from classification_models import (
+    Bulk_Retry_Item_Attempt,
     REVIEW_STATUS_CONFIRMED,
     REVIEW_STATUS_EXCLUDED,
     REVIEW_STATUS_MODIFIED,
@@ -136,6 +137,32 @@ def _legacy_other_query():
     )
 
 
+def _has_failed_retry_for_upload(answer_id):
+    return Bulk_Retry_Item_Attempt.query.filter(
+        Bulk_Retry_Item_Attempt.scope_type == "upload",
+        Bulk_Retry_Item_Attempt.uploaded_answer_id == answer_id,
+        Bulk_Retry_Item_Attempt.outcome == "failed",
+    ).exists()
+
+
+def _has_failed_retry_for_classification():
+    upload_attempt = Bulk_Retry_Item_Attempt.query.filter(
+        Bulk_Retry_Item_Attempt.scope_type == "upload",
+        Bulk_Retry_Item_Attempt.uploaded_answer_id == Response_Classification.uploaded_answer_id,
+        Bulk_Retry_Item_Attempt.outcome == "failed",
+    ).exists()
+    survey_attempt = Bulk_Retry_Item_Attempt.query.filter(
+        Bulk_Retry_Item_Attempt.scope_type == "survey",
+        Bulk_Retry_Item_Attempt.response_id == Response_Classification.response_id,
+        Bulk_Retry_Item_Attempt.question_id == Response_Classification.question_id,
+        Bulk_Retry_Item_Attempt.outcome == "failed",
+    ).exists()
+    return db.or_(
+        db.and_(Response_Classification.uploaded_answer_id.isnot(None), upload_attempt),
+        db.and_(Response_Classification.uploaded_answer_id.is_(None), survey_attempt),
+    )
+
+
 def derive_unrouted_reason(answer) -> str:
     if answer.routing_status and answer.routing_status not in ("routed", "assigned"):
         return answer.routing_status
@@ -195,9 +222,14 @@ def list_unassigned(kind, page=1, page_size=50) -> dict:
         raise RecoveryError("INVALID_KIND", f"kind 只能是 {list(UNASSIGNED_KINDS)}", 400)
     page = max(int(page or 1), 1)
     page_size = min(max(int(page_size or 50), 1), MAX_PAGE_SIZE)
+    from services.bulk_retry_service import retry_split
+
+    retry_progress = retry_split()
 
     if kind == KIND_UNROUTED:
-        query = _unrouted_answers_query().order_by(Uploaded_Answer.created_at.desc(), Uploaded_Answer.id.desc())
+        query = _unrouted_answers_query().filter(
+            _has_failed_retry_for_upload(Uploaded_Answer.id)
+        ).order_by(Uploaded_Answer.created_at.desc(), Uploaded_Answer.id.desc())
         total = query.count()
         items = [_answer_item(a) for a in query.offset((page - 1) * page_size).limit(page_size).all()]
     elif kind == KIND_FAILED:
@@ -206,6 +238,8 @@ def list_unassigned(kind, page=1, page_size=50) -> dict:
             Uploaded_Answer.created_at.desc(), Uploaded_Answer.id.desc())
         rows_q = _failed_query().order_by(
             Response_Classification.created_at.desc(), Response_Classification.classification_id.desc())
+        answers_q = answers_q.filter(_has_failed_retry_for_upload(Uploaded_Answer.id))
+        rows_q = rows_q.filter(_has_failed_retry_for_classification())
         answer_total = answers_q.count()
         total = answer_total + rows_q.count()
         offset = (page - 1) * page_size
@@ -222,13 +256,17 @@ def list_unassigned(kind, page=1, page_size=50) -> dict:
         total = query.count()
         items = [_classification_item(r, kind) for r in query.offset((page - 1) * page_size).limit(page_size).all()]
 
+    counts = unassigned_counts()
+    counts[KIND_UNROUTED] = retry_progress["still_failed_by_kind"][KIND_UNROUTED]
+    counts[KIND_FAILED] = retry_progress["still_failed_by_kind"][KIND_FAILED]
     return {
         "kind": kind,
         "items": items,
         "page": page,
         "page_size": page_size,
         "total": total,
-        "counts": unassigned_counts(),
+        "counts": counts,
+        "retry_progress": retry_progress,
     }
 
 

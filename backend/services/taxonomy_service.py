@@ -753,7 +753,7 @@ def publish_taxonomy_version_with_validation(topic_key: str, version_id: int, ad
     )
 
 
-def list_topics_with_status():
+def list_topics_with_status(search=None):
     """
     Admin Topic List 用：列出全部 Topic，狀態完全由目前的
     Taxonomy_Version 資料推導（不額外存第二份 status 在 Topic 上，
@@ -768,7 +768,13 @@ def list_topics_with_status():
     from models import Topic
     from taxonomy import TAXONOMY_VERSION_STATUS_PUBLISHED, TAXONOMY_VERSION_STATUS_ARCHIVED
 
-    topics = Topic.query.order_by(Topic.topic_key).all()
+    query = Topic.query
+    term = (search or "").strip()
+    if term:
+        escaped_term = term.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
+        pattern = f"%{escaped_term}%"
+        query = query.filter(db.or_(Topic.title.ilike(pattern, escape="\\"), Topic.topic_key.ilike(pattern, escape="\\")))
+    topics = query.order_by(Topic.topic_key).all()
     result = []
     for topic in topics:
         versions = sorted(topic.taxonomy_versions, key=lambda v: v.version_number)
@@ -823,7 +829,8 @@ def list_versions_for_topic(topic_key: str):
 
 def delete_taxonomy_version(topic_key: str, version_id: int):
     """
-    刪除一個 draft 版本（含底下全部 Taxonomy_Category）。
+    刪除一個 draft 版本（含底下全部 Taxonomy_Category）。若它是未合併的
+    Auto Topic 最後一個版本，Topic 也會一併刪除。
 
     只有 status == "draft" 可以刪除；in_review 也不行——這比
     _require_editable_version() 允許 draft/in_review 一起編輯的規則
@@ -842,11 +849,13 @@ def delete_taxonomy_version(topic_key: str, version_id: int):
     （Taxonomy_Version.categories 的 cascade="all, delete-orphan"）+
     DB 層 ondelete="CASCADE" 雙重保障自動連鎖刪除，不需要手動
     迴圈刪除 category。不做 version_number renumber，其他版本
-    完全不受影響。
+    完全不受影響。回傳值表示是否一併刪除了空 Auto Topic。
     """
     from models import Response_Classification
+    from taxonomy import Topic
     from taxonomy import TAXONOMY_VERSION_STATUS_DRAFT
 
+    topic = Topic.query.filter_by(topic_key=topic_key).with_for_update().first()
     version = get_taxonomy_version(topic_key, version_id)
     if version is None:
         raise ValueError(f"topic_key={topic_key!r} 找不到 version_id={version_id}")
@@ -863,5 +872,18 @@ def delete_taxonomy_version(topic_key: str, version_id: int):
             "為避免破壞資料完整性，不允許刪除"
         )
 
+    remaining_versions = Taxonomy_Version.query.filter(
+        Taxonomy_Version.topic_key == topic_key,
+        Taxonomy_Version.version_id != version_id,
+    ).count()
+    auto_topic_removed = bool(
+        topic
+        and topic.topic_key.startswith("auto_")
+        and topic.merged_into is None
+        and remaining_versions == 0
+    )
     db.session.delete(version)
+    if auto_topic_removed:
+        db.session.delete(topic)
     db.session.commit()
+    return auto_topic_removed

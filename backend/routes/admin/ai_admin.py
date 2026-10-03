@@ -869,7 +869,7 @@ def list_taxonomy_topics():
     _, failure = _admin_or_error()
     if failure:
         return failure
-    return jsonify({"topics": taxo.list_topics_with_status()})
+    return jsonify({"topics": taxo.list_topics_with_status(request.args.get("q"))})
 
 
 @ai_admin_bp.get("/topics/<topic_key>/taxonomy/<int:version_id>")
@@ -1058,9 +1058,9 @@ def delete_taxonomy(topic_key, version_id):
     if failure:
         return failure
     try:
-        taxo.delete_taxonomy_version(topic_key, version_id)
+        topic_deleted = taxo.delete_taxonomy_version(topic_key, version_id)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 404
     except taxo.TaxonomyEditNotAllowedError as exc:
         return jsonify({"error": str(exc)}), 409
-    return jsonify({"deleted": True})
+    return jsonify({"deleted": True, "topic_deleted": topic_deleted})

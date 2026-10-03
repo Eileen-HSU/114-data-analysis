@@ -26,6 +26,10 @@ import logging
 import os
 import threading
 import time
+import hashlib
+import json
+
+from sqlalchemy import text
 from datetime import timedelta
 
 from classification_models import (
@@ -34,6 +38,7 @@ from classification_models import (
     BULK_RETRY_FAILED,
     BULK_RETRY_PAUSED_QUOTA,
     BULK_RETRY_RUNNING,
+    Bulk_Retry_Item_Attempt,
     Bulk_Retry_Job,
 )
 from extensions import db, taiwan_now
@@ -123,50 +128,95 @@ def _scope_key(row):
     return ("survey", row.response_id, row.question_id)
 
 
-def attempt_cutoff(exclude_job_id=None):
-    """最近一次「完整跑完」的全部重試（排程或 Admin 按的都算）的結束時間。
-    比它更早建立的無法分類資料都已經被重試過一次；沒有跑完過的 -> None（全部都還沒試）。"""
-    query = Bulk_Retry_Job.query.filter(Bulk_Retry_Job.kind == KIND_RETRY, Bulk_Retry_Job.status == BULK_RETRY_COMPLETED)
-    if exclude_job_id is not None:
-        query = query.filter(Bulk_Retry_Job.job_id != exclude_job_id)
-    job = query.order_by(Bulk_Retry_Job.finished_at.desc()).first()
-    return job.finished_at if job else None
+def _record_item_attempt(job_id, scope, outcome, failure_code):
+    scope_type = scope[0]
+    data = {
+        "scope_key": hashlib.sha256(json.dumps(scope, ensure_ascii=True).encode()).hexdigest(),
+        "job_id": job_id,
+        "scope_type": "upload" if scope_type == "answer" else "survey",
+        "uploaded_answer_id": scope[1] if scope_type == "answer" else None,
+        "response_id": scope[1] if scope_type == "survey" else None,
+        "question_id": scope[2] if scope_type == "survey" else None,
+        "outcome": "failed" if outcome in ("failed", "skipped") else outcome,
+        "failure_code": failure_code,
+        "attempted_at": taiwan_now(),
+    }
+    attempt = db.session.get(Bulk_Retry_Item_Attempt, data["scope_key"])
+    if attempt is None:
+        db.session.add(Bulk_Retry_Item_Attempt(**data))
+    else:
+        for name, value in data.items():
+            setattr(attempt, name, value)
 
 
-def _untried_queries(since):
-    """(失敗分類列, 零片段失敗回答, 判斷不出主題回答) 三個 query；since 不是 None 時
-    只留 since 之後才出現的（還沒被自動重試過的）。"""
+def _has_final_retry(scope_type, *, answer_id=None, response_id=None, question_id=None):
+    query = Bulk_Retry_Item_Attempt.query.filter(
+        Bulk_Retry_Item_Attempt.scope_type == scope_type,
+        Bulk_Retry_Item_Attempt.outcome == "failed",
+    )
+    if scope_type == "upload":
+        query = query.filter(Bulk_Retry_Item_Attempt.uploaded_answer_id == answer_id)
+    else:
+        query = query.filter(
+            Bulk_Retry_Item_Attempt.response_id == response_id,
+            Bulk_Retry_Item_Attempt.question_id == question_id,
+        )
+    return query.exists()
+
+
+def _untried_queries():
+    """未有逐筆「最終失敗」紀錄的項目，包含尚未嘗試及暫時性錯誤。"""
     from services.admin_recovery_service import (
         _failed_query, _unrouted_answers_query, _zero_segment_failed_answers_query,
     )
     from classification_models import Response_Classification, Uploaded_Answer
 
     failed, zero, unrouted = _failed_query(), _zero_segment_failed_answers_query(), _unrouted_answers_query()
-    if since is not None:
-        failed = failed.filter(Response_Classification.created_at > since)
-        zero = zero.filter(Uploaded_Answer.created_at > since)
-        unrouted = unrouted.filter(Uploaded_Answer.created_at > since)
+    failed = failed.filter(~db.or_(
+        db.and_(
+            Response_Classification.uploaded_answer_id.isnot(None),
+            _has_final_retry("upload", answer_id=Response_Classification.uploaded_answer_id),
+        ),
+        db.and_(
+            Response_Classification.uploaded_answer_id.is_(None),
+            _has_final_retry("survey", response_id=Response_Classification.response_id,
+                             question_id=Response_Classification.question_id),
+        ),
+    ))
+    zero = zero.filter(~_has_final_retry("upload", answer_id=Uploaded_Answer.id))
+    unrouted = unrouted.filter(~_has_final_retry("upload", answer_id=Uploaded_Answer.id))
     return failed, zero, unrouted
 
 
 def retry_split() -> dict:
-    """無法分類的資料分成兩半：
-        pending      ：還沒被自動重試過 -> 系統排程會處理，不需要人
-        still_failed ：已經自動重試過（最近一次跑完的重試之前就存在）仍然失敗 -> 才需要人
-    pending + still_failed == remaining_counts()['total']"""
-    total = remaining_counts()["total"]
-    pending = sum(q.count() for q in _untried_queries(attempt_cutoff()))
-    pending = min(pending, total)
-    return {"pending": pending, "still_failed": total - pending, "total": total}
+    """Split retryable records by their persisted per-scope attempt outcome."""
+    from services.admin_recovery_service import KIND_FAILED, KIND_UNROUTED
+
+    failed_q, zero_q, unrouted_q = _untried_queries()
+    counts = remaining_counts()
+    pending_by_kind = {
+        KIND_FAILED: failed_q.count() + zero_q.count(),
+        KIND_UNROUTED: unrouted_q.count(),
+    }
+    still_failed_by_kind = {
+        KIND_FAILED: max(counts[KIND_FAILED] - pending_by_kind[KIND_FAILED], 0),
+        KIND_UNROUTED: max(counts[KIND_UNROUTED] - pending_by_kind[KIND_UNROUTED], 0),
+    }
+    return {
+        "pending": sum(pending_by_kind.values()),
+        "still_failed": sum(still_failed_by_kind.values()),
+        "pending_by_kind": pending_by_kind,
+        "still_failed_by_kind": still_failed_by_kind,
+        "total": counts[KIND_FAILED] + counts[KIND_UNROUTED],
+    }
 
 
-def _next_item(tried, since=None):
+def _next_item(tried):
     """回傳 (kind, id, scope_key)；沒有了回傳 None。tried 是這次工作已經
-    處理過（成功或真的失敗）的 scope_key 集合。since：排程自動重試只處理
-    這個時間之後才出現的資料（已經自動重試過的不再重試，避免每次排程都白打）。"""
+    處理過（成功或真的失敗）的 scope_key 集合。"""
     from classification_models import Response_Classification, Uploaded_Answer
 
-    failed_q, zero_q, unrouted_q = _untried_queries(since)
+    failed_q, zero_q, unrouted_q = _untried_queries()
     for row in failed_q.order_by(Response_Classification.classification_id.asc()).yield_per(200):
         key = _scope_key(row)
         if key not in tried:
@@ -253,9 +303,7 @@ def run_job(job_id):
 
         next_item, process = second_opinion_service.next_item, second_opinion_service.process
     else:
-        # 排程（系統）自動開始的重試只處理還沒被自動重試過的；Admin 手動按的照舊處理全部
-        since = attempt_cutoff(exclude_job_id=job_id) if admin_id == SYSTEM_ADMIN_ID else None
-        next_item, process = (lambda tried: _next_item(tried, since=since)), _process
+        next_item, process = _next_item, _process
     tried = set()
     transient_tries = {}
     consecutive_quota = 0
@@ -276,6 +324,8 @@ def run_job(job_id):
             outcome, code, message = process(kind, item_id, admin_id)
             job = db.session.get(Bulk_Retry_Job, job_id)
             job.heartbeat_at = taiwan_now()
+            if job.kind == KIND_RETRY:
+                _record_item_attempt(job_id, key, outcome, code)
 
             if outcome == "transient":
                 consecutive_quota += 1
@@ -333,25 +383,40 @@ def _run_in_thread(app, job_id):
 
 
 def start(admin_id, app=None, run_inline=False, kind=KIND_RETRY) -> dict:
-    """開始一個新的背景工作（全部重試或 AI 再確認）。同一種已經有執行中（且沒有中斷）的 -> 409。"""
-    latest = _latest_job(kind)
-    if latest is not None and latest.status == BULK_RETRY_RUNNING:
-        if not _is_stale(latest):
-            raise BulkRetryError("BULK_RETRY_RUNNING", "已經有一個全部重試正在執行中", 409, job_view(latest))
-        _finish(latest, BULK_RETRY_FAILED, "執行中的 worker 已經重啟，工作中斷（已處理好的資料不受影響）")
+    """Create one retry job, serializing the active-job check across MySQL workers."""
+    acquired = False
+    lock_name = f"bulk_retry_start_{kind}"
+    if db.session.get_bind().dialect.name == "mysql":
+        acquired = db.session.execute(
+            text("SELECT GET_LOCK(:lock_name, 0)"), {"lock_name": lock_name},
+        ).scalar() == 1
+        if not acquired:
+            raise BulkRetryError("BULK_RETRY_RUNNING", "已經有一個背景工作正在啟動", 409)
 
-    remaining = _remaining(kind)
-    if remaining["total"] == 0:
-        raise BulkRetryError("NOTHING_TO_RETRY", "目前沒有需要處理的資料", 409)
+    try:
+        latest = _latest_job(kind)
+        if latest is not None and latest.status == BULK_RETRY_RUNNING:
+            if not _is_stale(latest):
+                raise BulkRetryError("BULK_RETRY_RUNNING", "已經有一個全部重試正在執行中", 409, job_view(latest))
+            _finish(latest, BULK_RETRY_FAILED, "執行中的 worker 已經重啟，工作中斷（已處理好的資料不受影響）")
 
-    now = taiwan_now()
-    job = Bulk_Retry_Job(
-        kind=kind, status=BULK_RETRY_RUNNING, started_by_admin_id=admin_id, total_at_start=remaining["total"],
-        started_at=now, heartbeat_at=now,
-    )
-    db.session.add(job)
-    db.session.commit()
-    job_id = job.job_id
+        remaining = _remaining(kind)
+        if remaining["total"] == 0:
+            raise BulkRetryError("NOTHING_TO_RETRY", "目前沒有需要處理的資料", 409)
+
+        now = taiwan_now()
+        job = Bulk_Retry_Job(
+            kind=kind, status=BULK_RETRY_RUNNING, started_by_admin_id=admin_id, total_at_start=remaining["total"],
+            started_at=now, heartbeat_at=now,
+        )
+        db.session.add(job)
+        db.session.commit()
+        job_id = job.job_id
+    finally:
+        if acquired:
+            db.session.rollback()
+            db.session.execute(text("SELECT RELEASE_LOCK(:lock_name)"), {"lock_name": lock_name})
+            db.session.commit()
 
     if run_inline:
         run_job(job_id)

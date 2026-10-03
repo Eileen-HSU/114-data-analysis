@@ -110,6 +110,9 @@ check("暫停時沒有把這筆算成失敗或成功", job["processed"] == 0 and
 check("前 4 次額度用完各等待 60 秒，第 5 次直接暫停不再等", sleeps.count(60) == 4)
 check("暫停的說明告訴管理員之後再按一次", "再按一次" in (job["last_error"] or ""))
 check("資料維持原樣、還在失敗清單", failed_count() == 1)
+with app.app_context():
+    split = brs.retry_split()
+check("quota 暫時錯誤留在自動重試彙總，不進 still_failed", split["pending"] == 1 and split["still_failed"] == 0)
 clear_failed()
 
 
@@ -135,6 +138,10 @@ brs._process = original_process
 check("每筆只試一次（2 則回答、2 次呼叫），然後結束", len(calls) == 2 and job["status"] == "completed")
 check("跳過 1、失敗 1", job["skipped"] == 1 and job["still_failed"] == 1 and job["processed"] == 2)
 check("失敗原因記在 last_error", job["last_error"] == "格式錯誤")
+with app.app_context():
+    split = brs.retry_split()
+check("逐筆結果記錄兩筆人工待處理結果，不依 job cutoff 推測",
+      split["pending"] == 0 and split["still_failed"] == 2)
 clear_failed()
 
 

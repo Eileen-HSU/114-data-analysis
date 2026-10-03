@@ -7,7 +7,7 @@ DELETE /api/admin/ai/topics/<topic_key>/taxonomy/<version_id>）。
 涵蓋：
     1. draft 成功刪除
     2. 刪除後底下的 Taxonomy_Category 全部消失（cascade）
-    3. Topic 本身保留
+    3. 一般 Topic 本身保留；最後一版空 Auto Topic 一併刪除
     4. published -> 409
     5. archived -> 409
     6. in_review -> 409（比既有 _require_editable_version 更嚴格）
@@ -168,7 +168,7 @@ with app.app_context():
 
 resp_delete_ok = delete_version("topic_delete_test", draft_id)
 check("draft 成功刪除，回 200", resp_delete_ok.status_code == 200)
-check("回應內容為 {deleted: true}", resp_delete_ok.get_json() == {"deleted": True})
+check("回應包含版本刪除且保留一般 Topic", resp_delete_ok.get_json() == {"deleted": True, "topic_deleted": False})
 
 with app.app_context():
     check("該 Taxonomy_Version 已被刪除", m.Taxonomy_Version.query.get(draft_id) is None)
@@ -179,6 +179,21 @@ with app.app_context():
     check("同一 topic 的 in_review 版本不受影響", m.Taxonomy_Version.query.get(in_review_id).status == "in_review")
     check("同一 topic 的 published 版本的 category 不受影響", m.Taxonomy_Category.query.filter_by(version_id=published_id).count() == 1)
     check("version_number 沒有 renumber（published 仍是 2）", m.Taxonomy_Version.query.get(published_id).version_number == 2)
+
+print("\n========== 最後一個 Auto Topic 草稿刪除後清理空 Topic ==========")
+
+with app.app_context():
+    db.session.add(m.Topic(topic_key="auto_empty_topic", title="空的自動主題"))
+    db.session.commit()
+    empty_draft_id = make_version("auto_empty_topic", "draft", 1)
+
+resp_empty_auto = delete_version("auto_empty_topic", empty_draft_id)
+check("最後一個 Auto Topic 草稿刪除成功", resp_empty_auto.status_code == 200)
+check("回應表示 Topic 已一併刪除", resp_empty_auto.get_json() == {"deleted": True, "topic_deleted": True})
+with app.app_context():
+    check("空 Auto Topic 與最後一個版本均已刪除",
+          m.Topic.query.get("auto_empty_topic") is None
+          and m.Taxonomy_Version.query.filter_by(topic_key="auto_empty_topic").count() == 0)
 
 
 print("\n" + "=" * 50)

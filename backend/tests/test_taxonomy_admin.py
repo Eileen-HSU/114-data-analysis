@@ -159,6 +159,9 @@ check(
     topics_by_key["topic_published"]["published_version"]["version_id"] == topic_published_v1_id,
 )
 check("topic_draft_only 沒有 published_version", topics_by_key["topic_draft_only"]["published_version"] is None)
+search_resp = api("get", "/api/admin/ai/taxonomy-topics?q=還沒有", headers=AUTH)
+check("Topic server-side 搜尋只回傳符合標題的主題",
+      [t["topic_key"] for t in search_resp.get_json()["topics"]] == ["topic_empty"])
 
 
 print("\n========== 測試 2：taxonomy version detail ==========")
