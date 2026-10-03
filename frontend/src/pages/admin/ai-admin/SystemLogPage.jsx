@@ -1,6 +1,8 @@
 import { useTextPrompt } from "./shared/TextPromptDialog";
+import { BackgroundJobsPanel } from "./shared/BackgroundJobs";
+import { AdminPageHeader, AdminTabs } from "./shared/AdminLayout";
 import { useEffect, useRef, useState } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useNavigate, useSearchParams } from "react-router-dom";
 import Navbar from "../../../components/feature/Navbar";
 import { useAuth } from "../../../hooks/AuthContext";
 import { api } from "./shared/apiClient";
@@ -13,9 +15,10 @@ import "../ai-admin.css";
 // 後端：GET /api/admin/ai/system/status、/system/errors、/audit-logs（見 services/error_log_service.py、
 // services/system_monitor_service.py）。
 const PAGE_SIZE = 30;
-const TABS = ["status", "errors", "audit"];
+const TABS = ["status", "jobs", "errors", "audit"];
 const tabLabel = (tab) => ({
   status: t("系統狀態", "System status"),
+  jobs: t("背景工作", "Background jobs"),
   errors: t("錯誤紀錄", "Error log"),
   audit: t("操作紀錄", "Activity log"),
 }[tab]);
@@ -75,29 +78,22 @@ export default function SystemLogPage() {
   const { user, isLoggedIn } = useAuth();
   const token = user?.token;
   const canAccess = isLoggedIn && user?.account_type === "admin";
-  const [tab, setTab] = useState("status");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTab] = useState(() => (TABS.includes(searchParams.get("view")) ? searchParams.get("view") : "status"));
 
   if (!canAccess) return <><Navbar /><main className="ai-admin-empty"><h1>{t("僅管理者可存取 AI 管理介面", "AI admin access restricted to administrators")}</h1><button onClick={() => navigate("/workspace")}>{t("回到分析助理", "Back to Analysis Assistant")}</button></main></>;
 
-  return <><Navbar /><main className="ai-admin-page">
-    <NavLink to="/admin/ai" className="back">← {t("AI 分類管理", "AI administration")}</NavLink>
-    <header>
-      <h1>{t("系統紀錄", "System logs")}</h1>
-      <p><small>{t("系統各部分是否正常、發生過的錯誤，以及所有管理操作的紀錄。",
-        "Whether each part of the system is healthy, errors that occurred, and every admin action.")}</small></p>
-    </header>
-    <div className="review-tabs" role="tablist">
-      {TABS.map((key) => (
-        <button key={key} role="tab" aria-selected={tab === key}
-          className={`review-tab${tab === key ? " review-tab--active" : ""}`} onClick={() => setTab(key)}>
-          {tabLabel(key)}
-        </button>
-      ))}
-    </div>
+  return <><div className="admin-page">
+    <AdminPageHeader title={t("系統管理", "System")}
+      description={t("系統狀態（資料庫、排程、分類架構初始化）、背景工作、錯誤紀錄與操作紀錄。",
+        "System status (database, scheduler, taxonomy bootstrap), background jobs, errors and the activity log.")} />
+    <AdminTabs tabs={TABS.map((key) => ({ key, label: tabLabel(key) }))} value={tab}
+      onChange={(key) => { setTab(key); setSearchParams(key === "status" ? {} : { view: key }, { replace: true }); }} />
+    {tab === "jobs" && <BackgroundJobsPanel token={token} onError={() => {}} />}
     {tab === "status" && <StatusTab token={token} onShowErrors={() => setTab("errors")} />}
     {tab === "errors" && <ErrorsTab token={token} navigate={navigate} />}
     {tab === "audit" && <AuditTab token={token} />}
-  </main></>;
+  </div></>;
 }
 
 
@@ -160,8 +156,8 @@ function StatusTab({ token, onShowErrors }) {
           {status.errors.open > 0 && <> <button className="link-button" onClick={onShowErrors}>{t("查看錯誤紀錄", "View errors")}</button></>}
         </StatusRow>
       </ul>
-      <p><small>{jobText(status.background_jobs.retry, t("全部重試", "retry"))}<br />
-        {jobText(status.background_jobs.second_opinion, t("AI 再確認", "AI re-check"))}</small></p>
+      <p><small>{jobText(status.background_jobs?.retry, t("全部重試", "retry"))}<br />
+        {jobText(status.background_jobs?.second_opinion, t("AI 再確認", "AI re-check"))}</small></p>
       <p><small>{t(`檢查時間：${formatTime(status.checked_at)}`, `Checked at ${formatTime(status.checked_at)}`)}</small>{" "}
         <button className="link-button" onClick={load}>{t("重新檢查", "Check again")}</button></p>
     </section>

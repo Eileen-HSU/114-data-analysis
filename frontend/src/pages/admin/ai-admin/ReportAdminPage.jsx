@@ -103,8 +103,7 @@ export default function ReportAdminPage() {
 
   const totalPages = Math.max(Math.ceil((data.total || 0) / PAGE_SIZE), 1);
 
-  return <><Navbar /><main className="ai-admin-page">
-    <NavLink to="/admin/ai" className="back">← {t("所有主題", "All topics")}</NavLink>
+  return <><div className="admin-page">
     <h1>{t("報告管理", "Report Management")}</h1>
     <p><small>{t("報告是產生當下的快照；人工審核、重新分類或 分類架構發布後，舊報告會被標記為需要重新產生。",
       "Reports are snapshots. Review changes, re-classification or taxonomy publishing mark older reports as outdated.")}</small></p>
@@ -189,5 +188,5 @@ export default function ReportAdminPage() {
         <button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>{t("下一頁", "Next")}</button>
       </div>
     )}
-  </main></>;
+  </div></>;
 }

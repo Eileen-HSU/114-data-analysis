@@ -120,8 +120,7 @@ export default function NewCategoryPage() {
     return <><Navbar /><main className="ai-admin-empty"><h1>{t("僅管理者可存取 AI 管理介面", "AI admin access restricted to administrators")}</h1><button onClick={() => navigate("/workspace")}>{t("回到分析助理", "Back to Analysis Assistant")}</button></main></>;
   }
 
-  return <>{promptDialog}<Navbar /><main className="ai-admin-page">
-    <NavLink to="/admin/ai" className="back">← {t("所有主題", "All topics")}</NavLink>
+  return <>{promptDialog}<div className="admin-page">
     <h1>{t("新類別候選", "New Category Candidates")}</h1>
     <p><small>{t("AI 分類時遇到現有分類都不適合的內容，會提出新類別。採用會把它加入分類架構並立刻發布，這些回答一起確認；如果其實就是某個既有類別，請用合併。",
       "When no existing category fits, the AI proposes a new one. Adopting adds it to the taxonomy, publishes it and confirms these answers in one step. If it's really an existing category, merge it instead.")}</small></p>
@@ -170,5 +169,5 @@ export default function NewCategoryPage() {
         </article>
       );
     })}
-  </main></>;
+  </div></>;
 }

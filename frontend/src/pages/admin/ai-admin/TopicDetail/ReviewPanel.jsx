@@ -3,8 +3,10 @@ import { useParams, useSearchParams } from "react-router-dom";
 import ClassificationList from "../shared/ClassificationList";
 import ReviewConversation from "./ReviewConversation";
 
-export default function ReviewPanel() {
-  const { topicKey } = useParams();
+export default function ReviewPanel({ topic }) {
+  // 分類審查頁傳入 topic（篩選條件，空字串代表全部主題）；舊的主題內路由沿用網址參數
+  const params = useParams();
+  const topicKey = topic !== undefined ? (topic || undefined) : params.topicKey;
   // 從首頁連過來時可以指定初始分頁，例如 ?state=confirmed&source=auto（抽查自動通過）
   // 或 ?state=pending_review&flagged=1（只看需要人工判斷的）。
   const [searchParams] = useSearchParams();

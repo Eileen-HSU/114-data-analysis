@@ -1,3 +1,4 @@
+import { Navigate } from "react-router-dom";
 import HomePage from "../pages/home/page.jsx";
 import LoginPage from "../pages/auth/LoginPage.jsx";
 import SignUpPage from "../pages/auth/SignUpPage.jsx";
@@ -16,11 +17,12 @@ import TrashPage from "../pages/trash/TrashPage.jsx";
 import AiAdminPage from "../pages/admin/AiAdminPage.jsx";
 import TopicDetailLayout from "../pages/admin/ai-admin/TopicDetail/TopicDetailLayout.jsx";
 import TaxonomyPanel from "../pages/admin/ai-admin/TopicDetail/TaxonomyPanel.jsx";
-import ReviewPanel from "../pages/admin/ai-admin/TopicDetail/ReviewPanel.jsx";
+import { TopicReviewRedirect } from "../pages/admin/ai-admin/TopicDetail/TopicDetailLayout.jsx";
 import SandboxPanel from "../pages/admin/ai-admin/TopicDetail/SandboxPanel.jsx";
-import UnassignedReviewPage from "../pages/admin/ai-admin/UnassignedReviewPage.jsx";
 import ReportAdminPage from "../pages/admin/ai-admin/ReportAdminPage.jsx";
-import NewCategoryPage from "../pages/admin/ai-admin/NewCategoryPage.jsx";
+import AdminLayout from "../pages/admin/ai-admin/shared/AdminLayout.jsx";
+import ReviewHubPage from "../pages/admin/ai-admin/ReviewHubPage.jsx";
+import TaxonomyHubPage from "../pages/admin/ai-admin/TaxonomyHubPage.jsx";
 import SystemLogPage from "../pages/admin/ai-admin/SystemLogPage.jsx";
 
 import SharedWorkspacePage from "../pages/workspace/SharedWorkspacePage.jsx";
@@ -45,18 +47,28 @@ const routes = [
   { path: "/survey/fill/:code", element: <FillSurveyPage /> },
   { path: "/s/:code", element: <FillSurveyPage /> },
   { path: "/trash", element: <TrashPage /> },
-  { path: "/admin/ai", element: <AiAdminPage /> },
-  { path: "/admin/ai/unassigned", element: <UnassignedReviewPage /> },
-  { path: "/admin/ai/reports", element: <ReportAdminPage /> },
-  { path: "/admin/ai/new-categories", element: <NewCategoryPage /> },
-  { path: "/admin/ai/system", element: <SystemLogPage /> },
+  // Admin：固定左側導覽（總覽／分類審查／分類架構／報告管理／系統管理）
   {
-    path: "/admin/ai/topics/:topicKey",
-    element: <TopicDetailLayout />,
+    path: "/admin/ai",
+    element: <AdminLayout />,
     children: [
-      { index: true, element: <TaxonomyPanel /> },
-      { path: "review", element: <ReviewPanel /> },
-      { path: "sandbox", element: <SandboxPanel /> },
+      { index: true, element: <AiAdminPage /> },
+      { path: "review", element: <ReviewHubPage /> },
+      { path: "taxonomy", element: <TaxonomyHubPage /> },
+      { path: "reports", element: <ReportAdminPage /> },
+      { path: "system", element: <SystemLogPage /> },
+      // 舊網址
+      { path: "unassigned", element: <Navigate to="/admin/ai/review?view=unassigned" replace /> },
+      { path: "new-categories", element: <Navigate to="/admin/ai/taxonomy?view=candidates" replace /> },
+      {
+        path: "topics/:topicKey",
+        element: <TopicDetailLayout />,
+        children: [
+          { index: true, element: <TaxonomyPanel /> },
+          { path: "sandbox", element: <SandboxPanel /> },
+          { path: "review", element: <TopicReviewRedirect /> },
+        ],
+      },
     ],
   },
   { path: "/:code", element: <FillSurveyPage /> },

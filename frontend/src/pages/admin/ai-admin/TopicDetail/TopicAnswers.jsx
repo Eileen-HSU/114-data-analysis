@@ -63,7 +63,7 @@ export function CategoryAnswers({ topicKey, token, group }) {
     <details className="topic-answers">
       <summary>{t(`這一類的回答（${group.count} 則，唯讀）`, `Answers in this category (${group.count}, read-only)`)}</summary>
       <p><small>{t("這裡只供參考。要修改某筆回答的分類，請到", "For reference only. To change an answer's category, use")}{" "}
-        <NavLink to={`/admin/ai/topics/${topicKey}/review`}>{t("分類審核", "Review")}</NavLink>{t("。", ".")}</small></p>
+        <NavLink to={`/admin/ai/review?topic=${encodeURIComponent(topicKey)}`}>{t("分類審核", "Review")}</NavLink>{t("。", ".")}</small></p>
       <ul>{items.map((item) => <AnswerItem key={item.classification_id} item={item} />)}</ul>
       {error && <p className="ai-admin-error">{error}</p>}
       {!all && group.count > group.items.length && (

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink, Outlet, useParams, useNavigate } from "react-router-dom";
+import { Navigate, NavLink, Outlet, useParams, useNavigate } from "react-router-dom";
 import Navbar from "../../../../components/feature/Navbar";
 import { useAuth } from "../../../../hooks/AuthContext";
 import { api, peekCache } from "../shared/apiClient";
@@ -27,20 +27,31 @@ export default function TopicDetailLayout() {
     return <><Navbar /><main className="ai-admin-empty"><h1>{t("僅管理者可存取 AI 管理介面", "AI admin access restricted to administrators")}</h1><button onClick={() => navigate("/workspace")}>{t("回到分析助理", "Back to Analysis Assistant")}</button></main></>;
   }
 
-  return <><Navbar /><main className="ai-admin-page topic-detail-layout">
-    <NavLink to="/admin/ai" className="back">← {t("AI 管理首頁", "AI admin home")}</NavLink>
+  return <><div className="admin-page">
+    <p className="admin-breadcrumb">
+      <NavLink to="/admin/ai/taxonomy">{t("分類架構", "Taxonomy")}</NavLink> <span aria-hidden="true">/</span>
+    </p>
     <div className="topic-detail-header">
       <h1>{topic ? topic.title : <span className="admin-skeleton-line" aria-label={t("載入中", "Loading")} />}</h1>
       {topic?.is_auto_topic && <span className="topic-tag">{t("AI 自動主題", "Auto topic")}</span>}
       {topic?.published_version
         ? <span className="topic-tag">{t(`使用中 v${topic.published_version.version_number}`, `Live v${topic.published_version.version_number}`)}</span>
         : topic && <span className="topic-tag topic-tag--draft">{t("尚未發布", "Not published")}</span>}
+      <NavLink className="admin-link-button" to={`/admin/ai/review?topic=${encodeURIComponent(topicKey)}`}>
+        {t("審查這個主題的分類 →", "Review this topic →")}
+      </NavLink>
     </div>
     <nav className="topic-detail-tabs">
       <NavLink to={`/admin/ai/topics/${topicKey}`} end>{t("分類架構", "Taxonomy")}</NavLink>
-      <NavLink to={`/admin/ai/topics/${topicKey}/review`}>{t("分類審核", "Review")}</NavLink>
-      <NavLink to={`/admin/ai/topics/${topicKey}/sandbox`}>{t("沙盒測試", "Sandbox")}</NavLink>
+      <NavLink to={`/admin/ai/topics/${topicKey}/sandbox`}>{t("沙盒測試", "Sandbox / Test")}</NavLink>
     </nav>
     <Outlet />
-  </main></>;
+  </div></>;
 }
+
+// 舊網址 /admin/ai/topics/:topicKey/review -> 分類審查（以主題篩選）
+export function TopicReviewRedirect() {
+  const { topicKey } = useParams();
+  return <Navigate to={`/admin/ai/review?topic=${encodeURIComponent(topicKey)}`} replace />;
+}
+

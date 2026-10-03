@@ -133,8 +133,7 @@ export default function UnassignedReviewPage() {
 
   const totalPages = Math.max(Math.ceil((data.total || 0) / PAGE_SIZE), 1);
 
-  return <><Navbar /><main className="ai-admin-page">
-    <NavLink to="/admin/ai" className="back">← {t("所有主題", "All topics")}</NavLink>
+  return <><div className="admin-page">
     <h1>{t("其他 / 未歸屬資料", "Other / Unassigned Data")}</h1>
     <p><small>{t("系統判斷不出主題、主題沒有可用分類架構、分類失敗，以及舊版「其他」資料都會出現在這裡。可以指派主題、重新判斷主題或重新處理。",
       "Answers without a topic, topics without a usable taxonomy, failed classifications and legacy \"other\" data. Assign a topic, re-route or reprocess.")}</small></p>
@@ -188,7 +187,7 @@ export default function UnassignedReviewPage() {
         ))}
       </section>
     )}
-  </main></>;
+  </div></>;
 }
 
 function UnassignedCard({ item, topics, busy, error, onDismissError, onAssign, onReroute, onReclassify, onDetail }) {

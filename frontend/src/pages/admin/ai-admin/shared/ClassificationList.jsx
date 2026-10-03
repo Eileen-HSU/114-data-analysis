@@ -362,7 +362,7 @@ export default function ClassificationList({
           onViewHistory={onOpenReview ? () => onOpenReview(row.classification_id, "view") : null}
           onReopen={() => reopen(row)}
           onRetry={() => retry(row)}
-          onOpenNewCategories={() => navigate("/admin/ai/new-categories")}
+          onOpenNewCategories={() => navigate("/admin/ai/taxonomy?view=candidates")}
           onAdoptSecondOpinion={() => adoptSecondOpinion(row)}
         />
       ))}

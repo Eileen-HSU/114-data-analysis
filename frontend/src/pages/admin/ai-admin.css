@@ -647,3 +647,87 @@ details.topic-answers[open] > summary { margin-bottom: 8px; }
 .tax-more[open] > summary { margin-bottom: 8px; }
 .tax-field-grid > details.tax-more, .tax-field-grid > .tax-field:has(textarea) { grid-column: 1 / -1; }
 details.tax-more .tax-field { display: block; margin-bottom: 10px; }
+
+/* ═══════════════════════════════════════════════════════════════
+   Admin 外框：固定左側導覽 + 黑白灰
+   只作用在 .admin-shell 底下，不影響網站其他頁面。
+   ═══════════════════════════════════════════════════════════════ */
+.admin-shell { --ink: #111827; --ink-2: #374151; --muted: #6b7280; --line: #e5e7eb; --soft: #f9fafb; --alert: #b91c1c;
+  display: flex; min-height: 100vh; padding-top: 88px; box-sizing: border-box; background: #fff; color: var(--ink-2); }
+.admin-sidebar { position: fixed; top: 88px; bottom: 0; left: 0; width: 220px; box-sizing: border-box; padding: 24px 14px;
+  border-right: 1px solid var(--line); background: var(--soft); overflow-y: auto; }
+.admin-sidebar-title { margin: 0 10px 14px; font-size: 12px; font-weight: 700; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; }
+.admin-sidebar nav { display: flex; flex-direction: column; gap: 2px; }
+.admin-nav-link { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; color: var(--ink-2); text-decoration: none; font-weight: 600; }
+.admin-nav-link i { font-size: 18px; color: var(--muted); }
+.admin-nav-link:hover { background: #f3f4f6; }
+.admin-nav-link--active { background: var(--ink); color: #fff; }
+.admin-nav-link--active i { color: #fff; }
+.admin-shell .admin-main { margin: 0 0 0 220px; padding: 32px 40px 64px; max-width: 1080px; width: 100%; box-sizing: border-box; }
+
+.admin-page-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 20px; }
+.admin-page-header h1, .admin-shell .admin-page > h1 { margin: 0 0 6px; font-size: 26px; color: var(--ink); }
+.admin-page-header p { margin: 0; color: var(--muted); max-width: 70ch; line-height: 1.6; }
+.admin-page-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.admin-hub .admin-page > h1 { display: none; }   /* 嵌在分頁裡的頁面不重複顯示標題 */
+.admin-breadcrumb { margin: 0 0 6px; color: var(--muted); font-size: 14px; }
+.admin-breadcrumb a { color: var(--muted); }
+.admin-link-button { margin-left: auto; font-size: 14px; color: var(--ink); font-weight: 600; }
+.admin-muted { color: var(--muted); font-size: 14px; }
+
+.admin-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 0 0 20px; }
+.admin-tab { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 10px 14px; color: var(--muted); font-weight: 600; }
+.admin-tab--active { color: var(--ink); border-bottom-color: var(--ink); }
+.admin-tab-count { margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: #f3f4f6; color: var(--ink-2); font-size: 12px; }
+
+.admin-summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.admin-summary-card { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left; padding: 18px; border: 1px solid var(--line);
+  border-radius: 12px; background: #fff; color: var(--ink-2); font-weight: 400; cursor: pointer; transition: border-color .15s; }
+.admin-summary-card:hover { border-color: var(--ink); }
+.admin-summary-title { font-size: 14px; font-weight: 600; color: var(--muted); }
+.admin-summary-value { font-size: 34px; font-weight: 700; line-height: 1.1; color: var(--ink); font-variant-numeric: tabular-nums; }
+.admin-summary-text { font-size: 14px; color: var(--muted); line-height: 1.5; }
+.admin-summary-action { margin-top: auto; padding-top: 6px; font-size: 14px; font-weight: 600; color: var(--ink); }
+.admin-summary-card--alert { border-left: 3px solid var(--alert); }
+.admin-summary-card--warn { border-left: 3px solid var(--ink); }
+
+.admin-filter-bar { display: flex; gap: 12px; align-items: flex-end; margin: 0 0 16px; }
+.admin-filter-bar label { margin: 0; font-weight: 600; font-size: 14px; }
+.admin-filter-bar label span { display: block; margin-bottom: 4px; color: var(--muted); }
+.admin-section-block { margin: 0 0 28px; }
+.admin-section-block > h2, .admin-section-block > summary { font-size: 16px; font-weight: 700; color: var(--ink); margin: 0 0 10px; cursor: default; }
+details.admin-section-block > summary { cursor: pointer; }
+.admin-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 12px; }
+.admin-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.admin-row:last-child { border-bottom: 0; }
+.admin-row-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.admin-row-main b { color: var(--ink); font-weight: 600; }
+.admin-panel { border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin-bottom: 16px; }
+.admin-panel h3 { margin: 0 0 6px; color: var(--ink); }
+.admin-stack { display: flex; flex-direction: column; gap: 4px; }
+.admin-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+/* 既有元件在 Admin 外框裡改成黑白灰 */
+.admin-shell button.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+.admin-shell .review-btn-primary { background: var(--ink) !important; border-color: var(--ink) !important; color: #fff !important; }
+.admin-shell .review-btn-danger { background: #fff !important; border-color: var(--line) !important; color: var(--alert) !important; }
+.admin-shell .review-tab--active { color: var(--ink); border-bottom-color: var(--ink); }
+.admin-shell .review-tab--active .review-tab-count { background: #f3f4f6; color: var(--ink); }
+.admin-shell .topic-detail-tabs a.active { color: var(--ink); border-bottom-color: var(--ink); }
+.admin-shell .topic-tag { background: #f3f4f6; color: var(--ink-2); }
+.admin-shell .topic-card, .admin-shell .admin-card, .admin-shell .review-card { box-shadow: none; border-color: var(--line); }
+.admin-shell a { color: var(--ink); }
+.admin-shell .admin-nav-link { color: var(--ink-2); }
+.admin-shell .admin-nav-link--active, .admin-shell .admin-nav-link--active i { color: #fff; }
+.admin-shell .admin-bulk-status, .admin-shell .admin-todo-card--judge .admin-bulk-status { background: var(--soft); color: var(--ink-2); }
+.admin-shell .admin-bulk-bar, .admin-shell .admin-todo-card--judge .admin-bulk-bar { background: var(--line); }
+.admin-shell .admin-bulk-bar span, .admin-shell .admin-todo-card--judge .admin-bulk-bar span { background: var(--ink); }
+
+@media (max-width: 860px) {
+  .admin-sidebar { position: static; width: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 10px; }
+  .admin-sidebar-title { display: none; }
+  .admin-sidebar nav { flex-direction: row; overflow-x: auto; }
+  .admin-nav-link { white-space: nowrap; }
+  .admin-shell { flex-direction: column; }
+  .admin-shell .admin-main { margin-left: 0; padding: 20px 16px 48px; }
+}
