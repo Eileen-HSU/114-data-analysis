@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../../hooks/AuthContext";
 import { api, peekCache, prefetch } from "./shared/apiClient";
@@ -28,12 +28,32 @@ export default function TaxonomyHubPage() {
   const [overview, setOverview] = useState(() => peekCache(OVERVIEW_URL) || null);
   const [showCreate, setShowCreate] = useState(false);
   const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const searchSeq = useRef(0);
 
   useEffect(() => {
-    api(TOPICS_URL, token).then((d) => setTopics(d.topics || [])).catch((e) => setError(e.message));
     api(OVERVIEW_URL, token).then(setOverview).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSearchQuery(search.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    const seq = ++searchSeq.current;
+    const path = searchQuery ? `${TOPICS_URL}?q=${encodeURIComponent(searchQuery)}` : TOPICS_URL;
+    api(path, token)
+      .then((result) => {
+        if (seq === searchSeq.current) {
+          setTopics(result.topics || []);
+          setError("");
+        }
+      })
+      .catch((e) => { if (seq === searchSeq.current) setError(e.message); });
+  }, [searchQuery, token]);
 
   const counts = (key) => overview?.topics?.[key] || {};
   // 只算需要人工逐筆處理的；系統自動處理中的、新類別（另有群組數）不算
@@ -63,7 +83,11 @@ export default function TaxonomyHubPage() {
             && t(` · 新類別 ${counts(topic.topic_key).new_category_groups} 組`, ` · ${counts(topic.topic_key).new_category_groups} new categories`)}
         </span>
       </div>
-      <button onClick={() => navigate(`/admin/ai/topics/${topic.topic_key}`)}>{t("管理", "Manage")}</button>
+      <button onClick={() => navigate(`/admin/ai/topics/${topic.topic_key}`)}>
+        {topic.is_auto_topic
+          ? t("決定去向", "Decide destination")
+          : t("管理分類架構", "Manage taxonomy")}
+      </button>
     </li>
   );
 
@@ -79,6 +103,13 @@ export default function TaxonomyHubPage() {
     {error && <p className="ai-admin-error">{error}<button onClick={() => setError("")}>×</button></p>}
 
     {view === "candidates" ? <NewCategoryPage /> : !topics ? <SkeletonCards count={3} /> : <>
+      <div className="admin-filter-bar">
+        <label>
+          <span>{t("搜尋主題", "Search topics")}</span>
+          <input type="search" value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder={t("輸入主題名稱或代碼", "Name or topic key")} />
+        </label>
+      </div>
       {showCreate && (
         <section className="admin-panel">
           <CreateTopicSection token={token} onCreated={(key) => navigate(`/admin/ai/topics/${key}`)} />
@@ -86,14 +117,15 @@ export default function TaxonomyHubPage() {
       )}
       <section className="admin-section-block">
         <h2>{t(`正式主題（${official.length}）`, `Official topics (${official.length})`)}</h2>
+        <p className="admin-muted">{t("已採用、目前可供分類使用的主題。", "Adopted topics currently available for classification.")}</p>
         {official.length ? <ul className="admin-list">{official.map(row)}</ul>
           : <p className="admin-muted">{t("還沒有正式主題。", "No official topics yet.")}</p>}
       </section>
       {auto.length > 0 && (
         <section className="admin-section-block">
           <h2>{t(`AI 自動主題（${auto.length}）`, `Auto topics (${auto.length})`)}</h2>
-          <p className="admin-muted">{t("題目不屬於任何正式主題時 AI 暫時建立的主題。可以在主題頁併入正式主題，或發布成正式主題。",
-            "Created when a question fits no official topic. Merge into an official topic or publish it from the topic page.")}</p>
+          <p className="admin-muted">{t("AI 暫時建立、尚未正式採用的主題。請決定併入既有正式主題，或保留並完成分類架構。",
+            "Temporary AI-created topics that have not been adopted. Decide whether to merge into an official topic or keep and complete the taxonomy.")}</p>
           <ul className="admin-list">{auto.map(row)}</ul>
         </section>
       )}

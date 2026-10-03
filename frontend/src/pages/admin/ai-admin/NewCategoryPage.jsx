@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useTextPrompt } from "./shared/TextPromptDialog";
 import Navbar from "../../../components/feature/Navbar";
 import { useAuth } from "../../../hooks/AuthContext";
@@ -30,6 +30,7 @@ export default function NewCategoryPage() {
   const [topicTargets, setTopicTargets] = useState({});
   const [topicBusy, setTopicBusy] = useState({});
   const [batchMessage, setBatchMessage] = useState("");
+  const [actionNotice, setActionNotice] = useState(null);
   const requestSeq = useRef(0);
 
   const load = async ({ silent = false } = {}) => {
@@ -39,8 +40,10 @@ export default function NewCategoryPage() {
       setError("");
       const result = await api("/api/admin/ai/new-categories", token);
       if (seq === requestSeq.current) setData(result);
+      return result;
     } catch (e) {
       if (seq === requestSeq.current) setError(errorMessage(e));
+      return null;
     } finally {
       if (seq === requestSeq.current) setLoading(false);
     }
@@ -78,11 +81,21 @@ export default function NewCategoryPage() {
 
   const run = async (item, fn, okText) => {
     const key = keyOf(item);
+    setActionNotice(null);
     setRowState((p) => ({ ...p, [key]: { ...(p[key] || {}), busy: true, message: null } }));
     try {
       const result = await fn();
-      setRowState((p) => ({ ...p, [key]: { ...(p[key] || {}), busy: false, message: { ok: true, text: okText(result) } } }));
-      await load({ silent: true });
+      const notice = okText(result);
+      const message = typeof notice === "string" ? { text: notice } : notice;
+      setRowState((p) => ({ ...p, [key]: { ...(p[key] || {}), busy: false, message: { ok: true, text: message.text } } }));
+      const refreshed = await load({ silent: true });
+      const topicComplete = Boolean(refreshed) && !refreshed.items.some((candidate) => candidate.topic_key === item.topic_key);
+      setActionNotice({
+        ...message,
+        text: topicComplete
+          ? `${message.text} ${t("此主題的新類別已全部處理完成。", "All new category candidates for this topic are handled.")}`
+          : message.text,
+      });
     } catch (e) {
       setRowState((p) => ({ ...p, [key]: { ...(p[key] || {}), busy: false, message: { ok: false, text: errorMessage(e) } } }));
     }
@@ -107,18 +120,23 @@ export default function NewCategoryPage() {
     }), (r) => {
       if (!r.published) {
         // 主題還沒有已發布的分類架構（AI 自動建立的主題）：後端只加進草稿
-        return t(
-          `這個主題還沒有已發布的分類架構，已先加入草稿 v${r.taxonomy_version.version_number}，回答維持待處理。`,
-          `This topic has no published taxonomy yet, so it was added to draft v${r.taxonomy_version.version_number} and the answers stay pending.`,
-        );
+        return {
+          text: t(
+            `這個主題還沒有已發布的分類架構，已先加入草稿 v${r.taxonomy_version.version_number}，回答維持待處理。`,
+            `This topic has no published taxonomy yet, so it was added to draft v${r.taxonomy_version.version_number} and the answers stay pending.`,
+          ),
+          to: `/admin/ai/topics/${encodeURIComponent(item.topic_key)}`,
+        };
       }
       const skipped = r.skipped?.length
         ? t(`，${r.skipped.length} 筆未確認（${r.skipped[0].message}）`, `; ${r.skipped.length} not confirmed (${r.skipped[0].message})`)
         : "";
-      return t(
-        `已加入並發布 v${r.taxonomy_version.version_number}，${r.confirmed_count} 筆回答已確認${skipped}。`,
-        `Added and published v${r.taxonomy_version.version_number}; ${r.confirmed_count} answers confirmed${skipped}.`,
-      );
+      return {
+        text: t(
+          `已加入並發布 v${r.taxonomy_version.version_number}，${r.confirmed_count} 筆回答已確認${skipped}。`,
+          `Added and published v${r.taxonomy_version.version_number}; ${r.confirmed_count} answers confirmed${skipped}.`,
+        ),
+      };
     });
   };
 
@@ -162,11 +180,14 @@ export default function NewCategoryPage() {
     setSelected((state) => Object.fromEntries(
       Object.entries(state).filter(([key]) => !mergedKeys.includes(key)),
     ));
+    const refreshed = await load({ silent: true });
+    const topicComplete = Boolean(refreshed) && !refreshed.items.some((item) => item.topic_key === topicKey);
     setBatchMessage(t(
       `已合併 ${mergedCount} 筆${failures.length ? `；${failures.length} 組失敗：${failures.join("；")}` : ""}`,
       `Merged ${mergedCount} item(s)${failures.length ? `; ${failures.length} group(s) failed: ${failures.join("; ")}` : ""}`,
-    ));
-    await load({ silent: true });
+    ) + (topicComplete && !failures.length
+      ? ` ${t("此主題的新類別已全部處理完成。", "All new category candidates for this topic are handled.")}`
+      : ""));
   };
 
   const mergeAutoTopic = async (topicKey) => {
@@ -174,8 +195,8 @@ export default function NewCategoryPage() {
     if (!target) return;
     const source = topicByKey[topicKey];
     if (!window.confirm(t(
-      `將「${source?.title || topicKey}」及其回答重新分類到所選主題？`,
-      `Merge "${source?.title || topicKey}" and re-classify its answers into the selected topic?`,
+      `將「${topicDisplayName(source || topicKey)}」及其回答重新分類到所選主題？`,
+      `Merge "${topicDisplayName(source || topicKey)}" and re-classify its answers into the selected topic?`,
     ))) return;
     setTopicBusy((state) => ({ ...state, [topicKey]: true }));
     setBatchMessage("");
@@ -208,8 +229,16 @@ export default function NewCategoryPage() {
       "When no existing category fits, the AI proposes a new one. Adopting adds it to the taxonomy, publishes it and confirms these answers in one step. If it's really an existing category, merge it instead.")}</small></p>
     {error && <p className="ai-admin-error">{error}<button onClick={() => setError("")}>×</button></p>}
     {batchMessage && <p className="review-batch-message">{batchMessage}</p>}
+    {actionNotice && <p className="review-batch-message" role="status">
+      {actionNotice.text}
+      {actionNotice.to && <>{" "}<Link to={actionNotice.to}>{t("前往完成草稿", "Finish the draft")}</Link></>}
+    </p>}
     {loading && <LoadingNotice />}
-    {!loading && data.items.length === 0 && <p className="review-empty-hint">{t("目前沒有待處理的新類別。", "No new categories waiting.")}</p>}
+    {!loading && data.items.length === 0 && <p className="review-empty-hint">
+      {actionNotice
+        ? t("所有新類別候選已處理完。", "All new category candidates have been handled.")
+        : t("目前沒有待處理的新類別。", "No new categories waiting.")}
+    </p>}
 
     {!loading && Object.entries(groupedItems).map(([topicKey, items]) => {
       const topic = topicByKey[topicKey];
@@ -218,42 +247,74 @@ export default function NewCategoryPage() {
         ? topic.is_auto_topic && !topic.merged_into && !legacyTopic
         : topicKey.startsWith("auto_") && !legacyTopic;
       const selectedItems = items.filter((item) => selected[keyOf(item)]);
+      const answerCount = items.reduce((total, item) => total + Number(item.count || 0), 0);
       return <section key={topicKey} className="admin-section-block">
-        <h2>{topicDisplayName(topic || items[0].topic_title)} <span className="admin-muted">({items.length})</span></h2>
+        <div className="admin-candidate-summary">
+          <h2>{topicDisplayName(topic || items[0].topic_title)}</h2>
+          <p className="admin-candidate-summary__count">
+            {t(`這個主題有 ${items.length} 組 AI 提出的新類別，涉及 ${answerCount} 筆回答，需要你決定如何處理。`,
+              `This topic has ${items.length} AI-proposed category group(s) across ${answerCount} answer(s) that need a decision.`)}
+          </p>
+          <p>{undecidedTopic
+            ? t("先決定這個 AI 暫時主題的去向；完成主題決策後，再判斷底下的候選類別。",
+              "Decide the destination of this temporary AI topic first; review its candidate categories after the topic decision.")
+            : t("AI 提出了這些不在目前分類架構中的類別，請判斷它們是新類別，還是應合併到既有類別。",
+              "These AI-proposed categories are not in the current taxonomy. Decide whether each is new or belongs in an existing category.")}</p>
+        </div>
         {legacyTopic && <details><summary>{t("技術資訊", "Technical details")}</summary><code>{topicKey}</code></details>}
         {undecidedTopic ? (
           <div className="admin-undecided">
-            <p>{t(
-              "先決定這個 AI 自動主題的歸屬。合併後系統會將主題下的回答重新分類，無須逐類處理。",
-              "Decide where this auto topic belongs first. Merging re-classifies its answers, so categories do not need to be handled one by one.",
-            )}</p>
-            {topicsLoading && <p className="admin-muted">{t("載入可合併主題…", "Loading available topics…")}</p>}
-            <select value={topicTargets[topicKey] || ""} disabled={topicsLoading || topicBusy[topicKey]}
-              onChange={(e) => setTopicTargets((state) => ({ ...state, [topicKey]: e.target.value }))}>
-              <option value="">{t("選擇正式主題…", "Choose an official topic…")}</option>
-              {topics.filter((candidate) => candidate.topic_key !== topicKey && candidate.published_version && !candidate.merged_into && !isLegacyTechnicalTopic(candidate))
-                .map((candidate) => <option key={candidate.topic_key} value={candidate.topic_key}>{topicDisplayName(candidate)}</option>)}
-            </select>
-            <button className="primary" disabled={!topicTargets[topicKey] || topicBusy[topicKey]}
-              onClick={() => mergeAutoTopic(topicKey)}>
-              {topicBusy[topicKey] ? t("處理中…", "Working…") : t("合併主題並重新分類", "Merge topic & re-classify")}
-            </button>
+            <strong>{t("這是 AI 暫時建立的主題，尚未正式採用。", "This topic was created temporarily by AI and has not been adopted.")}</strong>
+            <p>{t("請先決定主題去向，再處理底下的新類別。", "Decide what happens to the topic before reviewing its proposed categories.")}</p>
+            <div className="admin-auto-topic-actions">
+              <label>
+                <span>{t("A. 併入既有正式主題", "A. Merge into an existing official topic")}</span>
+                {topicsLoading && <small>{t("載入正式主題…", "Loading official topics…")}</small>}
+                <select value={topicTargets[topicKey] || ""} disabled={topicsLoading || topicBusy[topicKey]}
+                  onChange={(e) => setTopicTargets((state) => ({ ...state, [topicKey]: e.target.value }))}>
+                  <option value="">{t("選擇正式主題…", "Choose an official topic…")}</option>
+                  {topics.filter((candidate) => candidate.topic_key !== topicKey && candidate.published_version && !candidate.merged_into && !candidate.is_auto_topic && !isLegacyTechnicalTopic(candidate))
+                    .map((candidate) => <option key={candidate.topic_key} value={candidate.topic_key}>{topicDisplayName(candidate)}</option>)}
+                </select>
+              </label>
+              <button className="primary" disabled={!topicTargets[topicKey] || topicBusy[topicKey]}
+                onClick={() => mergeAutoTopic(topicKey)}>
+                {topicBusy[topicKey] ? t("處理中…", "Working…") : t("併入正式主題並重新分類", "Merge into official topic & re-classify")}
+              </button>
+              <div className="admin-auto-topic-keep">
+                <span>{t("B. 保留為正式主題", "B. Keep as an official topic")}</span>
+                <button type="button" disabled={topicBusy[topicKey]}
+                  onClick={() => navigate(`/admin/ai/topics/${encodeURIComponent(topicKey)}`)}>
+                  {t("保留此主題並完成分類架構", "Keep topic & complete its taxonomy")}
+                </button>
+              </div>
+            </div>
           </div>
         ) : items.length > 1 && (
-          <div className="admin-filter-bar">
-            <label>
-              <span>{t("將選取的新類別合併到", "Merge selected categories into")}</span>
-              <select value={mergeTargets[topicKey] || ""} onFocus={() => loadTargets(items[0])}
-                onChange={(e) => setMergeTargets((state) => ({ ...state, [topicKey]: e.target.value }))}>
-                <option value="">{t("選擇既有類別…", "Choose an existing category…")}</option>
-                {(targets[topicKey] || []).map((option) =>
-                  <option key={option.sub_category} value={option.sub_category}>{option.main_category} / {option.sub_category}</option>)}
-              </select>
-            </label>
-            <button disabled={!selectedItems.length || !mergeTargets[topicKey]} onClick={() => mergeSelected(topicKey)}>
-              {t(`合併選取 ${selectedItems.length} 組`, `Merge ${selectedItems.length} selected`)}
-            </button>
-          </div>
+          <details className="admin-batch-select">
+            <summary>{t("需要一次整理多組？展開批次選取", "Handling multiple groups? Expand batch selection")}</summary>
+            <div className="admin-batch-select__items">
+              {items.map((item) => <label key={keyOf(item)}>
+                <input type="checkbox" checked={!!selected[keyOf(item)]}
+                  onChange={(e) => setSelected((state) => ({ ...state, [keyOf(item)]: e.target.checked }))} />
+                {item.main_category} / {item.sub_category}
+              </label>)}
+            </div>
+            {selectedItems.length >= 2 && <div className="admin-filter-bar admin-batch-select__actions">
+              <label>
+                <span>{t(`將 ${selectedItems.length} 組合併到既有類別`, `Merge ${selectedItems.length} selected groups into`)}</span>
+                <select value={mergeTargets[topicKey] || ""} onFocus={() => loadTargets(items[0])}
+                  onChange={(e) => setMergeTargets((state) => ({ ...state, [topicKey]: e.target.value }))}>
+                  <option value="">{t("選擇既有類別…", "Choose an existing category…")}</option>
+                  {(targets[topicKey] || []).map((option) =>
+                    <option key={option.sub_category} value={option.sub_category}>{option.main_category} / {option.sub_category}</option>)}
+                </select>
+              </label>
+              <button disabled={!mergeTargets[topicKey]} onClick={() => mergeSelected(topicKey)}>
+                {t(`合併選取 ${selectedItems.length} 組`, `Merge ${selectedItems.length} selected`)}
+              </button>
+            </div>}
+          </details>
         )}
         {!undecidedTopic && items.map((item) => {
       const key = keyOf(item);
@@ -263,28 +324,30 @@ export default function NewCategoryPage() {
         <article key={key} className="review-card">
           <div className="review-card-top">
             <b className="review-status-tag review-status-tag--in_review">{t(`${item.count} 筆`, `${item.count} item(s)`)}</b>
-            {!undecidedTopic && items.length > 1 && <label>
-              <input type="checkbox" checked={!!selected[key]}
-                onChange={(e) => setSelected((state) => ({ ...state, [key]: e.target.checked }))} />
-              {t("選取合併", "Select to merge")}
-            </label>}
             <span className="review-card-segment">{item.main_category} / {item.sub_category}</span>
           </div>
           <div className="review-card-mid">
-            <p><span className="review-field-label">{t("主題", "Topic")}</span>{topicDisplayName(item.topic_title)}</p>
             {item.examples.map((ex, i) => <p key={i}><span className="review-field-label">{t("範例", "Example")}</span>{ex}</p>)}
-            {item.reasons[0] && <p><span className="review-field-label">{t("AI 理由", "AI reasoning")}</span>{item.reasons[0]}</p>}
+            {item.reasons[0] && <details><summary>{t("查看 AI 判斷補充", "View AI reasoning")}</summary><p>{item.reasons[0]}</p></details>}
           </div>
           {state.message && <p className={state.message.ok ? "review-batch-message" : "ai-admin-error"}>{state.message.text}</p>}
           <div className="review-card-actions">
-            <button className="review-btn-primary" disabled={state.busy} onClick={() => adopt(item)}>{t("加入分類架構", "Add to taxonomy")}</button>
-            <select value={state.target || ""} disabled={state.busy}
-              onFocus={() => loadTargets(item)}
-              onChange={(e) => setRowState((p) => ({ ...p, [key]: { ...(p[key] || {}), target: e.target.value } }))}>
-              <option value="">{t("合併到既有類別…", "Merge into existing…")}</option>
-              {options.map((o) => <option key={o.sub_category} value={o.sub_category}>{o.main_category} / {o.sub_category}</option>)}
-            </select>
-            <button disabled={state.busy || !state.target} onClick={() => merge(item)}>{t("合併", "Merge")}</button>
+            <button className="review-btn-primary" disabled={state.busy} onClick={() => adopt(item)}>{t("採用為新類別", "Adopt as new category")}</button>
+            <button type="button" disabled={state.busy} onClick={() => {
+              setRowState((previous) => ({ ...previous, [key]: { ...(previous[key] || {}), mergeOpen: !previous[key]?.mergeOpen } }));
+              if (!state.mergeOpen) loadTargets(item);
+            }}>{t("合併到既有類別", "Merge into existing category")}</button>
+            {state.mergeOpen && <div className="admin-candidate-merge">
+              <label>
+                <span>{t("選擇要合併到的類別", "Choose the category to merge into")}</span>
+                <select value={state.target || ""} disabled={state.busy}
+                  onChange={(e) => setRowState((p) => ({ ...p, [key]: { ...(p[key] || {}), target: e.target.value } }))}>
+                  <option value="">{t("選擇既有類別…", "Choose an existing category…")}</option>
+                  {options.map((o) => <option key={o.sub_category} value={o.sub_category}>{o.main_category} / {o.sub_category}</option>)}
+                </select>
+              </label>
+              <button disabled={state.busy || !state.target} onClick={() => merge(item)}>{t("確認合併", "Confirm merge")}</button>
+            </div>}
           </div>
         </article>
       );
