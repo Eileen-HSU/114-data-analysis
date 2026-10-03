@@ -7,8 +7,7 @@ from flask import Blueprint, request, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from extensions import db
-from models import Admin, AdminVerification, User, UserVerification
-from routes.auth.admin_guard import build_admin_token
+from models import User, UserVerification
 from routes.auth.pwd import send_email_via_brevo, taiwan_now
 
 two_factor_bp = Blueprint('two_factor', __name__)
@@ -184,7 +183,7 @@ def login_verify_2fa():
         return jsonify({"error": "Unauthorized"}), 401
 
     if payload.get("account_type") == "admin":
-        return _verify_admin_2fa(email, otp)
+        return jsonify({"error": "管理員帳號不使用雙因子驗證，請重新登入"}), 400
     return _verify_user_2fa(email, otp)
 
 
@@ -231,52 +230,6 @@ def _verify_user_2fa(email, otp):
             "email": user.email,
             "user_name": user.user_name,
             "name": user.user_name,
-        }
-    }), 200
-
-
-def _verify_admin_2fa(email, otp):
-    record = AdminVerification.query.filter_by(
-        target_email=email,
-        type='2FA',
-        is_used=False,
-    ).order_by(AdminVerification.created_at.desc()).first()
-
-    if not record:
-        return jsonify({"error": "驗證碼不存在或已使用"}), 400
-
-    if record.expires_at < taiwan_now():
-        return jsonify({"error": "驗證碼已過期"}), 400
-
-    if record.attempts >= MAX_OTP_ATTEMPTS:
-        record.is_used = True
-        db.session.commit()
-        return jsonify({"error": "嘗試次數過多，請重新取得驗證碼"}), 429
-
-    if not check_password_hash(record.code_hash, otp):
-        record.attempts += 1
-        db.session.commit()
-        remaining = MAX_OTP_ATTEMPTS - record.attempts
-        return jsonify({"error": f"驗證碼錯誤，剩餘 {remaining} 次機會"}), 400
-
-    admin = db.session.get(Admin, record.admin_id)
-    if not admin:
-        return jsonify({"error": "找不到管理員帳號"}), 404
-
-    token = build_admin_token(admin.admin_id)
-
-    record.is_used = True
-    db.session.commit()
-
-    return jsonify({
-        "token": token,
-        "user": {
-            "account_type": "admin",
-            "admin_id": admin.admin_id,
-            "email": admin.email,
-            "admin_name": admin.admin_name,
-            "name": admin.admin_name,
-            "role": "admin",
         }
     }), 200
 

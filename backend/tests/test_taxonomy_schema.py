@@ -64,7 +64,6 @@ db.init_app(app)
 with app.app_context():
     tables = [
         m.Admin.__table__,
-        m.AdminVerification.__table__,
         m.Topic.__table__,
         m.Taxonomy_Version.__table__,
         m.Taxonomy_Category.__table__,

@@ -287,19 +287,24 @@ def ensure_runtime_schema():
             ensure_column("Export_File", "row_count", "`row_count` INT NULL")
             ensure_column("Workspace", "share_code", "`share_code` VARCHAR(10) NULL UNIQUE")
 
-            from models import Admin, AdminVerification
+            from models import Admin
 
             ensure_table(Admin)
             ensure_column("Admin", "admin_name", "`admin_name` VARCHAR(50) NOT NULL DEFAULT ''")
             ensure_column("Admin", "email", "`email` VARCHAR(100) NULL")
             ensure_column("Admin", "password_hash", "`password_hash` VARCHAR(255) NULL")
-            ensure_column("Admin", "email_2fa_enabled", "`email_2fa_enabled` TINYINT(1) DEFAULT 0")
             ensure_column("Admin", "created_at", "`created_at` DATETIME NULL")
             ensure_column("Admin", "updated_at", "`updated_at` DATETIME NULL")
             db.session.commit()
             ensure_unique_index("Admin", "email", "uq_admin_email")
 
-            ensure_table(AdminVerification)
+            # Admin 不使用雙因子驗證：移除舊的驗證碼表與開關欄位（已不存在就略過）
+            from sqlalchemy import inspect as _inspect, text as _text
+            _insp = _inspect(db.engine)
+            if _insp.has_table("Admin_Verification"):
+                db.session.execute(_text("DROP TABLE `Admin_Verification`"))
+            if any(c["name"] == "email_2fa_enabled" for c in _insp.get_columns("Admin")):
+                db.session.execute(_text("ALTER TABLE `Admin` DROP COLUMN `email_2fa_enabled`"))
             db.session.commit()
 
             # ── Taxonomy 核心資料層（Phase A，additive-only）──────────

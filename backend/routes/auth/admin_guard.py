@@ -51,23 +51,6 @@ def build_admin_token(admin_id: int, now=None) -> str:
     )
 
 
-def build_admin_pre_auth_token(email: str, now=None) -> str:
-    """Admin 2FA 第一步（密碼驗證通過）之後發的短效 pre-auth token。"""
-    if now is None:
-        now = taiwan_now()
-    exp_time = (now + timedelta(minutes=10)).replace(tzinfo=None)
-    return jwt.encode(
-        {
-            "email": email,
-            "type": "pre_auth",
-            "account_type": "admin",
-            "exp": exp_time,
-        },
-        get_jwt_secret(),
-        algorithm="HS256",
-    )
-
-
 def verify_admin_token(req):
     """驗證正式 Admin JWT。回傳 (admin_id, error)。
 

@@ -8,8 +8,8 @@ from flask import Blueprint, jsonify, request
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from extensions import db
-from models import Admin, AdminVerification, User, UserVerification
-from routes.auth.admin_guard import build_admin_pre_auth_token, build_admin_token
+from models import Admin, User, UserVerification
+from routes.auth.admin_guard import build_admin_token
 from routes.auth.pwd import send_email_via_brevo, taiwan_now
 
 login_bp = Blueprint("login", __name__)
@@ -50,14 +50,6 @@ def build_token(user_id: int, now=None) -> str:
 def _invalidate_old_codes(email: str, otp_type: str):
     """將同一 email 所有未使用的舊驗證碼標記為已使用（不單獨 commit，由呼叫端統一 commit）"""
     UserVerification.query.filter_by(
-        target_email=email,
-        type=otp_type,
-        is_used=False,
-    ).update({"is_used": True}, synchronize_session=False)
-
-
-def _invalidate_old_admin_codes(email: str, otp_type: str):
-    AdminVerification.query.filter_by(
         target_email=email,
         type=otp_type,
         is_used=False,
@@ -166,55 +158,16 @@ def login():
 
 
 def _login_admin(admin: Admin):
-    """Admin 密碼驗證通過後的登入邏輯（含 2FA 分支），獨立成函式避免
-    跟上面 User 的邏輯糾纏在一起，降低誤改到 User 流程的風險。
-    """
-    admin_info = {
+    """Admin 密碼驗證通過後直接登入（Admin 不使用雙因子驗證），獨立成函式
+    避免跟上面 User 的邏輯糾纏在一起。"""
+    token = build_admin_token(admin.admin_id)
+    return jsonify({
+        "token": token,
         "account_type": "admin",
         "admin_id": admin.admin_id,
         "admin_name": admin.admin_name,
         "email": admin.email,
         "role": "admin",
-        "email_2fa_enabled": admin.email_2fa_enabled,
-    }
+    }), 200
 
-    if admin.email_2fa_enabled:
-        now = taiwan_now()
-        otp = str(secrets.randbelow(900000) + 100000)
 
-        _invalidate_old_admin_codes(admin.email, "2FA")
-        verification = AdminVerification(
-            admin_id=admin.admin_id,
-            type="2FA",
-            code_hash=generate_password_hash(otp),
-            expires_at=(now + timedelta(minutes=10)).replace(tzinfo=None),
-            target_email=admin.email,
-            is_used=False,
-            attempts=0,
-        )
-        db.session.add(verification)
-        db.session.commit()
-
-        try:
-            send_email_via_brevo(
-                admin.email,
-                "DataAnalysis 管理員登入驗證碼",
-                f"您好，\n\n您的管理員登入驗證碼是：{otp}\n\n請在 10 分鐘內完成驗證。",
-            )
-        except Exception as email_error:
-            logging.error(f"Admin 2FA email send failed during login: {email_error}", exc_info=True)
-            verification.is_used = True
-            admin.email_2fa_enabled = False
-            db.session.commit()
-            token = build_admin_token(admin.admin_id, now=now)
-            return jsonify({
-                "token": token,
-                **admin_info,
-                "warning": "雙因子驗證信寄送失敗，已暫時關閉雙因子驗證。請登入後重新設定。",
-            }), 200
-
-        pre_auth_token = build_admin_pre_auth_token(admin.email, now=now)
-        return jsonify({"require_2fa": True, "pre_auth_token": pre_auth_token, **admin_info}), 200
-
-    token = build_admin_token(admin.admin_id)
-    return jsonify({"token": token, **admin_info}), 200

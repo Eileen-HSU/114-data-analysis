@@ -245,7 +245,6 @@ class Admin(db.Model):
     admin_name = db.Column(db.String(50), nullable=False)
     email = db.Column(db.String(100), nullable=False, unique=True)
     password_hash = db.Column(db.String(255), nullable=False)
-    email_2fa_enabled = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
     updated_at = db.Column(
         db.DateTime(timezone=True),
@@ -253,26 +252,5 @@ class Admin(db.Model):
         onupdate=taiwan_now,
     )
 
-    # 關聯設定
-    verifications = db.relationship(
-        "AdminVerification", backref="admin", cascade="all, delete-orphan"
-    )
 
-
-# T12: Admin_Verification - Admin 專用的驗證碼機制（2FA）
-class AdminVerification(db.Model):
-    __tablename__ = "Admin_Verification"
-
-    verification_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    admin_id = db.Column(
-        db.Integer,
-        db.ForeignKey("Admin.admin_id", ondelete="SET NULL"),
-        nullable=True,
-    )
-    type = db.Column(db.String(50), nullable=False)  
-    code_hash = db.Column(db.String(255), nullable=False)
-    is_used = db.Column(db.Boolean, default=False)
-    attempts = db.Column(db.Integer, default=0, nullable=False)
-    expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
-    created_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
-    target_email = db.Column(db.String(255))
+# T12: Admin_Verification 已移除（Admin 不使用雙因子驗證；資料表在 app.py 啟動時刪除）
