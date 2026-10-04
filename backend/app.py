@@ -17,6 +17,7 @@ from routes.auth.register import register_bp
 from routes.auth.workspace import workspace_bp, start_scheduler
 from routes.auth.survey import survey_bp
 from routes.auth.chat import chat_bp
+from routes.ai.ppt_survey import ppt_survey_ai_bp
 
 load_dotenv()
 
@@ -116,6 +117,7 @@ app.register_blueprint(two_factor_bp, url_prefix='/api/auth/2fa')
 app.register_blueprint(survey_bp)
 app.register_blueprint(workspace_bp)
 app.register_blueprint(chat_bp)
+app.register_blueprint(ppt_survey_ai_bp)
 
 start_scheduler(app)
 
