@@ -271,39 +271,57 @@ def _is_obviously_insufficient_extracted_text(text):
 
     content_markers = (
         "課程目標", "課程內容", "活動內容", "服務內容", "產品功能", "系統功能",
-        "流程", "議程", "大綱", "單元", "模組", "學習", "實作", "練習",
-        "教材", "評量", "對象", "成果", "說明", "特色", "功能", "內容",
+        "活動流程", "服務流程", "課程大綱", "活動議程", "議程", "大綱",
+        "單元", "模組", "學習目標", "實作", "練習", "教材", "評量",
+        "適合對象", "預期成果", "內容說明", "詳細說明", "特色", "功能",
         "agenda", "objective", "objectives", "curriculum", "module", "modules",
         "session", "sessions", "feature", "features", "workflow", "service",
         "product", "training content", "learning outcome",
     )
-    lowered = normalized.lower()
-    if any(marker.lower() in lowered for marker in content_markers):
-        return False
 
     shell_patterns = (
         r"^\d{4}[/-]\d{1,2}[/-]\d{1,2}$",
         r"^\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?$",
+        r"^\d{1,2}\s*[月/]\s*\d{1,2}\s*(?:日)?$",
         r"^\d{1,2}:\d{2}(?:\s*(?:am|pm))?$",
-        r"^(?:台北|臺北|新北|桃園|台中|臺中|台南|臺南|高雄|online|線上|地點|location|venue)",
+        r"^(?:台北|臺北|新北|桃園|台中|臺中|台南|臺南|高雄|online|線上|地點|地址|location|venue|address)",
         r"^(?:logo|qr|qr code|qrcode)$",
         r"^(?:https?://|www\.)",
         r"^(?:聯絡|聯繫|電話|信箱|email|e-mail|tel|phone|contact)",
     )
 
-    shell_line_count = 0
-    title_like_count = 0
+    def compact_length(value):
+        return len(re.sub(r"[\s\W_]+", "", value, flags=re.UNICODE))
+
+    def is_substantive_line(line):
+        line_lower = line.lower()
+        length = compact_length(line)
+        has_marker = any(marker.lower() in line_lower for marker in content_markers)
+        has_sentence = bool(re.search(r"[。.!?？；;]", line))
+        has_enough_detail = length >= 45 or (has_sentence and length >= 24)
+        return has_enough_detail or (has_marker and length >= 18)
+
+    substantive_lines = [line for line in lines if is_substantive_line(line)]
+    if substantive_lines:
+        return False
+
+    shell_or_short_lines = 0
     for line in lines:
         line_lower = line.lower()
         if any(re.search(pattern, line_lower, flags=re.IGNORECASE) for pattern in shell_patterns):
-            shell_line_count += 1
+            shell_or_short_lines += 1
             continue
-        if len(line) <= 80 and not re.search(r"[。.!?？；;]", line):
-            title_like_count += 1
+        if compact_length(line) <= 35 and not re.search(r"[。.!?？；;]", line):
+            shell_or_short_lines += 1
             continue
         return False
 
-    return shell_line_count + title_like_count == len(lines) and title_like_count <= 2
+    total_compact_length = compact_length(normalized)
+    return (
+        shell_or_short_lines == len(lines)
+        and len(lines) <= 12
+        and total_compact_length <= 180
+    )
 
 
 def normalize_survey_draft(raw, fallback_title="AI 生成問卷"):
