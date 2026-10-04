@@ -82,11 +82,15 @@ with app.app_context():
     left_cid = candidate("b-left", "搬不走的回答", "Main A", "殘留類別", "auto_left", left_v)
     # legacy：沒有分類架構版本
     legacy_cid = candidate("b-legacy", "舊資料的回答", "Legacy Main", "舊類別", None, None)
-    # 主題不存在：版本還在、Topic 不在（SQLite 測試環境不強制 FK）
-    ghost_v = m.Taxonomy_Version(topic_key="ghost_topic", version_number=1, status="draft", source="manual")
-    db.session.add(ghost_v)
-    db.session.commit()
-    ghost_cid = candidate("b-ghost", "孤兒主題的回答", "Ghost Main", "孤兒類別", "ghost_topic", ghost_v.version_id)
+    # 主題不存在：版本還在、Topic 不在。只有不強制外鍵的 SQLite 做得到；MySQL 有外鍵（刪主題會連帶刪版本），
+    # 這種狀態不可能出現，所以在 MySQL 上略過這個情境。
+    GHOST = db.engine.dialect.name == "sqlite"
+    ghost_cid = None
+    if GHOST:
+        ghost_v = m.Taxonomy_Version(topic_key="ghost_topic", version_number=1, status="draft", source="manual")
+        db.session.add(ghost_v)
+        db.session.commit()
+        ghost_cid = candidate("b-ghost", "孤兒主題的回答", "Ghost Main", "孤兒類別", "ghost_topic", ghost_v.version_id)
 
 GEMINI_QUEUE.clear()
 resp = client.post("/api/admin/ai/topics/auto_left/merge-into", headers=admin_header(1), json={"target_topic_key": "norm_topic"})
@@ -96,12 +100,14 @@ print("========== 1. bucket 分流 ==========")
 data = listing()
 normal, residual = groups(data["items"]), groups(data["residual_items"])
 check("正常清單只有現行候選（norm_topic / 工時過長）", set(normal) == {("norm_topic", "工時過長")} and data["total"] == 1)
-check("殘留清單有 3 組：merged 主題、legacy、主題不存在",
-      set(residual) == {("auto_left", "殘留類別"), (None, "舊類別"), ("ghost_topic", "孤兒類別")} and data["residual_total"] == 3)
+expected_residual = {("auto_left", "殘留類別"), (None, "舊類別")} | ({("ghost_topic", "孤兒類別")} if GHOST else set())
+check(f"殘留清單有 {len(expected_residual)} 組：merged 主題、legacy" + ("、主題不存在" if GHOST else "（MySQL 不會有主題不存在）"),
+      set(residual) == expected_residual and data["residual_total"] == len(expected_residual))
 check("merged 主題殘留：原因 topic_merged、帶 merged_into", residual[("auto_left", "殘留類別")]["residual_reasons"] == ["topic_merged"]
       and residual[("auto_left", "殘留類別")]["merged_into"] == "norm_topic")
 check("legacy：原因 legacy + no_topic", residual[(None, "舊類別")]["residual_reasons"] == ["legacy", "no_topic"])
-check("主題不存在：原因 topic_missing", residual[("ghost_topic", "孤兒類別")]["residual_reasons"] == ["topic_missing"])
+if GHOST:
+    check("主題不存在：原因 topic_missing", residual[("ghost_topic", "孤兒類別")]["residual_reasons"] == ["topic_missing"])
 check("正常候選不帶殘留欄位、既有欄位仍在",
       "residual_reasons" not in normal[("norm_topic", "工時過長")] and normal[("norm_topic", "工時過長")]["count"] == 2
       and normal[("norm_topic", "工時過長")]["classification_ids"] == [n1, n2])
@@ -112,7 +118,7 @@ print("\n========== 2. 徽章只算正常候選 ==========")
 overview = client.get("/api/admin/ai/overview", headers=admin_header(1)).get_json()
 check("needs_decision.new_category_groups = 1（只算正常）", overview["needs_decision"]["new_category_groups"] == 1)
 check("needs_person.new_category_groups = 1", overview["needs_person"]["new_category_groups"] == 1)
-check("殘留另外回報 residual_new_category_groups = 3", overview["residual_new_category_groups"] == 3)
+check(f"殘留另外回報 residual_new_category_groups = {len(expected_residual)}", overview["residual_new_category_groups"] == len(expected_residual))
 check("每主題的新類別組數：merged 主題不算、legacy 不算",
       overview["topics"].get("norm_topic", {}).get("new_category_groups") == 1
       and overview["topics"].get("auto_left", {}).get("new_category_groups", 0) == 0)
@@ -128,7 +134,7 @@ body = client.get(f"{BASE}/merge-targets", query_string={"topic": "auto_left"}, 
 check("merge-targets 對 merged 主題不算入殘留列（row_total=0）", body["row_total"] == 0)
 with app.app_context():
     check("殘留列都原封不動",
-          all(db.session.get(m.Response_Classification, c).review_status == "pending_review" for c in (left_cid, legacy_cid, ghost_cid)))
+          all(db.session.get(m.Response_Classification, c).review_status == "pending_review" for c in (left_cid, legacy_cid, ghost_cid) if c is not None))
 
 print("\n========== 4. 重試併入（既有 merge-into）==========")
 classify_q("搬不走的回答", "Main A", "A1 Original")

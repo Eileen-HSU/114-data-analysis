@@ -29,7 +29,7 @@ import pandas as pd
 
 from admin_test_support import (
     GEMINI_QUEUE, admin_header, check, create_app, finish, q, seed_classification, seed_people, seed_topic,
-    seed_upload_batch, user_header,
+    seed_failed_retry, seed_upload_batch, user_header,
 )
 import models as m
 from extensions import db
@@ -93,6 +93,8 @@ with app.app_context():
     check("前提：有 status 列、沒有任何 Response_Classification",
           status_row(zero_id).segmentation_status == "failed"
           and m.Response_Classification.query.filter_by(uploaded_answer_id=zero_id).count() == 0)
+    # 「無法分類」清單只列自動重試仍失敗的資料：補上失敗的重試紀錄（沒有紀錄代表還在排程重試）
+    seed_failed_retry(zero_id)
 
 unrouted = client.get("/api/admin/ai/unassigned?kind=unrouted", headers=admin_header(1)).get_json()
 check("不在 unrouted 分頁（已經分析過）", zero_id not in {i["id"] for i in unrouted["items"]})

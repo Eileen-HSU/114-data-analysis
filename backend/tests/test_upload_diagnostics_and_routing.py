@@ -27,7 +27,8 @@ import os
 import pandas as pd
 
 from admin_test_support import (
-    GEMINI_CALLS, GEMINI_QUEUE, admin_header, check, create_app, finish, q, seed_people, seed_topic, user_header,
+    GEMINI_CALLS, GEMINI_QUEUE, admin_header, check, create_app, finish, q, seed_failed_retry, seed_people, seed_topic,
+    user_header,
 )
 import models as m
 from extensions import db
@@ -120,6 +121,10 @@ for kind, errors in FAILURES.items():
                   and a.routing_detail.startswith(f"routing_error={kind}") for a in answers))
         failed_answer_ids.extend(a.id for a in answers)
 
+# 「無法分類」清單只列自動重試仍失敗的資料；補上失敗的重試紀錄（原因說明仍來自 routing_detail）
+with app.app_context():
+    for _answer_id in failed_answer_ids:
+        seed_failed_retry(_answer_id)
 body = client.get("/api/admin/ai/unassigned?kind=unrouted&page_size=100", headers=admin_header(1)).get_json()
 listed = {i["id"]: i for i in body["items"]}
 check("全部進入 Admin 未分類頁", all(i in listed for i in failed_answer_ids))

@@ -51,11 +51,17 @@ def _residual_expr():
     )
 
 
-def _candidate_query():
+def _eq(column, value):
+    """SQL 版的 == ：None 要用 IS NULL（和 Python 的 None == None 一致）。"""
+    return column.is_(None) if value is None else column == value
+
+
+def _candidate_base(*entities):
     from models import Topic
 
     return (
-        db.session.query(Response_Classification, Taxonomy_Version.topic_key, Topic.topic_key, Topic.merged_into)
+        db.session.query(*entities)
+        .select_from(Response_Classification)
         .outerjoin(Taxonomy_Version, Response_Classification.taxonomy_version_id == Taxonomy_Version.version_id)
         .outerjoin(Topic, Taxonomy_Version.topic_key == Topic.topic_key)
         .filter(
@@ -65,73 +71,115 @@ def _candidate_query():
     )
 
 
-def _candidate_entries(topic_key=None, residual=False):
-    """[(classification, topic_key, topic_exists, merged_into)]。
+def _candidate_entries(topic_key=None, residual=False, group=None):
+    """[(classification, topic_key, topic_exists, merged_into)]：需要整列（要寫入 / 逐筆處理）時才用。
 
     residual=False：正常現行候選（採用 / 合併只作用在這一組）。
-    residual=True ：殘留／舊候選（legacy、找不到主題、主題已被合併），不進正常清單。"""
+    residual=True ：殘留／舊候選（legacy、找不到主題、主題已被合併），不進正常清單。
+    group=(topic_key, main_category, sub_category)：把群組條件放進 SQL，只載入那一組，
+    不要先把整個主題的候選全部載入再用 Python 篩。"""
+    from models import Topic
+
     expr = _residual_expr()
-    query = _candidate_query().filter(expr if residual else ~expr)
+    query = _candidate_base(
+        Response_Classification, Taxonomy_Version.topic_key, Topic.topic_key, Topic.merged_into,
+    ).filter(expr if residual else ~expr)
     if topic_key:
         query = query.filter(Taxonomy_Version.topic_key == topic_key)
+    if group is not None:
+        g_topic, g_main, g_sub = group
+        query = query.filter(
+            _eq(Taxonomy_Version.topic_key, g_topic),
+            _eq(Response_Classification.main_category, g_main),
+            _eq(Response_Classification.sub_category, g_sub),
+        )
     return [
         (row, version_topic, topic_row is not None, merged_into)
         for row, version_topic, topic_row, merged_into in query.order_by(Response_Classification.classification_id.asc()).all()
     ]
 
 
-def _candidate_rows(topic_key=None, residual=False):
-    return [(row, version_topic) for row, version_topic, _exists, _merged in _candidate_entries(topic_key, residual)]
+def _candidate_rows(topic_key=None, residual=False, group=None):
+    return [(row, version_topic) for row, version_topic, _exists, _merged in _candidate_entries(topic_key, residual, group)]
 
 
-def _legacy_candidate_ids():
+def _candidate_narrow(topic_key=None):
+    """所有待處理新類別候選的「窄」資料：只取分組、判斷 bucket 需要的欄位，不載入答案全文。
+
+    只查一次，同時帶出每筆屬於正常 / 殘留，供清單、徽章、merge-targets 共用
+    （原本要把整列載入兩遍、再另外查一次 legacy id）。"""
+    from models import Topic
     from services.admin_recovery_service import _legacy_classification_clause
 
-    return {
-        cid for (cid,) in db.session.query(Response_Classification.classification_id).filter(
-            Response_Classification.status == NEW_CATEGORY_STATUS,
-            Response_Classification.review_status == "pending_review",
-            _legacy_classification_clause(),
-        ).all()
-    }
+    R = Response_Classification
+    query = _candidate_base(
+        R.classification_id,
+        Taxonomy_Version.topic_key.label("version_topic"),
+        Topic.topic_key.label("topic_row"),
+        Topic.merged_into.label("merged_into"),
+        R.main_category, R.sub_category, R.taxonomy_version_id,
+        db.case((_legacy_classification_clause(), 1), else_=0).label("is_legacy"),
+        db.case((_residual_expr(), 1), else_=0).label("is_residual"),
+        # 用 LENGTH > 0 而不是 != ''：MySQL 的字串比較會忽略尾端空白，'   ' != '' 會是 false，
+        # 和 Python 的 `if row.reasoning`（純空白為真）不一致。
+        db.case((db.and_(R.reasoning.isnot(None), db.func.length(R.reasoning) > 0), 1), else_=0).label("has_reasoning"),
+    )
+    if topic_key:
+        query = query.filter(Taxonomy_Version.topic_key == topic_key)
+    return query.order_by(R.classification_id.asc()).all()
 
 
-def _group_entries(entries, residual=False):
+def _build_groups(narrow_rows, residual=False):
+    """把窄資料分組；只針對每組前 3 筆範例 / 說明去讀文字欄位。輸出與舊版逐欄相同。"""
     from models import Topic
 
-    legacy_ids = _legacy_candidate_ids() if residual else set()
     groups = {}
-    for row, row_topic, topic_exists, merged_into in entries:
-        key = (row_topic, row.main_category, row.sub_category)
+    for row in narrow_rows:
+        key = (row.version_topic, row.main_category, row.sub_category)
         group = groups.setdefault(key, {
-            "topic_key": row_topic,
+            "topic_key": row.version_topic,
             "main_category": row.main_category,
             "sub_category": row.sub_category,
             "count": 0,
             "classification_ids": [],
+            "example_ids": [],
+            "reason_ids": [],
+            "taxonomy_version_ids": [],
             "examples": [],
             "reasons": [],
-            "taxonomy_version_ids": [],
         })
         if residual:
             group.setdefault("residual_reasons", set())
-            group["merged_into"] = merged_into or group.get("merged_into")
-            if row.classification_id in legacy_ids:
+            group["merged_into"] = row.merged_into or group.get("merged_into")
+            if row.is_legacy:
                 group["residual_reasons"].add(RESIDUAL_LEGACY)
-            if row_topic is None:
+            if row.version_topic is None:
                 group["residual_reasons"].add(RESIDUAL_NO_TOPIC)
-            elif not topic_exists:
+            elif row.topic_row is None:
                 group["residual_reasons"].add(RESIDUAL_TOPIC_MISSING)
-            if merged_into:
+            if row.merged_into:
                 group["residual_reasons"].add(RESIDUAL_TOPIC_MERGED)
         group["count"] += 1
         group["classification_ids"].append(row.classification_id)
         if row.taxonomy_version_id is not None and row.taxonomy_version_id not in group["taxonomy_version_ids"]:
             group["taxonomy_version_ids"].append(row.taxonomy_version_id)
-        if len(group["examples"]) < 3:
-            group["examples"].append(row.answer_text[row.segment_start:row.segment_end])
-        if row.reasoning and len(group["reasons"]) < 3:
-            group["reasons"].append(row.reasoning)
+        if len(group["example_ids"]) < 3:
+            group["example_ids"].append(row.classification_id)
+        if row.has_reasoning and len(group["reason_ids"]) < 3:
+            group["reason_ids"].append(row.classification_id)
+
+    # 只讀範例 / 說明需要的幾列文字（每組最多 6 筆），不是整批候選
+    wanted = sorted({i for g in groups.values() for i in g["example_ids"] + g["reason_ids"]})
+    texts = {}
+    if wanted:
+        R = Response_Classification
+        for cid, answer_text, seg_start, seg_end, reasoning in db.session.query(
+            R.classification_id, R.answer_text, R.segment_start, R.segment_end, R.reasoning,
+        ).filter(R.classification_id.in_(wanted)).all():
+            texts[cid] = (answer_text[seg_start:seg_end], reasoning)
+    for group in groups.values():
+        group["examples"] = [texts[i][0] for i in group.pop("example_ids")]
+        group["reasons"] = [texts[i][1] for i in group.pop("reason_ids")]
 
     titles = {t.topic_key: t.title for t in Topic.query.filter(Topic.topic_key.in_({k[0] for k in groups if k[0]})).all()} if groups else {}
     items = sorted(groups.values(), key=lambda g: (-g["count"], g["topic_key"] or "", g["sub_category"] or ""))
@@ -149,8 +197,9 @@ def _group_entries(entries, residual=False):
 def list_candidates(topic_key=None):
     """正常現行候選放 items / total（既有欄位不變）；殘留／舊候選另放
     residual_items / residual_total，不計入主要徽章、也不出現在正常清單。"""
-    items = _group_entries(_candidate_entries(topic_key, residual=False))
-    residual_items = _group_entries(_candidate_entries(topic_key, residual=True), residual=True)
+    narrow = _candidate_narrow(topic_key)
+    items = _build_groups([r for r in narrow if not r.is_residual])
+    residual_items = _build_groups([r for r in narrow if r.is_residual], residual=True)
     return {
         "items": items, "total": len(items),
         "residual_items": residual_items, "residual_total": len(residual_items),
@@ -158,8 +207,10 @@ def list_candidates(topic_key=None):
 
 
 def residual_group_count():
-    """殘留／舊候選有幾組（給 overview 另外顯示，不併進主要徽章）。"""
-    return len({(t, r.main_category, r.sub_category) for r, t in _candidate_rows(residual=True)})
+    """殘留／舊候選有幾組（給 overview 另外顯示，不併進主要徽章）。只數不載入文字。"""
+    return len({
+        (r.version_topic, r.main_category, r.sub_category) for r in _candidate_narrow() if r.is_residual
+    })
 
 
 def _editable_draft(topic_key, admin_id):
@@ -190,8 +241,7 @@ def _default_definition(sub_category):
 
 
 def _group_rows(topic_key, main_category, sub_category):
-    return [r for r, t in _candidate_rows(topic_key)
-            if r.main_category == main_category and r.sub_category == sub_category]
+    return [r for r, _t in _candidate_rows(topic_key, group=(topic_key, main_category, sub_category))]
 
 
 def _adopt_into_draft_only(topic_key, main_category, sub_category, admin_id, definition):
@@ -324,8 +374,7 @@ def adopt(topic_key, main_category, sub_category, admin_id, definition=None):
 def merge(topic_key, main_category, sub_category, target_sub_category, admin_id):
     from services.review_service import ReviewError, confirm_manual
 
-    rows = [r for r, t in _candidate_rows(topic_key)
-            if r.main_category == main_category and r.sub_category == sub_category]
+    rows = _group_rows(topic_key, main_category, sub_category)
     if not rows:
         raise NewCategoryError("NOTHING_TO_MERGE", "這個新類別目前沒有待處理的回答", 404)
     merged, skipped = [], []
@@ -376,7 +425,7 @@ def merge_targets(topic_key, main_category=None, sub_category=None):
     if topic is None:
         raise NewCategoryError("TOPIC_NOT_FOUND", "找不到主題", 404)
 
-    rows = [r for r, _t in _candidate_rows(topic_key)]
+    rows = [r for r in _candidate_narrow(topic_key) if not r.is_residual]
     if main_category is not None or sub_category is not None:
         rows = [r for r in rows if r.main_category == main_category and r.sub_category == sub_category]
 
@@ -478,8 +527,7 @@ def exclude_residual(topic_key, main_category, sub_category, admin_id, *, acknow
         raise NewCategoryError("INVALID_CATEGORY", "缺少要排除的子類別", 400)
 
     rows = [
-        r for r, row_topic in _candidate_rows(residual=True)
-        if row_topic == (topic_key or None) and r.main_category == main_category and r.sub_category == sub_category
+        r for r, _t in _candidate_rows(residual=True, group=(topic_key or None, main_category, sub_category))
     ]
     if not rows:
         raise NewCategoryError("NOTHING_TO_EXCLUDE", "這個殘留候選目前沒有待處理的回答（正常候選請用採用 / 合併）", 404)

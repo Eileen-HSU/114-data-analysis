@@ -211,7 +211,11 @@ export default function TaxonomyPanel() {
     await loadAnswers();
     const skipped = result.skipped || [];
     const text = t(`已併入「${topicDisplayName(target)}」，重新分類 ${result.moved_count} 則回答`, `Merged into "${topicDisplayName(target)}", re-classified ${result.moved_count} answer(s)`)
-      + (skipped.length ? t(`；${skipped.length} 則未處理（${skipped[0].message}）`, `; ${skipped.length} skipped (${skipped[0].message})`) : "");
+      + (skipped.length ? t(`；${skipped.length} 則未處理（${skipped[0].message}）`, `; ${skipped.length} skipped (${skipped[0].message})`) : "")
+      + (result.aborted ? t(
+        `。資料庫忙碌，已先暫停，還有 ${result.unprocessed_count} 則沒處理；請稍後到「新類別候選」的殘留區塊按「重試併入」（已處理的不會重做）`,
+        `. The database was busy, so processing paused with ${result.unprocessed_count} answer(s) left; use "Retry merge" in the leftover section later (finished ones are not redone).`,
+      ) : "");
     setMergeResultText(text);
     return text;
   };

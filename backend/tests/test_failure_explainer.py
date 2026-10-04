@@ -54,6 +54,10 @@ with app.app_context():
                                  status="failed")
     import models as m
     from extensions import db
+    from admin_test_support import seed_failed_retry
+    # 「無法分類」清單只列自動重試仍失敗的資料：補上失敗的重試紀錄
+    seed_failed_retry(ids[0])
+    seed_failed_retry(ids[1])
     db.session.get(m.Response_Classification, c_quota).reasoning = QUOTA
     db.session.get(m.Response_Classification, c_busy).reasoning = BUSY
     db.session.commit()

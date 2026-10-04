@@ -410,6 +410,14 @@ def ensure_integrity_followup_schema():
             ensure_index("Topic", "ix_Topic_auto_scope", "`auto_scope`")
             db.session.commit()
 
+            # 查詢效能：Admin 清單 / 總覽 / 新類別候選 / 合併主題常用的篩選欄位（只建不存在的索引，不動資料）
+            ensure_index("Response_Classification", "ix_rc_status_review_version",
+                         "`status`, `review_status`, `taxonomy_version_id`")
+            ensure_index("Response_Classification", "ix_rc_review_created", "`review_status`, `created_at`")
+            ensure_index("Uploaded_Answer", "ix_ua_question_type", "`question_type`")
+            ensure_index("Uploaded_Answer", "ix_ua_upload_batch", "`upload_batch_id`")
+            db.session.commit()
+
             # 次要分類子表（一筆分類可以有多個次要分類，含 taxonomy category identity）
             from models import Response_Classification_Secondary
             ensure_table(Response_Classification_Secondary)

@@ -168,6 +168,25 @@ console.log("========== 1. 殘留候選：獨立區塊 ==========");
   await unmount();
 }
 
+console.log("\n========== 重試併入遇到資料庫忙碌：訊息要講清楚 ==========");
+{
+  const unmount = await mount(page(), {
+    listing: () => ({ items: [], total: 0, residual_items: [mergedGroup], residual_total: 1 }),
+    topics: topicsList,
+    handle: ({ method, pathname, json }) => (method === "POST" && pathname === "/api/admin/ai/topics/auto_left/merge-into"
+      ? json({ moved_count: 1, skipped_count: 3, aborted: true, unprocessed_count: 5,
+               skipped: [{ code: "DATABASE_BUSY", message: "資料庫忙碌" }, { code: "DATABASE_BUSY", message: "資料庫忙碌" },
+                         { code: "CONCURRENT_MODIFICATION", message: "x" }] })
+      : null),
+  });
+  await click(buttonIn(document.querySelector("article.admin-residual-card"), "重試併入"));
+  check("中止時說明已暫停、還有幾筆沒處理、可稍後再按重試（已處理的不會重做）",
+    text().includes("資料庫忙碌，已先暫停，還有 5 筆沒處理") && text().includes("已處理的不會重做"));
+  check("同時被其他操作更動的也有說明（可能有人同時處理）", text().includes("1 筆在處理期間被其他操作更動") && text().includes("可能有人同時在處理同一個主題"));
+  check("仍顯示搬了幾筆、略過幾筆", text().includes("重新分類 1 筆，3 筆略過"));
+  await unmount();
+}
+
 console.log("\n========== 錯誤：後端擋下時卡片留著並顯示原因 ==========");
 {
   const unmount = await mount(page(), {

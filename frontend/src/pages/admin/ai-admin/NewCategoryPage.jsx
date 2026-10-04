@@ -21,6 +21,30 @@ const residualReasonLabel = (reason, mergedInto, topicName) => ({
   topic_merged: t(`主題已併入「${topicName(mergedInto)}」`, `Topic merged into "${topicName(mergedInto)}"`),
 }[reason] || reason);
 
+
+// 併入結果的補充說明：資料庫逾時（常見原因：同一批資料正被另一個請求處理）會被記為 DATABASE_BUSY；
+// 連續逾時時後端會先中止（aborted），剩下的可以稍後再按「重試併入」，已處理的不會重做。
+const mergeBusyNote = (result) => {
+  const busy = (result.skipped || []).filter((s) => s.code === "DATABASE_BUSY").length;
+  const concurrent = (result.skipped || []).filter((s) => s.code === "CONCURRENT_MODIFICATION").length;
+  const parts = [];
+  if (result.aborted) {
+    parts.push(t(
+      `資料庫忙碌，已先暫停，還有 ${result.unprocessed_count} 筆沒處理；請稍後再按「重試併入」（已處理的不會重做）`,
+      `The database was busy, so processing was paused with ${result.unprocessed_count} answer(s) left; try "Retry merge" again later (finished ones are not redone).`,
+    ));
+  } else if (busy) {
+    parts.push(t(`${busy} 筆因資料庫忙碌沒處理，可稍後再按「重試併入」`, `${busy} answer(s) were not processed because the database was busy; retry later.`));
+  }
+  if (concurrent) {
+    parts.push(t(
+      `${concurrent} 筆在處理期間被其他操作更動，沒有寫入，請稍後重試（可能有人同時在處理同一個主題）`,
+      `${concurrent} answer(s) changed while processing and were not written; retry later (someone may be processing this topic).`,
+    ));
+  }
+  return parts.length ? ` ${parts.join("；")}。` : "";
+};
+
 const versionStatusLabel = (status) => ({
   published: t("已發布", "Published"),
   draft: t("草稿", "Draft"),
@@ -316,7 +340,7 @@ export default function NewCategoryPage() {
     }), (r) => t(
       `已重試併入：重新分類 ${r.moved_count} 筆，${r.skipped_count} 筆略過。`,
       `Retry finished: ${r.moved_count} re-classified, ${r.skipped_count} skipped.`,
-    ));
+    ) + mergeBusyNote(r));
   };
 
   // 排除：強提示（對話框 + 後端 acknowledged），可用 reopen 復原
@@ -360,7 +384,7 @@ export default function NewCategoryPage() {
       setBatchMessage(t(
         `主題已合併；重新分類 ${result.moved_count} 筆，${result.skipped_count} 筆略過。`,
         `Topic merged; ${result.moved_count} re-classified, ${result.skipped_count} skipped.`,
-      ));
+      ) + mergeBusyNote(result));
       await Promise.all([
         load({ silent: true }),
         api("/api/admin/ai/taxonomy-topics", token).then((result) => setTopics(result.topics || [])),

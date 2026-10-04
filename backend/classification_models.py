@@ -49,6 +49,11 @@ from extensions import db, taiwan_now
 
 class Uploaded_Answer(db.Model):
     __tablename__ = "Uploaded_Answer"
+    __table_args__ = (
+        # 合併主題是 WHERE question_type = ?、上傳批次相關查詢是 WHERE upload_batch_id = ?，原本都沒有索引
+        db.Index("ix_ua_question_type", "question_type"),
+        db.Index("ix_ua_upload_batch", "upload_batch_id"),
+    )
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
 
@@ -370,6 +375,10 @@ class Response_Classification(db.Model):
             """,
             name="chk_response_classification_source",
         ),
+        # Admin 清單 / 總覽 / 新類別候選都用 status、review_status 篩選，原本只有外鍵有索引，
+        # 每次都掃整張表。既有資料庫由 app.py 啟動時的 ensure_index 補上（名稱要一致）。
+        db.Index("ix_rc_status_review_version", "status", "review_status", "taxonomy_version_id"),
+        db.Index("ix_rc_review_created", "review_status", "created_at"),
     )
 
     classification_id = db.Column(

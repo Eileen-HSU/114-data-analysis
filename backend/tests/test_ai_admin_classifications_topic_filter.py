@@ -34,6 +34,7 @@ import uuid
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-testing-only")
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+# 列表 API 預設 queue=human（只留需要人工處理的待審、隱藏 legacy）；這支測試驗證 API 參數本身，所以全部用 queue=all 取全部資料。
 FAILED = []
 
 
@@ -75,6 +76,7 @@ with app.app_context():
         m.Response_Classification.__table__,
         m.Response_Classification_Secondary.__table__,
         m.Classification_Review.__table__,  # 清單會一併回傳 in_review 狀態
+        m.Uploaded_Answer.__table__,  # 列表預設篩選 / legacy 判斷會查這張表
         tx.Topic.__table__,
         tx.Taxonomy_Version.__table__,
         tx.Taxonomy_Category.__table__,
@@ -190,7 +192,7 @@ with app.app_context():
 # 測試 3：GET .../classifications?topic=leadership_and_dept 能查到
 # ═══════════════════════════════════════════════════════════════
 print("\n========== 測試 3：topic filter 能正確查到（修正後的核心行為）==========")
-resp = client.get("/api/admin/ai/classifications?topic=leadership_and_dept", headers=admin_header())
+resp = client.get("/api/admin/ai/classifications?topic=leadership_and_dept&queue=all", headers=admin_header())
 check("HTTP 200", resp.status_code == 200)
 data = resp.get_json()
 returned_ids = {row["classification_id"] for row in data["classifications"]}
@@ -204,7 +206,7 @@ check("不應該回傳 0 筆（修正前的 bug 症狀就是永遠查不到任�
 print("\n========== 測試 4：topic 篩選不會誤撈其他 topic 的資料 ==========")
 check("career_and_feedback 底下的 cid_career 不應該出現在 leadership_and_dept 的結果裡", cid_career not in returned_ids)
 
-resp_career = client.get("/api/admin/ai/classifications?topic=career_and_feedback", headers=admin_header())
+resp_career = client.get("/api/admin/ai/classifications?topic=career_and_feedback&queue=all", headers=admin_header())
 returned_ids_career = {row["classification_id"] for row in resp_career.get_json()["classifications"]}
 check("反過來查 career_and_feedback，只會查到 cid_career", returned_ids_career == {cid_career})
 
@@ -223,7 +225,7 @@ check("taxonomy_version_id=NULL 的舊資料，在 career_and_feedback 篩選下
 
 # 舊資料也不會出現在任何其他 topic_key 底下（不存在的 topic_key 也一樣查不到，
 # 而不是被歸到某個猜測的分類）。
-resp_nonexistent_topic = client.get("/api/admin/ai/classifications?topic=some_other_topic_key", headers=admin_header())
+resp_nonexistent_topic = client.get("/api/admin/ai/classifications?topic=some_other_topic_key&queue=all", headers=admin_header())
 check(
     "查一個不存在的 topic_key，回傳空陣列而不是報錯或誤撈資料",
     resp_nonexistent_topic.status_code == 200 and resp_nonexistent_topic.get_json()["classifications"] == [],
@@ -236,28 +238,28 @@ check(
 # ═══════════════════════════════════════════════════════════════
 print("\n========== 測試 6：既有行為 regression ==========")
 
-resp_no_topic = client.get("/api/admin/ai/classifications", headers=admin_header())
+resp_no_topic = client.get("/api/admin/ai/classifications?queue=all", headers=admin_header())
 check("不帶 topic 參數時，查全部（既有行為不變）", resp_no_topic.status_code == 200)
 all_ids = {row["classification_id"] for row in resp_no_topic.get_json()["classifications"]}
 check("不帶 topic 時，三筆（含 legacy）都查得到", {cid_leadership, cid_career, cid_legacy} <= all_ids)
 
-resp_review_status = client.get("/api/admin/ai/classifications?review_status=pending_review", headers=admin_header())
+resp_review_status = client.get("/api/admin/ai/classifications?review_status=pending_review&queue=all", headers=admin_header())
 check("review_status filter 仍正常運作", resp_review_status.status_code == 200)
 check(
     "review_status filter 可以跟 topic 一起使用",
     client.get(
-        "/api/admin/ai/classifications?topic=leadership_and_dept&review_status=pending_review",
+        "/api/admin/ai/classifications?topic=leadership_and_dept&review_status=pending_review&queue=all",
         headers=admin_header(),
     ).status_code == 200,
 )
 
-resp_bad_status = client.get("/api/admin/ai/classifications?review_status=not_a_real_status", headers=admin_header())
+resp_bad_status = client.get("/api/admin/ai/classifications?review_status=not_a_real_status&queue=all", headers=admin_header())
 check("非法 review_status 仍然回 400（regression）", resp_bad_status.status_code == 400)
 
-resp_unassigned = client.get("/api/admin/ai/classifications?topic=__unassigned__", headers=admin_header())
+resp_unassigned = client.get("/api/admin/ai/classifications?topic=__unassigned__&queue=all", headers=admin_header())
 check("__unassigned__ 邏輯不受影響，仍正常運作", resp_unassigned.status_code == 200)
 
-resp_needs_review = client.get("/api/admin/ai/classifications?needs_human_review=true", headers=admin_header())
+resp_needs_review = client.get("/api/admin/ai/classifications?needs_human_review=true&queue=all", headers=admin_header())
 check("needs_human_review filter 仍正常運作", resp_needs_review.status_code == 200)
 
 sample_row = next((r for r in resp_no_topic.get_json()["classifications"] if r["classification_id"] == cid_leadership), None)

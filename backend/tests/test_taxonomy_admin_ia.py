@@ -22,6 +22,7 @@ import os
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-testing-only")
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+# 列表 API 預設 queue=human（只留需要人工處理的待審、隱藏 legacy）；這支測試驗證 API 參數本身，所以全部用 queue=all 取全部資料。
 FAILED = []
 
 
@@ -54,6 +55,7 @@ with app.app_context():
         m.Response_Classification.__table__,
         m.Response_Classification_Secondary.__table__,
         m.Classification_Review.__table__,  # 清單會一併回傳 in_review 狀態
+        m.Uploaded_Answer.__table__,  # 列表預設篩選 / legacy 判斷會查這張表
     ]
     db.metadata.create_all(bind=db.engine, tables=tables)
     admin = m.Admin(admin_name="tester", email="admin@example.com", password_hash="x")
@@ -129,22 +131,22 @@ def sub_categories(resp):
 
 print("========== 既有行為：不可改壞 ==========")
 
-resp_all = client.get("/api/admin/ai/classifications", headers=AUTH)
+resp_all = client.get("/api/admin/ai/classifications?queue=all", headers=AUTH)
 check(
     "不傳 topic 時查全部（含 Confidence Gate 測試資料，共 6 筆）",
     sub_categories(resp_all) == {"leadership-row", "career-row", "other-row", "null-row", "flagged-row", "normal-row"},
 )
 
-resp_leadership = client.get("/api/admin/ai/classifications?topic=leadership_and_dept", headers=AUTH)
+resp_leadership = client.get("/api/admin/ai/classifications?topic=leadership_and_dept&queue=all", headers=AUTH)
 check("topic=leadership_and_dept 只查到該 topic 的資料", sub_categories(resp_leadership) == {"leadership-row"})
 
-resp_career = client.get("/api/admin/ai/classifications?topic=career_and_feedback", headers=AUTH)
+resp_career = client.get("/api/admin/ai/classifications?topic=career_and_feedback&queue=all", headers=AUTH)
 check("topic=career_and_feedback 只查到該 topic 的資料", sub_categories(resp_career) == {"career-row"})
 
 
 print("\n========== 新行為：topic=__unassigned__ ==========")
 
-resp_unassigned = client.get("/api/admin/ai/classifications?topic=__unassigned__", headers=AUTH)
+resp_unassigned = client.get("/api/admin/ai/classifications?topic=__unassigned__&queue=all", headers=AUTH)
 check(
     "topic=__unassigned__ 查到 question_id=NULL 與 question_id='other' 兩筆，且僅這兩筆",
     sub_categories(resp_unassigned) == {"other-row", "null-row"},
@@ -159,17 +161,17 @@ check(
 
 print("\n========== review_status 與 topic 可同時篩選（既有行為）==========")
 
-resp_combo = client.get("/api/admin/ai/classifications?topic=__unassigned__&review_status=pending_review", headers=AUTH)
+resp_combo = client.get("/api/admin/ai/classifications?topic=__unassigned__&review_status=pending_review&queue=all", headers=AUTH)
 check("HTTP 200（組合篩選正常運作）", resp_combo.status_code == 200)
 check("組合篩選只回傳符合兩個條件的資料", sub_categories(resp_combo) == {"other-row", "null-row"})
 
-resp_bad_status = client.get("/api/admin/ai/classifications?review_status=not_a_real_status", headers=AUTH)
+resp_bad_status = client.get("/api/admin/ai/classifications?review_status=not_a_real_status&queue=all", headers=AUTH)
 check("不合法 review_status 仍然回 400（既有行為）", resp_bad_status.status_code == 400)
 
 
 print("\n========== Admin auth 保護（既有行為）==========")
 
-resp_no_auth = client.get("/api/admin/ai/classifications")
+resp_no_auth = client.get("/api/admin/ai/classifications?queue=all")
 check("沒帶 token 時回 401", resp_no_auth.status_code == 401)
 
 
@@ -195,20 +197,20 @@ check("沒帶 token 時回 401", resp_versions_no_auth.status_code == 401)
 
 print("\n========== 新增：GET /classifications?needs_human_review=true 篩選 ==========")
 
-resp_flagged_only = client.get("/api/admin/ai/classifications?topic=topic_confidence_gate_test&needs_human_review=true", headers=AUTH)
+resp_flagged_only = client.get("/api/admin/ai/classifications?topic=topic_confidence_gate_test&needs_human_review=true&queue=all", headers=AUTH)
 check("HTTP 200", resp_flagged_only.status_code == 200)
 check(
     "?needs_human_review=true 只回傳被 flag 的那一筆",
     sub_categories(resp_flagged_only) == {"flagged-row"},
 )
 
-resp_topic_only = client.get("/api/admin/ai/classifications?topic=topic_confidence_gate_test", headers=AUTH)
+resp_topic_only = client.get("/api/admin/ai/classifications?topic=topic_confidence_gate_test&queue=all", headers=AUTH)
 check(
     "不帶 needs_human_review 參數時，topic 篩選行為不變（兩筆都回）",
     sub_categories(resp_topic_only) == {"flagged-row", "normal-row"},
 )
 
-resp_unassigned_with_flag = client.get("/api/admin/ai/classifications?topic=__unassigned__&needs_human_review=true", headers=AUTH)
+resp_unassigned_with_flag = client.get("/api/admin/ai/classifications?topic=__unassigned__&needs_human_review=true&queue=all", headers=AUTH)
 check(
     "topic=__unassigned__ + needs_human_review=true：unassigned 資料沒有被 flag，回傳空集合",
     sub_categories(resp_unassigned_with_flag) == set(),
@@ -222,13 +224,13 @@ with app.app_context():
     db.session.add(flagged_unassigned)
     db.session.commit()
 
-resp_unassigned_with_flag2 = client.get("/api/admin/ai/classifications?topic=__unassigned__&needs_human_review=true", headers=AUTH)
+resp_unassigned_with_flag2 = client.get("/api/admin/ai/classifications?topic=__unassigned__&needs_human_review=true&queue=all", headers=AUTH)
 check(
     "topic=__unassigned__ + needs_human_review=true 正確撈到 unassigned 底下被 flag 的資料",
     sub_categories(resp_unassigned_with_flag2) == {"flagged-unassigned-row"},
 )
 
-resp_review_status_still_works = client.get("/api/admin/ai/classifications?review_status=pending_review", headers=AUTH)
+resp_review_status_still_works = client.get("/api/admin/ai/classifications?review_status=pending_review&queue=all", headers=AUTH)
 check(
     "review_status=pending_review 既有行為不受影響（回傳全部，因為測試資料都是預設 pending_review）",
     "flagged-row" in sub_categories(resp_review_status_still_works)
@@ -236,7 +238,7 @@ check(
 )
 
 resp_combo_review_and_flag = client.get(
-    "/api/admin/ai/classifications?topic=topic_confidence_gate_test&review_status=pending_review&needs_human_review=true",
+    "/api/admin/ai/classifications?topic=topic_confidence_gate_test&review_status=pending_review&needs_human_review=true&queue=all",
     headers=AUTH,
 )
 check(

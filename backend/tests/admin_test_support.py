@@ -195,6 +195,29 @@ def seed_classification(answer_id, batch_id, text, main, sub, *, version_id=None
     return row.classification_id
 
 
+def seed_failed_retry(answer_id=None, *, response_id=None, question_id=None, failure_code=None, job_id=1):
+    """讓一筆失敗的回答算「自動重試仍失敗」。
+
+    Admin 的「無法分類」清單只列系統自動重試後仍失敗的資料（見 admin_recovery_service
+    的 _has_failed_retry_*）；沒有重試紀錄的失敗列視為「還在排程重試中」，不會列出。
+    failure_code=None 代表不是暫時性錯誤（暫時性 / 金鑰錯誤的失敗碼不算需要人工處理）。"""
+    import hashlib
+    import json
+
+    from classification_models import Bulk_Retry_Item_Attempt
+
+    scope = {"upload": answer_id} if answer_id is not None else {"survey": response_id, "question": question_id}
+    attempt = Bulk_Retry_Item_Attempt(
+        scope_key=hashlib.sha256(json.dumps(scope, sort_keys=True).encode()).hexdigest(),
+        job_id=job_id, scope_type="upload" if answer_id is not None else "survey",
+        uploaded_answer_id=answer_id, response_id=response_id, question_id=question_id,
+        outcome="failed", failure_code=failure_code,
+    )
+    db.session.add(attempt)
+    db.session.commit()
+    return attempt.scope_key
+
+
 def seed_workspace_chat(batch_id, rows=None, meta_extra=None, project_id=1):
     """建立一個 Workspace + 一則分類結果訊息（模擬前端存進 Chat_History 的快照）。"""
     from services.workspace_result_service import build_classification_message

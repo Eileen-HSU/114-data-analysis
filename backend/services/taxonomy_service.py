@@ -851,7 +851,7 @@ def delete_taxonomy_version(topic_key: str, version_id: int):
     迴圈刪除 category。不做 version_number renumber，其他版本
     完全不受影響。回傳值表示是否一併刪除了空 Auto Topic。
     """
-    from models import Response_Classification
+    from models import Response_Classification, Taxonomy_Version
     from taxonomy import Topic
     from taxonomy import TAXONOMY_VERSION_STATUS_DRAFT
 

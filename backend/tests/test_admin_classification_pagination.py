@@ -55,7 +55,9 @@ with app.app_context():
 
 
 def get(params):
-    return client.get(f"/api/admin/ai/classifications?{params}", headers=admin_header(1))
+    # 這支測試驗證分頁 / 計數，要看全部資料：queue=all 不套用「只留需要人工處理的待審」篩選
+    # （列表 API 預設 queue=human，見 admin_overview_service.queue_clause）
+    return client.get(f"/api/admin/ai/classifications?{params}&queue=all", headers=admin_header(1))
 
 
 print("========== 1. counts 與 total 是全部資料 ==========")

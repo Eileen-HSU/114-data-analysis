@@ -81,21 +81,37 @@ def queue_clause(queue):
     """分類審查清單的 queue 篩選：
         human          ：待審之中只留需要人工逐筆處理的（隱藏系統處理中、新類別群組、暫定主題）
         <某個人工桶>    ：只看那一種（例如 ai_disagreement）
-    非待審的列（已確認、已排除…）不受影響。回傳 None 代表不篩選。"""
+    非待審的列（已確認、已排除…）與失敗的列不受影響。回傳 None 代表不篩選。"""
     R = Response_Classification
     from services.admin_recovery_service import _legacy_classification_clause
 
+    # status=failed 的列有自己的「無法分類」分頁（state=failed），不屬於待審佇列，不能被這個篩選藏起來；
+    # 否則前端沒帶 queue 的 failed 分頁與 status_counts.failed 會永遠是 0。
+    # 待審分頁（state=pending_review）本來就排除 failed，所以這裡放行不會改變待審清單。
+    not_in_queue_view = db.or_(R.review_status != REVIEW_STATUS_PENDING, R.status == "failed")
     if queue == "human":
         return db.or_(
-            R.review_status != REVIEW_STATUS_PENDING,
+            not_in_queue_view,
             db.and_(bucket_expr().in_(HUMAN_ROW_BUCKETS), ~_legacy_classification_clause()),
         )
     if queue in HUMAN_ROW_BUCKETS:
         return db.or_(
-            R.review_status != REVIEW_STATUS_PENDING,
+            not_in_queue_view,
             db.and_(bucket_expr() == queue, ~_legacy_classification_clause()),
         )
-    return None
+    return None  # 其他值（例如 all）：不篩選
+
+
+def _not_done_clause():
+    """只留會被計入桶的列：待審的，加上自動通過的。
+
+    其他已處理的列（已確認但不是自動通過、已修改、已排除）在 bucket_expr 一律是 BUCKET_DONE，
+    而 DONE 不在 ALL_BUCKETS 裡、算完就丟掉；在 SQL 先排除，結果完全相同，但不必替這些列算 CASE。"""
+    R = Response_Classification
+    return db.or_(
+        R.review_status == REVIEW_STATUS_PENDING,
+        db.and_(R.review_status == REVIEW_STATUS_CONFIRMED, R.auto_confirmed.is_(True)),
+    )
 
 
 def _topic_counts():
@@ -112,7 +128,7 @@ def _topic_counts():
         db.session.query(Taxonomy_Version.topic_key.label("topic_key"), bucket_expr().label("bucket"))
         .select_from(Response_Classification)
         .outerjoin(Taxonomy_Version, Response_Classification.taxonomy_version_id == Taxonomy_Version.version_id)
-        .filter(live, ~_legacy_classification_clause())
+        .filter(live, ~_legacy_classification_clause(), _not_done_clause())
         .subquery()
     )
     rows = db.session.query(inner.c.topic_key, inner.c.bucket, func.count()).group_by(inner.c.topic_key, inner.c.bucket).all()
@@ -152,6 +168,18 @@ def _new_category_groups():
     return groups
 
 
+def _undecided_topic_keys() -> set:
+    """主題存在、沒有被併入其他主題、也還沒有 published 版本。"""
+    from models import Taxonomy_Version, Topic
+    from taxonomy import TAXONOMY_VERSION_STATUS_PUBLISHED
+
+    existing = {k for (k,) in db.session.query(Topic.topic_key).filter(
+        db.or_(Topic.merged_into.is_(None), Topic.merged_into == "")).all()}
+    published = {k for (k,) in db.session.query(Taxonomy_Version.topic_key).filter(
+        Taxonomy_Version.status == TAXONOMY_VERSION_STATUS_PUBLISHED).distinct().all()}
+    return existing - published
+
+
 def residual_new_category_groups() -> int:
     from services.new_category_service import residual_group_count
 
@@ -171,7 +199,10 @@ def build_overview() -> dict:
     for counts in per_topic.values():
         for key in totals:
             totals[key] += counts[key]
-    provisional_topics = sum(1 for key, c in per_topic.items() if key is not None and c[BUCKET_PROVISIONAL] > 0)
+    # 「待決策的 AI 自動主題」：還沒決定去向的主題。已被併入其他主題、或已經有 published 版本（已是
+    # 正式主題）的，即使還有待處理回答仍綁在舊版（採用 / 合併後的常見狀態），也不算待決策。
+    undecided = _undecided_topic_keys()
+    provisional_topics = sum(1 for key, c in per_topic.items() if key in undecided and c[BUCKET_PROVISIONAL] > 0)
 
     def judgement(c):  # 需要人工逐筆處理的列
         return c[BUCKET_AI_DISAGREEMENT] + c[BUCKET_SECOND_OPINION_FAILED] + c[BUCKET_OTHER]

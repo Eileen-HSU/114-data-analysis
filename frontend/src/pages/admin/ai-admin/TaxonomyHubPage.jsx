@@ -61,8 +61,11 @@ export default function TaxonomyHubPage() {
   const byTodo = (a, b) => pending(b.topic_key) - pending(a.topic_key) || a.title.localeCompare(b.title);
   const all = topics || [];
   const legacy = all.filter((x) => !x.merged_into && isLegacyTechnicalTopic(x));
-  const official = all.filter((x) => !x.merged_into && !x.is_auto_topic && !isLegacyTechnicalTopic(x)).sort(byTodo);
-  const auto = all.filter((x) => !x.merged_into && x.is_auto_topic && !isLegacyTechnicalTopic(x)).sort(byTodo);
+  // 「AI 自動主題」= AI 暫時建立、還沒有正式發布版本的主題。auto_ 開頭的主題一旦發布，已經是正式主題，
+  // 要放進「正式主題」，按鈕也不該再叫「決定去向」。
+  const isUndecidedAuto = (x) => !!x.is_auto_topic && !x.published_version;
+  const official = all.filter((x) => !x.merged_into && !isUndecidedAuto(x) && !isLegacyTechnicalTopic(x)).sort(byTodo);
+  const auto = all.filter((x) => !x.merged_into && isUndecidedAuto(x) && !isLegacyTechnicalTopic(x)).sort(byTodo);
   const merged = all.filter((x) => x.merged_into);
   const titleOf = (key) => topicDisplayName(all.find((x) => x.topic_key === key) || key);
 
@@ -84,7 +87,7 @@ export default function TaxonomyHubPage() {
         </span>
       </div>
       <button onClick={() => navigate(`/admin/ai/topics/${topic.topic_key}`)}>
-        {topic.is_auto_topic
+        {isUndecidedAuto(topic)
           ? t("決定去向", "Decide destination")
           : t("管理分類架構", "Manage taxonomy")}
       </button>

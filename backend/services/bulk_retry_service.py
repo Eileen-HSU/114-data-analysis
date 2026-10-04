@@ -42,6 +42,7 @@ from classification_models import (
     Bulk_Retry_Job,
 )
 from extensions import db, taiwan_now
+from services.query_utils import fast_count
 from services.failure_explainer import TRANSIENT_FAILURE_CODES
 
 logger = logging.getLogger(__name__)
@@ -242,18 +243,18 @@ def retry_split() -> dict:
     failed_q, zero_q, unrouted_q = _untried_queries()
     counts = remaining_counts()
     pending_by_kind = {
-        KIND_FAILED: failed_q.count() + zero_q.count(),
-        KIND_UNROUTED: unrouted_q.count(),
+        KIND_FAILED: fast_count(failed_q) + fast_count(zero_q),
+        KIND_UNROUTED: fast_count(unrouted_q),
     }
     system_blocked_by_kind = {
-        KIND_FAILED: _failed_query().filter(
+        KIND_FAILED: fast_count(_failed_query().filter(
             _has_system_blocked_retry_for_classification()
-        ).count() + _zero_segment_failed_answers_query().filter(
+        )) + fast_count(_zero_segment_failed_answers_query().filter(
             _has_system_blocked_retry("upload", answer_id=Uploaded_Answer.id)
-        ).count(),
-        KIND_UNROUTED: _unrouted_answers_query().filter(
+        )),
+        KIND_UNROUTED: fast_count(_unrouted_answers_query().filter(
             _has_system_blocked_retry("upload", answer_id=Uploaded_Answer.id)
-        ).count(),
+        )),
     }
     still_failed_by_kind = {
         kind: max(counts[kind] - pending_by_kind[kind] - system_blocked_by_kind[kind], 0)

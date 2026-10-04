@@ -45,6 +45,7 @@ retry failed）。
 """
 
 from extensions import db, taiwan_now
+from services.query_utils import fast_count
 from models import (
     Response_Classification,
     Response_Segmentation_Status,
@@ -281,9 +282,9 @@ def _classification_item(row, kind):
 
 def unassigned_counts() -> dict:
     return {
-        KIND_UNROUTED: _unrouted_answers_query().count(),
-        KIND_FAILED: _failed_query().count() + _zero_segment_failed_answers_query().count(),
-        KIND_LEGACY: _legacy_routing_answers_query().count() + _legacy_classifications_query().count(),
+        KIND_UNROUTED: fast_count(_unrouted_answers_query()),
+        KIND_FAILED: fast_count(_failed_query()) + fast_count(_zero_segment_failed_answers_query()),
+        KIND_LEGACY: fast_count(_legacy_routing_answers_query()) + fast_count(_legacy_classifications_query()),
     }
 
 
@@ -302,7 +303,7 @@ def list_unassigned(kind, page=1, page_size=50) -> dict:
         query = _unrouted_answers_query().filter(
             _has_failed_retry_for_upload(Uploaded_Answer.id)
         ).order_by(Uploaded_Answer.created_at.desc(), Uploaded_Answer.id.desc())
-        total = query.count()
+        total = fast_count(query)
         items = [_answer_item(a) for a in query.offset((page - 1) * page_size).limit(page_size).all()]
     elif kind == KIND_FAILED:
         # 先列零片段失敗的回答，再列 failed 分類列；兩段合併做 server-side 分頁。
@@ -312,8 +313,8 @@ def list_unassigned(kind, page=1, page_size=50) -> dict:
             Response_Classification.created_at.desc(), Response_Classification.classification_id.desc())
         answers_q = answers_q.filter(_has_failed_retry_for_upload(Uploaded_Answer.id))
         rows_q = rows_q.filter(_has_failed_retry_for_classification())
-        answer_total = answers_q.count()
-        total = answer_total + rows_q.count()
+        answer_total = fast_count(answers_q)
+        total = answer_total + fast_count(rows_q)
         offset = (page - 1) * page_size
         items = []
         if offset < answer_total:
@@ -327,8 +328,8 @@ def list_unassigned(kind, page=1, page_size=50) -> dict:
             Uploaded_Answer.created_at.desc(), Uploaded_Answer.id.desc())
         classification_query = _legacy_classifications_query().order_by(
             Response_Classification.created_at.desc(), Response_Classification.classification_id.desc())
-        answer_total = answer_query.count()
-        classification_total = classification_query.count()
+        answer_total = fast_count(answer_query)
+        classification_total = fast_count(classification_query)
         total = answer_total + classification_total
         offset = (page - 1) * page_size
         answer_rows = answer_query.limit(offset + page_size).all()
@@ -488,17 +489,10 @@ def _row_source(scope):
     return (SOURCE_TYPE_SURVEY, response.template_id, None) if response else None
 
 
-def _reprocess(scope, topic_key, admin_id, action, taxonomy_version_id=None, reason=None,
-               require_unclassified=False):
-    """重新分類一則回答（見檔案開頭規則）。成功或 AI 回傳失敗都會 commit；
-    非預期例外會 rollback 後把失敗原因持久化再往外拋 RecoveryError。"""
-    from routes.classifications.classification import _persist_segmentation_result
-    from services.classify_v2 import classify_response_multi_segment
-    from services.report_service import OUTDATED_CLASSIFICATION_RERUN, mark_reports_outdated_for_sources
+def _check_reprocess_allowed(existing, status_row, admin_id, require_unclassified):
+    """這則回答現在能不能重新處理；回傳目前進行中的審核對話（成功後要關閉的）。
 
-    existing = _existing_rows(scope)
-    status_row = _existing_status(scope)
-
+    放鎖前先檢查一次（有問題就不必花錢呼叫 AI），AI 回來重新上鎖後再檢查一次。"""
     if require_unclassified and status_row is not None and any(
         r.status not in NON_COUNTABLE_STATUSES for r in existing
     ):
@@ -528,6 +522,20 @@ def _reprocess(scope, topic_key, admin_id, action, taxonomy_version_id=None, rea
             extra={"reviewing_admin_id": others[0].admin_id,
                    "reviewing_admin_name": _admin_display_name(others[0].admin_id)},
         )
+    return open_reviews
+
+
+def _reprocess(scope, topic_key, admin_id, action, taxonomy_version_id=None, reason=None,
+               require_unclassified=False):
+    """重新分類一則回答（見檔案開頭規則）。成功或 AI 回傳失敗都會 commit；
+    非預期例外會 rollback 後把失敗原因持久化再往外拋 RecoveryError。"""
+    from routes.classifications.classification import _persist_segmentation_result
+    from services.classify_v2 import classify_response_multi_segment
+    from services.report_service import OUTDATED_CLASSIFICATION_RERUN, mark_reports_outdated_for_sources
+
+    existing = _existing_rows(scope)
+    status_row = _existing_status(scope)
+    open_reviews = _check_reprocess_allowed(existing, status_row, admin_id, require_unclassified)
 
     prompt_content, category_lookup, version = _resolve_taxonomy(topic_key, taxonomy_version_id)
 
@@ -538,6 +546,16 @@ def _reprocess(scope, topic_key, admin_id, action, taxonomy_version_id=None, rea
         "classification_ids": [r.classification_id for r in existing],
         "statuses": [r.status for r in existing],
     }
+
+    # AI 要等好幾秒（限流時每次重試還會再等 20 秒）。這段時間不能抓著資料列的鎖：另一個請求
+    # （重複送出的合併、背景自動重試）一碰到這些列就會卡到資料庫連線逾時（read_timeout）而 500。
+    # 到這裡為止只有 SELECT ... FOR UPDATE、沒有任何寫入，commit 只是放鎖；AI 回來後再重新上鎖，
+    # 並確認這則回答沒有被別人改過，才寫入。
+    snapshot_ids = sorted(r.classification_id for r in existing)
+    locks_released = False
+    if not (db.session.new or db.session.dirty or db.session.deleted):
+        db.session.commit()
+        locks_released = True
 
     try:
         result = classify_response_multi_segment(
@@ -559,6 +577,20 @@ def _reprocess(scope, topic_key, admin_id, action, taxonomy_version_id=None, rea
         raise RecoveryError(
             explained["code"], explained["message"], 502, extra={"raw_error": explained["raw"]},
         )
+
+    if locks_released:
+        if answer is not None:
+            answer = _lock_answer(answer.id)
+            scope["answer"] = answer
+        existing = _existing_rows(scope)
+        status_row = _existing_status(scope)
+        if sorted(r.classification_id for r in existing) != snapshot_ids:
+            db.session.rollback()
+            raise RecoveryError(
+                "CONCURRENT_MODIFICATION",
+                "這則回答在重新分類期間被其他操作更動了，這次的結果沒有寫入，請稍後重試", 409,
+            )
+        open_reviews = _check_reprocess_allowed(existing, status_row, admin_id, require_unclassified)
 
     # 新結果沒有任何可用片段（全部失敗 / 零片段）：只要有舊結果（current
     # classification 或既有的 status 列）就不採用——舊列、審核對話、人工審核
@@ -904,6 +936,9 @@ def attempt_history(classification_id):
 ACTION_MERGE_TOPIC = "merge_topic"
 
 
+_MERGE_MAX_CONSECUTIVE_DB_ERRORS = 3  # 連續幾筆資料庫逾時就中止這次合併
+
+
 def merge_topic(source_topic_key, target_topic_key, admin_id):
     """管理員判斷「這個主題（通常是 AI 自動建立的主題）其實屬於另一個主題」：
 
@@ -952,28 +987,54 @@ def merge_topic(source_topic_key, target_topic_key, admin_id):
     )
     db.session.commit()
 
-    # 重新分類來源主題底下的資料
-    answer_ids = [a.id for a in Uploaded_Answer.query.filter_by(question_type=source_topic_key).all()]
+    # 重新分類來源主題底下的資料（只取 id，不載入整列 / 長文字）
+    answer_ids = [i for (i,) in db.session.query(Uploaded_Answer.id).filter(
+        Uploaded_Answer.question_type == source_topic_key).order_by(Uploaded_Answer.id).all()]
     source_version_ids = [v.version_id for v in source.taxonomy_versions]
     survey_rows = []
     if source_version_ids:
         seen = set()
-        for row in Response_Classification.query.filter(
+        for classification_id, response_id, question_id in db.session.query(
+            Response_Classification.classification_id, Response_Classification.response_id,
+            Response_Classification.question_id,
+        ).filter(
             Response_Classification.taxonomy_version_id.in_(source_version_ids),
             Response_Classification.source_type == SOURCE_TYPE_SURVEY,
             Response_Classification.status != CLASSIFICATION_STATUS_SUPERSEDED,
-        ).all():
-            key = (row.response_id, row.question_id)
+        ).order_by(Response_Classification.classification_id).all():
+            key = (response_id, question_id)
             if key not in seen:
                 seen.add(key)
-                survey_rows.append(row.classification_id)
+                survey_rows.append(classification_id)
+
+    from sqlalchemy.exc import OperationalError
 
     moved, skipped = 0, []
+    consecutive_db_errors = 0
+    aborted = False
+    processed = 0
+    total_items = len(answer_ids) + len(survey_rows)
+    reason = f"主題 {source_topic_key} 併入 {target_topic_key}"
+
+    def db_busy(item_key, item_id):
+        """資料庫逾時 / 斷線（常見原因：同一批資料正被另一個請求鎖住）：這一筆記下來，不讓整個請求變 500。"""
+        db.session.rollback()
+        skipped.append({item_key: item_id, "code": "DATABASE_BUSY",
+                        "message": "資料庫忙碌（逾時），這筆還沒處理；稍後可再按「重試併入」"})
+
     for answer_id in answer_ids:
+        if consecutive_db_errors >= _MERGE_MAX_CONSECUTIVE_DB_ERRORS:
+            aborted = True
+            break
+        processed += 1
         try:
             answer = _lock_answer(answer_id)
-            result = _reprocess(_scope_for_answer(answer), target_topic_key, admin_id, ACTION_MERGE_TOPIC,
-                                reason=f"主題 {source_topic_key} 併入 {target_topic_key}")
+            if answer.question_type != source_topic_key:
+                db.session.rollback()   # 已被另一個請求 / 管理員搬走，不必再重新分類
+                consecutive_db_errors = 0
+                continue
+            result = _reprocess(_scope_for_answer(answer), target_topic_key, admin_id, ACTION_MERGE_TOPIC, reason=reason)
+            consecutive_db_errors = 0
             if result.get("kept_previous"):
                 skipped.append({"uploaded_answer_id": answer_id, "code": "REPROCESS_FAILED_KEPT_PREVIOUS",
                                 "message": (result.get("failure") or {}).get("message") or "重新分類失敗，保留原本結果"})
@@ -981,12 +1042,20 @@ def merge_topic(source_topic_key, target_topic_key, admin_id):
             moved += 1
         except RecoveryError as exc:
             db.session.rollback()
+            consecutive_db_errors = 0
             skipped.append({"uploaded_answer_id": answer_id, "code": exc.code, "message": exc.message})
+        except OperationalError:
+            consecutive_db_errors += 1
+            db_busy("uploaded_answer_id", answer_id)
     for classification_id in survey_rows:
+        if aborted or consecutive_db_errors >= _MERGE_MAX_CONSECUTIVE_DB_ERRORS:
+            aborted = True
+            break
+        processed += 1
         try:
             result = reclassify_classification(classification_id, admin_id, topic_key=target_topic_key,
-                                               reason=f"主題 {source_topic_key} 併入 {target_topic_key}",
-                                               action=ACTION_MERGE_TOPIC)
+                                               reason=reason, action=ACTION_MERGE_TOPIC)
+            consecutive_db_errors = 0
             if result.get("kept_previous"):
                 skipped.append({"classification_id": classification_id, "code": "REPROCESS_FAILED_KEPT_PREVIOUS",
                                 "message": (result.get("failure") or {}).get("message") or "重新分類失敗，保留原本結果"})
@@ -994,7 +1063,11 @@ def merge_topic(source_topic_key, target_topic_key, admin_id):
             moved += 1
         except RecoveryError as exc:
             db.session.rollback()
+            consecutive_db_errors = 0
             skipped.append({"classification_id": classification_id, "code": exc.code, "message": exc.message})
+        except OperationalError:
+            consecutive_db_errors += 1
+            db_busy("classification_id", classification_id)
 
     return {
         "source_topic_key": source_topic_key,
@@ -1003,6 +1076,9 @@ def merge_topic(source_topic_key, target_topic_key, admin_id):
         "moved_count": moved,
         "skipped_count": len(skipped),
         "skipped": skipped[:100],
+        # 連續資料庫逾時就先停下來（不要一筆一筆各等 15 秒）；已處理的不會重做，剩下的可再按「重試併入」
+        "aborted": aborted,
+        "unprocessed_count": max(total_items - processed, 0) if aborted else 0,
     }
 
 

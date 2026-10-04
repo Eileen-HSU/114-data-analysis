@@ -9,6 +9,7 @@ from flask import Blueprint, jsonify, request
 from extensions import db
 from models import Admin
 from classification_models import Response_Classification, Classification_Review, ALLOWED_REVIEW_STATUSES
+from services.query_utils import fast_count
 from services.review_service import derive_review_state
 from taxonomy import Taxonomy_Version
 from routes.auth.admin_guard import verify_admin_token
@@ -171,8 +172,18 @@ def reviewed_classifications():
     if queue is not None:
         base = base.filter(queue)
 
-    status_counts = {s: base.filter(_state_clause(s)).count() for s in CLASSIFICATION_STATES}
-    auto_confirmed_count = base.filter(Response_Classification.auto_confirmed.is_(True)).count()
+    # 各狀態筆數 + 自動通過筆數：一次條件聚合（原本是 7 次各自全表掃描、每次都把整列包成子查詢）
+    aggregates = [
+        db.func.coalesce(db.func.sum(db.case((_state_clause(s), 1), else_=0)), 0).label(s)
+        for s in CLASSIFICATION_STATES
+    ]
+    aggregates.append(
+        db.func.coalesce(db.func.sum(db.case((Response_Classification.auto_confirmed.is_(True), 1), else_=0)), 0)
+        .label("auto_confirmed_count")
+    )
+    counted = base.order_by(None).with_entities(*aggregates).one()
+    status_counts = {s: int(getattr(counted, s)) for s in CLASSIFICATION_STATES}
+    auto_confirmed_count = int(counted.auto_confirmed_count)
     auto_confirmed_arg = request.args.get("auto_confirmed")
     if auto_confirmed_arg == "true":
         base = base.filter(Response_Classification.auto_confirmed.is_(True))
@@ -189,7 +200,7 @@ def reviewed_classifications():
             return api_error("INVALID_STATE", f"state 只能是 {list(CLASSIFICATION_STATES)}", 400)
         query = query.filter(_state_clause(state))
 
-    total = query.count()
+    total = fast_count(query)
     rows = (
         query.order_by(Response_Classification.created_at.desc(), Response_Classification.classification_id.desc())
         .offset((page - 1) * page_size).limit(page_size).all()
