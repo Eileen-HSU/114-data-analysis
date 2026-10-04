@@ -18,6 +18,8 @@ class PptSurveyAiError(Exception):
 
 ALLOWED_EXTENSIONS = {".pdf"}
 ALLOWED_TYPES = {"short", "rating"}
+INSUFFICIENT_CONTENT_MESSAGE = "上傳資料提供的有效資訊不足，無法生成具體問卷。請提供包含較完整主題、內容或背景資訊的檔案。"
+INSUFFICIENT_CONTENT_CODE = "INSUFFICIENT_SURVEY_CONTENT"
 GEMINI_MODEL = "gemini-3.5-flash"
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_EXTRACTED_CHARS = 18000
@@ -227,13 +229,81 @@ def _parse_json_response(text):
         return json.loads(match.group(0))
 
 
+def _is_false_marker(value):
+    if value is False:
+        return True
+    if isinstance(value, str):
+        return value.strip().lower() in {"false", "no", "0", "insufficient"}
+    return False
+
+
 def _raise_if_insufficient_content(raw):
-    if isinstance(raw, dict) and raw.get("insufficient_content") is True:
+    if not isinstance(raw, dict):
+        return
+
+    is_insufficient = (
+        raw.get("insufficient_content") is True
+        or _is_false_marker(raw.get("is_sufficient"))
+        or str(raw.get("status") or "").strip().lower()
+        in {"insufficient_content", "insufficient", "rejected"}
+        or str(raw.get("code") or "").strip().upper() == INSUFFICIENT_CONTENT_CODE
+    )
+    if is_insufficient:
         raise PptSurveyAiError(
-            raw.get("message")
-            or "上傳資料提供的有效資訊不足，無法生成具體問卷。請提供包含較完整主題、內容或背景資訊的檔案。",
+            raw.get("message") or INSUFFICIENT_CONTENT_MESSAGE,
             400,
         )
+
+
+def _is_obviously_insufficient_extracted_text(text):
+    """Catch bare flyer/header PDFs before Gemini can over-generate."""
+    normalized = re.sub(r"[ \t]+", " ", text or "").strip()
+    if not normalized:
+        return False
+
+    lines = [
+        line.strip(" \t\r\n-•|｜:：,，.。")
+        for line in re.split(r"[\r\n]+", normalized)
+        if line.strip(" \t\r\n-•|｜:：,，.。")
+    ]
+    if not lines:
+        return False
+
+    content_markers = (
+        "課程目標", "課程內容", "活動內容", "服務內容", "產品功能", "系統功能",
+        "流程", "議程", "大綱", "單元", "模組", "學習", "實作", "練習",
+        "教材", "評量", "對象", "成果", "說明", "特色", "功能", "內容",
+        "agenda", "objective", "objectives", "curriculum", "module", "modules",
+        "session", "sessions", "feature", "features", "workflow", "service",
+        "product", "training content", "learning outcome",
+    )
+    lowered = normalized.lower()
+    if any(marker.lower() in lowered for marker in content_markers):
+        return False
+
+    shell_patterns = (
+        r"^\d{4}[/-]\d{1,2}[/-]\d{1,2}$",
+        r"^\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?$",
+        r"^\d{1,2}:\d{2}(?:\s*(?:am|pm))?$",
+        r"^(?:台北|臺北|新北|桃園|台中|臺中|台南|臺南|高雄|online|線上|地點|location|venue)",
+        r"^(?:logo|qr|qr code|qrcode)$",
+        r"^(?:https?://|www\.)",
+        r"^(?:聯絡|聯繫|電話|信箱|email|e-mail|tel|phone|contact)",
+    )
+
+    shell_line_count = 0
+    title_like_count = 0
+    for line in lines:
+        line_lower = line.lower()
+        if any(re.search(pattern, line_lower, flags=re.IGNORECASE) for pattern in shell_patterns):
+            shell_line_count += 1
+            continue
+        if len(line) <= 80 and not re.search(r"[。.!?？；;]", line):
+            title_like_count += 1
+            continue
+        return False
+
+    return shell_line_count + title_like_count == len(lines) and title_like_count <= 2
 
 
 def normalize_survey_draft(raw, fallback_title="AI 生成問卷"):
@@ -269,8 +339,20 @@ def normalize_survey_draft(raw, fallback_title="AI 生成問卷"):
     }
 
 
-def _survey_json_instruction(allowed_types, question_count):
+def _survey_json_instruction(allowed_types, question_count, allow_insufficient=False):
     type_text = ", ".join(allowed_types)
+    insufficient_instruction = ""
+    if allow_insufficient:
+        insufficient_instruction = f"""
+如果文件資料不足，請不要產生 questions，只能回傳：
+{{
+  "is_sufficient": false,
+  "insufficient_content": true,
+  "code": "{INSUFFICIENT_CONTENT_CODE}",
+  "message": "{INSUFFICIENT_CONTENT_MESSAGE}"
+}}
+"""
+
     return f"""
 請只回傳 JSON，不要加 Markdown 或說明文字。格式必須完全符合：
 {{
@@ -291,11 +373,7 @@ def _survey_json_instruction(allowed_types, question_count):
 如果文件資料足夠，請產生 {question_count} 題。題型只能使用：{type_text}。
 short 代表問答題，rating 代表 0 到 5 評分題。
 options 必須維持空陣列，才能相容系統原本問卷資料結構。
-如果文件資料不足，請不要產生 questions，只能回傳：
-{{
-  "insufficient_content": true,
-  "message": "上傳資料提供的有效資訊不足，無法生成具體問卷。請提供包含較完整主題、內容或背景資訊的檔案。"
-}}
+{insufficient_instruction}
 """
 
 
@@ -511,6 +589,13 @@ def generate_survey_from_material(filename, file_bytes, config):
         len(extracted_text),
     )
 
+    if _is_obviously_insufficient_extracted_text(extracted_text):
+        logger.info(
+            "PPT survey rejected before Gemini due to obviously insufficient extracted text: filename=%s",
+            filename,
+        )
+        raise PptSurveyAiError(INSUFFICIENT_CONTENT_MESSAGE, 400)
+
     prompt = f"""
 你是教學問卷設計助理。請根據上傳的 PDF 內容產生一份可直接儲存的問卷草稿。
 檔名：{filename}
@@ -519,7 +604,9 @@ def generate_survey_from_material(filename, file_bytes, config):
 
 在生成問卷之前，請先判斷 PDF 內容是否足以生成有意義的問卷。
 文件必須包含足以辨識評估對象的有效資訊，例如明確的主題、課程、活動、服務、系統、產品、內容或其他可被評估的對象。
-不得只因 PDF 存在文字或圖片就強行生成問卷。
+這是最高優先級規則：不得只因 PDF 存在文字、圖片、漂亮版面或看起來像活動海報就強行生成問卷。
+如果 PDF 內容僅包含標題、日期、地點、Logo、QR Code 或零碎宣傳標語，屬於極度缺乏內容的檔案，【絕對禁止】生成任何題目。
+只要文件無法提供足以理解「具體要評估什麼」的內容，就必須回傳 is_sufficient=false 的拒絕 JSON；即使使用者要求生成、direction/focus 看起來可用，也不能生成題目。
 如果 PDF 主要只有標題、日期、地點、簡短標語、Logo、QR Code、裝飾圖片、少量零散文字、聯絡方式、網址，或其他缺乏實質內容的資訊，且不足以理解要評估什麼，請判定資料不足。
 不得只依照頁數、文字數量或 OCR 文字數量判斷；大量重複文字、頁首頁尾、版權資訊、網址、聯絡資訊、公司資訊、重複標題或與問卷主題無關的內容都應忽略。
 如果 PDF 是圖片型或掃描型，請分析圖片本身是否包含清楚且足夠的課程、活動、產品、服務、系統、主題內容或評估對象資訊；如果圖片只包含 Logo、QR Code、一般照片、裝飾圖、簡單海報、日期、地點、標語或少量零散文字，請判定資料不足。
@@ -528,9 +615,10 @@ direction 與 focus 只是問卷設計要求，不是文件事實。不得因 di
 如果文件只有明確的一般主題但缺少細節，可以只產生與該一般主題相關的整體評估題目；不得自行補出細節。
 如果 PDF 主要是既有問卷，只有在它同時提供足夠的課程、活動、產品、服務、系統或評估對象背景時，才可以參考既有題目產生新問卷；不得只是改寫原題。
 如果需要大量猜測、必須補充文件沒有提供的具體背景，或無法在不虛構內容的情況下滿足 direction / focus，請判定資料不足。
-{_survey_json_instruction(allowed_types, question_count)}
+資料不足時的唯一合法輸出，是包含 "is_sufficient": false、"insufficient_content": true、"code": "{INSUFFICIENT_CONTENT_CODE}" 的拒絕 JSON。資料不足時絕對不能包含 questions、items、short 題、rating 題或任何問卷草稿內容。
+{_survey_json_instruction(allowed_types, question_count, allow_insufficient=True)}
 Only when the PDF content is sufficient, return exactly {type_counts['short']} questions with type "short" and exactly {type_counts['rating']} questions with type "rating".
-When the PDF content is insufficient, return only insufficient_content JSON and do not return any questions.
+When the PDF content is insufficient, return only the is_sufficient=false JSON and do not return any questions.
 """
 
     if extracted_text:
