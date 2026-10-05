@@ -6,6 +6,10 @@ import Navbar from "../../components/feature/Navbar";
 import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
 import { useAuth } from "../../hooks/AuthContext";
 import { translateInterfaceText, useLanguage } from "../../context/LanguageContext";
+import {
+  DEFAULT_LANG, buildLanguageMeta, localizeRespondentText, normalizeLang, readLanguagePreference, resolveInstructionLang,
+  welcomeText,
+} from "../../context/languagePreference";
 import { useCollection } from "../../hooks/CollectionContext";
 import { useActivity } from "../../hooks/ActivityContext";
 import { apiUrl } from "../../lib/api";
@@ -14,6 +18,50 @@ import { apiUrl } from "../../lib/api";
 import "./workspace.css";
 import ShareWorkspaceDialog from "./ShareWorkspaceDialog";
 import ExportActions from "./ExportActions";
+
+// ── 系統固定回覆句（語言 = instruction_lang，由呼叫端明確傳入；不是介面語言、也不是資料語言）──
+// 中文原句同時是 interfaceEnglish 字典的 key，英文直接重用字典（措辭不另外發明）；
+// 字典裡沒有的句子（打招呼、資料不足…）在這裡成對定義。
+const langOf = (lang) => normalizeLang(lang) || DEFAULT_LANG;
+
+// 字典裡已有英文的固定句：zh-TW 回原句，en 回字典的英文。
+function systemSentence(zhSentence, lang) {
+  return langOf(lang) === "en" ? translateInterfaceText(zhSentence, "en") : zhSentence;
+}
+
+// 「分類完成，共 N 個類別。」（中文維持原本沒有空格的寫法）
+function classificationDoneSentence(count, lang) {
+  return langOf(lang) === "en"
+    ? `${translateInterfaceText("分類完成，共", "en")} ${count} ${translateInterfaceText("個類別。", "en")}`
+    : `分類完成，共${count}個類別。`;
+}
+
+const REPLIES = {
+  greeting: {
+    "zh-TW": "您好！很高興見到您，請提供要分析的資料或選擇系統內建問卷，我會協助您整理重點。",
+    en: "Hello! Nice to meet you. Please provide the data you'd like to analyze or choose a built-in survey, and I'll help you pull out the key points.",
+  },
+  insufficient_data: {
+    "zh-TW": "資料不足，無法進行有效分析。請提供系統內建問卷、完整資料檔案，或更明確的分析問題。",
+    en: "There isn't enough data for a meaningful analysis. Please provide a built-in survey, a complete data file, or a more specific question.",
+  },
+  ai_no_content: {
+    "zh-TW": "AI 沒有回傳內容，請稍後再試。",
+    en: "The AI returned no content. Please try again later.",
+  },
+};
+
+function fixedReply(kind, lang) {
+  return REPLIES[kind][langOf(lang)];
+}
+
+// 失敗訊息的固定前綴（後面接後端回的原因；後端錯誤訊息本身這一輪不翻譯）
+function failurePrefix(kind, lang, detail = "") {
+  const en = langOf(lang) === "en";
+  if (kind === "classification") return en ? `Classification failed: ${detail}` : `分類失敗：${detail}`;
+  if (kind === "ask_http") return en ? `AI reply failed (HTTP ${detail})` : `AI 回覆失敗（HTTP ${detail}）`;
+  return en ? `AI reply failed: ${detail}` : `AI 回覆失敗：${detail}`;
+}
 
 export const WELCOME_MSG = {
   id: "welcome",
@@ -245,12 +293,12 @@ function isGreetingInput(text) {
   return ["hi", "hello", "hey", "你好", "哈囉", "嗨", "您好"].includes(normalized);
 }
 
-function buildAssistantReply(content, surveyDetail = null, surveyTitle = "問卷") {
+function buildAssistantReply(content, surveyDetail = null, surveyTitle = "問卷", lang = "zh-TW") {
   if (surveyDetail) return buildSurveyAnalysisReplyFromSurvey(surveyDetail, surveyTitle);
-  if (isGreetingInput(content)) return "您好！很高興見到您，請提供要分析的資料或選擇系統內建問卷，我會協助您整理重點。";
+  if (isGreetingInput(content)) return fixedReply("greeting", lang);
   const surveyReply = buildSurveyAnalysisReplyFromText(content);
   if (surveyReply) return surveyReply;
-  return "資料不足，無法進行有效分析。請提供系統內建問卷、完整資料檔案，或更明確的分析問題。";
+  return fixedReply("insufficient_data", lang);
 }
 
 function cleanMessageText(text) {
@@ -382,9 +430,12 @@ function AssistantTableContent({ content, readOnly = false }) {
 // 把用 \n 分隔的多行文字渲染成真的換行（respondent_text、fallback 時的
 // aggregated_reasoning/aggregated_summary 都可能是這種多行字串）
 function MultilineText({ text, highlightRespondent = false }) {
-  return (text || "").split("\n").map((line, i) => {
+  const { language: uiLanguage } = useLanguage();
+  // 「受試者N：」「（次要分類）」是系統組出來的固定字樣，英文介面時顯示成英文（語言 = ui_lang）；回答原文不動
+  const shown = highlightRespondent ? localizeRespondentText(text || "", uiLanguage) : (text || "");
+  return shown.split("\n").map((line, i) => {
     if (highlightRespondent) {
-      const match = line.match(/^(受試者\d+：)(.*)$/);
+      const match = line.match(/^(受試者\d+：|Respondent \d+: )(.*)$/);
 
       if (match) {
         return (
@@ -526,7 +577,20 @@ function RatingStatsPanel({ ratingStats }) {
 // effective classification 不一致（freshness）；不一致就由後端重建並寫回
 // Chat_History（refresh），畫面改用後端回傳的新結果——重新整理頁面、分享頁、
 // 匯出都會讀到同一份資料，不是只改前端 state。
+// 結果訊息裡的系統固定句（「分類完成，共 N 個類別」…）用哪個語言：建立訊息時記下的 instruction_lang。
+// 舊訊息沒有記，維持原本行為（跟著介面語言）。表格標題、按鈕屬於 ui_lang，不受影響。
+function useSentenceLang(meta) {
+  const { language: uiLanguage } = useLanguage();
+  return meta?.language?.instruction_lang || uiLanguage;
+}
+
+// 已決定語言的系統句：加上 data-output-lang，全域翻譯不會再改它。
+function SystemText({ k, lang }) {
+  return <span data-output-lang={lang}>{systemSentence(k, lang)}</span>;
+}
+
 function ClassificationTable({ rows, ratingStats, meta, chatId, showToast, readOnly = false }) {
+  const sentenceLang = useSentenceLang(meta);
   const [live, setLive] = useState(null);
   const [syncState, setSyncState] = useState("idle"); // idle | refreshing | refreshed | error
   const hasSource = Boolean(meta?.upload_batch_id || meta?.template_id);
@@ -562,13 +626,13 @@ function ClassificationTable({ rows, ratingStats, meta, chatId, showToast, readO
   return (
     <>
       {syncState === "refreshing" && (
-        <div className="assistant-output-diagnostic"><InterfaceText>{"人工審核結果已更新，正在重新整理分類結果…"}</InterfaceText></div>
+        <div className="assistant-output-diagnostic"><SystemText k="人工審核結果已更新，正在重新整理分類結果…" lang={sentenceLang} /></div>
       )}
       {syncState === "refreshed" && (
-        <div className="assistant-output-diagnostic"><InterfaceText>{"已套用最新的人工審核結果。"}</InterfaceText></div>
+        <div className="assistant-output-diagnostic"><SystemText k="已套用最新的人工審核結果。" lang={sentenceLang} /></div>
       )}
       {syncState === "error" && (
-        <div className="assistant-output-diagnostic"><InterfaceText>{"人工審核結果已更新，但重新整理失敗；目前顯示的是先前的結果，請稍後重新整理頁面。"}</InterfaceText></div>
+        <div className="assistant-output-diagnostic"><SystemText k="人工審核結果已更新，但重新整理失敗；目前顯示的是先前的結果，請稍後重新整理頁面。" lang={sentenceLang} /></div>
       )}
       <ClassificationTableView
         rows={effectiveRows}
@@ -583,6 +647,7 @@ function ClassificationTable({ rows, ratingStats, meta, chatId, showToast, readO
 }
 
 function ClassificationTableView({ rows, ratingStats, meta, chatId, showToast, readOnly = false }) {
+  const sentenceLang = useSentenceLang(meta);
   const hasRatingStats = Array.isArray(ratingStats) && ratingStats.length > 0;
   const hasClassificationRows = Array.isArray(rows) && rows.length > 0;
 
@@ -591,7 +656,7 @@ function ClassificationTableView({ rows, ratingStats, meta, chatId, showToast, r
   if (!hasClassificationRows && !hasRatingStats) {
     return (
       <div className="assistant-output-panel">
-        <div className="assistant-output-intro"><InterfaceText>{"這批資料沒有產生任何分類結果。"}</InterfaceText></div>
+        <div className="assistant-output-intro"><SystemText k="這批資料沒有產生任何分類結果。" lang={sentenceLang} /></div>
 
         {/* 上傳：依後端診斷 code 顯示具體原因（存在 Chat_History，重新整理後仍在） */}
         <AnalysisDiagnostics meta={meta} />
@@ -614,12 +679,12 @@ function ClassificationTableView({ rows, ratingStats, meta, chatId, showToast, r
 
       {hasClassificationRows ? (
         <>
-          <div className="assistant-output-intro"><InterfaceText>{"分類完成，共"}</InterfaceText>{rows.length}<InterfaceText>{"個類別。"}</InterfaceText></div>
+          <div className="assistant-output-intro" data-output-lang={sentenceLang}>{classificationDoneSentence(rows.length, sentenceLang)}</div>
           {/* 多欄上傳：成功欄位照常顯示在表格，失敗 / 部分失敗的欄位在這裡分別說明 */}
           <AnalysisDiagnostics meta={meta} />
           {meta?.provisional_taxonomy && (
             <div className="assistant-output-diagnostic">
-              <InterfaceText>{"這批資料沒有既有的分類架構，類別由 AI 依內容自動歸納（暫定），管理員審核發布後會成為正式分類。"}</InterfaceText>
+              <SystemText k="這批資料沒有既有的分類架構，類別由 AI 依內容自動歸納（暫定），管理員審核發布後會成為正式分類。" lang={sentenceLang} />
             </div>
           )}
 
@@ -693,8 +758,8 @@ function ClassificationTableView({ rows, ratingStats, meta, chatId, showToast, r
                         <MultilineText text={row.aggregated_summary} />
 
                         {row.synthesis_status === "fallback" && (
-                          <div className="synthesis-fallback-note"><InterfaceText>{"（彙整摘要暫時失敗，以下為個別意見簡易拼接，非完整統整）"}</InterfaceText>{row.synthesis_error && (
-                              <div className="synthesis-error-detail"><InterfaceText>{"錯誤原因："}</InterfaceText>{row.synthesis_error}
+                          <div className="synthesis-fallback-note"><SystemText k="（彙整摘要暫時失敗，以下為個別意見簡易拼接，非完整統整）" lang={sentenceLang} />{row.synthesis_error && (
+                              <div className="synthesis-error-detail"><SystemText k="錯誤原因：" lang={sentenceLang} />{row.synthesis_error}
                               </div>
                             )}
                           </div>
@@ -712,7 +777,7 @@ function ClassificationTableView({ rows, ratingStats, meta, chatId, showToast, r
         // rating 題）：不顯示分類表格，但仍要讓使用者知道這是正常情況，
         // 而不是誤以為分析失敗；匯出按鈕照樣顯示（見下方 ExportActions），
         // 讓評分統計仍然能匯出成 Excel/Word。
-        <div className="assistant-output-intro"><InterfaceText>{"這份問卷沒有開放式文字題可供分類，以上為評分題統計結果。"}</InterfaceText></div>
+        <div className="assistant-output-intro"><SystemText k="這份問卷沒有開放式文字題可供分類，以上為評分題統計結果。" lang={sentenceLang} /></div>
       )}
 
       {!readOnly && (
@@ -732,6 +797,11 @@ function ClassificationTableView({ rows, ratingStats, meta, chatId, showToast, r
 // 不用另外重寫一份（重寫容易漏掉今天調過的細節，例如大類別合併、
 // 受試者片段合併顯示這些規則）。
 export function MessageContent({ message, showToast, readOnly = false }) {
+  const { language: uiLanguage } = useLanguage();
+  // 歡迎訊息：語言 = ui_lang。內容是前端寫死的常數，不存進資料庫，所以顯示時才依目前介面語言決定。
+  if (message.id === WELCOME_MSG.id) {
+    return <div data-output-lang={uiLanguage}><PlainMessageContent content={welcomeText(uiLanguage)} /></div>;
+  }
   // 優先判斷是不是真分類結果訊息，是的話直接渲染表格，
   // 不要讓它掉進下面 AssistantTableContent 那個舊的、給假分析用的文字解析邏輯。
   const classificationData = parseClassificationMessageContent(message.content);
@@ -1204,6 +1274,11 @@ export default function WorkspacePage() {
               // 【新增｜診斷訊息】沒有結果時，把後端算出來的原因帶過去，
               // 不要只顯示「沒有結果」讓使用者猜。
               diagnostic_message: analyzeData.diagnostic?.message,
+              language: buildLanguageMeta({
+                uiLang: readLanguagePreference(),
+                instructionLang: resolveInstructionLang("", readLanguagePreference()),
+                dataLang: analyzeData.language?.data_lang,
+              }),
             },
             // 【新增｜評分題統計】rating 題不會出現在 aggregated_groups
             // 裡（後端從沒把它們送進 Gemini），是後端另外直接算好、放在
@@ -1375,6 +1450,11 @@ export default function WorkspacePage() {
             review_revision: analyzeData.review_revision,
             provisional_taxonomy: Boolean(analyzeData.provisional_taxonomy),
             diagnostic_message: analyzeData.diagnostic?.message,
+            language: buildLanguageMeta({
+              uiLang: readLanguagePreference(),
+              instructionLang: resolveInstructionLang("", readLanguagePreference()),
+              dataLang: analyzeData.language?.data_lang,
+            }),
           }
         );
         setSessions((currentList) =>
@@ -1433,8 +1513,12 @@ export default function WorkspacePage() {
    * 不用使用者輸入文字欄位名稱——後端會自動判斷最可能的開放式回答欄位，
    * 回傳的 text_column / text_column_auto_detected 讓畫面上可以顯示判斷結果。
    * debug 時先看這支 API 的 Network 回應，data.error 會直接顯示在聊天室裡。 */
-  const runExcelClassification = async (file, sid, projectId) => {
-    const userContent = `[檔案：${file.name}] 上傳並自動分類`;
+  const runExcelClassification = async (file, sid, projectId, instructionText = "") => {
+    const uiLang = readLanguagePreference();
+    // 只有上傳檔案、沒有文字指令（或指令判斷不出語言）-> fallback ui_lang
+    const instructionLang = resolveInstructionLang(instructionText, uiLang);
+    // 系統組的使用者訊息固定字樣：語言 = 介面語言（ui_lang）；file.name 是使用者的資料，原樣
+    const userContent = uiLang === "en" ? `[File: ${file.name}] Upload and auto-classify` : `[檔案：${file.name}] 上傳並自動分類`;
     const userMsg = { id: Date.now().toString(), role: "user", content: userContent };
     appendMessage(sid, userMsg);
     setIsClassifying(true);
@@ -1463,7 +1547,7 @@ export default function WorkspacePage() {
       const data = await res.json();
 
       if (!res.ok) {
-        const errMsg = `分類失敗：${data?.error || res.status}`;
+        const errMsg = failurePrefix("classification", instructionLang, data?.error || res.status);
         appendMessage(sid, { id: `a-${Date.now()}`, role: "assistant", content: errMsg });
         showToast(errMsg);
         return;
@@ -1481,6 +1565,8 @@ export default function WorkspacePage() {
         // 【新增｜匯出檔名跟原始上傳檔名對應】方便使用者從匯出清單就
         // 知道這批結果對應哪一份原始 Excel。
         source_filename: file.name,
+        // 三種語言來源分開記：ui_lang（Accept-Language）、instruction_lang（這次指令）、data_lang（後端依原始回答判斷）
+        language: buildLanguageMeta({ uiLang, instructionLang, dataLang: data.language?.data_lang }),
       });
       const assistantMsgId = `a-${Date.now()}`;
       appendMessage(sid, { id: assistantMsgId, role: "assistant", content: assistantContent });
@@ -1493,7 +1579,7 @@ export default function WorkspacePage() {
         updateMessageChatId(sid, assistantMsgId, savedChatId);
       }
     } catch (err) {
-      const errMsg = `分類失敗：${err?.message || "網路錯誤"}`;
+      const errMsg = failurePrefix("classification", instructionLang, err?.message || (instructionLang === "en" ? "Network error" : "網路錯誤"));
       appendMessage(sid, { id: `a-${Date.now()}`, role: "assistant", content: errMsg });
       showToast(errMsg);
     } finally {
@@ -1517,9 +1603,11 @@ export default function WorkspacePage() {
       const session = sessions.find((s) => s.id === sid);
       const projectId = session?.project_id;
       const file = attachedFile;
+      // 使用者隨檔案打的文字指令：不送給後端，只用來決定這次回覆句的語言（instruction_lang）
+      const instructionText = input;
       setAttachedFile(null);
       setInput("");
-      await runExcelClassification(file, sid, projectId);
+      await runExcelClassification(file, sid, projectId, instructionText);
       return;
     }
 
@@ -1534,7 +1622,11 @@ export default function WorkspacePage() {
       textareaRef.current.style.height = "auto";
     }
 
-    const content = draftFile ? `[檔案：${draftFile.name}] ${draftInput}` : draftInput;
+    const content = draftFile
+      ? `${readLanguagePreference() === "en" ? "[File: " : "[檔案："}${draftFile.name}] ${draftInput}`
+      : draftInput;
+    // 這次的回覆語言 = 使用者打的文字指令的語言（不含「[檔案：…]」前綴）；判斷不出來才用介面語言
+    const instructionLang = resolveInstructionLang(draftInput, readLanguagePreference());
     const autoTitle = buildAutoSessionTitle(draftInput, draftFile);
     const userMsg = { id: Date.now().toString(), role: "user", content };
 
@@ -1585,7 +1677,7 @@ export default function WorkspacePage() {
       String(projectId).startsWith("survey-");
 
     if (isGreetingInput(content)) {
-      const reply = buildAssistantReply(content);
+      const reply = buildAssistantReply(content, null, "問卷", instructionLang);
       const aiMsg = { id: Date.now().toString(), role: "assistant", content: reply };
       appendMessage(sid, aiMsg);
       setIsTyping(false);
@@ -1595,7 +1687,7 @@ export default function WorkspacePage() {
 
     if (isTempSession) {
       setTimeout(() => {
-        const reply = buildAssistantReply(content);
+        const reply = buildAssistantReply(content, null, "問卷", instructionLang);
         const aiMsg = { id: Date.now().toString(), role: "assistant", content: reply };
         appendMessage(sid, aiMsg);
         setIsTyping(false);
@@ -1608,12 +1700,13 @@ export default function WorkspacePage() {
       const askRes = await fetch(apiUrl(`/api/chat/${projectId}/ask`), {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeader() },
-        body: JSON.stringify({ message: content }),
+        // instruction = 純指令文字（不含「[檔案：…]」前綴），後端用它判斷回答語言
+        body: JSON.stringify({ message: content, instruction: draftInput }),
       });
       const askData = await askRes.json().catch(() => null);
 
       if (!askRes.ok) {
-        const errMsg = askData?.error || `AI 回覆失敗（HTTP ${askRes.status}）`;
+        const errMsg = askData?.error || failurePrefix("ask_http", instructionLang, askRes.status);
         const aiMsg = { id: Date.now().toString(), role: "assistant", content: errMsg };
         appendMessage(sid, aiMsg);
         showToast(errMsg);
@@ -1621,12 +1714,12 @@ export default function WorkspacePage() {
         return;
       }
 
-      const reply = askData?.answer || "AI 沒有回傳內容，請稍後再試。";
+      const reply = askData?.answer || fixedReply("ai_no_content", instructionLang);
       const aiMsg = { id: Date.now().toString(), role: "assistant", content: reply };
       appendMessage(sid, aiMsg);
       saveChatMessage(projectId, "assistant", reply);
     } catch (err) {
-      const errMsg = `AI 回覆失敗：${err?.message || "網路錯誤"}`;
+      const errMsg = failurePrefix("ask", instructionLang, err?.message || (instructionLang === "en" ? "Network error" : "網路錯誤"));
       const aiMsg = { id: Date.now().toString(), role: "assistant", content: errMsg };
       appendMessage(sid, aiMsg);
       showToast(errMsg);

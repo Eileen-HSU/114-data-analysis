@@ -72,6 +72,7 @@ from classification_models import (
     SOURCE_TYPE_USER_UPLOAD,
 )
 from services.effective_classification_service import effective_view
+from services.language_service import DEFAULT_LANG, answer_language_rule
 from services.source_lookup_service import fetch_classifications_in_scope
 from services.subcategory_methodology import QUESTION_OTHER, compute_display_sub_categories
 from services.privacy_service import mask_pii, PiiMaskingError
@@ -131,6 +132,14 @@ SYSTEM_PROMPT = """你是「深度資料分析」平台裡，針對「已經產�
 7. 一律使用繁體中文回答。
 8. 直接輸出自然語言說明文字即可，不要輸出 JSON、不要用程式碼區塊，也
    不需要用 Markdown 表格。"""
+
+
+def build_system_prompt(lang: str = DEFAULT_LANG) -> str:
+    """問答的系統提示詞。回答語言由呼叫端明確傳入（instruction_lang：使用者這次提問的語言），
+    不再寫死「一律使用繁體中文」；zh-TW 時內容與原本逐字相同。"""
+    old_rule = "7. 一律使用繁體中文回答。"
+    assert old_rule in SYSTEM_PROMPT
+    return SYSTEM_PROMPT.replace(old_rule, f"7. {answer_language_rule(lang)}")
 
 
 def _extract_mentioned_codes(message: str) -> set:
@@ -545,7 +554,7 @@ def _map_gemini_exception(exc: Exception) -> ChatAskError:
     return ChatAskError("AI 服務暫時無法完成回覆，請稍後再試。", 502)
 
 
-def _call_gemini(context_text: str, user_message: str) -> str:
+def _call_gemini(context_text: str, user_message: str, lang: str = DEFAULT_LANG) -> str:
     """這支追問功能唯一會呼叫 Gemini 的地方，每次呼叫最多執行一次
     （不重試——撞到限流時直接讓使用者知道，而不是同步卡住這次 HTTP
     請求等 20 秒重試，追問是即時互動功能，不是背景批次工作）。"""
@@ -567,7 +576,7 @@ def _call_gemini(context_text: str, user_message: str) -> str:
             model=_ASK_MODEL,
             contents=contents,
             config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
+                system_instruction=build_system_prompt(lang),
                 temperature=0.2,
             ),
         )
@@ -581,7 +590,7 @@ def _call_gemini(context_text: str, user_message: str) -> str:
     return text
 
 
-def answer_chat_question(project_id: int, user_message: str) -> str:
+def answer_chat_question(project_id: int, user_message: str, lang: str = DEFAULT_LANG) -> str:
     """對外主要介面。呼叫端（routes/chats/chat.py）已經驗證過 project_id
     存在且屬於目前使用者，這裡只負責「找 context、組 prompt、呼叫
     Gemini 一次、回傳答案」，不再做任何權限判斷。"""
@@ -595,4 +604,4 @@ def answer_chat_question(project_id: int, user_message: str) -> str:
 
     aggregated_lookup = _build_aggregated_lookup(source.get("aggregated_rows"))
     context_text = _build_context_text(items, user_message, aggregated_lookup)
-    return _call_gemini(context_text, user_message)
+    return _call_gemini(context_text, user_message, lang)

@@ -3,6 +3,7 @@ from extensions import db
 from models import Chat_History, Survey_Template, Workspace, UploadedFile
 from routes.workspaces.workspace import authorize_request
 from services.chat_ask_service import answer_chat_question, ChatAskError
+from services.language_service import language_meta, resolve_instruction_lang, ui_lang_from_request
 from services import workspace_result_service
 from routes.api_errors import api_error
 import os
@@ -242,8 +243,13 @@ def ask_chat(project_id):
     if workspace.user_id != current_user_id:
         return jsonify({"error": "無權限操作這個對話"}), 403
 
+    # 回答語言 = 使用者這次提問的語言（instruction_lang）；判斷不出來才用介面語言（ui_lang）
+    # 前端會另外送 instruction（純指令文字）：message 可能帶「[檔案：…]」這種系統加上的前綴，不能拿來判斷語言
+    instruction_text = data.get("instruction") if isinstance(data.get("instruction"), str) else message
+    ui_lang = ui_lang_from_request()
+    instruction_lang = resolve_instruction_lang(instruction_text, ui_lang)
     try:
-        answer = answer_chat_question(project_id, message)
+        answer = answer_chat_question(project_id, message, lang=instruction_lang)
     except ChatAskError as e:
         return jsonify({"error": str(e)}), e.status_code
     except Exception as e:
@@ -251,7 +257,7 @@ def ask_chat(project_id):
         print("[CHAT_ASK][UNEXPECTED_ERROR]", repr(e))
         return jsonify({"error": "AI 服務暫時無法完成回覆，請稍後再試。"}), 502
 
-    return jsonify({"answer": answer}), 200
+    return jsonify({"answer": answer, "language": language_meta(ui_lang, instruction_lang=instruction_lang)}), 200
 
 
 # 上傳檔案並關聯到 chat_id，支援 csv、xlsx、txt 格式，並且儲存在 uploads/{project_id} 目錄底下

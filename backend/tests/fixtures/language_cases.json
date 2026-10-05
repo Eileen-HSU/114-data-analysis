@@ -1,0 +1,435 @@
+{
+  "_說明": "語言判斷的共用案例：後端 services/language_service.py 與前端 frontend/src/context/languagePreference.js 都要通過同一份。expected = null 代表『無法可靠判斷』，由呼叫端 fallback。 respondent_text_cases：「問卷回覆內容」欄位裡系統組出來的「受試者N：」「（次要分類）」在英文介面下的轉換（匯出檔與畫面表格共用）。",
+  "normalize_cases": [
+    {
+      "value": "zh-TW",
+      "expected": "zh-TW"
+    },
+    {
+      "value": "zh",
+      "expected": "zh-TW"
+    },
+    {
+      "value": "zh_tw",
+      "expected": "zh-TW"
+    },
+    {
+      "value": "zh-Hant-TW",
+      "expected": "zh-TW"
+    },
+    {
+      "value": "zh-CN",
+      "expected": "zh-TW"
+    },
+    {
+      "value": "en",
+      "expected": "en"
+    },
+    {
+      "value": "EN",
+      "expected": "en"
+    },
+    {
+      "value": "en-US",
+      "expected": "en"
+    },
+    {
+      "value": "ja",
+      "expected": null
+    },
+    {
+      "value": "fr-FR",
+      "expected": null
+    },
+    {
+      "value": "",
+      "expected": null
+    },
+    {
+      "value": null,
+      "expected": null
+    }
+  ],
+  "text_cases": [
+    {
+      "name": "中文句子",
+      "text": "請分析這份問卷的結果",
+      "expected": "zh-TW"
+    },
+    {
+      "name": "兩個中文字的指令",
+      "text": "分析",
+      "expected": "zh-TW"
+    },
+    {
+      "name": "中文夾英文縮寫",
+      "text": "請分析 NPS 與 CSAT 的結果",
+      "expected": "zh-TW"
+    },
+    {
+      "name": "中文加標點",
+      "text": "主管很好，但是加班太多了！",
+      "expected": "zh-TW"
+    },
+    {
+      "name": "簡體也算中文（輸出一律繁體）",
+      "text": "这份问卷的分析结果",
+      "expected": "zh-TW"
+    },
+    {
+      "name": "中文夾網址",
+      "text": "請看 https://example.com/report 的報告",
+      "expected": "zh-TW"
+    },
+    {
+      "name": "英文句子",
+      "text": "Please analyze the survey results",
+      "expected": "en"
+    },
+    {
+      "name": "英文問句",
+      "text": "What are the main complaints?",
+      "expected": "en"
+    },
+    {
+      "name": "單一英文指令字",
+      "text": "Summarize",
+      "expected": "en"
+    },
+    {
+      "name": "小寫英文字",
+      "text": "analyze",
+      "expected": "en"
+    },
+    {
+      "name": "英文夾數字",
+      "text": "Show me the top 3 issues in Q1",
+      "expected": "en"
+    },
+    {
+      "name": "英文縮寫 contraction",
+      "text": "I don't think it's fine",
+      "expected": "en"
+    },
+    {
+      "name": "空字串",
+      "text": "",
+      "expected": null
+    },
+    {
+      "name": "只有空白",
+      "text": "   \n ",
+      "expected": null
+    },
+    {
+      "name": "不是字串",
+      "text": null,
+      "expected": null
+    },
+    {
+      "name": "只有數字",
+      "text": "123",
+      "expected": null
+    },
+    {
+      "name": "兩個英文字母",
+      "text": "ok",
+      "expected": null
+    },
+    {
+      "name": "單一中文字",
+      "text": "好",
+      "expected": null
+    },
+    {
+      "name": "N/A",
+      "text": "N/A",
+      "expected": null
+    },
+    {
+      "name": "單獨全大寫縮寫",
+      "text": "NPS",
+      "expected": null
+    },
+    {
+      "name": "只有網址",
+      "text": "https://example.com/a?b=1",
+      "expected": null
+    },
+    {
+      "name": "中英混合分不出主要語言",
+      "text": "分析 Q1 survey",
+      "expected": null
+    },
+    {
+      "name": "英文夾少量中文",
+      "text": "Summarize 台灣 results",
+      "expected": null
+    },
+    {
+      "name": "日文",
+      "text": "ありがとうございます",
+      "expected": null
+    },
+    {
+      "name": "日文含漢字",
+      "text": "日本語の分析",
+      "expected": null
+    },
+    {
+      "name": "韓文",
+      "text": "안녕하세요 감사합니다",
+      "expected": null
+    },
+    {
+      "name": "俄文",
+      "text": "Спасибо большое",
+      "expected": null
+    },
+    {
+      "name": "阿拉伯文",
+      "text": "شكرا جزيلا",
+      "expected": null
+    },
+    {
+      "name": "泰文",
+      "text": "ขอบคุณมาก",
+      "expected": null
+    },
+    {
+      "name": "法文（有重音、無英文虛詞）",
+      "text": "Bonjour, je voudrais analyser les résultats",
+      "expected": null
+    },
+    {
+      "name": "西班牙文",
+      "text": "Hola, ¿cómo estás?",
+      "expected": null
+    },
+    {
+      "name": "德文長句（無英文虛詞）",
+      "text": "Bitte analysieren Sie diese Umfrage genau",
+      "expected": null
+    }
+  ],
+  "accept_language_cases": [
+    {
+      "header": "zh-TW,zh;q=0.9,en;q=0.8",
+      "expected": "zh-TW"
+    },
+    {
+      "header": "en-US,en;q=0.9",
+      "expected": "en"
+    },
+    {
+      "header": "en;q=0.1, zh-CN;q=0.9",
+      "expected": "zh-TW"
+    },
+    {
+      "header": "fr-FR,fr;q=0.9,en;q=0.8",
+      "expected": "en"
+    },
+    {
+      "header": "fr",
+      "expected": null
+    },
+    {
+      "header": "*",
+      "expected": null
+    },
+    {
+      "header": "",
+      "expected": null
+    },
+    {
+      "header": null,
+      "expected": null
+    }
+  ],
+  "data_cases": [
+    {
+      "name": "全中文",
+      "repeat": [
+        {
+          "text": "主管很好，但是加班太多了",
+          "times": 10
+        }
+      ],
+      "expected": "zh-TW"
+    },
+    {
+      "name": "全英文",
+      "repeat": [
+        {
+          "text": "The manager is nice but overtime is too much",
+          "times": 10
+        }
+      ],
+      "expected": "en"
+    },
+    {
+      "name": "中英各半 -> 混合",
+      "repeat": [
+        {
+          "text": "主管很好，但是加班太多了",
+          "times": 5
+        },
+        {
+          "text": "The manager is nice but overtime is too much",
+          "times": 5
+        }
+      ],
+      "expected": null
+    },
+    {
+      "name": "85% 中文 + 15% 英文 -> 中文",
+      "repeat": [
+        {
+          "text": "主管很好，但是加班太多了",
+          "times": 17
+        },
+        {
+          "text": "The manager is nice but overtime is too much",
+          "times": 3
+        }
+      ],
+      "expected": "zh-TW"
+    },
+    {
+      "name": "70% 中文 + 30% 英文 -> 混合",
+      "repeat": [
+        {
+          "text": "主管很好，但是加班太多了",
+          "times": 7
+        },
+        {
+          "text": "The manager is nice but overtime is too much",
+          "times": 3
+        }
+      ],
+      "expected": null
+    },
+    {
+      "name": "多數看不出語言（ok / 好 / 123）-> 無法判斷",
+      "repeat": [
+        {
+          "text": "ok",
+          "times": 4
+        },
+        {
+          "text": "好",
+          "times": 3
+        },
+        {
+          "text": "123",
+          "times": 3
+        },
+        {
+          "text": "主管很好，但是加班太多了",
+          "times": 2
+        }
+      ],
+      "expected": null
+    },
+    {
+      "name": "日文資料 -> 無法判斷",
+      "repeat": [
+        {
+          "text": "ありがとうございます",
+          "times": 10
+        }
+      ],
+      "expected": null
+    },
+    {
+      "name": "法文資料 -> 無法判斷",
+      "repeat": [
+        {
+          "text": "Bonjour, je voudrais analyser les résultats",
+          "times": 10
+        }
+      ],
+      "expected": null
+    },
+    {
+      "name": "全空 -> 無法判斷",
+      "repeat": [
+        {
+          "text": "",
+          "times": 5
+        },
+        {
+          "text": "  ",
+          "times": 5
+        }
+      ],
+      "expected": null
+    },
+    {
+      "name": "短中文回答也算中文",
+      "repeat": [
+        {
+          "text": "很好",
+          "times": 6
+        },
+        {
+          "text": "沒有",
+          "times": 6
+        }
+      ],
+      "expected": "zh-TW"
+    },
+    {
+      "name": "短英文回答也算英文",
+      "repeat": [
+        {
+          "text": "good",
+          "times": 6
+        },
+        {
+          "text": "none",
+          "times": 6
+        }
+      ],
+      "expected": "en"
+    }
+  ],
+  "respondent_text_cases": [
+    {
+      "name": "單行",
+      "input": "受試者1：想上 Excel 課",
+      "en": "Respondent 1: 想上 Excel 課",
+      "zh-TW": "受試者1：想上 Excel 課"
+    },
+    {
+      "name": "多行含次要分類",
+      "input": "受試者1：想上 Excel 課\n受試者2：希望有英文課（次要分類）",
+      "en": "Respondent 1: 想上 Excel 課\nRespondent 2: 希望有英文課 (secondary category)",
+      "zh-TW": "受試者1：想上 Excel 課\n受試者2：希望有英文課（次要分類）"
+    },
+    {
+      "name": "兩位數編號",
+      "input": "受試者12：ok",
+      "en": "Respondent 12: ok",
+      "zh-TW": "受試者12：ok"
+    },
+    {
+      "name": "只轉每行開頭，回答中間出現的「受試者3：」不動",
+      "input": "受試者1：他說受試者3：很好",
+      "en": "Respondent 1: 他說受試者3：很好",
+      "zh-TW": "受試者1：他說受試者3：很好"
+    },
+    {
+      "name": "沒有固定字樣的文字原樣",
+      "input": "Plain text",
+      "en": "Plain text",
+      "zh-TW": "Plain text"
+    },
+    {
+      "name": "空字串",
+      "input": "",
+      "en": "",
+      "zh-TW": ""
+    }
+  ]
+}

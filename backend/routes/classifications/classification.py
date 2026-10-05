@@ -72,6 +72,7 @@ from services.failure_explainer import explain_failure
 from services.safe_error import safe_error_summary
 from services.batch_classification_service import run_batch_analysis
 from services.aggregated_summary_service import build_aggregated_summary, build_aggregated_summary_pair, AggregatedSummaryError
+from services.language_service import detect_data_lang, language_meta, resolve_output_lang, ui_lang_from_request
 from services.subcategory_methodology import QUESTION_OTHER, compute_display_sub_categories
 from services.taxonomy_service import PublishedTaxonomyNotFoundError, PublishedTaxonomyIntegrityError
 from routes.surveys.survey import verify_token, find_survey_by_access_or_short_code
@@ -238,7 +239,7 @@ def _build_rating_stats(items, responses):
     return rating_stats
 
 
-def _build_aggregated_groups(all_classification_rows, id_to_row_index, question_type, id_field="uploaded_answer_id"):
+def _build_aggregated_groups(all_classification_rows, id_to_row_index, question_type, id_field="uploaded_answer_id", lang=None):
     """
     依 (大類別、子類別) 分組、合併受試者片段、彙整判斷原因與建議摘要。
 
@@ -247,6 +248,8 @@ def _build_aggregated_groups(all_classification_rows, id_to_row_index, question_
         問卷來源改用 "response_id"，因為問卷的 Response_Classification
         沒有 uploaded_answer_id（那是 Excel 上傳專用欄位），而是用
         response_id 對應到是哪一筆問卷回覆。
+    lang: AI 彙整摘要的輸出語言。沒傳時 = 目前請求的介面語言（Accept-Language，規則 A）；
+        沒有請求環境（背景工作）才退回原始回答的語言。與資料語言無關。
     """
     groups = {}  # (main_category, sub_category) -> {"items": [...]}
     order = []   # 記錄分組第一次出現的順序，回傳時維持穩定順序
@@ -309,6 +312,12 @@ def _build_aggregated_groups(all_classification_rows, id_to_row_index, question_
             })
 
     
+    # 摘要的輸出語言 = 介面語言（規則 A：英文介面 -> 英文摘要，不管資料是什麼語言）。
+    # 只有沒有請求環境時才看「原始回答」（不含「（次要分類）」這種系統加上的字樣）當退路。
+    summary_lang = resolve_output_lang(
+        lang, [it["excerpt"] for key in order for it in groups[key]["items"] if not it.get("is_secondary")],
+    )
+
     renumbered_sub_category = compute_display_sub_categories(order, question_type)
     order = list(renumbered_sub_category.keys())
 
@@ -347,7 +356,7 @@ def _build_aggregated_groups(all_classification_rows, id_to_row_index, question_
             summary_items = [{"matched_segment_text": it["summary"]} for it in items if it["summary"]]
             
             aggregated_reasoning, aggregated_summary = build_aggregated_summary_pair(
-                main_category, sub_category, reasoning_items, summary_items
+                main_category, sub_category, reasoning_items, summary_items, lang=summary_lang
             )
         except AggregatedSummaryError as e:
             print("[AGGREGATED_SUMMARY_FAILED]", repr(e))
@@ -742,6 +751,12 @@ def upload_excel_for_classification():
         "total_row_count": total_row_count,
         "text_column": text_columns[0] if text_columns else None,
         "question_type": columns_summary[0]["question_type"] if columns_summary else None,
+        # 語言資訊（不改資料庫）：ui_lang = Accept-Language；data_lang = 原始回答的語言（判斷不出來為 null）。
+        # instruction_lang 是使用者文字指令的語言，後端沒有收到指令文字，由前端依自己送出的指令決定。
+        "language": language_meta(
+            ui_lang_from_request(),
+            data_lang=detect_data_lang([r.answer_text[r.segment_start:r.segment_end] for r in all_classification_rows]),
+        ),
     }), 201
 
 
@@ -1055,6 +1070,12 @@ def analyze_survey(access_code):
         "newly_classified_count": newly_classified_count,
         "aggregated_groups": aggregated_groups,
         "rating_stats": rating_stats,
+        "language": language_meta(
+            ui_lang_from_request(),
+            data_lang=detect_data_lang([
+                r.answer_text[r.segment_start:r.segment_end] for rows in rows_by_question_type.values() for r in rows
+            ]),
+        ),
         "diagnostic": {
             "question_type_map_size": len(question_type_map),
             "total_responses": len(responses),

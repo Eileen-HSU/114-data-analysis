@@ -5,6 +5,7 @@ import time
 
 from services import gemini_client as genai
 
+from services.language_service import classification_language_block, resolve_output_lang
 from services.subcategory_methodology import (
     QUESTION_LEADERSHIP,
     QUESTION_CAREER,
@@ -272,7 +273,7 @@ def _methodology_lookup_for_question_type(question_type: str):
     return lambda sub_category: get_methodology(question_type, sub_category)
 
 
-def _call_gemini_and_parse(masked_text: str, prompt_content: str, category_lookup) -> dict:
+def _call_gemini_and_parse(masked_text: str, prompt_content: str, category_lookup, lang=None) -> dict:
     """
     共用邏輯：把已經遮罩過的文字送進 Gemini、解析結果、查方法論表。
     輸入必須已經是遮罩後文字，這個函式不做任何 PII masking。
@@ -306,7 +307,7 @@ def _call_gemini_and_parse(masked_text: str, prompt_content: str, category_looku
     try:
         model = genai.GenerativeModel(
             model_name="gemini-3.1-flash-lite",
-            system_instruction=prompt_content,
+            system_instruction=prompt_content + classification_language_block(resolve_output_lang(lang, [masked_text])),
         )
         response = _generate_with_retry(model, f"問卷回覆內容:\n{masked_text}")
         parsed = _parse_json(response.text)
@@ -408,7 +409,7 @@ def _failed_classification_result(error_detail: str) -> dict:
 
 
 def _call_gemini_batch_classification(
-    masked_segments: list, prompt_content: str, category_lookup, reviewed_examples_block: str = ""
+    masked_segments: list, prompt_content: str, category_lookup, reviewed_examples_block: str = "", lang=None,
 ) -> list:
     """
     Gemini #2：一次把所有已驗證合法的 masked segments 送進去，
@@ -458,6 +459,8 @@ def _call_gemini_batch_classification(
             prompt_content
             + reviewed_examples_block
             + BATCH_OUTPUT_FORMAT_OVERRIDE.format(n=n, n_minus_1=n - 1)
+            # 理由 / 摘要的輸出語言（規則 A：跟介面語言走）；繁體中文時是空字串，提示詞與原本逐字相同
+            + classification_language_block(resolve_output_lang(lang, masked_segments))
         )
 
         model = genai.GenerativeModel(
@@ -498,8 +501,12 @@ def classify_response_multi_segment(
     question_type: str,
     category_lookup=None,
     taxonomy_version_id=None,
+    lang=None,
 ) -> dict:
     """
+    lang: AI 產生的理由 / 摘要的語言（規則 A：跟介面語言走）。沒傳時：請求內 = 目前的介面語言（Accept-Language）；
+        沒有請求環境（背景重試）= 退回這批文字的語言，判斷不出來 = 繁體中文。類別名稱一律不翻譯。
+
     多意義單元分類協調函式：遮罩 → 拆分驗證（Gemini #1）→ 批次分類
     （Gemini #2，一次呼叫涵蓋所有 segment）。固定 2 次 Gemini 呼叫，
     不隨 segment 數量增加而增加呼叫次數。
@@ -596,7 +603,7 @@ def classify_response_multi_segment(
 
     masked_texts = [seg["masked_text"] for seg in valid_segments]
     classifications = _call_gemini_batch_classification(
-        masked_texts, prompt_content, effective_category_lookup, reviewed_examples_block=reviewed_examples_block
+        masked_texts, prompt_content, effective_category_lookup, reviewed_examples_block=reviewed_examples_block, lang=lang,
     )
 
     classified_segments = [
@@ -640,6 +647,7 @@ def classify_existing_segments(
     question_type: str,
     category_lookup=None,
     taxonomy_version_id=None,
+    lang=None,
 ) -> dict:
     """
     只重新「分類」既有片段（不重新拆分）：重新分析一則已有人工審核結果的
@@ -664,7 +672,7 @@ def classify_existing_segments(
     reviewed_examples_block = _reviewed_examples_block(taxonomy_version_id) if to_send else ""
     classified = iter(
         _call_gemini_batch_classification(
-            to_send, prompt_content, effective_category_lookup, reviewed_examples_block=reviewed_examples_block,
+            to_send, prompt_content, effective_category_lookup, reviewed_examples_block=reviewed_examples_block, lang=lang,
         ) if to_send else []
     )
     segments = []

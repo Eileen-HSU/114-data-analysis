@@ -61,6 +61,7 @@ from report import (
 from services.source_lookup_service import get_source_owner, fetch_classifications_in_scope
 from services.aggregation_service import build_aggregation
 from services.aggregated_summary_service import build_aggregated_summary
+from services.language_service import resolve_output_lang
 from services.effective_classification_service import (
     CLASSIFICATION_STATUS_FAILED,
     NON_COUNTABLE_STATUSES,
@@ -311,7 +312,7 @@ def _claim_next_version(source_type, template_id, upload_batch_id, auth_user_id,
     ) from last_error
 
 
-def generate_report(source_type, auth_user_id, template_id=None, upload_batch_id=None):
+def generate_report(source_type, auth_user_id, template_id=None, upload_batch_id=None, ui_lang=None):
     """
     對外主要介面。成功時回傳 status=completed 的 Report；產生過程中
     任何一步失敗時，回傳 status=failed 的 Report（不會拋例外中斷，
@@ -321,7 +322,7 @@ def generate_report(source_type, auth_user_id, template_id=None, upload_batch_id
     Report row。
     """
     _check_ownership(source_type, template_id, upload_batch_id, auth_user_id)
-    return _generate(source_type, template_id, upload_batch_id, user_id=auth_user_id)
+    return _generate(source_type, template_id, upload_batch_id, user_id=auth_user_id, ui_lang=ui_lang)
 
 
 def _taxonomy_versions_in_scope(source_type, template_id, upload_batch_id):
@@ -336,7 +337,7 @@ def _taxonomy_versions_in_scope(source_type, template_id, upload_batch_id):
     return ",".join(ids)[:255] or None
 
 
-def _generate(source_type, template_id, upload_batch_id, user_id=None, admin_id=None):
+def _generate(source_type, template_id, upload_batch_id, user_id=None, admin_id=None, ui_lang=None):
     readiness = get_readiness(source_type, template_id=template_id, upload_batch_id=upload_batch_id)
     if not readiness["can_generate"]:
         raise ReportError(
@@ -352,8 +353,17 @@ def _generate(source_type, template_id, upload_batch_id, user_id=None, admin_id=
     try:
         groups = build_aggregation(source_type, template_id=template_id, upload_batch_id=upload_batch_id)
 
+        # 摘要語言 = 介面語言（規則 A：英文介面 -> 英文報告摘要，不管資料是什麼語言）：
+        # 明確傳入的 ui_lang > 目前請求的 Accept-Language > （沒有請求環境才）這份報告原始文字的語言。
+        # 整份報告用同一個語言，不逐組、不逐列切換。
+        report_lang = resolve_output_lang(
+            ui_lang, [item["matched_segment_text"] for group in groups for item in group["items"]],
+        )
+
         for group in groups:
-            summary = build_aggregated_summary(group["main_category"], group["sub_category"], group["items"])
+            summary = build_aggregated_summary(
+                group["main_category"], group["sub_category"], group["items"], lang=report_lang,
+            )
 
             agg_row = Report_Aggregation(
                 report_id=report.report_id,

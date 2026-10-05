@@ -32,6 +32,7 @@ import time
 from services import gemini_client as genai
 
 from services.privacy_service import mask_pii, PiiMaskingError
+from services.language_service import DEFAULT_LANG, summary_language_rule
 
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
@@ -82,6 +83,14 @@ AGGREGATED_SUMMARY_SYSTEM_INSTRUCTION = """你是問卷開放式回覆的量化�
 {"summary": "摘要文字"}"""
 
 
+def _instruction_for(base_instruction: str, lang: str) -> str:
+    """把提示詞裡寫死的「使用繁體中文。」換成明確的輸出語言（data_lang，由呼叫端決定）。
+    zh-TW 時與原本逐字相同。"""
+    old_rule = "使用繁體中文。"
+    assert old_rule in base_instruction
+    return base_instruction.replace(old_rule, summary_language_rule(lang))
+
+
 class AggregatedSummaryError(RuntimeError):
     """呼叫失敗、解析失敗、或 PII 遮罩失敗時使用。呼叫端
     （services/report_service.py）應該把這個例外視為整個 Report
@@ -93,12 +102,13 @@ def _parse_json(raw_text: str) -> dict:
     return json.loads(cleaned)
 
 
-def build_aggregated_summary(main_category: str, sub_category: str, items: list) -> str:
+def build_aggregated_summary(main_category: str, sub_category: str, items: list, lang: str = DEFAULT_LANG) -> str:
     """
     Args:
         items: services/aggregation_service.build_aggregation() 回傳的
             單一 group 裡的 "items" 清單，每個元素至少要有
             "matched_segment_text"。
+        lang: 摘要的輸出語言（data_lang；無法判斷時由呼叫端 fallback 成 ui_lang）。
 
     Returns:
         摘要文字（str）。
@@ -135,7 +145,7 @@ def build_aggregated_summary(main_category: str, sub_category: str, items: list)
         try:
             model = genai.GenerativeModel(
                 model_name="gemini-3.1-flash-lite",
-                system_instruction=AGGREGATED_SUMMARY_SYSTEM_INSTRUCTION,
+                system_instruction=_instruction_for(AGGREGATED_SUMMARY_SYSTEM_INSTRUCTION, lang),
             )
             response = model.generate_content(
                 user_content,
@@ -188,6 +198,7 @@ def build_aggregated_summary_pair(
     sub_category: str,
     reasoning_items: list,
     summary_items: list,
+    lang: str = DEFAULT_LANG,
 ) -> tuple[str, str]:
     """
     跟 build_aggregated_summary() 做同一件事，但一次處理 reasoning 跟
@@ -199,6 +210,8 @@ def build_aggregated_summary_pair(
     兩組片段清單其中一個可以是空的（傳空 list），該組回傳空字串，
     不會為了空清單額外打 Gemini。兩組都空時直接回傳 ("", "")，
     不呼叫 Gemini。
+
+    lang: 摘要的輸出語言（data_lang；無法判斷時由呼叫端 fallback 成 ui_lang）。
 
     Returns:
         (aggregated_reasoning, aggregated_summary) 兩個字串的 tuple。
@@ -231,7 +244,7 @@ def build_aggregated_summary_pair(
         try:
             model = genai.GenerativeModel(
                 model_name="gemini-3.1-flash-lite",
-                system_instruction=AGGREGATED_PAIR_SYSTEM_INSTRUCTION,
+                system_instruction=_instruction_for(AGGREGATED_PAIR_SYSTEM_INSTRUCTION, lang),
             )
             response = model.generate_content(
                 user_content,

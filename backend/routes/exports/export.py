@@ -25,6 +25,8 @@ from extensions import db
 from models import Export_File, Chat_History, Workspace
 from routes.workspaces.workspace import authorize_request
 from services.export_file_service import build_xlsx, build_docx
+from services.export_labels import export_labels
+from services.language_service import ui_lang_from_request
 from services import workspace_result_service
 from sqlalchemy.orm import defer
 
@@ -135,13 +137,16 @@ def create_export():
             "error": "缺少 rows"
         }), 400
 
-    title = data.get("title") or "分類結果"
+    # 匯出檔的固定文字（欄位標題、分頁名稱…）語言 = ui_lang（Accept-Language）；
+    # 使用者的資料與 AI 產生的內容不翻譯
+    lang = ui_lang_from_request()
+    title = data.get("title") or export_labels(lang)["sheet_results"]
 
     try:
         if export_type == "xlsx":
-            file_bytes = build_xlsx(rows, title=title, rating_stats=rating_stats)
+            file_bytes = build_xlsx(rows, title=title, rating_stats=rating_stats, lang=lang)
         else:
-            file_bytes = build_docx(rows, title=title, rating_stats=rating_stats)
+            file_bytes = build_docx(rows, title=title, rating_stats=rating_stats, lang=lang)
 
     except Exception as e:
         return jsonify({

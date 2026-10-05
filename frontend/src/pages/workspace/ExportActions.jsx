@@ -40,7 +40,11 @@ export default function ExportActions({ rows, ratingStats, chatId, sourceFilenam
     busyRef.current = true;
     setPendingFormat(format);
     const timestamp = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 19).replace(/[:T]/g, "-");
-    const baseFilename = sourceFilename ? sourceFilename.replace(/\.[^.]+$/, "") : `分類結果_${timestamp}`;
+    // 預設檔名 / 標題與檔名後綴是「系統產生的固定文字」，語言 = 介面語言（ui_lang）；
+    // sourceFilename 是使用者上傳的原始檔名（使用者的資料），維持原樣。
+    // 這個 baseFilename 也會當成 title 送給後端，變成 Excel 的分頁名稱，所以英文介面時一定要是英文。
+    const resultsLabel = isEnglish ? "Classification_results" : "分類結果";
+    const baseFilename = sourceFilename ? sourceFilename.replace(/\.[^.]+$/, "") : `${resultsLabel}_${timestamp}`;
     // 【新增｜評分題統計】ratingStats 是可選欄位，沒有評分題（或是 Excel
     // 上傳分類，本來就沒有這個概念）時是 undefined/[]，後端 create_export
     // 收到空值時行為跟這個欄位新增之前完全一樣，不會多產生任何 sheet/section。
@@ -49,7 +53,7 @@ export default function ExportActions({ rows, ratingStats, chatId, sourceFilenam
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${user.token}` },
         body: JSON.stringify({
-          chat_id: chatId, filename: `${baseFilename}_分類結果.${format}`,
+          chat_id: chatId, filename: `${baseFilename}_${resultsLabel}.${format}`,
           export_type: format, row_count: rows.length, rows, title: baseFilename,
           rating_stats: ratingStats && ratingStats.length > 0 ? ratingStats : undefined,
         }),

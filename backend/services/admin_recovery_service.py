@@ -46,6 +46,7 @@ retry failed）。
 
 from extensions import db, taiwan_now
 from services.query_utils import fast_count
+from services.language_service import DEFAULT_LANG, detect_data_lang
 from models import (
     Response_Classification,
     Response_Segmentation_Status,
@@ -558,9 +559,12 @@ def _reprocess(scope, topic_key, admin_id, action, taxonomy_version_id=None, rea
         locks_released = True
 
     try:
+        # 理由 / 摘要的語言：這裡是管理員（或系統）代替使用者重新處理，請求環境的語言是管理員的介面語言，
+        # 不是資料擁有者的，所以明確用這則回答本身的語言（判斷不出來 -> 繁體中文），不吃請求的 Accept-Language
         result = classify_response_multi_segment(
             scope["answer_text"], prompt_content, topic_key,
             category_lookup=category_lookup, taxonomy_version_id=version.version_id,
+            lang=detect_data_lang([scope["answer_text"]]) or DEFAULT_LANG,
         )
     except Exception as exc:  # AI 服務本身失敗：把原因持久化，不留半套資料
         db.session.rollback()

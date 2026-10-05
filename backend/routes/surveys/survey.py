@@ -18,6 +18,8 @@ from extensions import db
 from models import Survey_Template, Survey_Response, Chat_History
 from services.question_routing_service import ROUTING_REASON_API_FAILURE, route_question_type_detailed
 from services.export_file_service import build_survey_xlsx, build_survey_docx
+from services.export_labels import export_labels
+from services.language_service import ui_lang_from_request
 
 survey_bp = Blueprint('survey', __name__)
 
@@ -600,12 +602,12 @@ _SURVEY_EXPORT_FORMAT_META = {
 _UNSAFE_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 
 
-def _sanitize_survey_export_filename_part(name):
+def _sanitize_survey_export_filename_part(name, lang=None):
     """把問卷標題清成可以安全放進檔名的字串。中文字元原樣保留——
     下載時走 RFC 5987 filename* 的 UTF-8 percent-encoding，不受影響；
     只需要濾掉會讓檔案系統或 HTTP header 出問題的符號。"""
     cleaned = _UNSAFE_FILENAME_CHARS.sub("", str(name or "")).strip()
-    return cleaned or "問卷回覆"
+    return cleaned or export_labels(lang)["sheet_survey"]
 
 
 @survey_bp.route('/api/surveys/<access_code>/export', methods=['GET'])
@@ -657,6 +659,8 @@ def export_survey_responses(access_code):
         for r in responses
     ]
 
+    # 匯出檔的固定文字語言 = ui_lang（Accept-Language）；問卷標題、題目、答案是使用者的資料，不翻譯
+    lang = ui_lang_from_request()
     try:
         if export_format == "xlsx":
             file_bytes = build_survey_xlsx(
@@ -664,6 +668,7 @@ def export_survey_responses(access_code):
                 questions=questions,
                 responses=response_payload,
                 identity_mode=identity_mode,
+                lang=lang,
             )
         else:
             file_bytes = build_survey_docx(
@@ -671,6 +676,7 @@ def export_survey_responses(access_code):
                 questions=questions,
                 responses=response_payload,
                 identity_mode=identity_mode,
+                lang=lang,
             )
     except Exception:
         # 不把完整 exception/stack trace 暴露給前端，只記在後端 log。
@@ -680,8 +686,8 @@ def export_survey_responses(access_code):
         )
         return jsonify({"error": "問卷匯出檔案產生失敗，請稍後再試"}), 500
 
-    safe_title = _sanitize_survey_export_filename_part(survey.title)
-    export_filename = f"{safe_title}_問卷回覆.{format_meta['ext']}"
+    safe_title = _sanitize_survey_export_filename_part(survey.title, lang)
+    export_filename = f"{safe_title}_{export_labels(lang)['filename_suffix_survey']}.{format_meta['ext']}"
 
     # 中文檔名走 RFC 5987/6266：filename 放純英數保底檔名（給不支援新
     # 標準的舊工具用），filename* 用 UTF-8 + percent-encoding 放真正的

@@ -36,6 +36,10 @@ from docx.enum.section import WD_ORIENT
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
+from services.export_labels import export_labels, localize_respondent_text, plural
+from services.language_service import DEFAULT_LANG
+
+# 預設（繁體中文）欄位標題；其他語言見 services/export_labels.py
 COLUMN_HEADERS = ["大類別", "子類別", "問卷回覆內容", "判斷原因與說明", "受試者建議摘要"]
 
 
@@ -50,17 +54,18 @@ _RATING_SCORE_COLORS_HEX = ["FFE4E6", "FECDD3", "FDA4AF", "FB7185", "F43F5E", "E
 _RATING_SCORE_COLORS_CSS = [f"#{c}" for c in _RATING_SCORE_COLORS_HEX]
 
 
-def _row_values(row: dict) -> list:
+def _row_values(row: dict, lang: str = DEFAULT_LANG) -> list:
     return [
         row.get("main_category", ""),
         row.get("sub_category", ""),
-        row.get("respondent_text", ""),
+        # 「受試者N：」「（次要分類）」是系統組出來的固定字樣，英文匯出時轉成英文；回答原文不動
+        localize_respondent_text(row.get("respondent_text", ""), lang),
         row.get("aggregated_reasoning", ""),
         row.get("aggregated_summary", ""),
     ]
 
 
-def build_xlsx(rows: list, title: str = "分類結果", rating_stats: list | None = None) -> bytes:
+def build_xlsx(rows: list, title: str | None = None, rating_stats: list | None = None, lang: str = DEFAULT_LANG) -> bytes:
     """把 rows 產生成 .xlsx 檔案，回傳檔案的原始 bytes。
 
     rating_stats 是【新增｜問卷 Chat 分析評分題統計】的可選參數，預設
@@ -72,9 +77,11 @@ def build_xlsx(rows: list, title: str = "分類結果", rating_stats: list | Non
         統計」sheet（放在最前面，索引 0），下面既有的分類結果建置邏輯
         （表頭、合併儲存格、欄寬…）一行都不動。
     """
+    # lang = ui_lang（使用者匯出當下的介面語言）；預設繁體中文，輸出與原本逐位元相同
+    labels = export_labels(lang)
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = title[:31] if title else "分類結果"  # Excel 分頁名稱上限 31 字元
+    ws.title = title[:31] if title else labels["sheet_results"]  # Excel 分頁名稱上限 31 字元
 
     
     header_font = Font(name="微軟正黑體", bold=True, color="FFFFFFFF")
@@ -89,7 +96,7 @@ def build_xlsx(rows: list, title: str = "分類結果", rating_stats: list | Non
         bottom=Side(style="thin", color="FF000000"),
     )
 
-    for col_idx, header in enumerate(COLUMN_HEADERS, start=1):
+    for col_idx, header in enumerate(labels["headers"], start=1):
         cell = ws.cell(row=1, column=col_idx, value=header)
         cell.font = header_font
         cell.fill = header_fill
@@ -97,7 +104,7 @@ def build_xlsx(rows: list, title: str = "分類結果", rating_stats: list | Non
         cell.border = thin_border
 
     for row_idx, row in enumerate(rows, start=2):
-        values = _row_values(row)
+        values = _row_values(row, lang)
         for col_idx, value in enumerate(values, start=1):
             cell = ws.cell(row=row_idx, column=col_idx, value=value)
             cell.font = body_font
@@ -126,7 +133,9 @@ def build_xlsx(rows: list, title: str = "分類結果", rating_stats: list | Non
     # rating_stats 為 None 或空陣列時完全不執行這段，既有分類結果 sheet
     # （上面已經建置完成）逐位元組不變。
     if rating_stats:
-        _write_rating_stats_sheet(wb, rating_stats, index=0, content_sheet_title=ws.title, content_label="分類結果")
+        _write_rating_stats_sheet(
+            wb, rating_stats, index=0, content_sheet_title=ws.title, content_label=labels["sheet_results"], lang=lang,
+        )
         wb.active = 0
 
     buf = io.BytesIO()
@@ -135,7 +144,7 @@ def build_xlsx(rows: list, title: str = "分類結果", rating_stats: list | Non
 
 
 def _write_rating_stats_sheet(wb, rating_stats: list, *, index: int = 0, content_sheet_title: str | None = None,
-                              content_label: str = "完整內容"):
+                              content_label: str | None = None, lang: str = DEFAULT_LANG):
     """在既有 workbook 裡插入一張「評分題統計」sheet：極簡正式報表版型，
     每一題一個獨立區塊，不使用圖表、不使用 data bar、不做卡片式底色
     區塊，整體以白／淡粉／深灰為主色，只有平均分數這個關鍵數字用
@@ -165,7 +174,9 @@ def _write_rating_stats_sheet(wb, rating_stats: list, *, index: int = 0, content
     打開檔案時第一個看到的分頁，沒有提示的話，使用者很容易以為檔案
     裡只有統計、找不到原始內容。
     """
-    ws = wb.create_sheet(title="評分題統計", index=index)
+    labels = export_labels(lang)
+    content_label = content_label or labels["content_default"]
+    ws = wb.create_sheet(title=labels["sheet_rating"], index=index)
 
     title_font = Font(name="微軟正黑體", bold=True, size=12, color="FF334155")  # 深灰，不是白字
     title_fill = PatternFill(start_color="FFFFFBFB", end_color="FFFFFBFB", fill_type="solid")  # 近乎白色的極淡粉
@@ -191,7 +202,7 @@ def _write_rating_stats_sheet(wb, rating_stats: list, *, index: int = 0, content
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=HEADER_SPAN)
         hint_cell = ws.cell(
             row=1, column=1,
-            value=f"→ {content_label}在第二個分頁「{content_sheet_title}」（點這裡或下方的分頁標籤即可切換）",
+            value=labels["hint"].format(content_label=content_label, sheet=content_sheet_title),
         )
         # Excel 內部連結：分頁名稱裡的單引號要寫成兩個單引號
         escaped_title = content_sheet_title.replace("'", "''")
@@ -205,7 +216,7 @@ def _write_rating_stats_sheet(wb, rating_stats: list, *, index: int = 0, content
         distribution = stat.get("distribution") or {}
         question_number = stat.get("question_number")
         title_text = stat.get("title") or ""
-        question_label = f"Q{question_number}　{title_text}" if question_number else title_text
+        question_label = f"Q{question_number}{labels['q_rating_sep']}{title_text}" if question_number else title_text
         average = stat.get("average")
         answered_count = stat.get("answered_count", 0)
 
@@ -226,8 +237,8 @@ def _write_rating_stats_sheet(wb, rating_stats: list, *, index: int = 0, content
         # 第 2 列：平均分數。字級稍微放大、用粉色強調，但不到誇張的
         # 大小（14pt，不是動輒 18~20pt 那種主視覺數字）。
         average_row = title_row + 1
-        average_text = f"{average:.1f} / 5" if average is not None else "尚無資料"
-        label_cell = ws.cell(row=average_row, column=1, value="平均分數：")
+        average_text = f"{average:.1f} / 5" if average is not None else labels["no_data"]
+        label_cell = ws.cell(row=average_row, column=1, value=labels["average_label_xlsx"])
         label_cell.font = average_label_font
         label_cell.alignment = Alignment(vertical="center", horizontal="left")
         value_cell = ws.cell(row=average_row, column=2, value=average_text)
@@ -237,10 +248,10 @@ def _write_rating_stats_sheet(wb, rating_stats: list, *, index: int = 0, content
 
         # 第 3 列：有效回答數。一般深灰字，不特別強調。
         answered_row = average_row + 1
-        answered_label_cell = ws.cell(row=answered_row, column=1, value="有效回答：")
+        answered_label_cell = ws.cell(row=answered_row, column=1, value=labels["answered_label"])
         answered_label_cell.font = label_font
         answered_label_cell.alignment = Alignment(vertical="center", horizontal="left")
-        answered_value_cell = ws.cell(row=answered_row, column=2, value=f"{answered_count} 份")
+        answered_value_cell = ws.cell(row=answered_row, column=2, value=labels["answered_value"].format(n=answered_count))
         answered_value_cell.font = label_font
         answered_value_cell.alignment = Alignment(vertical="center", horizontal="left")
 
@@ -251,13 +262,13 @@ def _write_rating_stats_sheet(wb, rating_stats: list, *, index: int = 0, content
         dist_value_row = dist_header_row + 1
         for score in range(6):
             col = score + 1
-            header_cell = ws.cell(row=dist_header_row, column=col, value=f"{score} 分")
+            header_cell = ws.cell(row=dist_header_row, column=col, value=labels["score_header"].format(score=score, points=plural(score, "point", "points")))
             header_cell.font = dist_header_font
             header_cell.alignment = center_alignment
             header_cell.border = thin_grey_bottom
 
             count = int(distribution.get(str(score), 0) or 0)
-            value_cell = ws.cell(row=dist_value_row, column=col, value=f"{count} 人")
+            value_cell = ws.cell(row=dist_value_row, column=col, value=labels["count_value"].format(n=count, respondents=plural(count, "respondent", "respondents")))
             value_cell.font = dist_value_font
             value_cell.alignment = center_alignment
 
@@ -420,19 +431,20 @@ _BODY_FONT_SIZE = 10
 _HEADER_FONT_SIZE = 11
 
 
-def _build_classification_table(doc: Document, rows: list, col_widths: list):
+def _build_classification_table(doc: Document, rows: list, col_widths: list, lang: str = DEFAULT_LANG):
     """建立單一張「大類別/子類別/問卷回覆內容/判斷原因與說明/受試者
     建議摘要」5 欄分類表，對應一個題目範圍（或整批沒有題目範圍資訊
     的 rows）。多題目時，呼叫端會針對每個題目分別呼叫這個函式，
     各自建立一張全新的 table，每張都有自己完整的表頭。
     """
-    table = doc.add_table(rows=1, cols=len(COLUMN_HEADERS))
+    headers = export_labels(lang)["headers"]
+    table = doc.add_table(rows=1, cols=len(headers))
     table.style = "Table Grid"  # 黑色細格線
     _set_table_fixed_layout(table)
 
     header_row = table.rows[0]
     hdr_cells = header_row.cells
-    for i, header in enumerate(COLUMN_HEADERS):
+    for i, header in enumerate(headers):
         cell = hdr_cells[i]
         _write_cell_paragraphs(
             cell, header, size_pt=_HEADER_FONT_SIZE, bold=True,
@@ -454,7 +466,7 @@ def _build_classification_table(doc: Document, rows: list, col_widths: list):
     prev_main_category = None
     for r_idx, row in enumerate(rows):
         cells = table.add_row().cells
-        values = _row_values(row)
+        values = _row_values(row, lang)
         main_category = row.get("main_category", "")
         is_continuation = r_idx > 0 and prev_main_category == main_category
 
@@ -558,7 +570,7 @@ def _render_rating_donut_png(distribution: dict, average, *, size: int = 480) ->
     return buf.getvalue()
 
 
-def _write_rating_stats_blocks(doc: Document, rating_stats: list):
+def _write_rating_stats_blocks(doc: Document, rating_stats: list, lang: str = DEFAULT_LANG):
     """把評分題統計寫成「每題一個小區塊」：題目當小標題，中間插入
     Pillow 產生的甜甜圈圖（0~5 分分布），圖片下方用一般文字段落顯示
     平均分（視覺突出）、有效回答數，以及一行精簡的 0~5 分布數字。
@@ -568,11 +580,12 @@ def _write_rating_stats_blocks(doc: Document, rating_stats: list):
     _build_classification_table()／_group_rows_by_question() 分類結果
     專屬的邏輯。
     """
+    labels = export_labels(lang)
     for idx, stat in enumerate(rating_stats):
         distribution = stat.get("distribution") or {}
         question_number = stat.get("question_number")
         title_text = stat.get("title") or ""
-        question_label = f"Q{question_number}　{title_text}" if question_number else title_text
+        question_label = f"Q{question_number}{labels['q_rating_sep']}{title_text}" if question_number else title_text
         average = stat.get("average")
         answered_count = stat.get("answered_count", 0)
 
@@ -595,9 +608,9 @@ def _write_rating_stats_blocks(doc: Document, rating_stats: list):
         average_paragraph = doc.add_paragraph()
         average_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
         average_paragraph.paragraph_format.space_after = Pt(2)
-        label_run = average_paragraph.add_run("平均分：")
+        label_run = average_paragraph.add_run(labels["average_label_docx"])
         _apply_docx_font(label_run, size_pt=11, bold=False)
-        average_text = f"{average:.1f} / 5" if average is not None else "尚無資料"
+        average_text = f"{average:.1f} / 5" if average is not None else labels["no_data"]
         average_run = average_paragraph.add_run(average_text)
         _apply_docx_font(average_run, size_pt=15, bold=True)
         average_run.font.color.rgb = RGBColor(0xF4, 0x3F, 0x5E)  # rose-500
@@ -605,13 +618,16 @@ def _write_rating_stats_blocks(doc: Document, rating_stats: list):
         answered_paragraph = doc.add_paragraph()
         answered_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
         answered_paragraph.paragraph_format.space_after = Pt(4)
-        answered_run = answered_paragraph.add_run(f"有效回答：{answered_count} 份")
+        answered_run = answered_paragraph.add_run(labels["answered_line_docx"].format(n=answered_count))
         _apply_docx_font(answered_run, size_pt=11, bold=False)
 
         # 0~5 分分布：濃縮成一行精簡文字（跟圖表互補、不是主要視覺），
         # 0 分是合法答案，跟 1~5 分用同一種寫法，不做任何特殊處理。
-        distribution_text = "　".join(
-            f"{score} 分：{distribution.get(str(score), 0)} 人" for score in range(6)
+        distribution_text = labels["dist_join"].join(
+            labels["dist_item"].format(
+                score=score, n=distribution.get(str(score), 0), points=plural(score, "point", "points"),
+                respondents=plural(distribution.get(str(score), 0), "respondent", "respondents"),
+            ) for score in range(6)
         )
         distribution_paragraph = doc.add_paragraph()
         distribution_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -621,7 +637,7 @@ def _write_rating_stats_blocks(doc: Document, rating_stats: list):
         distribution_run.font.color.rgb = RGBColor(0x64, 0x74, 0x8B)  # slate-500，弱化成輔助說明
 
 
-def build_docx(rows: list, title: str = "分類結果", rating_stats: list | None = None) -> bytes:
+def build_docx(rows: list, title: str | None = None, rating_stats: list | None = None, lang: str = DEFAULT_LANG) -> bytes:
     """把 rows 產生成 .docx 檔案，回傳檔案的原始 bytes。
 
     如果 rows 帶有 source_column（Excel 上傳來源）或 question_id
@@ -637,6 +653,7 @@ def build_docx(rows: list, title: str = "分類結果", rating_stats: list | Non
       - 傳非空陣列：在既有分類結果標題之前，先輸出「評分題統計」標題
         ＋每題一個小區塊，跟分類結果之間用分頁隔開。
     """
+    labels = export_labels(lang)
     doc = Document()
 
     
@@ -652,15 +669,15 @@ def build_docx(rows: list, title: str = "分類結果", rating_stats: list | Non
     # 【新增｜評分題統計】只在有評分題統計時才輸出，放在既有分類結果
     # 之前；輸出完之後強制分頁，避免跟下面的分類結果標題擠在同一頁。
     if rating_stats:
-        rating_heading = doc.add_heading("評分題統計", level=1)
+        rating_heading = doc.add_heading(labels["sheet_rating"], level=1)
         rating_heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
         for run in rating_heading.runs:
             _apply_docx_font(run, size_pt=run.font.size.pt if run.font.size else 18, bold=True)
 
-        _write_rating_stats_blocks(doc, rating_stats)
+        _write_rating_stats_blocks(doc, rating_stats, lang)
         doc.add_page_break()
 
-    heading = doc.add_heading(title or "分類結果", level=1)
+    heading = doc.add_heading(title or labels["sheet_results"], level=1)
     heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
     for run in heading.runs:
         _apply_docx_font(run, size_pt=run.font.size.pt if run.font.size else 18, bold=True)
@@ -674,11 +691,11 @@ def build_docx(rows: list, title: str = "分類結果", rating_stats: list | Non
         if multiple_tables:
             if idx > 0:
                 doc.add_paragraph()
-            subheading = doc.add_heading(question_label or f"題目 {idx + 1}", level=2)
+            subheading = doc.add_heading(question_label or labels["question_n"].format(n=idx + 1), level=2)
             for run in subheading.runs:
                 _apply_docx_font(run, size_pt=run.font.size.pt if run.font.size else 14, bold=True)
 
-        _build_classification_table(doc, group_rows, col_widths)
+        _build_classification_table(doc, group_rows, col_widths, lang)
 
     buf = io.BytesIO()
     doc.save(buf)
@@ -717,8 +734,8 @@ def _survey_question_text(question) -> str:
     return str(question.get("title") or question.get("question_title") or "").strip()
 
 
-def _survey_question_header(question, index: int) -> str:
-    return f"Q{index}：{_survey_question_text(question)}"
+def _survey_question_header(question, index: int, lang: str = DEFAULT_LANG) -> str:
+    return f"Q{index}{export_labels(lang)['q_header_sep']}{_survey_question_text(question)}"
 
 
 def _survey_safe_rating_int(raw):
@@ -742,7 +759,7 @@ def _survey_safe_rating_int(raw):
     return None
 
 
-def _survey_cell_value(question, answers: dict, *, for_excel: bool):
+def _survey_cell_value(question, answers: dict, *, for_excel: bool, lang: str = DEFAULT_LANG):
     """算出某一題、某位受試者的顯示值。
 
     【關鍵】「未作答」的判斷方式必須是 question_id 是否存在於 answers
@@ -750,11 +767,12 @@ def _survey_cell_value(question, answers: dict, *, for_excel: bool):
     falsy fallback——rating 題答 0 分時，`0` 在 Python 是 falsy，
     這種寫法會把「答 0 分」誤判成「沒有作答」，是這次最需要避開的地雷。
     """
+    labels = export_labels(lang)
     if not isinstance(question, dict):
-        return "未作答"
+        return labels["no_answer"]
     qid = question.get("id")
     if not isinstance(answers, dict) or qid not in answers:
-        return "未作答"
+        return labels["no_answer"]
 
     raw = answers.get(qid)
     q_type = question.get("type")
@@ -770,13 +788,13 @@ def _survey_cell_value(question, answers: dict, *, for_excel: bool):
         return rating_value if for_excel else str(rating_value)
 
     if isinstance(raw, (list, tuple)):
-        return "、".join(str(item) for item in raw if item is not None)
+        return labels["list_join"].join(str(item) for item in raw if item is not None)
 
     if raw is None:
         # key 存在但值是 null：不是「沒作答」，是「作答了但存了 null」，
         # 目前系統理論上不會有這種資料（前端未作答的題目 key 根本不會
         # 出現），這裡當保底處理，避免印出字面上的 "None"。
-        return "未作答"
+        return labels["no_answer"]
 
     return str(raw)
 
@@ -800,7 +818,7 @@ def _survey_format_submitted_at(dt) -> str:
     return dt.strftime("%Y/%m/%d %H:%M")
 
 
-def _survey_respondent_label(response: dict, identity_mode: str, sequence_number: int) -> str:
+def _survey_respondent_label(response: dict, identity_mode: str, sequence_number: int, lang: str = DEFAULT_LANG) -> str:
     """decide「受試者」欄怎麼顯示。
 
     identified：直接用 respondent_identity；anonymous（或其他未知值，
@@ -810,10 +828,11 @@ def _survey_respondent_label(response: dict, identity_mode: str, sequence_number
     呼叫端依 responses 目前的順序算出（呼叫端已經依 submitted_at
     asc 排序）。
     """
+    labels = export_labels(lang)
     if identity_mode == "identified":
         identity = str((response or {}).get("respondent_identity") or "").strip()
-        return identity or "（未填寫身分）"
-    return f"匿名受試者 {sequence_number}"
+        return identity or labels["identity_missing"]
+    return labels["anonymous"].format(n=sequence_number)
 
 
 def _build_survey_rating_stats(questions: list, responses: list) -> list:
@@ -849,7 +868,7 @@ def _build_survey_rating_stats(questions: list, responses: list) -> list:
     return stats
 
 
-def build_survey_xlsx(*, title: str, questions: list, responses: list, identity_mode: str) -> bytes:
+def build_survey_xlsx(*, title: str, questions: list, responses: list, identity_mode: str, lang: str = DEFAULT_LANG) -> bytes:
     """把問卷「原始回覆」產生成 .xlsx，wide format：一位受試者一列，
     欄位為「受試者 | 提交時間 | Q1：題目全文 | Q2：題目全文 | ...」。
 
@@ -868,8 +887,9 @@ def build_survey_xlsx(*, title: str, questions: list, responses: list, identity_
     """
     wb = openpyxl.Workbook()
     ws = wb.active
-    sheet_title = (title or "問卷回覆").strip()[:31]  # Excel 分頁名稱上限 31 字元
-    ws.title = sheet_title or "問卷回覆"
+    labels = export_labels(lang)
+    sheet_title = (title or labels["sheet_survey"]).strip()[:31]  # Excel 分頁名稱上限 31 字元
+    ws.title = sheet_title or labels["sheet_survey"]
 
     header_font = Font(name="微軟正黑體", bold=True, color="FFFFFFFF")
     header_fill = PatternFill(start_color="FFF43F5E", end_color="FFF43F5E", fill_type="solid")
@@ -884,8 +904,8 @@ def build_survey_xlsx(*, title: str, questions: list, responses: list, identity_
     )
 
     questions = questions or []
-    headers = ["受試者", "提交時間"] + [
-        _survey_question_header(q, idx) for idx, q in enumerate(questions, start=1)
+    headers = [labels["col_respondent"], labels["col_submitted"]] + [
+        _survey_question_header(q, idx, lang) for idx, q in enumerate(questions, start=1)
     ]
     for col_idx, header in enumerate(headers, start=1):
         cell = ws.cell(row=1, column=col_idx, value=header)
@@ -897,11 +917,11 @@ def build_survey_xlsx(*, title: str, questions: list, responses: list, identity_
     for row_idx, response in enumerate(responses or [], start=2):
         sequence_number = row_idx - 1
         answers = (response or {}).get("answers") or {}
-        respondent_label = _survey_respondent_label(response, identity_mode, sequence_number)
+        respondent_label = _survey_respondent_label(response, identity_mode, sequence_number, lang)
         submitted_label = _survey_format_submitted_at((response or {}).get("submitted_at"))
 
         row_values = [respondent_label, submitted_label] + [
-            _survey_cell_value(q, answers, for_excel=True) for q in questions
+            _survey_cell_value(q, answers, for_excel=True, lang=lang) for q in questions
         ]
         for col_idx, value in enumerate(row_values, start=1):
             cell = ws.cell(row=row_idx, column=col_idx, value=value)
@@ -921,7 +941,7 @@ def build_survey_xlsx(*, title: str, questions: list, responses: list, identity_
     rating_stats = _build_survey_rating_stats(questions, responses)
     if rating_stats:
         _write_rating_stats_sheet(
-            wb, rating_stats, index=0, content_sheet_title=ws.title, content_label="問卷回覆內容",
+            wb, rating_stats, index=0, content_sheet_title=ws.title, content_label=labels["content_survey"], lang=lang,
         )
         wb.active = 0
 
@@ -930,7 +950,7 @@ def build_survey_xlsx(*, title: str, questions: list, responses: list, identity_
     return buf.getvalue()
 
 
-def build_survey_docx(*, title: str, questions: list, responses: list, identity_mode: str) -> bytes:
+def build_survey_docx(*, title: str, questions: list, responses: list, identity_mode: str, lang: str = DEFAULT_LANG) -> bytes:
     """把問卷「原始回覆」產生成 .docx，採「一位受試者一區塊」：
 
         受試者：王小明
@@ -956,7 +976,8 @@ def build_survey_docx(*, title: str, questions: list, responses: list, identity_
     section.left_margin = Cm(1.5)
     section.right_margin = Cm(1.5)
 
-    heading = doc.add_heading(title or "問卷回覆", level=1)
+    labels = export_labels(lang)
+    heading = doc.add_heading(title or labels["sheet_survey"], level=1)
     heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
     for run in heading.runs:
         _apply_docx_font(run, size_pt=run.font.size.pt if run.font.size else 18, bold=True)
@@ -966,13 +987,13 @@ def build_survey_docx(*, title: str, questions: list, responses: list, identity_
 
     questions = questions or []
     question_headers = [
-        _survey_question_header(q, idx) for idx, q in enumerate(questions, start=1)
+        _survey_question_header(q, idx, lang) for idx, q in enumerate(questions, start=1)
     ]
     rating_stats = _build_survey_rating_stats(questions, responses)
 
     if rating_stats:
-        doc.add_heading("Rating summary", level=2)
-        _write_rating_stats_blocks(doc, rating_stats)
+        doc.add_heading("Rating summary", level=2)  # 原本就是英文（繁中輸出也是），維持不變
+        _write_rating_stats_blocks(doc, rating_stats, lang)
 
     if not responses:
         doc.add_paragraph("Questions")
@@ -981,7 +1002,7 @@ def build_survey_docx(*, title: str, questions: list, responses: list, identity_
 
     for idx, response in enumerate(responses or [], start=1):
         answers = (response or {}).get("answers") or {}
-        respondent_label = _survey_respondent_label(response, identity_mode, idx)
+        respondent_label = _survey_respondent_label(response, identity_mode, idx, lang)
         submitted_label = _survey_format_submitted_at((response or {}).get("submitted_at"))
 
         info_paragraph = doc.add_paragraph()
@@ -990,12 +1011,12 @@ def build_survey_docx(*, title: str, questions: list, responses: list, identity_
         # 看起來像排版錯誤的空白。
         info_paragraph.paragraph_format.space_before = Pt(18) if idx > 1 else Pt(6)
         info_paragraph.paragraph_format.space_after = Pt(2)
-        info_run = info_paragraph.add_run(f"受試者：{respondent_label}")
+        info_run = info_paragraph.add_run(labels["respondent_line"].format(label=respondent_label))
         _apply_docx_font(info_run, size_pt=12, bold=True)
 
         time_paragraph = doc.add_paragraph()
         time_paragraph.paragraph_format.space_after = Pt(6)
-        time_run = time_paragraph.add_run(f"提交時間：{submitted_label}")
+        time_run = time_paragraph.add_run(labels["submitted_line"].format(label=submitted_label))
         _apply_docx_font(time_run, size_pt=10, bold=False)
 
         table = doc.add_table(rows=1, cols=2)
@@ -1003,7 +1024,7 @@ def build_survey_docx(*, title: str, questions: list, responses: list, identity_
         _set_table_fixed_layout(table)
 
         header_row = table.rows[0]
-        for cell, text in zip(header_row.cells, ["題目", "答案"]):
+        for cell, text in zip(header_row.cells, [labels["col_question"], labels["col_answer"]]):
             _write_cell_paragraphs(
                 cell, text, size_pt=_SURVEY_HEADER_FONT_SIZE, bold=True,
                 align=WD_ALIGN_PARAGRAPH.CENTER,
@@ -1017,7 +1038,7 @@ def build_survey_docx(*, title: str, questions: list, responses: list, identity_
                 row_cells[0], q_header, size_pt=_SURVEY_BODY_FONT_SIZE, bold=True,
                 align=WD_ALIGN_PARAGRAPH.LEFT,
             )
-            answer_value = _survey_cell_value(question, answers, for_excel=False)
+            answer_value = _survey_cell_value(question, answers, for_excel=False, lang=lang)
             _write_cell_paragraphs(
                 row_cells[1], str(answer_value), size_pt=_SURVEY_BODY_FONT_SIZE, bold=False,
                 align=WD_ALIGN_PARAGRAPH.LEFT,
