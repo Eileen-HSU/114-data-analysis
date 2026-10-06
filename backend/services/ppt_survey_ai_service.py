@@ -320,6 +320,38 @@ def _parse_json_response(text):
         return json.loads(match.group(0))
 
 
+
+INSUFFICIENT_CONTENT_MESSAGE = (
+    "\u4e0a\u50b3\u8cc7\u6599\u63d0\u4f9b\u7684\u6709\u6548\u8cc7\u8a0a\u4e0d\u8db3\uff0c\u7121\u6cd5\u751f\u6210\u5177\u9ad4\u554f\u5377\u3002"
+    "\u8acb\u63d0\u4f9b\u5305\u542b\u8f03\u5b8c\u6574\u4e3b\u984c\u3001\u5167\u5bb9\u6216\u80cc\u666f\u8cc7\u8a0a\u7684\u6a94\u6848\u3002"
+)
+INSUFFICIENT_CONTENT_CODE = "INSUFFICIENT_SURVEY_CONTENT"
+
+
+def _is_false_marker(value):
+    if isinstance(value, bool):
+        return value is False
+    if isinstance(value, str):
+        return value.strip().lower() in {"false", "no", "0", "null", "none", ""}
+    return False
+
+
+def _raise_if_insufficient_content(raw):
+    if not isinstance(raw, dict):
+        return
+
+    status = str(raw.get("status") or "").strip().lower()
+    code = str(raw.get("code") or "").strip()
+
+    if (
+        raw.get("insufficient_content") is True
+        or _is_false_marker(raw.get("is_sufficient"))
+        or status in {"insufficient_content", "insufficient", "rejected"}
+        or code == INSUFFICIENT_CONTENT_CODE
+    ):
+        raise PptSurveyAiError(INSUFFICIENT_CONTENT_MESSAGE, 400)
+
+
 def normalize_survey_draft(raw, fallback_title="AI 生成問卷"):
     if not isinstance(raw, dict):
         raise PptSurveyAiError("AI 回傳格式不正確，無法建立問卷草稿。", 502)
@@ -353,8 +385,26 @@ def normalize_survey_draft(raw, fallback_title="AI 生成問卷"):
     }
 
 
-def _survey_json_instruction(allowed_types, question_count):
+def _survey_json_instruction(allowed_types, question_count, allow_insufficient=False):
     type_text = ", ".join(allowed_types)
+
+    insufficient_instruction = ""
+    if allow_insufficient:
+        insufficient_instruction = f"""
+If the uploaded material is insufficient to understand what should actually be evaluated,
+DO NOT generate questions.
+
+Return ONLY:
+{{
+  "is_sufficient": false,
+  "insufficient_content": true,
+  "code": "{INSUFFICIENT_CONTENT_CODE}",
+  "message": "{INSUFFICIENT_CONTENT_MESSAGE}"
+}}
+
+Do not include questions in this case.
+"""
+
     return f"""
 請只回傳 JSON，不要加 Markdown 或說明文字。格式必須完全符合：
 {{
@@ -375,6 +425,7 @@ def _survey_json_instruction(allowed_types, question_count):
 請產生 {question_count} 題。題型只能使用：{type_text}。
 short 代表問答題，rating 代表 0 到 5 評分題。
 options 必須維持空陣列，才能相容系統原本問卷資料結構。
+{insufficient_instruction}
 """
 
 
@@ -595,7 +646,22 @@ def generate_survey_from_material(filename, file_bytes, config):
 檔名：{filename}
 題目方向：{direction or "學習成效"}
 生成重點：{focus or "課程內容"}
-{_survey_json_instruction(allowed_types, question_count)}
+{_survey_json_instruction(allowed_types, question_count, allow_insufficient=True)}
+
+
+Content sufficiency is a hard gate:
+- A title or topic name alone is NOT sufficient.
+- Text, images, or a polished document layout alone are NOT sufficient.
+- Dates, locations, logos, QR codes, URLs, contact information, slogans, or short fragments alone are insufficient.
+- You must understand what specifically should be evaluated from the uploaded material.
+- direction and focus are design constraints, not facts. Never invent missing facts.
+- If generating questions requires substantial guessing, reject the material.
+- Sufficient material should contain substantive background such as course content, activity flow, product or service details, system functions, research background, or comparable information.
+- For scanned/image-based files, inspect the visual content. Decorative posters, logos, QR codes, photos, dates, locations, slogans, or fragments without substantive background are insufficient.
+- Existing questionnaire content is usable only when enough background information is present.
+- If insufficient, return ONLY the insufficient-content JSON and no questions.
+
+
 Return exactly {type_counts['short']} questions with type "short" and exactly {type_counts['rating']} questions with type "rating".
 """
 
@@ -615,6 +681,7 @@ Return exactly {type_counts['short']} questions with type "short" and exactly {t
         else:
             raise PptSurveyAiError("無法讀取檔案文字，請改用 .pptx 或可選取文字的 .pdf。", 400)
 
+    _raise_if_insufficient_content(raw)
     fallback_title = f"{os.path.splitext(filename)[0]} 問卷"
     return normalize_survey_draft(raw, fallback_title=fallback_title)
 
