@@ -27,7 +27,11 @@ MAX_EXTRACTED_CHARS = 18000
 # retaining a small recovery window for brief Gemini overloads.
 PPT_SURVEY_GEMINI_RETRY_ATTEMPTS = 3
 PPT_SURVEY_GEMINI_RETRY_DELAYS_SECONDS = (5, 15)
-PPT_SURVEY_GEMINI_MODELS = (GEMINI_MODEL,)
+PPT_SURVEY_GEMINI_MODELS = (
+    GEMINI_MODEL,
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite"
+)
 # google-genai HttpOptions.timeout uses milliseconds.  The generation endpoint
 # runs in a background task, so allow a full two minutes for a binary document
 # to be processed before treating an individual model request as timed out.
