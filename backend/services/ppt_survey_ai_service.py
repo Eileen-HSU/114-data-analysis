@@ -25,8 +25,8 @@ MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_EXTRACTED_CHARS = 18000
 # One initial request plus at most one retry keeps failover responsive while
 # retaining a small recovery window for brief Gemini overloads.
-PPT_SURVEY_GEMINI_RETRY_ATTEMPTS = 2
-PPT_SURVEY_GEMINI_RETRY_DELAYS_SECONDS = (1,)
+PPT_SURVEY_GEMINI_RETRY_ATTEMPTS = 3
+PPT_SURVEY_GEMINI_RETRY_DELAYS_SECONDS = (5, 15)
 PPT_SURVEY_GEMINI_MODELS = (GEMINI_MODEL,)
 # google-genai HttpOptions.timeout uses milliseconds.  The generation endpoint
 # runs in a background task, so allow a full two minutes for a binary document
