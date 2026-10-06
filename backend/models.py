@@ -1,8 +1,23 @@
-from extensions import db
+from extensions import db, taiwan_now
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from sqlalchemy.dialects.mysql import MEDIUMTEXT
 import uuid
+
+from classification_models import (
+    Response_Classification,
+    Response_Segmentation_Status,
+    Uploaded_Answer,
+    Classification_Review,
+    Classification_Review_Message,
+    Response_Classification_Secondary,
+    Bulk_Retry_Job,
+    Bulk_Retry_Item_Attempt,
+)
+from report import Report, Report_Aggregation, Report_Aggregation_Item
+from taxonomy import Topic, Taxonomy_Version, Taxonomy_Category
+from audit import Admin_Audit_Log
+from system_status import System_Health_Status, System_Error_Log
 
 # 定義抓取台灣時間的函式 (UTC+8)
 def taiwan_now():
@@ -131,3 +146,21 @@ class UploadedFile(db.Model):
     file_type   = db.Column(db.String(10), nullable=False)  # csv / xlsx / txt
     # is_survey   = db.Column(db.Boolean, default=False)      # True: 問卷數據 / False: 一般分析檔案
     uploaded_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
+
+
+class PPT_Survey_Task(db.Model):
+    __tablename__ = 'PPT_Survey_Task'
+
+    task_id     = db.Column(db.String(64), primary_key=True)
+    user_id     = db.Column(db.Integer, nullable=False)
+    filename    = db.Column(db.String(255), nullable=False)
+    file_size   = db.Column(db.Integer, nullable=True)
+    status      = db.Column(db.String(20), nullable=False, default='queued')
+    message     = db.Column(db.Text, nullable=True)
+    draft_json  = db.Column(db.JSON, nullable=True)
+    error       = db.Column(db.Text, nullable=True)
+    error_type  = db.Column(db.String(100), nullable=True)
+    status_code = db.Column(db.Integer, nullable=True)
+    traceback   = db.Column(db.Text, nullable=True)
+    created_at  = db.Column(db.DateTime(timezone=True), default=taiwan_now)
+    updated_at  = db.Column(db.DateTime(timezone=True), default=taiwan_now, onupdate=taiwan_now)

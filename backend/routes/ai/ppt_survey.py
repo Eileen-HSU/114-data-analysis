@@ -1,14 +1,15 @@
 import json
 import logging
 import os
-import tempfile
 import threading
 import traceback
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, jsonify, request, url_for
+from flask import Blueprint, current_app, jsonify, request, url_for
 
+from extensions import db
+from models import PPT_Survey_Task
 from routes.surveys.survey import verify_token
 from services.ppt_survey_ai_service import (
     PptSurveyAiError,
@@ -22,10 +23,7 @@ logger = logging.getLogger(__name__)
 ppt_survey_ai_bp = Blueprint("ppt_survey_ai", __name__)
 
 TASK_TTL_HOURS = int(os.getenv("PPT_SURVEY_TASK_TTL_HOURS", "2"))
-TASK_STORAGE_DIR = os.getenv(
-    "PPT_SURVEY_TASK_DIR",
-    os.path.join(tempfile.gettempdir(), "ppt_survey_tasks"),
-)
+ACTIVE_TASK_STATUSES = {"queued", "processing"}
 TASKS = {}
 TASK_LOCK = threading.Lock()
 
@@ -36,11 +34,6 @@ def _now():
 
 def _debug_errors_enabled():
     return os.getenv("PPT_SURVEY_DEBUG_ERRORS", "").lower() in {"1", "true", "yes", "on"}
-
-
-def _task_path(task_id):
-    safe_task_id = "".join(ch for ch in str(task_id) if ch.isalnum() or ch in {"-", "_"})
-    return os.path.join(TASK_STORAGE_DIR, f"{safe_task_id}.json")
 
 
 def _task_for_storage(task):
@@ -54,9 +47,10 @@ def _task_for_storage(task):
 
 def _parse_task_datetime(value):
     if isinstance(value, datetime):
-        return value
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
     try:
-        return datetime.fromisoformat(str(value))
+        parsed = datetime.fromisoformat(str(value))
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
     except (TypeError, ValueError):
         return _now()
 
@@ -68,33 +62,64 @@ def _task_from_storage(payload):
     return task
 
 
+def _task_from_row(row):
+    if not row:
+        return None
+    return _task_from_storage({
+        "task_id": row.task_id,
+        "user_id": row.user_id,
+        "filename": row.filename,
+        "file_size": row.file_size,
+        "status": row.status,
+        "message": row.message,
+        "draft": row.draft_json,
+        "error": row.error,
+        "error_type": row.error_type,
+        "status_code": row.status_code,
+        "traceback": row.traceback,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    })
+
+
 def _write_task_file(task):
-    os.makedirs(TASK_STORAGE_DIR, exist_ok=True)
-    path = _task_path(task["task_id"])
-    tmp_path = f"{path}.{uuid.uuid4().hex}.tmp"
-    with open(tmp_path, "w", encoding="utf-8") as handle:
-        json.dump(_task_for_storage(task), handle, ensure_ascii=False)
-    os.replace(tmp_path, path)
+    row = db.session.get(PPT_Survey_Task, task["task_id"])
+    if not row:
+        row = PPT_Survey_Task(task_id=task["task_id"])
+        db.session.add(row)
+    row.user_id = task["user_id"]
+    row.filename = task["filename"]
+    row.file_size = task.get("file_size")
+    row.status = task["status"]
+    row.message = task.get("message")
+    row.draft_json = task.get("draft")
+    row.error = task.get("error")
+    row.error_type = task.get("error_type")
+    row.status_code = task.get("status_code")
+    row.traceback = task.get("traceback")
+    row.created_at = _parse_task_datetime(task.get("created_at"))
+    row.updated_at = _parse_task_datetime(task.get("updated_at"))
+    db.session.commit()
 
 
 def _read_task_file(task_id):
     try:
-        with open(_task_path(task_id), "r", encoding="utf-8") as handle:
-            return _task_from_storage(json.load(handle))
-    except FileNotFoundError:
-        return None
+        return _task_from_row(db.session.get(PPT_Survey_Task, task_id))
     except Exception:
-        logger.exception("Failed to read PPT survey task file: task_id=%s", task_id)
+        db.session.rollback()
+        logger.exception("Failed to read PPT survey task from DB: task_id=%s", task_id)
         return None
 
 
 def _delete_task_file(task_id):
     try:
-        os.remove(_task_path(task_id))
-    except FileNotFoundError:
-        pass
+        row = db.session.get(PPT_Survey_Task, task_id)
+        if row:
+            db.session.delete(row)
+            db.session.commit()
     except Exception:
-        logger.exception("Failed to delete PPT survey task file: task_id=%s", task_id)
+        db.session.rollback()
+        logger.exception("Failed to delete PPT survey task from DB: task_id=%s", task_id)
 
 
 def _require_auth():
@@ -125,14 +150,18 @@ def _serialize_task(task):
 
 
 def _set_task(task_id, **updates):
-    with TASK_LOCK:
-        task = TASKS.get(task_id) or _read_task_file(task_id)
-        if not task:
-            return
-        task.update(updates)
-        task["updated_at"] = _now()
-        TASKS[task_id] = task
-        _write_task_file(task)
+    try:
+        with TASK_LOCK:
+            task = _read_task_file(task_id)
+            if not task:
+                return
+            task.update(updates)
+            task["updated_at"] = _now()
+            _write_task_file(task)
+            TASKS[task_id] = task
+    except Exception:
+        db.session.rollback()
+        logger.exception("Failed to update PPT survey task: task_id=%s", task_id)
 
 
 def _cleanup_tasks():
@@ -145,20 +174,25 @@ def _cleanup_tasks():
         ]
         for task_id in expired_ids:
             TASKS.pop(task_id, None)
-            _delete_task_file(task_id)
-    try:
-        os.makedirs(TASK_STORAGE_DIR, exist_ok=True)
-        for filename in os.listdir(TASK_STORAGE_DIR):
-            if not filename.endswith(".json"):
-                continue
-            task_id = filename[:-5]
-            task = _read_task_file(task_id)
-            if task and task.get("updated_at", task["created_at"]) < expires_before:
-                _delete_task_file(task_id)
-    except Exception:
-        logger.exception("Failed to clean up PPT survey task files")
     if expired_ids:
-        logger.info("Cleaned up expired PPT survey tasks: count=%s", len(expired_ids))
+        logger.info("Cleaned up expired PPT survey task cache entries: count=%s", len(expired_ids))
+
+
+def _mark_stale_task_if_needed(task):
+    if not task or task.get("status") not in ACTIVE_TASK_STATUSES:
+        return task
+    updated_at = task.get("updated_at", task.get("created_at"))
+    if updated_at >= _now() - timedelta(hours=TASK_TTL_HOURS):
+        return task
+    _set_task(
+        task["task_id"],
+        status="failed",
+        message="AI survey task expired. Please upload again.",
+        error="AI survey task expired before completion. Please upload again.",
+        error_type="TaskExpired",
+        status_code=410,
+    )
+    return _read_task_file(task["task_id"]) or task
 
 
 def _create_task(user_id, filename, file_size):
@@ -178,16 +212,22 @@ def _create_task(user_id, filename, file_size):
         "created_at": now,
         "updated_at": now,
     }
-    with TASK_LOCK:
-        TASKS[task_id] = task
-        _write_task_file(task)
+    try:
+        with TASK_LOCK:
+            _write_task_file(task)
+            TASKS[task_id] = task
+    except Exception:
+        db.session.rollback()
+        logger.exception("Failed to create PPT survey task: task_id=%s", task_id)
+        raise
     return task
 
 
 def _start_generation_thread(task_id, user_id, filename, file_bytes, config):
+    app = current_app._get_current_object()
     worker = threading.Thread(
         target=_run_generation_task_safely,
-        args=(task_id, user_id, filename, file_bytes, config),
+        args=(app, task_id, user_id, filename, file_bytes, config),
         name=f"ppt-survey-ai-{task_id[:8]}",
         daemon=True,
     )
@@ -195,7 +235,15 @@ def _start_generation_thread(task_id, user_id, filename, file_bytes, config):
     return worker
 
 
-def _run_generation_task_safely(task_id, user_id, filename, file_bytes, config):
+def _run_generation_task_safely(app, task_id, user_id, filename, file_bytes, config):
+    with app.app_context():
+        try:
+            _run_generation_task_safely_in_context(task_id, user_id, filename, file_bytes, config)
+        finally:
+            db.session.remove()
+
+
+def _run_generation_task_safely_in_context(task_id, user_id, filename, file_bytes, config):
     try:
         _run_generation_task(task_id, user_id, filename, file_bytes, config)
     except Exception as exc:
@@ -354,7 +402,7 @@ def get_ppt_survey_task(task_id):
 
     _cleanup_tasks()
     with TASK_LOCK:
-        task = TASKS.get(task_id) or _read_task_file(task_id)
+        task = _read_task_file(task_id)
         if task:
             TASKS[task_id] = task
             task = dict(task)
@@ -370,6 +418,7 @@ def get_ppt_survey_task(task_id):
         )
         return jsonify({"error": "你沒有權限讀取這個任務。"}), 403
 
+    task = _mark_stale_task_if_needed(task)
     return jsonify(_serialize_task(task)), 200
 
 

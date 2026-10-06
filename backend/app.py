@@ -28,6 +28,25 @@ if not os.environ.get('JWT_SECRET_KEY'):
     print('[WARN] JWT_SECRET_KEY 未設定，已使用本機開發預設值（請勿用於生產環境）')
 
 app = Flask(__name__)
+ALLOWED_CORS_ORIGINS = {
+    "https://site--frontend--d6tvmpswrhlp.code.run",
+    "https://one14-data-analysis-frontend.onrender.com",
+}
+
+
+def _cors_origin():
+    origin = request.headers.get("Origin")
+    return origin if origin in ALLOWED_CORS_ORIGINS else "*"
+
+
+def _apply_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = _cors_origin()
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    response.headers["Vary"] = "Origin"
+    return response
+
+
 CORS(app,
     resources={r"/api/*": {"origins": "*"}},
     supports_credentials=False,
@@ -90,9 +109,31 @@ def ensure_column(table_name, column_name, column_definition):
         )
 
 
+def ensure_ppt_survey_task_table():
+    db.session.execute(text("""
+        CREATE TABLE IF NOT EXISTS `PPT_Survey_Task` (
+          `task_id` VARCHAR(64) NOT NULL,
+          `user_id` INT NOT NULL,
+          `filename` VARCHAR(255) NOT NULL,
+          `file_size` INT NULL,
+          `status` VARCHAR(20) NOT NULL DEFAULT 'queued',
+          `message` TEXT NULL,
+          `draft_json` JSON NULL,
+          `error` TEXT NULL,
+          `error_type` VARCHAR(100) NULL,
+          `status_code` INT NULL,
+          `traceback` TEXT NULL,
+          `created_at` DATETIME NULL,
+          `updated_at` DATETIME NULL,
+          PRIMARY KEY (`task_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """))
+
+
 def ensure_runtime_schema():
     with app.app_context():
         try:
+            ensure_ppt_survey_task_table()
             ensure_column("User", "email_2fa_enabled", "`email_2fa_enabled` TINYINT(1) DEFAULT 0")
             ensure_column("User_Verification", "attempts", "`attempts` INT NOT NULL DEFAULT 0")
             ensure_column("Workspace", "is_deleted", "`is_deleted` TINYINT(1) DEFAULT 0")
@@ -126,9 +167,7 @@ def options_2fa_disable():
 
     
     res = make_response()
-    res.headers["Access-Control-Allow-Origin"] = "*"
-    res.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-    res.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    _apply_cors_headers(res)
     return res, 200
 
 @app.route("/api/status", methods=["GET"])
@@ -150,7 +189,7 @@ def handle_exception(e):
             "type": str(type(e)),
             "message": e.name,
         })
-        response.headers.add("Access-Control-Allow-Origin", "*")
+        _apply_cors_headers(response)
         return response, e.code   # ← 保留原始 status code
     
     # 非預期的 500
@@ -159,18 +198,22 @@ def handle_exception(e):
         "type": str(type(e)),
         "message": "伺服器發生錯誤，請稍後再試",
     })
-    response.headers.add("Access-Control-Allow-Origin", "*")
+    _apply_cors_headers(response)
     return response, 500
 
 @app.before_request
 def handle_options():
     if request.method == "OPTIONS":
-        from flask import make_response
         res = make_response()
-        res.headers["Access-Control-Allow-Origin"] = "*"
-        res.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-        res.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-        return res
+        _apply_cors_headers(res)
+        return res, 204
+
+
+@app.after_request
+def add_cors_headers(response):
+    if request.path.startswith("/api/"):
+        _apply_cors_headers(response)
+    return response
     
 
 if __name__ == "__main__":
