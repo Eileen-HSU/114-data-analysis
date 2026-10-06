@@ -17,3 +17,4 @@ sib-api-v3-sdk
 google-genai
 pypdf
 openpyxl
+Pillow
