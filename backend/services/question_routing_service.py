@@ -1,0 +1,412 @@
+"""
+
+自動判斷一段文字（問卷題目 title，或 Excel 欄位名稱＋範例內容）
+屬於系統目前哪一個 Topic（分析框架）。
+
+【Dynamic Topic routing，取代原本寫死兩個固定 Topic 的版本】
+候選 Topic 不再是 import-time 就固定好的兩個常數
+（leadership_and_dept / career_and_feedback），而是每次呼叫
+route_question_type() 時，即時從 DB 查「目前有且僅有一筆 published
+Taxonomy_Version 的 Topic」動態組出來（見 _get_routing_candidates()）。
+Admin 之後動態建立、Publish 新 Topic，不需要改這支檔案、不需要重新
+部署，下一次呼叫就會自動把新 Topic 納入候選——這是這次改動的目的。
+
+只有「目前有 published taxonomy 的 Topic」才會出現在候選清單裡（跟
+services.taxonomy_service.get_published_taxonomy_version() 對單一
+Topic 用的是同一個不變量，這裡是同一件事的「查全部」版本）：
+    - 0 筆 published：這個 Topic 還沒真的可以拿來分類，不進候選。
+    - 1 筆 published：正常收錄進候選。
+    - >1 筆 published：違反「每個 Topic 最多一個 published 版本」的
+      資料完整性假設，這個 Topic 整個排除在候選之外並印一行
+      [ROUTING_TOPIC_INTEGRITY_ERROR] log，但**不會**讓這次
+      route_question_type() 呼叫整個失敗——其餘資料正常的 Topic
+      仍然照常可以被選到，一個異常 Topic 不該拖垮整個 routing。
+
+呼叫時機是「題目建立時」「上傳當下」各一次，不是每則回答一次，
+不會隨回答數量增加呼叫次數；下面的重試機制也一樣——重試只發生在
+「同一次判斷」內部，不會讓呼叫次數隨回答數量或重試而線性增加。
+這次改動完全不動這個呼叫粒度：Excel 仍然是「一個文字欄位 = 一題 =
+routing 一次」，Survey 仍然是「一題 routing 一次」，呼叫端
+（routes/classifications/classification.py、routes/surveys/survey.py）
+原則上不需要跟著改，因為兩邊呼叫的都還是同一個
+route_question_type(context_text) -> Optional[str] 函式簽章。
+
+回傳 None 的情況，現在多了一種，但語意上都收斂成同一件事——「這筆
+內容目前歸不到任何一個真正可用的 Topic」，呼叫端一律 fallback 成
+QUESTION_OTHER，繼續走「其他 / 未歸屬資料」既有流程，這是正常
+fallback，不是錯誤狀態，不會因為改成 dynamic routing 就被拿掉：
+
+    1) 輸入是空字串 / 空白字串 —— 不會呼叫 Gemini，直接回傳 None。
+    2) 目前完全沒有任何 Topic 有 published taxonomy（候選清單為空）
+       —— 不會呼叫 Gemini（呼叫了也沒有任何合法答案可選），直接
+       回傳 None。這是 dynamic routing 新增的情況。
+    3)「內容真的判斷不出來」：Gemini 有成功回應，只是判斷結果本來
+       就是 null、或回傳了不在這次候選清單裡的值（例如候選之間都
+       不太吻合、內容太模糊、證據不足）。這種情況不需要重試，
+       直接回傳 None——**不可以因為候選變多了就強行選一個最相近的
+       Topic**，null 永遠是合法且經常正確的答案。
+    4)「Gemini API 暫時性故障」：呼叫本身失敗，例如 429 / quota
+       exceeded / rate limit / 5xx / 逾時。這種情況會先重試，重試
+       仍失敗才回傳 None。
+
+log 分成五種，方便從後端 log 分辨原因（不再全部只印
+`[ROUTING ERROR]`）：
+    [ROUTING_RATE_LIMIT]              偵測到 429 / quota / 限流，
+                                       準備重試，或重試已用盡
+    [ROUTING_API_ERROR]               非限流的其他呼叫 / 解析錯誤，
+                                       不重試
+    [ROUTING_UNDETERMINED]            Gemini 正常回應，但判斷結果是
+                                       「無法歸類」
+    [ROUTING_TOPIC_INTEGRITY_ERROR]   組候選清單時發現某個 Topic
+                                       同時有 >1 筆 published
+                                       Taxonomy_Version，這個 Topic
+                                       被排除在候選之外（新增）
+    [ROUTING_FALLBACK]                這次呼叫最終回傳 None（不論
+                                       上面哪個原因），提醒呼叫端
+                                       這裡會需要 fallback 處理
+"""
+
+import json
+import os
+import re
+import time
+from typing import Optional
+
+from services import gemini_client as genai
+
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+
+
+_RETRY_DELAY_PATTERNS = (
+    re.compile(r"[Rr]etry in ([\d.]+)s"),
+    re.compile(r'"retryDelay"\s*:\s*"([\d.]+)s"'),
+)
+
+
+_MAX_ATTEMPTS = 3
+_DEFAULT_RETRY_DELAY_SECONDS = 20.0
+
+# 組 routing prompt 時，每個 Topic 最多列出幾個 main_category/
+# sub_category 名稱當「分類摘要」，避免 Topic 底下子類別很多時，
+# prompt 被單一 Topic 的清單撐得過長，排擠掉其他候選、也讓
+# Gemini 抓不到重點。只是「摘要」，不是完整 taxonomy 定義（完整
+# 定義是 Gemini #2 分類階段的事，這裡只需要「足以辨識用途」的程度）。
+_MAX_CATEGORY_NAMES_IN_SUMMARY = 12
+
+
+def _extract_retry_delay_seconds(exc: Exception) -> Optional[float]:
+    """從例外訊息裡解析 Gemini 建議的等待秒數；解析不到就回傳 None，
+    呼叫端會改用固定預設值。"""
+    text = str(exc)
+    for pattern in _RETRY_DELAY_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            try:
+                return float(match.group(1))
+            except ValueError:
+                continue
+    return None
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """判斷是不是「暫時性」限流 / quota 錯誤（值得重試），而不是
+    prompt 有問題、回應格式跑掉之類「重試也沒用」的錯誤。"""
+    text = str(exc)
+    return (
+        "429" in text
+        or "ResourceExhausted" in type(exc).__name__
+        or "RESOURCE_EXHAUSTED" in text
+        or "quota" in text.lower()
+    )
+
+
+def _get_routing_candidates(scope=None) -> list:
+    """
+    動態組出這次 route_question_type() 呼叫可以選的候選 Topic 清單。
+
+    只在真的呼叫這個函式時才 import models/taxonomy（lazy import），
+    這個模組頂層維持完全不依賴 DB / Flask app context——跟
+    services/classify_v2.py、services/taxonomy_service.py 已經確立
+    的慣例一致，避免任何「只是想 import 這個模組」的地方（例如某些
+    測試、cli.py）被迫連帶需要一個 app context。
+
+    回傳 list，每個元素：
+        {
+            "topic_key": str,
+            "title": str,
+            "question_text": str | None,
+            "description": str | None,
+            "category_summary": list[str],   # 這個 Topic published
+                                              # 版本底下的 main_category
+                                              # / sub_category 名稱，
+                                              # 最多 _MAX_CATEGORY_NAMES_
+                                              # IN_SUMMARY 個，依
+                                              # sort_order 取前幾個
+        }
+
+    Integrity 規則（見檔案開頭說明）：0 筆 published 的 Topic 不會
+    出現在這裡（因為查詢本身就是從 published Taxonomy_Version 出發，
+    沒有 published 版本的 Topic 不會被撈到，不需要額外過濾）；
+    >1 筆 published 的 Topic 會被明確排除並印
+    [ROUTING_TOPIC_INTEGRITY_ERROR]，不會讓整次查詢失敗。
+    """
+    from models import Taxonomy_Version
+    from taxonomy import TAXONOMY_VERSION_STATUS_PUBLISHED
+
+    published_versions = Taxonomy_Version.query.filter_by(
+        status=TAXONOMY_VERSION_STATUS_PUBLISHED
+    ).all()
+
+    versions_by_topic = {}
+    for version in published_versions:
+        versions_by_topic.setdefault(version.topic_key, []).append(version)
+
+    candidates = []
+    for topic_key, versions in versions_by_topic.items():
+        if len(versions) > 1:
+            version_ids = sorted(v.version_id for v in versions)
+            print(
+                "[ROUTING_TOPIC_INTEGRITY_ERROR]",
+                f"topic_key={topic_key!r} 同時有 {len(versions)} 個 published "
+                f"Taxonomy_Version（version_id={version_ids}），這個 Topic 這次"
+                "排除在 routing candidates 之外，不影響其他正常 Topic 被選到。",
+            )
+            continue
+
+        version = versions[0]
+        topic = version.topic  # Taxonomy_Version -> Topic 的 backref（見 taxonomy.py）
+        if topic is not None and getattr(topic, "merged_into", None):
+            continue  # 已被合併到其他主題，不再當候選
+
+        category_names = []
+        seen_labels = set()
+        for category in version.categories:  # 已依 sort_order 排序
+            label = (
+                f"{category.main_category} / {category.sub_category}"
+                if category.main_category else category.sub_category
+            )
+            if not label or label in seen_labels:
+                continue
+            seen_labels.add(label)
+            category_names.append(label)
+            if len(category_names) >= _MAX_CATEGORY_NAMES_IN_SUMMARY:
+                break
+
+        candidates.append({
+            "topic_key": topic_key,
+            "title": topic.title if topic else topic_key,
+            "question_text": topic.question_text if topic else None,
+            "description": topic.description if topic else None,
+            "category_summary": category_names,
+        })
+
+    # 開放式分類：之前遇過、由系統自動歸納的「自動主題」（只有暫定草稿、
+    # 還沒被管理員發布）也列為候選，類似的新資料才會沿用同一個主題，
+    # 不會每次都重新歸納一份。只列「同一個範圍」（同 workspace/project 或
+    # 同一使用者）的自動主題：它們的暫定分類架構是從那個範圍的回答歸納出來
+    # 的，不能拿去分類別人的資料（範圍外、或舊版沒有範圍的自動主題都不列入；
+    # 管理員發布之後才會變成上面的全域候選）。
+    from services.open_classification import is_auto_topic, open_mode_enabled, usable_version_for
+
+    if open_mode_enabled():
+        from models import Topic
+
+        known = {c["topic_key"] for c in candidates}
+        auto_topics = Topic.query.filter(Topic.auto_scope == scope).all() if scope else []
+        for topic in auto_topics:
+            if topic.topic_key in known or not is_auto_topic(topic.topic_key) or topic.merged_into:
+                continue
+            try:
+                version, _provisional = usable_version_for(topic.topic_key)
+            except Exception:
+                continue
+            if version is None:
+                continue
+            names = []
+            for category in version.categories[:_MAX_CATEGORY_NAMES_IN_SUMMARY]:
+                names.append(f"{category.main_category} / {category.sub_category}")
+            candidates.append({
+                "topic_key": topic.topic_key,
+                "title": topic.title,
+                "question_text": topic.question_text,
+                "description": topic.description,
+                "category_summary": names,
+            })
+
+    return candidates
+
+
+def _build_routing_prompt(candidates: list) -> str:
+    """
+    把 _get_routing_candidates() 的結果組成這次要送給 Gemini 的
+    system_instruction。description 不是必填（目前 Topic 建立流程
+    也還沒有收集這個欄位的 UI），沒有 description 時改用
+    question_text／category_summary 補位，兩者都沒有時就只用
+    title——candidates 本身已經保證每個 Topic 至少有 title 跟
+    topic_key，不會有完全沒有任何描述線索的候選。
+    """
+    lines = []
+    for c in candidates:
+        detail_parts = []
+        if c["description"]:
+            detail_parts.append(c["description"].strip())
+        if c["question_text"]:
+            detail_parts.append(f"題目原文參考：{c['question_text'].strip()}")
+        if c["category_summary"]:
+            detail_parts.append("涵蓋子類別：" + "、".join(c["category_summary"]))
+
+        detail = "；".join(detail_parts) if detail_parts else "（目前沒有額外描述，僅有標題，請主要依標題判斷）"
+        lines.append(f"- {c['topic_key']}（{c['title']}）：{detail}")
+
+    candidates_block = "\n".join(lines)
+    topic_key_options = "、".join(f'"{c["topic_key"]}"' for c in candidates)
+
+    return f"""你是問卷內容的分類 routing 判斷助手。系統目前有以下這些分析框架（Topic）：
+
+{candidates_block}
+
+請判斷輸入內容（可能是題目名稱，也可能包含實際回答範例）整體上比較
+屬於上面哪一個 Topic。如果內容跟上面任何一個 Topic 都無關、內容過於
+模糊、證據不足、或無法可靠判斷，請回傳 null，不要用猜的、不要強行
+歸類到最相近的那一個——這些內容之後會被歸類到「其他 / 未歸屬資料」，
+這是正常結果，不是錯誤，寧可回 null 也不要硬選一個不夠吻合的 Topic。
+
+只回傳以下 JSON 格式，不要加任何其他文字：
+{{"question_type": {topic_key_options} 其中之一，或 null}}"""
+
+
+ROUTING_REASON_ROUTED = "routed"
+ROUTING_REASON_EMPTY_INPUT = "empty_input"
+ROUTING_REASON_NO_CANDIDATES = "no_candidates"
+ROUTING_REASON_UNDETERMINED = "undetermined"
+ROUTING_REASON_API_FAILURE = "api_failure"
+
+
+def route_question_type(context_text: str) -> Optional[str]:
+    """對外相容介面：只回傳 topic_key 或 None（原因見
+    route_question_type_with_reason()）。"""
+    return route_question_type_with_reason(context_text)[0]
+
+
+# routing 失敗的種類（ROUTING_REASON_API_FAILURE 的細分）。只有「模型成功
+# 回應、判斷沒有適合 Topic」（ROUTING_REASON_UNDETERMINED）才可以走開放式
+# 分類 / 自動主題；這些失敗一律標記 routing_failed、保留原始回答、不建立
+# 自動主題，等 Admin 稍後重新判斷。
+ROUTING_ERROR_RATE_LIMITED = "rate_limited"          # 429 / quota
+ROUTING_ERROR_SERVICE_UNAVAILABLE = "service_unavailable"  # 5xx / overloaded
+ROUTING_ERROR_TIMEOUT = "timeout"
+ROUTING_ERROR_AUTH_OR_CONFIG = "auth_or_config"      # API key 缺漏 / 無效、權限、本機設定
+ROUTING_ERROR_PARSE = "parse_error"                  # 回傳內容不是預期的 JSON
+ROUTING_ERROR_UNKNOWN = "unknown"
+
+
+def classify_routing_error(exc) -> str:
+    text = f"{type(exc).__name__}: {exc}"
+    # 設定 / 金鑰問題優先判斷：google-genai 沒有金鑰時丟的是 ValueError
+    # （"Missing key inputs argument ... provide (`api_key`)"），不能被當成解析失敗。
+    if re.search(r"API key|api_key|Missing key|GEMINI_API_KEY|PERMISSION_DENIED|UNAUTHENTICATED|\b401\b|\b403\b|not configured|未設定", text, re.I):
+        return ROUTING_ERROR_AUTH_OR_CONFIG
+    if _is_rate_limit_error(exc) or re.search(r"\b429\b|RESOURCE_EXHAUSTED|quota", text, re.I):
+        return ROUTING_ERROR_RATE_LIMITED
+    if re.search(r"timeout|timed out|DEADLINE_EXCEEDED|\b504\b", text, re.I):
+        return ROUTING_ERROR_TIMEOUT
+    if genai.is_transient_unavailable_error(exc) or re.search(r"\b5\d\d\b|INTERNAL", text):
+        return ROUTING_ERROR_SERVICE_UNAVAILABLE
+    if isinstance(exc, (ValueError, AttributeError, TypeError, KeyError)):
+        return ROUTING_ERROR_PARSE  # 含 json.JSONDecodeError（ValueError 子類別）
+    return ROUTING_ERROR_UNKNOWN
+
+
+def route_question_type_with_reason(context_text: str, scope=None):
+    """回傳 (topic_key 或 None, reason)；細節（失敗種類、安全錯誤摘要）見
+    route_question_type_detailed()。"""
+    outcome = route_question_type_detailed(context_text, scope=scope)
+    return outcome["topic_key"], outcome["reason"]
+
+
+def route_question_type_detailed(context_text: str, scope=None) -> dict:
+    """回傳 {"topic_key", "reason", "error_kind", "error_summary"}。
+
+    reason：
+        routed        模型判斷出 Topic
+        undetermined  模型成功回應，判斷沒有適合的 Topic（唯一可以走自動主題的情況）
+        no_candidates 目前沒有任何有 published taxonomy 的 Topic（沒有可選的答案，
+                      不需要呼叫模型就確定沒有適合的 Topic）
+        empty_input   沒有可判斷的內容
+        api_failure   模型呼叫 / 回應失敗；error_kind 細分 429、5xx、timeout、
+                      API key / 設定、回應解析失敗；error_summary 已去除敏感資訊
+    """
+    from services.safe_error import safe_error_summary
+
+    def outcome(topic_key, reason, error=None):
+        return {
+            "topic_key": topic_key,
+            "reason": reason,
+            "error_kind": classify_routing_error(error) if error is not None else None,
+            "error_summary": safe_error_summary(error) if error is not None else None,
+        }
+
+    if not context_text or not context_text.strip():
+        return outcome(None, ROUTING_REASON_EMPTY_INPUT)
+
+    candidates = _get_routing_candidates(scope)
+    if not candidates:
+        # 目前完全沒有任何 Topic 有 published taxonomy，沒有任何
+        # 合法答案可選，連 Gemini 都不用呼叫。
+        print("[ROUTING_FALLBACK]", "reason=no_candidates")
+        return outcome(None, ROUTING_REASON_NO_CANDIDATES)
+
+    allowed_topic_keys = {c["topic_key"] for c in candidates}
+    routing_prompt = _build_routing_prompt(candidates)
+
+    last_error: Optional[Exception] = None
+    unavailable_retries = 0
+
+    for attempt in range(_MAX_ATTEMPTS + len(genai.UNAVAILABLE_RETRY_DELAYS_SECONDS)):
+        try:
+            model = genai.GenerativeModel(
+                model_name="gemini-3.1-flash-lite",
+                system_instruction=routing_prompt,
+            )
+            response = model.generate_content(
+                context_text,
+                generation_config={"temperature": 0},
+            )
+        except Exception as e:
+            last_error = e
+            if _is_rate_limit_error(e) and attempt < _MAX_ATTEMPTS - 1:
+                delay = _extract_retry_delay_seconds(e) or _DEFAULT_RETRY_DELAY_SECONDS
+                print("[ROUTING_RATE_LIMIT]", f"attempt={attempt + 1}", f"retry_in={delay}s", safe_error_summary(e))
+                time.sleep(delay + 1.0)
+                continue
+            if genai.is_transient_unavailable_error(e) and unavailable_retries < len(genai.UNAVAILABLE_RETRY_DELAYS_SECONDS):
+                delay = genai.UNAVAILABLE_RETRY_DELAYS_SECONDS[unavailable_retries]
+                unavailable_retries += 1
+                print("[ROUTING_UNAVAILABLE]", f"retry_in={delay}s", safe_error_summary(e))
+                time.sleep(delay)
+                continue
+            print("[ROUTING_API_ERROR]", f"attempt={attempt + 1}", safe_error_summary(e))
+            break
+
+        # 模型有回應：解析失敗也是「失敗」，不是「判斷不出來」
+        try:
+            cleaned = re.sub(r"```json|```", "", response.text or "").strip()
+            parsed = json.loads(cleaned)
+            if not isinstance(parsed, dict) or "question_type" not in parsed:
+                raise ValueError(f"routing 回應缺少 question_type 欄位：{cleaned[:120]!r}")
+            result = parsed.get("question_type")
+        except Exception as e:
+            last_error = e
+            print("[ROUTING_PARSE_ERROR]", safe_error_summary(e))
+            break
+
+        if result in allowed_topic_keys:
+            return outcome(result, ROUTING_REASON_ROUTED)
+
+        # Gemini 有成功回應，只是判斷結果是 null、或不在這次候選清單裡
+        # ——這是「內容真的判斷不出來」，不是 API 錯誤，不重試。
+        print("[ROUTING_UNDETERMINED]", f"raw_result={result!r}", f"allowed={sorted(allowed_topic_keys)}")
+        return outcome(None, ROUTING_REASON_UNDETERMINED)
+
+    print("[ROUTING_FALLBACK]", "reason=api_failure", safe_error_summary(last_error))
+    return outcome(None, ROUTING_REASON_API_FAILURE, last_error or RuntimeError("routing failed"))

@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request, url_for
 
-from routes.auth.survey import verify_token
+from routes.surveys.survey import verify_token
 from services.ppt_survey_ai_service import (
     PptSurveyAiError,
     generate_survey_from_material,

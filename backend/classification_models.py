@@ -1,0 +1,920 @@
+"""
+分類流程相關的資料模型（原分散於四個檔案，2026-09 合併為單一檔案）：
+
+    Uploaded_Answer              ：外部 Excel/CSV 上傳的原始文字保存層
+    Response_Segmentation_Status ：回答層級的拆分（segmentation）狀態紀錄
+    Response_Classification      ：AI 分類結果（一列 = 一個真實 segment）
+    Classification_Review        ：Human Review Conversation 會話
+    Classification_Review_Message：Human Review Conversation 單輪訊息
+
+這五個 model 圍繞著同一條「上傳/填答 → 拆分 → 分類 → 人工審核」流程，
+彼此透過 ForeignKey 緊密關聯，因此合併為一個檔案，比照本專案 taxonomy.py
+（Topic / Taxonomy_Version / Taxonomy_Category 三個 model 共用一檔）已經
+採用的方式，不再依 model 逐一拆檔。原本各自檔案內的設計說明全數保留於
+對應區塊，僅调整檔案結構，不變更任何欄位、行為或資料庫 schema。
+"""
+
+from sqlalchemy import CheckConstraint, event
+
+from extensions import db, taiwan_now
+
+
+# ═══════════════════════════════════════════════════════════════
+# Uploaded_Answer：外部上傳的原始文字保存層
+# ═══════════════════════════════════════════════════════════════
+#
+# 角色對應 survey 來源的 Survey_Response：不管 question_type routing
+# 判斷不判斷得出來，原始 answer_text 都先進這張表，不會因為判斷不出來
+# 就整批丟棄。
+#
+# v1 採單表設計（不拆 Upload_Batch）：question_type / source_column
+# 在同一批次的每一列重複儲存，因為目前一次上傳只有一個檔案、一個
+# 文字欄位，重複儲存的成本很低；等未來上傳量變大有需要，再考慮
+# 拆成批次表 + 列表兩張表。
+#
+# question_type 為 NULL，代表這批資料目前無法自動 routing、待處理，
+# 不另外增加 status 欄位表達這件事。
+#
+# user_id：Human Review 權限判斷需要知道「這批上傳是誰的」，因此補上
+# 這個欄位當作 user_upload 來源的 ownership 依據（對應 survey 來源用
+# Survey_Template.user_id 判斷 ownership 的方式）。
+#
+#     欄位設計為 nullable=True，只是為了相容 migration 之前就存在的
+#     舊資料列（那些列沒有機會補回真正的上傳者）。這不代表新資料可以
+#     沒有 owner——routes/classifications/classification.py 的上傳路由
+#     從這次 migration 之後，一律要求先通過 verify_token() 才能呼叫，
+#     並強制把 authenticated user_id 寫入這個欄位；路由層本身就不允許
+#     產生 user_id 為 None 的新列，nullable=True 純粹是資料庫層級對
+#     舊資料的相容設計，不是允許新資料略過 owner 的後門。
+
+class Uploaded_Answer(db.Model):
+    __tablename__ = "Uploaded_Answer"
+    __table_args__ = (
+        # 合併主題是 WHERE question_type = ?、上傳批次相關查詢是 WHERE upload_batch_id = ?，原本都沒有索引
+        db.Index("ix_ua_question_type", "question_type"),
+        db.Index("ix_ua_upload_batch", "upload_batch_id"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    upload_batch_id = db.Column(db.String(50), nullable=False)
+
+
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("User.user_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    source_column = db.Column(db.String(255), nullable=False)
+    row_index = db.Column(db.Integer, nullable=False)
+
+    answer_text = db.Column(db.Text, nullable=False)
+
+    # routing 判斷結果：leadership_and_dept / career_and_feedback / NULL
+    # NULL = 尚未判斷出來、待處理，不代表錯誤
+    question_type = db.Column(db.String(50), nullable=True)
+
+    created_at = db.Column(
+        db.DateTime(timezone=True), nullable=False, default=taiwan_now
+    )
+
+    # ── Routing / 人工指派狀態（additive-only，舊資料為 NULL）─────────
+    # routing_status 說明「為什麼這筆回答目前有／沒有分類結果」，讓 Admin
+    # 未分類頁可以精準區分，而不是只看 question_type 猜：
+    #   routed               ：routing 成功且已送分類
+    #   unrouted             ：routing 判斷不出 Topic（含信心不足、Gemini
+    #                          回傳 null / 不在候選清單）
+    #   routing_failed       ：routing 呼叫本身失敗（API 錯誤、限流用盡）
+    #   no_topic_candidates  ：當下沒有任何 Topic 有 published taxonomy
+    #   taxonomy_unavailable ：有 Topic，但該 Topic 沒有可用 published taxonomy
+    #   assigned             ：Admin 已人工指派 Topic（分類結果見 classification）
+    #   classification_failed：已送分類但整則失敗（見 Response_Segmentation_Status）
+    # routing_detail 保存對應的診斷訊息（錯誤原因、指派備註）。
+    routing_status = db.Column(db.String(30), nullable=True)
+    # 自動主題範圍（"project:<id>" / "user:<id>"）：Admin 重新判斷主題時沿用同一個
+    # 範圍，不會把這筆資料歸到別的 workspace / 使用者的自動主題。
+    analysis_scope = db.Column(db.String(100), nullable=True)
+    routing_detail = db.Column(db.Text, nullable=True)
+    assigned_by_admin_id = db.Column(db.Integer, nullable=True)
+    assigned_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "routing_status": self.routing_status,
+            "routing_detail": self.routing_detail,
+            "assigned_by_admin_id": self.assigned_by_admin_id,
+            "assigned_at": self.assigned_at.isoformat() if self.assigned_at else None,
+            "upload_batch_id": self.upload_batch_id,
+            "user_id": self.user_id,
+            "source_column": self.source_column,
+            "row_index": self.row_index,
+            "answer_text": self.answer_text,
+            "question_type": self.question_type,
+            "created_at": (
+                self.created_at.isoformat() if self.created_at else None
+            ),
+        }
+
+
+# ═══════════════════════════════════════════════════════════════
+# Response_Segmentation_Status：回答層級的拆分（segmentation）狀態紀錄
+# ═══════════════════════════════════════════════════════════════
+#
+# 跟 Response_Classification 是不同粒度的兩張表：
+#     Response_Classification：一列 = 一個真實 segment（AI 分類結果）
+#     Response_Segmentation_Status：一列 = 一則回答（response_id/
+#         upload_batch_id + question_id）目前的拆分現況快照
+#
+# 兩張表用 (source_type, response_id/upload_batch_id, question_id)
+# 互相對應，但不建立正式的 SQL 外鍵互相指向對方——兩者是平行關係，
+# 不是誰從屬於誰，各自的外鍵都是直接指向 Survey_Response。
+#
+# 這張表刻意維持最小範圍：只存「目前狀態」，不是完整的歷史 log 系統
+# （不記錄重跑次數、每次重跑的細節等），如果之後需要更完整的歷史
+# 追蹤，屬於另一個獨立的擴充決定，不在這張表的範圍內。
+
+# 拆分狀態：這則回答整體的拆分結果，跟 Response_Classification 裡
+# 單一 segment 的 status／review_status 是不同粒度的概念。
+SEGMENTATION_STATUS_PENDING = "pending"
+SEGMENTATION_STATUS_COMPLETED = "completed"
+SEGMENTATION_STATUS_PARTIAL_FAILED = "partial_failed"
+SEGMENTATION_STATUS_FAILED = "failed"
+ALLOWED_SEGMENTATION_STATUSES = {
+    SEGMENTATION_STATUS_PENDING,
+    SEGMENTATION_STATUS_COMPLETED,
+    SEGMENTATION_STATUS_PARTIAL_FAILED,
+    SEGMENTATION_STATUS_FAILED,
+}
+
+
+class Response_Segmentation_Status(db.Model):
+    __tablename__ = "Response_Segmentation_Status"
+
+    # 與 Response_Classification 完全一致的來源規則：
+    # survey 一定要有 response_id、沒有 upload_batch_id；
+    # user_upload 一定不能有 response_id、一定要有 upload_batch_id。
+    __table_args__ = (
+        CheckConstraint(
+            """
+            (
+                source_type = 'survey'
+                AND response_id IS NOT NULL
+                AND upload_batch_id IS NULL
+                AND uploaded_answer_id IS NULL
+            )
+            OR
+            (
+                source_type = 'user_upload'
+                AND response_id IS NULL
+                AND upload_batch_id IS NOT NULL
+                AND uploaded_answer_id IS NOT NULL
+            )
+            """,
+            name="chk_response_segmentation_status_source",
+        ),
+        # 最終唯一性原則：
+        #   survey：      (response_id, question_id) 唯一
+        #   user_upload： uploaded_answer_id 唯一（見下方欄位定義的 unique=True）
+        # 這裡加的是 survey 那一半。對 user_upload 列而言，response_id
+        # 恆為 NULL，依 MySQL 對 UNIQUE 約束裡 NULL 的標準語意（多欄位
+        # 唯一約束只要有一欄是 NULL，該列就不會跟任何其他列產生衝突），
+        # 這個約束對 user_upload 列完全不會生效、也不會誤擋——
+        # user_upload 的唯一性保護，繼續完全依賴下面 uploaded_answer_id
+        # 欄位本身的 unique=True，兩者互不干擾。
+        db.UniqueConstraint(
+            "response_id", "question_id",
+            name="uq_response_segmentation_status_response_question",
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    response_id = db.Column(
+        db.Integer,
+        db.ForeignKey("Survey_Response.response_id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    upload_batch_id = db.Column(db.String(50), nullable=True)
+
+    # 對應外部上傳的原始文字（Uploaded_Answer.id）。
+    # 這裡「要」加 unique=True：一筆 Uploaded_Answer 只需要一筆整體
+    # segmentation 狀態快照，跟 Response_Classification.uploaded_answer_id
+    # 刻意不加 unique 的原因不同（那邊是 1 筆對應 0~N 個 segment），
+    # 不要把兩邊搞混。MySQL 對單一欄位的 UNIQUE 允許多個 NULL 共存，
+    # 但非 NULL 值彼此仍會真正互斥，這裡的用法可以正常生效。
+    uploaded_answer_id = db.Column(
+        db.Integer,
+        db.ForeignKey("Uploaded_Answer.id", ondelete="CASCADE"),
+        nullable=True,
+        unique=True,
+    )
+    question_id = db.Column(db.String(255), nullable=True)
+    source_type = db.Column(db.String(20), nullable=False)
+
+    segmentation_status = db.Column(
+        db.String(20), nullable=False, default=SEGMENTATION_STATUS_PENDING
+    )
+    # 拆分驗證失敗時的細節（哪個 segment_text、卡在哪條驗證規則），
+    # 供前端提示與除錯使用；不是完整歷史 log，只存「最新一次」的狀況。
+    error_detail = db.Column(db.Text, nullable=True)
+
+    # ── Attempt（重新分析）追蹤（additive-only）──────────────────
+    # 這則回答目前生效的是第幾次分析結果。重新分析不刪除舊結果：
+    # 舊的 Response_Classification 標記 superseded、新結果的 attempt_no
+    # = 這裡 +1，並在同一個 transaction（savepoint）裡更新這個欄位。
+    # 重新分析前先記下 attempt_no，寫入時鎖住這一列再比對，不一致代表
+    # 另一個請求已經完成重新分析 -> 放棄這次結果（冪等，不會出現兩份
+    # current attempt）。見 services/classification_attempt_service.py。
+    attempt_no = db.Column(db.Integer, nullable=False, default=1, server_default="1")
+    # 最近一次「沒有被採用」的重新分析（例如 AI 失敗，舊結果仍可用）
+    last_attempt_error = db.Column(db.Text, nullable=True)
+    last_attempt_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    created_at = db.Column(
+        db.DateTime(timezone=True), nullable=False, default=taiwan_now
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True), nullable=False, default=taiwan_now, onupdate=taiwan_now
+    )
+
+    # ── 驗證邏輯（比照 Response_Classification 的既有風格）───────
+    def validate_source_relation(self) -> None:
+        """驗證資料來源與 response_id / upload_batch_id 的關係是否合法。
+
+        Raises:
+            ValueError: source_type 不合法，或 response_id /
+                upload_batch_id 與 source_type 的搭配不符合規則。
+        """
+        allowed = {"survey", "user_upload"}
+        if self.source_type not in allowed:
+            raise ValueError(f"source_type 只能是 {sorted(allowed)} 其中之一")
+
+        if self.source_type == "survey":
+            if self.response_id is None:
+                raise ValueError("survey 來源必須提供 response_id")
+            if self.upload_batch_id is not None:
+                raise ValueError(
+                    "survey 來源不可帶有 upload_batch_id，必須為 None"
+                )
+            if self.uploaded_answer_id is not None:
+                raise ValueError(
+                    "survey 來源不可帶有 uploaded_answer_id，必須為 None"
+                )
+
+        if self.source_type == "user_upload":
+            if self.response_id is not None:
+                raise ValueError(
+                    "user_upload 來源不可綁定 Survey_Response，"
+                    "response_id 必須為 None"
+                )
+            if self.upload_batch_id is None:
+                raise ValueError("user_upload 來源必須提供 upload_batch_id")
+            if self.uploaded_answer_id is None:
+                raise ValueError("user_upload 來源必須提供 uploaded_answer_id")
+
+        if self.segmentation_status not in ALLOWED_SEGMENTATION_STATUSES:
+            raise ValueError(
+                f"segmentation_status 只能是 "
+                f"{sorted(ALLOWED_SEGMENTATION_STATUSES)} 其中之一"
+            )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "response_id": self.response_id,
+            "upload_batch_id": self.upload_batch_id,
+            "uploaded_answer_id": self.uploaded_answer_id,
+            "question_id": self.question_id,
+            "source_type": self.source_type,
+            "segmentation_status": self.segmentation_status,
+            "error_detail": self.error_detail,
+            "attempt_no": self.attempt_no,
+            "last_attempt_error": self.last_attempt_error,
+            "last_attempt_at": self.last_attempt_at.isoformat() if self.last_attempt_at else None,
+            "created_at": (
+                self.created_at.isoformat() if self.created_at else None
+            ),
+            "updated_at": (
+                self.updated_at.isoformat() if self.updated_at else None
+            ),
+        }
+
+
+@event.listens_for(Response_Segmentation_Status, "before_insert")
+@event.listens_for(Response_Segmentation_Status, "before_update")
+def validate_response_segmentation_status(mapper, connection, target):
+    """每次 INSERT 或 UPDATE 前自動檢查，
+    防止資料寫成 source_type 與 response_id/upload_batch_id 不合法的組合。
+    """
+    target.validate_source_relation()
+
+
+# ═══════════════════════════════════════════════════════════════
+# Response_Classification：AI 分類結果（一列 = 一個真實 segment）
+# ═══════════════════════════════════════════════════════════════
+
+# ── 允許的來源類型──────────────
+SOURCE_TYPE_SURVEY = "survey"
+SOURCE_TYPE_USER_UPLOAD = "user_upload"
+ALLOWED_SOURCE_TYPES = {SOURCE_TYPE_SURVEY, SOURCE_TYPE_USER_UPLOAD}
+
+# 分類狀態（AI 處理這個 segment 是否成功，跟 review_status 是兩個獨立維度）
+STATUS_PENDING = "pending"
+
+# 人工審核狀態（review_status）：跟 status 分開，status 代表 AI 有沒有處理
+# 成功，review_status 代表人有沒有看過、同不同意這個 segment 的分類結果。
+#   pending_review：AI 已產生結果，User 尚未確認。
+#   confirmed     ：User 沒有進 Review Conversation，直接接受 AI 原始結果。
+#   modified      ：曾進過 Review Conversation 並按下確認（即使最後結論
+#                    跟 AI original 完全一樣，仍是 modified，因為「User
+#                    曾提出異議」本身就是重要 feedback data）。
+#   excluded      ：User 決定這個 segment 不納入後續分析。是軟刪除標記，
+#                    不會真的砍掉這筆列，保留給之後檢討 AI 拆分/分類
+#                    準確率使用。
+REVIEW_STATUS_PENDING = "pending_review"
+REVIEW_STATUS_CONFIRMED = "confirmed"
+REVIEW_STATUS_MODIFIED = "modified"
+REVIEW_STATUS_EXCLUDED = "excluded"
+ALLOWED_REVIEW_STATUSES = {
+    REVIEW_STATUS_PENDING,
+    REVIEW_STATUS_CONFIRMED,
+    REVIEW_STATUS_MODIFIED,
+    REVIEW_STATUS_EXCLUDED,
+}
+
+# 舊值相容：資料庫裡如果還留著 migration 前寫入的 "removed"，
+# 一律視同 "excluded"。目前 repo 內沒有任何寫入路徑會產生 "removed"
+# （review_status 尚未被任何 route 實際使用過），但保留這個常數
+# 方便 app.py 的 runtime migration 明確引用，不用寫死字串。
+_LEGACY_REVIEW_STATUS_REMOVED = "removed"
+
+
+class Response_Classification(db.Model):
+    __tablename__ = "Response_Classification"
+
+    # survey 一定要有 response_id、沒有 upload_batch_id；
+    # user_upload 一定不能有 response_id、一定要有 upload_batch_id。
+    __table_args__ = (
+        CheckConstraint(
+            f"""
+            (
+                source_type = '{SOURCE_TYPE_SURVEY}'
+                AND response_id IS NOT NULL
+                AND upload_batch_id IS NULL
+                AND uploaded_answer_id IS NULL
+            )
+            OR
+            (
+                source_type = '{SOURCE_TYPE_USER_UPLOAD}'
+                AND response_id IS NULL
+                AND upload_batch_id IS NOT NULL
+                AND uploaded_answer_id IS NOT NULL
+            )
+            """,
+            name="chk_response_classification_source",
+        ),
+        # Admin 清單 / 總覽 / 新類別候選都用 status、review_status 篩選，原本只有外鍵有索引，
+        # 每次都掃整張表。既有資料庫由 app.py 啟動時的 ensure_index 補上（名稱要一致）。
+        db.Index("ix_rc_status_review_version", "status", "review_status", "taxonomy_version_id"),
+        db.Index("ix_rc_review_created", "review_status", "created_at"),
+    )
+
+    classification_id = db.Column(
+        db.Integer, primary_key=True, autoincrement=True
+    )
+
+    # 只有系統內建問卷回答才可關聯 Survey_Response
+    # 外部上傳資料必須為 None
+    response_id = db.Column(
+        db.Integer,
+        db.ForeignKey("Survey_Response.response_id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    source_type = db.Column(db.String(20), nullable=False)
+
+    # 系統問卷：題目 UUID；外部上傳：欄位名稱、列號或自訂識別碼
+    question_id = db.Column(db.String(255), nullable=True)
+
+    # 外部上傳專用：同一次上傳（一次只能上傳一個檔案）產生一個 UUID，
+    # 同一批檔案裡所有列共用這個值，用來區分不同次上傳
+    # （即使是同一份檔案重新上傳，也會是新的 upload_batch_id）。
+    # survey 來源一律為 None。
+    upload_batch_id = db.Column(db.String(50), nullable=True)
+
+    # 對應外部上傳的原始文字（Uploaded_Answer.id）。
+    # 刻意「不」加 unique=True：一筆 Uploaded_Answer 拆分後可能對應
+    # 0~N 個 segment，所以會有多筆 Response_Classification 共用同一個
+    # uploaded_answer_id，這是正常且必要的行為，不是資料重複。
+    # 如果之後有人想在這裡加 UniqueConstraint，請先確認清楚這一點，
+    # 加了會直接讓 multi-segment 寫入從第二個 segment 開始失敗。
+    uploaded_answer_id = db.Column(
+        db.Integer,
+        db.ForeignKey("Uploaded_Answer.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+
+    # ── 原始資料（AI 不可修改）───────────────────────────────
+    answer_text = db.Column(db.Text, nullable=False)
+
+    # 這個 segment 在 answer_text 裡的原文座標（左閉右開區間）。
+    # 一列 = 一個真實 segment，不允許用這兩個欄位代表整則回答的
+    # 特殊狀態列（回答層級的狀態另外存在 Response_Segmentation_Status）。
+    segment_start = db.Column(db.Integer, nullable=False)
+    segment_end = db.Column(db.Integer, nullable=False)
+
+    # ── AI 分類結果（AI ORIGINAL RESULT，Human Review 絕對不能覆寫）──
+    main_category = db.Column(db.String(100))
+    sub_category = db.Column(db.String(100))
+    # 次要分類（0~N 個）一律存在 Response_Classification_Secondary 子表
+    # （kind="ai"）。2026-09 資料庫整理時移除了舊的單值鏡像欄位
+    # secondary_main_category / secondary_sub_category /
+    # secondary_methodology / secondary_citation。
+    reasoning = db.Column(db.Text)
+    summary = db.Column(db.Text)
+    methodology = db.Column(db.String(100))
+    citation = db.Column(db.Text)
+
+    # ── Human Review 最終確認結果（final_*）─────────────────
+    # 只有 User 在 Review Conversation 中明確按下確認後才會寫入，
+    # 這之前 Review Conversation 過程中的所有 AI revision 都只是
+    # candidate（存在 Classification_Review_Message，不會出現在這裡）。
+    # review_status = confirmed：沒有進過 Review Conversation，
+    #     effective 分類直接讀 AI original 欄位，這裡維持 None。
+    # review_status = modified：曾進過 Review Conversation並確認，
+    #     這裡一定有值（即使最終跟 AI original 一樣也會填，因為
+    #     「User 曾對 AI 結果產生異議」本身是重要 feedback data）。
+    # 人工定案的次要分類存在 Response_Classification_Secondary（kind="final"），
+    # 舊的 final_secondary_main_category / final_secondary_sub_category 已移除。
+    final_main_category = db.Column(db.String(100))
+    final_sub_category = db.Column(db.String(100))
+    final_reasoning = db.Column(db.Text)
+
+    # ── 狀態與時間戳 ──────────────────────────────────────
+    # 【修正】原本是 String(20)，但 services/classify_v2.py 會寫入
+    # "methodology_not_found"（22 字元），超過 20 就會讓 INSERT 直接
+    # 撞到 MySQL 的 "Data too long for column 'status'" 炸掉整筆分類。
+    # 目前實際會寫入這個欄位的值只有 "pending" / "completed" /
+    # "methodology_not_found" / "failed"（見 classify_v2.py），
+    # 50 字元留了足夠餘裕，之後合理範圍內新增狀態值也不會再重演
+    # 同樣的問題。這裡只放寬長度、不縮短、不改變任何既有資料。
+    status = db.Column(db.String(50), nullable=False, default=STATUS_PENDING)
+    review_status = db.Column(
+        db.String(20), nullable=False, default=REVIEW_STATUS_PENDING
+    )
+    created_at = db.Column(
+        db.DateTime(timezone=True), nullable=False, default=taiwan_now
+    )
+
+    # ── Taxonomy version 追溯（Phase B 新增，additive-only）─────────
+    # 這筆分類實際使用哪一版 Published Taxonomy 產生（見
+    # services/taxonomy_service.py）。nullable=True 是刻意的：
+    #   - 舊資料（Phase B 之前，讀 DEFAULT_PROMPT_* + Prompt_Template
+    #     產生的分類結果）沒有對應的 Taxonomy_Version，永遠是 NULL，
+    #     不回填、不猜測對應到哪一版。
+    #   - 不用 ondelete="CASCADE"：Taxonomy_Version 之後如果被刪除
+    #     （目前沒有任何流程會這麼做，但不排除未來 Admin 清除舊草稿），
+    #     不應該連帶砍掉已經產生的分類結果，比照 Uploaded_Answer.user_id
+    #     的作法改用 SET NULL。
+    taxonomy_version_id = db.Column(
+        db.Integer,
+        db.ForeignKey("Taxonomy_Version.version_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    # ── Confidence Gate（新增，additive-only）───────────────────
+    # 這三個欄位是「AI 分類當下的判斷與送審原因」的歷史紀錄，永久
+    # 保留：review_status 之後不管變成 confirmed / modified /
+    # excluded 哪一種，都不會清除或重算這三個欄位——它們回答的是
+    # 「AI 當時為什麼建議/不建議人工介入」，review_status 回答的是
+    # 「人工確認流程目前走到哪裡」，兩者是獨立、互不覆寫的概念。
+    #
+    # confidence：模型自陳信心分數（0.0～1.0），是 Gemini 主觀輸出的
+    # 數字，不是 calibrated probability，不代表「正確率」。缺失、
+    # 非數值、或超出 [0,1] 範圍一律視為 invalid_confidence（見
+    # services/confidence_gate.py），這裡刻意 nullable=True 存這些
+    # 異常情況的原始值（通常是 None），不偷偷補一個看起來正常的數字。
+    confidence = db.Column(db.Float, nullable=True)
+
+    # needs_human_review / review_flag_reason：由
+    # services.confidence_gate.evaluate_confidence_gate() 逐 segment
+    # 判斷產生，寫入當下就固定，之後不會因為人工審核流程而被改寫。
+    needs_human_review = db.Column(db.Boolean, nullable=False, default=False)
+    review_flag_reason = db.Column(db.String(50), nullable=True)
+
+    # ── Human Review 操作 metadata（additive-only）─────────────────
+    # 最近一次改變 review_status 的 Admin 與時間；完整歷史在
+    # Admin_Audit_Log（audit.py），這裡只是方便清單顯示的最新值。
+    reviewed_by_admin_id = db.Column(db.Integer, nullable=True)
+    reviewed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    # ── 自動通過（additive-only）─────────────────────────────────
+    # True：review_status=confirmed 是系統依 services/auto_confirm_service.py
+    # 的規則自動設定的（高信心、類別在已發布的分類架構內），不是人工確認。
+    # 任何人工審核動作（確認、修改、排除、重新開啟）都會把它改回 False
+    # （見 review_service._stamp）。它會影響三件事：
+    #   - 不算「人工審核過」：不當成回饋給 Gemini 的審核範例、
+    #     effective_view 的 is_human_reviewed=False
+    #   - 不受重新分析的保護（人工定案才受保護）
+    #   - Admin 可以用清單篩選 auto_confirmed=true 找出來重新審核
+    auto_confirmed = db.Column(db.Boolean, nullable=False, default=False)
+
+    # ── AI 第二意見（additive-only，見 services/second_opinion_service.py）──
+    # 低信心的結果交給更強的模型獨立再判斷一次：
+    #   agreed    ：兩次判斷一致 -> 自動通過（auto_confirmed=True）
+    #   disagreed ：不一致 -> 維持待審，second_opinion_* 留給人工參考
+    #   failed    ：第二意見本身失敗（例如回應格式錯），不再自動重試
+    # NULL：還沒做過（或不需要做）。
+    second_opinion_status = db.Column(db.String(20), nullable=True)
+    second_opinion_main_category = db.Column(db.String(100), nullable=True)
+    second_opinion_sub_category = db.Column(db.String(100), nullable=True)
+    second_opinion_reasoning = db.Column(db.Text, nullable=True)
+    second_opinion_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    # ── Attempt（additive-only）─────────────────────────────────
+    # 這筆結果是這則回答的第幾次分析產生的（NULL = attempt 功能上線前
+    # 的舊資料，視同第 1 次）。舊 attempt 的列保留（status=superseded），
+    # 不 hard-delete，review / audit / final_* 全部留著。
+    attempt_no = db.Column(db.Integer, nullable=True)
+
+    # ── 驗證邏輯 ──────────────────────────────────────────
+    def validate_source_relation(self) -> None:
+        """驗證資料來源與 response_id / upload_batch_id 的關係是否合法。
+
+        Raises:
+            ValueError: source_type 不合法，或 response_id /
+                upload_batch_id 與 source_type 的搭配不符合規則。
+        """
+        if self.source_type not in ALLOWED_SOURCE_TYPES:
+            raise ValueError(
+                f"source_type 只能是 {sorted(ALLOWED_SOURCE_TYPES)} 其中之一"
+            )
+
+        if self.source_type == SOURCE_TYPE_SURVEY:
+            if self.response_id is None:
+                raise ValueError("系統內建問卷分類必須提供 response_id")
+            if self.upload_batch_id is not None:
+                raise ValueError(
+                    "系統內建問卷分類不可帶有 upload_batch_id，"
+                    "upload_batch_id 必須為 None"
+                )
+            if self.uploaded_answer_id is not None:
+                raise ValueError(
+                    "系統內建問卷分類不可帶有 uploaded_answer_id，"
+                    "uploaded_answer_id 必須為 None"
+                )
+
+        if self.source_type == SOURCE_TYPE_USER_UPLOAD:
+            if self.response_id is not None:
+                raise ValueError(
+                    "外部上傳分類不可綁定 Survey_Response，"
+                    "response_id 必須為 None"
+                )
+            if self.upload_batch_id is None:
+                raise ValueError("外部上傳分類必須提供 upload_batch_id")
+            if self.uploaded_answer_id is None:
+                raise ValueError("外部上傳分類必須提供 uploaded_answer_id")
+
+    def to_dict(self) -> dict:
+        ai_secondaries = secondary_list(self, SECONDARY_KIND_AI)
+        final_secondaries = secondary_list(self, SECONDARY_KIND_FINAL)
+        # API 相容：舊版回應有單值的 secondary_* / final_secondary_* 欄位，
+        # 現在由子表的第一個次要分類推導（資料庫不再有這些欄位）。
+        first_ai = next((s for s in ai_secondaries if s.get("in_taxonomy")), {})
+        first_final = final_secondaries[0] if final_secondaries else {}
+        return {
+            "classification_id": self.classification_id,
+            "response_id": self.response_id,
+            "upload_batch_id": self.upload_batch_id,
+            "uploaded_answer_id": self.uploaded_answer_id,
+            "source_type": self.source_type,
+            "question_id": self.question_id,
+            "answer_text": self.answer_text,
+            "segment_start": self.segment_start,
+            "segment_end": self.segment_end,
+            "main_category": self.main_category,
+            "sub_category": self.sub_category,
+            "reasoning": self.reasoning,
+            "summary": self.summary,
+            "methodology": self.methodology,
+            "citation": self.citation,
+            "final_main_category": self.final_main_category,
+            "final_sub_category": self.final_sub_category,
+            "final_reasoning": self.final_reasoning,
+            "status": self.status,
+            "review_status": self.review_status,
+            "taxonomy_version_id": self.taxonomy_version_id,
+            "confidence": self.confidence,
+            "needs_human_review": self.needs_human_review,
+            "review_flag_reason": self.review_flag_reason,
+            "reviewed_by_admin_id": self.reviewed_by_admin_id,
+            "reviewed_at": self.reviewed_at.isoformat() if self.reviewed_at else None,
+            "auto_confirmed": bool(self.auto_confirmed),
+            "second_opinion_status": self.second_opinion_status,
+            "second_opinion_main_category": self.second_opinion_main_category,
+            "second_opinion_sub_category": self.second_opinion_sub_category,
+            "second_opinion_reasoning": self.second_opinion_reasoning,
+            "second_opinion_at": self.second_opinion_at.isoformat() if self.second_opinion_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "attempt_no": self.attempt_no,
+            "secondary_categories": ai_secondaries,
+            "final_secondary_categories": final_secondaries,
+            "secondary_main_category": first_ai.get("main_category"),
+            "secondary_sub_category": first_ai.get("sub_category"),
+            "secondary_methodology": first_ai.get("methodology"),
+            "secondary_citation": first_ai.get("citation"),
+            "final_secondary_main_category": first_final.get("main_category"),
+            "final_secondary_sub_category": first_final.get("sub_category"),
+            "created_at": (
+                self.created_at.isoformat() if self.created_at else None
+            ),
+        }
+
+
+def secondary_list(row, kind):
+    """to_dict 用：lazy import，避免 model 模組在 import 時依賴 services。"""
+    from services.secondary_classification_service import get_secondaries
+
+    return get_secondaries(row, kind)
+
+
+# ═══════════════════════════════════════════════════════════════
+# Response_Classification_Secondary：次要分類（一筆分類可以有 0~N 個）
+# ═══════════════════════════════════════════════════════════════
+#
+# 原本只有 secondary_sub_category 單一字串（Gemini 不輸出次要大類別，
+# secondary_main_category 也沒有被寫入），聚合時要求兩者都有值 -> AI
+# 的次要分類全部被略過。現在每個次要分類一列，大類別 / 子類別一起保存，
+# 並記錄 taxonomy category identity（taxonomy_version_id + category_id）。
+#
+#   kind = "ai"：AI 原始判斷（跟 main_category 等 AI ORIGINAL 欄位一樣，
+#       人工審核不會改寫）
+#   kind = "final"：人工修改（review_status=modified）後的最終次要分類
+#   in_taxonomy：AI 提出的次要子類別是否在當時使用的分類架構裡；不在的
+#       保留紀錄（Admin 看得到），但不計入彙整。人工選的 final 一律 True。
+#
+# 這是次要分類唯一的保存位置（舊的單值鏡像欄位已於 2026-09 移除）。
+SECONDARY_KIND_AI = "ai"
+SECONDARY_KIND_FINAL = "final"
+
+
+class Response_Classification_Secondary(db.Model):
+    __tablename__ = "Response_Classification_Secondary"
+    __table_args__ = (
+        db.UniqueConstraint("classification_id", "kind", "position", name="uq_rc_secondary_position"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    classification_id = db.Column(
+        db.Integer,
+        db.ForeignKey("Response_Classification.classification_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    kind = db.Column(db.String(10), nullable=False, default=SECONDARY_KIND_AI)
+    position = db.Column(db.Integer, nullable=False, default=0)
+    main_category = db.Column(db.String(100), nullable=True)
+    sub_category = db.Column(db.String(100), nullable=False)
+    taxonomy_version_id = db.Column(
+        db.Integer, db.ForeignKey("Taxonomy_Version.version_id", ondelete="SET NULL"), nullable=True,
+    )
+    taxonomy_category_id = db.Column(
+        db.Integer, db.ForeignKey("Taxonomy_Category.category_id", ondelete="SET NULL"), nullable=True,
+    )
+    methodology = db.Column(db.String(100), nullable=True)
+    citation = db.Column(db.Text, nullable=True)
+    in_taxonomy = db.Column(db.Boolean, nullable=False, default=False)
+    created_by_admin_id = db.Column(db.Integer, nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=taiwan_now)
+
+    def to_dict(self) -> dict:
+        return {
+            "main_category": self.main_category,
+            "sub_category": self.sub_category,
+            "taxonomy_version_id": self.taxonomy_version_id,
+            "taxonomy_category_id": self.taxonomy_category_id,
+            "methodology": self.methodology,
+            "citation": self.citation,
+            "in_taxonomy": bool(self.in_taxonomy),
+            "position": self.position,
+        }
+
+
+Response_Classification.secondaries = db.relationship(
+    Response_Classification_Secondary,
+    order_by=(Response_Classification_Secondary.kind, Response_Classification_Secondary.position),
+    cascade="all, delete-orphan",
+    passive_deletes=True,
+    lazy="selectin",
+)
+
+
+@event.listens_for(Response_Classification, "before_insert")
+@event.listens_for(Response_Classification, "before_update")
+def validate_response_classification(mapper, connection, target):
+    """每次 INSERT 或 UPDATE 前自動檢查，
+    防止外部上傳資料誤綁系統問卷 response_id。
+    """
+    target.validate_source_relation()
+
+
+# ═══════════════════════════════════════════════════════════════
+# Classification_Review / Classification_Review_Message：
+# Human Review Conversation 的獨立 persistence
+# ═══════════════════════════════════════════════════════════════
+#
+# 比照 Response_Classification / Response_Segmentation_Status 的風格
+# 另外建表，不塞進既有的 Chat_History（那是給問卷填答聊天室用的，跟
+# 「針對某一筆 Response_Classification 做分類覆核」是完全不同的資料
+# 語意與生命週期）。
+#
+# 兩張表：
+#     Classification_Review：一列 = 針對某一筆 Response_Classification 的
+#         一次 review 會話（review session）。
+#     Classification_Review_Message：一列 = 該會話裡的一輪訊息（User 發的
+#         或 AI 回的）。role='assistant' 的訊息如果有附帶「這輪 AI 提出的
+#         candidate 分類」，會存在 candidate_* 欄位裡。
+#
+# 【重要】這兩張表本身只負責「儲存對話與 candidate 歷史」，不負責業務
+# 規則判斷（例如 candidate 何時可以變成 final、taxonomy 合法性檢查等）。
+# 那些屬於 services/review_service.py 與 services/review_ai_service.py
+# 的職責，這裡只負責把資料結構立好。
+#
+# Classification_Review.status 目前先給一個寬鬆的 String 欄位（不加
+# CheckConstraint），因為完整的狀態機（例如 in_progress / confirmed /
+# excluded 分別對應什麼、什麼時候可以轉換）屬於 service 邏輯的一部分，
+# 不在這裡的 schema 範圍內先寫死，避免之後定案時要跟著改 DB constraint。
+
+class Classification_Review(db.Model):
+    __tablename__ = "Classification_Review"
+
+    review_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    classification_id = db.Column(
+        db.Integer,
+        db.ForeignKey("Response_Classification.classification_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # 【Admin-only 定案】Human Review 是 Admin 專用功能，不保留 User
+    # 雙軌；這裡直接把欄位換成 admin_id（FK -> Admin.admin_id），不是
+    # 額外加一個欄位並存。同一時間 classification_id 下最多只能有一筆
+    # status="in_progress" 的 row——這個限制不是在這裡用 DB constraint
+    # 表達（MySQL 不支援 partial unique index），而是在
+    # services/review_service.py 的 start_review() 用
+    # `SELECT ... FOR UPDATE` 鎖住對應的 Response_Classification row
+    # 之後才查詢/建立，保證併發時不會有兩筆 in_progress 同時被建立。
+    admin_id = db.Column(
+        db.Integer,
+        db.ForeignKey("Admin.admin_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    status = db.Column(db.String(20), nullable=False, default="in_progress")
+
+    created_at = db.Column(
+        db.DateTime(timezone=True), nullable=False, default=taiwan_now
+    )
+    confirmed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    # session 結束（confirmed / excluded / closed）的時間與原因。
+    # closed_reason 例：quick_confirm（未送訊息就用快速確認）、
+    # reopen_cleanup（reopen 時清掉殘留的舊 session）。
+    closed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    closed_reason = db.Column(db.String(30), nullable=True)
+
+    messages = db.relationship(
+        "Classification_Review_Message",
+        backref="review",
+        cascade="all, delete-orphan",
+        order_by="Classification_Review_Message.created_at",
+    )
+
+    def to_dict(self, include_messages: bool = False) -> dict:
+        data = {
+            "review_id": self.review_id,
+            "classification_id": self.classification_id,
+            "admin_id": self.admin_id,
+            "status": self.status,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "confirmed_at": self.confirmed_at.isoformat() if self.confirmed_at else None,
+            "closed_at": self.closed_at.isoformat() if self.closed_at else None,
+            "closed_reason": self.closed_reason,
+        }
+        if include_messages:
+            data["messages"] = [m.to_dict() for m in self.messages]
+        return data
+
+
+class Classification_Review_Message(db.Model):
+    __tablename__ = "Classification_Review_Message"
+
+    message_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    review_id = db.Column(
+        db.Integer,
+        db.ForeignKey("Classification_Review.review_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # user / assistant，比照 Chat_History.sender_type 的簡單字串風格
+    role = db.Column(db.String(10), nullable=False)
+
+    # User 訊息：原文意見。Assistant 訊息：AI 的自然語言回覆。
+    content = db.Column(db.Text, nullable=False)
+
+    # Assistant 訊息才會有 candidate_* 欄位，User 訊息這些欄位永遠是 None。
+    candidate_main_category = db.Column(db.String(100))
+    candidate_sub_category = db.Column(db.String(100))
+    candidate_secondary_main_category = db.Column(db.String(100))
+    candidate_secondary_sub_category = db.Column(db.String(100))
+    candidate_reasoning = db.Column(db.Text)
+
+    created_at = db.Column(
+        db.DateTime(timezone=True), nullable=False, default=taiwan_now
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "message_id": self.message_id,
+            "review_id": self.review_id,
+            "role": self.role,
+            "content": self.content,
+            "candidate_main_category": self.candidate_main_category,
+            "candidate_sub_category": self.candidate_sub_category,
+            "candidate_secondary_main_category": self.candidate_secondary_main_category,
+            "candidate_secondary_sub_category": self.candidate_secondary_sub_category,
+            "candidate_reasoning": self.candidate_reasoning,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# ── 全部重試（背景工作）的進度紀錄 ─────────────────────────────────
+# 見 services/bulk_retry_service.py。同一時間只會有一個執行中的工作；
+# heartbeat_at 太久沒更新代表執行它的 worker 已經重啟，視為中斷。
+BULK_RETRY_RUNNING = "running"
+BULK_RETRY_COMPLETED = "completed"          # 每一筆都試過了
+BULK_RETRY_PAUSED_QUOTA = "paused_quota"    # 連續遇到 AI 額度用完，自動暫停
+BULK_RETRY_CANCELLED = "cancelled"          # 管理員按了停止
+BULK_RETRY_FAILED = "failed"                # 工作本身發生非預期錯誤
+
+
+class Bulk_Retry_Job(db.Model):
+    __tablename__ = "Bulk_Retry_Job"
+
+    job_id = db.Column(db.Integer, primary_key=True)
+    # retry：全部重試；second_opinion：AI 再確認低信心結果。兩種共用同一套
+    # 背景執行、額度退避、停止／中斷機制（見 services/bulk_retry_service.py）。
+    kind = db.Column(db.String(30), nullable=False, default="retry")
+    status = db.Column(db.String(20), nullable=False, default=BULK_RETRY_RUNNING)
+    started_by_admin_id = db.Column(db.Integer, nullable=False)
+    total_at_start = db.Column(db.Integer, nullable=False, default=0)
+    processed = db.Column(db.Integer, nullable=False, default=0)
+    succeeded = db.Column(db.Integer, nullable=False, default=0)
+    still_failed = db.Column(db.Integer, nullable=False, default=0)
+    skipped = db.Column(db.Integer, nullable=False, default=0)
+    quota_waits = db.Column(db.Integer, nullable=False, default=0)
+    cancel_requested = db.Column(db.Boolean, nullable=False, default=False)
+    last_error = db.Column(db.Text, nullable=True)
+    started_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    heartbeat_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    finished_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    def to_dict(self):
+        return {
+            "job_id": self.job_id,
+            "kind": self.kind,
+            "status": self.status,
+            "started_by_admin_id": self.started_by_admin_id,
+            "total_at_start": self.total_at_start,
+            "processed": self.processed,
+            "succeeded": self.succeeded,
+            "still_failed": self.still_failed,
+            "skipped": self.skipped,
+            "quota_waits": self.quota_waits,
+            "cancel_requested": bool(self.cancel_requested),
+            "last_error": self.last_error,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "heartbeat_at": self.heartbeat_at.isoformat() if self.heartbeat_at else None,
+            "finished_at": self.finished_at.isoformat() if self.finished_at else None,
+        }
+
+
+class Bulk_Retry_Item_Attempt(db.Model):
+    """Latest background retry result for a stable answer / survey-question scope."""
+
+    __tablename__ = "Bulk_Retry_Item_Attempt"
+
+    scope_key = db.Column(db.String(255), primary_key=True)
+    job_id = db.Column(db.Integer, nullable=False, index=True)
+    scope_type = db.Column(db.String(20), nullable=False)
+    uploaded_answer_id = db.Column(db.Integer, nullable=True, index=True)
+    response_id = db.Column(db.Integer, nullable=True, index=True)
+    question_id = db.Column(db.String(255), nullable=True)
+    outcome = db.Column(db.String(20), nullable=False, index=True)
+    failure_code = db.Column(db.String(100), nullable=True)
+    attempted_at = db.Column(db.DateTime(timezone=True), nullable=False, default=taiwan_now)
