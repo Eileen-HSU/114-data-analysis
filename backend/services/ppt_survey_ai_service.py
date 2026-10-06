@@ -20,14 +20,14 @@ class PptSurveyAiError(Exception):
 
 ALLOWED_EXTENSIONS = {".ppt", ".pptx", ".pdf"}
 ALLOWED_TYPES = {"short", "rating"}
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-3.5-flash"
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_EXTRACTED_CHARS = 18000
 # One initial request plus at most one retry keeps failover responsive while
 # retaining a small recovery window for brief Gemini overloads.
 PPT_SURVEY_GEMINI_RETRY_ATTEMPTS = 2
 PPT_SURVEY_GEMINI_RETRY_DELAYS_SECONDS = (1,)
-PPT_SURVEY_GEMINI_MODELS = (GEMINI_MODEL, "gemini-2.5-flash")
+PPT_SURVEY_GEMINI_MODELS = (GEMINI_MODEL,)
 # google-genai HttpOptions.timeout uses milliseconds.  The generation endpoint
 # runs in a background task, so allow a full two minutes for a binary document
 # to be processed before treating an individual model request as timed out.
