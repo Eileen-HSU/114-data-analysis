@@ -20,7 +20,7 @@ class PptSurveyAiError(Exception):
 
 ALLOWED_EXTENSIONS = {".ppt", ".pptx", ".pdf"}
 ALLOWED_TYPES = {"short", "rating"}
-GEMINI_MODEL = "gemini-3.5-flash"
+GEMINI_MODEL = "gemini-2.5-flash"
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_EXTRACTED_CHARS = 18000
 # One initial request plus at most one retry keeps failover responsive while
@@ -289,9 +289,11 @@ def normalize_question_count(value):
     return max(1, min(20, parsed))
 
 
-def normalize_type_counts(raw_counts):
+def normalize_type_counts(raw_counts, config=None):
     if not isinstance(raw_counts, dict):
         raw_counts = {}
+    if not isinstance(config, dict):
+        config = {}
 
     def normalize(value, fallback):
         try:
@@ -301,6 +303,28 @@ def normalize_type_counts(raw_counts):
 
     short_count = normalize(raw_counts.get("short"), 0)
     rating_count = normalize(raw_counts.get("rating"), 0)
+    if short_count + rating_count == 0:
+        type_limits = config.get("typeLimits")
+        if isinstance(type_limits, str):
+            try:
+                type_limits = json.loads(type_limits)
+            except json.JSONDecodeError:
+                type_limits = {}
+        if not isinstance(type_limits, dict):
+            type_limits = {}
+
+        total = normalize_question_count(config.get("questionCount"))
+        allow_short = type_limits.get("short") is not False
+        allow_rating = type_limits.get("rating") is not False
+        if allow_short and allow_rating:
+            rating_count = min(2, total)
+            short_count = total - rating_count
+        elif allow_rating:
+            rating_count = total
+        else:
+            short_count = total
+    if short_count + rating_count == 0:
+        short_count = 1
     return {"short": short_count, "rating": rating_count}
 
 
@@ -624,7 +648,7 @@ def _call_gemini(contents):
 
 
 def generate_survey_from_material(filename, file_bytes, config):
-    type_counts = normalize_type_counts(config.get("typeCounts"))
+    type_counts = normalize_type_counts(config.get("typeCounts"), config)
     question_count = type_counts["short"] + type_counts["rating"]
     allowed_types = [name for name, count in type_counts.items() if count > 0]
     direction = str(config.get("direction") or "").strip()
