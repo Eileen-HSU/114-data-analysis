@@ -72,9 +72,9 @@ export default function TaxonomyHubPage() {
   const FILTERS = ["all", "official", "auto"];
   const filter = FILTERS.includes(searchParams.get("filter")) ? searchParams.get("filter") : "all";
   const setFilter = (key) => setSearchParams(key === "all" ? {} : { filter: key }, { replace: true });
-  const listed = [...official, ...legacy, ...auto];
-  const shown = filter === "official" ? [...official, ...legacy] : filter === "auto" ? auto : listed;
-  const filterCount = { all: listed.length, official: official.length + legacy.length, auto: auto.length };
+  const listed = [...official, ...auto];   // 舊資料技術性主題不混入正常清單，另放在下方「舊資料主題」
+  const shown = filter === "official" ? official : filter === "auto" ? auto : listed;
+  const filterCount = { all: listed.length, official: official.length, auto: auto.length };
   const filterLabel = { all: t("全部", "All"), official: t("正式主題", "Official"), auto: t("AI 暫時主題", "AI temporary") };
 
   const row = (topic) => {
@@ -144,6 +144,13 @@ export default function TaxonomyHubPage() {
       {shown.length ? <ul className="admin-list">{shown.map(row)}</ul>
         : <p className="admin-muted">{searchQuery ? t("沒有符合搜尋的主題。", "No topics match the search.")
           : filter === "auto" ? t("目前沒有 AI 暫時主題。", "No AI temporary topics.") : t("還沒有正式主題。", "No official topics yet.")}</p>}
+      {legacy.length > 0 && (
+        <details className="admin-section-block">
+          <summary>{t(`舊資料主題（${legacy.length}）`, `Legacy topics (${legacy.length})`)}</summary>
+          <p className="admin-muted">{t("舊資料的技術歸屬，不列入正常主題清單，也不算待決策。", "Technical topics for legacy data; not part of the normal list or decisions.")}</p>
+          <ul className="admin-list">{legacy.map(row)}</ul>
+        </details>
+      )}
       {merged.length > 0 && (
         <details className="admin-section-block">
           <summary>{t(`已合併主題（${merged.length}）`, `Merged topics (${merged.length})`)}</summary>

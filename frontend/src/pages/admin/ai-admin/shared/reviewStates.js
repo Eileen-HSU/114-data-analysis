@@ -53,7 +53,9 @@ export const unassignedKindLabel = (kind) => ({
 export const isLegacyTechnicalTopic = (topic) => {
   const key = typeof topic === "string" ? topic : topic?.topic_key;
   const title = typeof topic === "string" ? topic : topic?.title;
-  return Boolean(topic) && (key === UNKNOWN_LEGACY_COLUMN || title === UNKNOWN_LEGACY_COLUMN);
+  // 系統為舊資料欄位建立的自動主題，標題是「自動歸納：unknown_legacy_column」，也屬於技術性舊主題。
+  const autoTitle = /^自動歸納[:：]\s*(.*)$/.exec(String(title || "").trim())?.[1];
+  return Boolean(topic) && (key === UNKNOWN_LEGACY_COLUMN || title === UNKNOWN_LEGACY_COLUMN || autoTitle === UNKNOWN_LEGACY_COLUMN);
 };
 
 export const topicDisplayName = (topic) => {

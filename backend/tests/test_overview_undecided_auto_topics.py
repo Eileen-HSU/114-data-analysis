@@ -18,7 +18,7 @@ from admin_test_support import (
 import models as m
 from extensions import db
 from services import taxonomy_service as taxo
-from services.admin_overview_service import undecided_auto_topic_keys
+from services.admin_overview_service import is_legacy_technical_topic, undecided_auto_topic_keys
 
 os.environ.pop("OPEN_CLASSIFICATION_ENABLED", None)
 app = create_app()
@@ -34,7 +34,7 @@ def hub_filter_keys():
     topics = taxo.list_topics_with_status()
     return {t["topic_key"] for t in topics
             if not t["merged_into"] and t["is_auto_topic"] and not t["published_version"]
-            and "unknown_legacy_column" not in (t["topic_key"], t["title"])}
+            and not is_legacy_technical_topic(t["topic_key"], t["title"])}
 
 
 def draft_id(key):
@@ -69,18 +69,31 @@ with app.app_context():
     seed_topic("auto_merged", status="draft")
     db.session.get(m.Topic, "auto_merged").merged_into = "career"
     db.session.add(m.Topic(topic_key="auto_legacy", title="unknown_legacy_column"))
+    # 系統為舊資料欄位建立的自動主題：標題是「自動歸納：unknown_legacy_column」，key 是雜湊
+    db.session.add(m.Topic(topic_key="auto_0123456789ab", title="自動歸納：unknown_legacy_column",
+                           auto_label="unknown_legacy_column", auto_scope="global"))
+    # 一般的自動主題，標題帶「自動歸納：」前綴：要算
+    db.session.add(m.Topic(topic_key="auto_normal", title="自動歸納：意見", auto_label="意見"))
     seed_topic("manual_unpublished", status="draft")               # 不是 auto_ 開頭
     db.session.commit()
     d2 = overview()
-check("加入 4 種不該算的主題後仍是 4", d2["undecided_auto_topics"] == 4)
+check("加入已發布 / 已合併 / 舊資料（2 種寫法）/ 非 auto_ 主題後，只多一個一般自動主題 -> 5", d2["undecided_auto_topics"] == 5)
 
 print("\n========== 3. 與分類架構頁篩選完全一致（用同一份主題清單驗證）==========")
 with app.app_context():
     backend_keys = undecided_auto_topic_keys()
     hub_keys = hub_filter_keys()
 check("後端集合 == 分類架構頁篩選集合", backend_keys == hub_keys)
-check("集合內容正確", backend_keys == {"auto_empty", "auto_draft", "auto_cand", "auto_prov"})
+check("集合內容正確", backend_keys == {"auto_empty", "auto_draft", "auto_cand", "auto_prov", "auto_normal"})
 check("數字 == 集合大小（不硬編碼）", d2["undecided_auto_topics"] == len(hub_keys))
+
+print("\n========== 3b. 舊資料技術性主題只被排除、沒有被刪除 ==========")
+with app.app_context():
+    check("兩筆舊資料主題仍在資料庫", all(db.session.get(m.Topic, k) is not None for k in ("auto_legacy", "auto_0123456789ab")))
+    check("判斷規則：各種寫法都認得，一般標題不誤判",
+          is_legacy_technical_topic("x", "自動歸納：unknown_legacy_column") and is_legacy_technical_topic("x", "自動歸納: unknown_legacy_column")
+          and not is_legacy_technical_topic("x", "自動歸納：意見")
+          and not is_legacy_technical_topic("x", "unknown_legacy_column 的說明"))
 
 print("\n========== 4. 其他統計與 total 不受新欄位影響 ==========")
 check("provisional_topics 沒變", d2["provisional_topics"] == d["provisional_topics"] == 1)
@@ -95,6 +108,6 @@ with app.app_context():
     db.session.get(m.Topic, "auto_empty").merged_into = "career"
     db.session.commit()
     d3 = overview()
-check("發布 auto_draft、併入 auto_empty 後 -> 2", d3["undecided_auto_topics"] == 2)
+check("發布 auto_draft、併入 auto_empty 後 -> 3", d3["undecided_auto_topics"] == 3)
 
 finish()

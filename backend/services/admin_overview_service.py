@@ -180,15 +180,25 @@ def _undecided_topic_keys() -> set:
     return existing - published
 
 
+def is_legacy_technical_topic(topic_key, title) -> bool:
+    """舊資料的技術性主題：key 或標題就是 unknown_legacy_column，
+    或標題是系統為它建立的「自動歸納：unknown_legacy_column」。前端 isLegacyTechnicalTopic 用同一個規則。"""
+    import re
+
+    from services.admin_recovery_service import LEGACY_SOURCE_COLUMN
+
+    m = re.match(r"^自動歸納[:：]\s*(.*)$", (title or "").strip())
+    return LEGACY_SOURCE_COLUMN in (topic_key, title, m.group(1) if m else None)
+
+
 def undecided_auto_topic_keys() -> set:
     """分類架構頁「AI 暫時主題」篩選的同一個定義：auto_ 開頭、未併入其他主題、沒有 published 版本，
-    並排除舊資料主題。不看有沒有回答、有沒有草稿或新類別候選。"""
+    並排除舊資料技術性主題。不看有沒有回答、有沒有草稿或新類別候選。"""
     from models import Topic
-    from services.admin_recovery_service import LEGACY_SOURCE_COLUMN
     from services.open_classification import is_auto_topic
 
     keys = {k for k, title in db.session.query(Topic.topic_key, Topic.title).all()
-            if is_auto_topic(k) and k != LEGACY_SOURCE_COLUMN and title != LEGACY_SOURCE_COLUMN}
+            if is_auto_topic(k) and not is_legacy_technical_topic(k, title)}
     return keys & _undecided_topic_keys()
 
 
