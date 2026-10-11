@@ -13,6 +13,16 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
   const { language, setLanguage, t } = useLanguage();
   const [scrolled, setScrolled] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  // 管理員登入後頂部只保留「AI 管理」；一般使用者與分享唯讀頁不受影響。沿用既有的登入狀態 / account_type 判斷。
+  const isAdmin = isLoggedIn && user?.account_type === "admin";
+  const adminOnlyNav = isAdmin && !readOnly;
+
+  // 讓 CSS 知道目前是管理員導覽列（手機版只需要單列高度）
+  useEffect(() => {
+    if (!adminOnlyNav) return undefined;
+    document.documentElement.setAttribute("data-nav-admin", "1");
+    return () => document.documentElement.removeAttribute("data-nav-admin");
+  }, [adminOnlyNav]);
 
   useEffect(() => {
     if (!transparent) return;
@@ -35,12 +45,13 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
   return (
     <nav
       id="mainNavbar"
-      className={`navbar navbar-expand-lg fixed-top ${readOnly ? "navbar-shared" : ""} ${isTransparentMode ? "navbar-transparent" : "navbar-white"}`}
+      className={`navbar navbar-expand-lg fixed-top ${readOnly ? "navbar-shared" : ""} ${adminOnlyNav ? "navbar-admin" : ""} ${isTransparentMode ? "navbar-transparent" : "navbar-white"}`}
       style={navStyle}
     >
       <div className="container-fluid px-4" style={{ position: "relative" }}>
         {/* Left */}
         <div className="nav-primary-links d-flex align-items-center gap-2 me-auto">
+          {!adminOnlyNav && <>
           <a
             className={`nav-link-btn ${location.pathname === "/collection" ? "active" : ""}`}
             href="/collection"
@@ -79,8 +90,10 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
             <i className="ri-survey-line"></i>
             <span>{t("survey")}</span>
           </a>
+          </>}
           {user?.account_type === "admin" && (
             <a
+              aria-label={t("AI 管理")}
               className={`nav-link-btn ${location.pathname.startsWith("/admin/ai") ? "active" : ""}`}
               href="/admin/ai"
               onClick={(event) => { event.preventDefault(); navigate("/admin/ai"); }}
@@ -95,9 +108,9 @@ export default function Navbar({ transparent = false, readOnly = false, onRequir
         {/* Center Logo */}
         <a
           className="navbar-brand d-flex align-items-center"
-          onClick={() => navigate(isLoggedIn ? "/workspace" : "/")}
+          onClick={adminOnlyNav ? undefined : () => navigate(isLoggedIn ? "/workspace" : "/")}
           style={{
-            cursor: "pointer",
+            cursor: adminOnlyNav ? "default" : "pointer",
             textDecoration: "none",
             position: "absolute",
             left: "50%",
