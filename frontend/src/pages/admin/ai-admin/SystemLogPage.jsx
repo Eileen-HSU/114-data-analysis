@@ -1,5 +1,6 @@
 import { useTextPrompt } from "./shared/TextPromptDialog";
 import { BackgroundJobsPanel } from "./shared/BackgroundJobs";
+import MaintenancePanel from "./shared/MaintenancePanel";
 import { AdminPageHeader, AdminTabs } from "./shared/AdminLayout";
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useNavigate, useSearchParams } from "react-router-dom";
@@ -15,12 +16,13 @@ import "../ai-admin.css";
 // 後端：GET /api/admin/ai/system/status、/system/errors、/audit-logs（見 services/error_log_service.py、
 // services/system_monitor_service.py）。
 const PAGE_SIZE = 30;
-const TABS = ["status", "jobs", "errors", "audit"];
+const TABS = ["status", "jobs", "errors", "audit", "maintenance"];
 const tabLabel = (tab) => ({
   status: t("系統狀態", "System status"),
   jobs: t("背景工作", "Background jobs"),
   errors: t("錯誤紀錄", "Error log"),
   audit: t("操作紀錄", "Activity log"),
+  maintenance: t("資料維護", "Data maintenance"),
 }[tab]);
 
 // 錯誤代碼 -> 名稱與建議的處理方式（link：可以直接去修復的頁面）
@@ -32,29 +34,29 @@ const ERROR_CODES = {
     fixZh: "程式已經處理掉這個錯誤（使用者可能看到失敗訊息）。打開明細確認原因。",
     fixEn: "The app handled this error (users may have seen a failure). Open the details to check why." },
   AI_QUOTA_EXCEEDED: { zh: "AI 額度用完", en: "AI quota exceeded",
-    fixZh: "Gemini 額度暫時用完。等額度恢復（通常一分鐘內），或升級付費方案；受影響的資料到首頁按「全部重試」。",
-    fixEn: "Gemini quota ran out. Wait for it to recover or upgrade the plan, then use Retry all on the admin home.",
-    link: "/admin/ai" },
+    fixZh: "Gemini 額度暫時用完。等額度恢復（通常一分鐘內），或升級付費方案；受影響的資料到「系統管理 › 背景工作」按「全部重試」。",
+    fixEn: "Gemini quota ran out. Wait for it to recover or upgrade the plan, then use Retry all under System › Background jobs.",
+    link: "/admin/ai/system?view=jobs" },
   AI_SERVICE_BUSY: { zh: "AI 服務忙碌", en: "AI service busy",
-    fixZh: "Gemini 暫時過載，通常會自己恢復；受影響的資料到首頁按「全部重試」。",
-    fixEn: "Gemini was overloaded and usually recovers on its own. Use Retry all on the admin home.", link: "/admin/ai" },
+    fixZh: "Gemini 暫時過載，通常會自己恢復；受影響的資料到「系統管理 › 背景工作」按「全部重試」。",
+    fixEn: "Gemini was overloaded and usually recovers on its own. Use Retry all under System › Background jobs.", link: "/admin/ai/system?view=jobs" },
   AI_TIMEOUT: { zh: "AI 回應逾時", en: "AI timeout",
-    fixZh: "AI 太久沒有回應。受影響的資料到首頁按「全部重試」。",
-    fixEn: "The AI took too long. Use Retry all on the admin home.", link: "/admin/ai" },
+    fixZh: "AI 太久沒有回應。受影響的資料到「系統管理 › 背景工作」按「全部重試」。",
+    fixEn: "The AI took too long. Use Retry all under System › Background jobs.", link: "/admin/ai/system?view=jobs" },
   AI_AUTH_FAILED: { zh: "AI 金鑰無效", en: "AI key invalid",
     fixZh: "檢查主機環境變數 GEMINI_API_KEY／ADMIN_GEMINI_API_KEY 是否正確、是否過期，修正後重新部署。",
     fixEn: "Check GEMINI_API_KEY / ADMIN_GEMINI_API_KEY on the host, then redeploy." },
   AI_RESPONSE_INVALID: { zh: "AI 回應格式錯誤", en: "Invalid AI response",
-    fixZh: "AI 回傳的格式不正確，網頁不受影響，資料會被標成分類失敗。到「其他／未歸屬資料」重新處理或排除。",
-    fixEn: "The AI returned a malformed response; the item was marked failed. Retry or exclude it under Unassigned data.",
-    link: "/admin/ai/unassigned" },
+    fixZh: "AI 回傳的格式不正確，網頁不受影響，資料會被標成分類失敗。到「分類審查 › 無法分類」重新處理或排除。",
+    fixEn: "The AI returned a malformed response; the item was marked failed. Retry or exclude it under Review › Can't classify.",
+    link: "/admin/ai/review?view=unassigned" },
   SEGMENTATION_INVALID: { zh: "拆段結果異常", en: "Invalid segmentation",
-    fixZh: "AI 拆出來的片段對不上原文。到「其他／未歸屬資料」重新處理或排除。",
-    fixEn: "The AI's segments didn't match the original text. Retry or exclude it under Unassigned data.",
-    link: "/admin/ai/unassigned" },
+    fixZh: "AI 拆出來的片段對不上原文。到「分類審查 › 無法分類」重新處理或排除。",
+    fixEn: "The AI's segments didn't match the original text. Retry or exclude it under Review › Can't classify.",
+    link: "/admin/ai/review?view=unassigned" },
   PII_MASKING_FAILED: { zh: "個資遮蔽失敗", en: "PII masking failed",
-    fixZh: "為了保護個資，這筆沒有送給 AI。到「其他／未歸屬資料」查看並排除或重新處理。",
-    fixEn: "For privacy this item was not sent to the AI. Review it under Unassigned data.", link: "/admin/ai/unassigned" },
+    fixZh: "為了保護個資，這筆沒有送給 AI。到「分類審查 › 無法分類」查看並排除或重新處理。",
+    fixEn: "For privacy this item was not sent to the AI. Review it under Review › Can't classify.", link: "/admin/ai/review?view=unassigned" },
 };
 const codeLabel = (code) => (ERROR_CODES[code] ? t(ERROR_CODES[code].zh, ERROR_CODES[code].en) : code);
 
@@ -87,14 +89,15 @@ export default function SystemLogPage() {
 
   return <><div className="admin-page">
     <AdminPageHeader title={t("系統管理", "System")}
-      description={t("系統狀態（資料庫、排程、分類架構初始化）、背景工作、錯誤紀錄與操作紀錄。",
-        "System status (database, scheduler, taxonomy bootstrap), background jobs, errors and the activity log.")} />
+      description={t("系統狀態（資料庫、排程、分類架構初始化）、背景工作、錯誤紀錄、操作紀錄與低頻資料維護。",
+        "System status (database, scheduler, taxonomy bootstrap), background jobs, errors, the activity log and occasional data maintenance.")} />
     <AdminTabs tabs={TABS.map((key) => ({ key, label: tabLabel(key) }))} value={tab}
       onChange={changeTab} />
-    {tab === "jobs" && <BackgroundJobsPanel token={token} onError={() => {}} />}
+    {tab === "jobs" && <BackgroundJobsPanel token={token} />}
     {tab === "status" && <StatusTab token={token} onShowErrors={() => changeTab("errors")} />}
     {tab === "errors" && <ErrorsTab token={token} navigate={navigate} />}
     {tab === "audit" && <AuditTab token={token} />}
+    {tab === "maintenance" && <MaintenancePanel token={token} />}
   </div></>;
 }
 
@@ -173,9 +176,13 @@ function ErrorsTab({ token, navigate }) {
   const [page, setPage] = useState(1);
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
-  const [detail, setDetail] = useState({});
+  // 錯誤明細：只對應目前打開的那一筆；status = loading | ok | error
+  const [detailInfo, setDetailInfo] = useState(null);
+  const detailSeq = useRef(0);
   const [busy, setBusy] = useState({});
+  const [selected, setSelected] = useState(null); // 目前打開的錯誤（清單保持掛載，篩選與頁數不會掉）
   const seq = useRef(0);
+  const statusText = (status) => ({ open: t("未處理", "Unresolved"), resolved: t("已處理", "Resolved"), ignored: t("已忽略", "Ignored") }[status] || status);
 
   const load = async () => {
     const mine = ++seq.current;
@@ -191,15 +198,18 @@ function ErrorsTab({ token, navigate }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [filters, page]);
 
-  const toggleDetail = async (id) => {
-    if (detail[id]) { setDetail((d) => ({ ...d, [id]: null })); return; }
+  const loadDetail = async (id) => {
+    const mine = ++detailSeq.current;
+    setDetailInfo({ id, status: "loading" });
     try {
       const row = await api(`/api/admin/ai/system/errors/${id}`, token);
-      setDetail((d) => ({ ...d, [id]: row }));
+      if (mine === detailSeq.current) setDetailInfo({ id, status: "ok", data: row });
     } catch (e) {
-      setError(errorMessage(e));
+      if (mine === detailSeq.current) setDetailInfo({ id, status: "error", message: errorMessage(e) });
     }
   };
+  const openError = (row) => { setSelected(row); loadDetail(row.error_id); };
+  const closeError = () => { detailSeq.current += 1; setDetailInfo(null); setSelected(null); };
 
   const setStatus = async (row, status) => {
     let note;
@@ -217,6 +227,7 @@ function ErrorsTab({ token, navigate }) {
         method: "POST", body: JSON.stringify({ status, note }),
       });
       await load();
+      setSelected((cur) => (cur && cur.error_id === row.error_id ? { ...cur, status, resolution_note: note || null } : cur));
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -228,7 +239,48 @@ function ErrorsTab({ token, navigate }) {
 
   return (
     <section className="admin-section">{promptDialog}
-      {error && <p className="ai-admin-error">{error}<button onClick={() => setError("")}>×</button></p>}
+      {error && <p className="ai-admin-error" role="alert">{error}<button onClick={() => setError("")}>×</button></p>}
+      {selected && (() => {
+        const row = selected;
+        const info = ERROR_CODES[row.code];
+        return (
+          <article className="syslog-error-detail">
+            <button type="button" onClick={closeError}>{t("← 返回錯誤清單", "← Back to errors")}</button>
+            <div className="syslog-error-line">
+              <b className={`review-status-tag review-status-tag--${row.status === "open" ? "pending_review" : "confirmed"}`}>{statusText(row.status)}</b>
+              <b>{codeLabel(row.code)}</b>
+              <small>{t(`發生 ${row.occurrence_count} 次・最近 ${formatTime(row.last_seen_at)}`, `${row.occurrence_count}× · last ${formatTime(row.last_seen_at)}`)}</small>
+            </div>
+            <p className="syslog-message">{row.message}</p>
+            {row.path && <p><small>{row.method} {row.path}{row.status_code ? ` → ${row.status_code}` : ""}</small></p>}
+            {info && (
+              <p className="syslog-fix"><small>{t("建議：", "Suggested fix: ")}{t(info.fixZh, info.fixEn)}</small>
+                {info.link && <> <button className="link-button" onClick={() => navigate(info.link)}>{t("前往處理", "Go fix it")}</button></>}</p>
+            )}
+            {row.resolution_note && <p><small>{t("處理說明：", "Note: ")}{row.resolution_note}</small></p>}
+            <h3>{t("詳細內容", "Details")}</h3>
+            {(!detailInfo || detailInfo.id !== row.error_id || detailInfo.status === "loading") && <LoadingNotice text={t("載入明細…", "Loading details…")} />}
+            {detailInfo?.id === row.error_id && detailInfo.status === "ok" && (
+              <pre className="syslog-detail">{detailInfo.data.detail || t("沒有詳細內容。", "No details.")}</pre>
+            )}
+            {detailInfo?.id === row.error_id && detailInfo.status === "error" && (
+              <p className="ai-admin-error" role="alert">{detailInfo.message}{" "}
+                <button onClick={() => loadDetail(row.error_id)}>{t("重新讀取明細", "Reload details")}</button></p>
+            )}
+            <div className="review-card-actions">
+              {row.status === "open" ? (
+                <>
+                  <button className="review-btn-primary" disabled={busy[row.error_id]} onClick={() => setStatus(row, "resolved")}>{t("標記已處理", "Mark resolved")}</button>
+                  <button disabled={busy[row.error_id]} onClick={() => setStatus(row, "ignored")}>{t("忽略", "Ignore")}</button>
+                </>
+              ) : (
+                <button disabled={busy[row.error_id]} onClick={() => setStatus(row, "open")}>{t("重新開啟", "Reopen")}</button>
+              )}
+            </div>
+          </article>
+        );
+      })()}
+      <div hidden={Boolean(selected)}>
       <div className="syslog-filters">
         <label>{t("狀態", "Status")}
           <select value={filters.status} onChange={(e) => update({ status: e.target.value })}>
@@ -253,42 +305,27 @@ function ErrorsTab({ token, navigate }) {
       {data && data.errors.length === 0 && (
         <p className="review-empty">{filters.status === "open" ? t("目前沒有未處理的錯誤。", "No unresolved errors.") : t("沒有符合條件的錯誤。", "No matching errors.")}</p>
       )}
-      {data?.errors.map((row) => {
-        const info = ERROR_CODES[row.code];
-        return (
-          <article key={row.error_id} className="review-card syslog-error">
-            <div className="review-card-top">
-              <b className={`review-status-tag review-status-tag--${row.status === "open" ? "pending_review" : "confirmed"}`}>
-                {{ open: t("未處理", "Unresolved"), resolved: t("已處理", "Resolved"), ignored: t("已忽略", "Ignored") }[row.status]}
-              </b>
-              <b>{codeLabel(row.code)}</b>
-              <small>{t(`發生 ${row.occurrence_count} 次・最近 ${formatTime(row.last_seen_at)}`, `${row.occurrence_count}× · last ${formatTime(row.last_seen_at)}`)}</small>
-            </div>
-            <p className="syslog-message">{row.message}</p>
-            {row.path && <p><small>{row.method} {row.path}{row.status_code ? ` → ${row.status_code}` : ""}</small></p>}
-            {info && (
-              <p className="syslog-fix"><small>{t("建議：", "Suggested fix: ")}{t(info.fixZh, info.fixEn)}</small>
-                {info.link && <> <button className="link-button" onClick={() => navigate(info.link)}>{t("前往處理", "Go fix it")}</button></>}</p>
-            )}
-            {row.resolution_note && <p><small>{t("處理說明：", "Note: ")}{row.resolution_note}</small></p>}
-            {detail[row.error_id] && (
-              <pre className="syslog-detail">{detail[row.error_id].detail || t("沒有詳細內容。", "No details.")}</pre>
-            )}
-            <div className="review-card-actions">
-              <button onClick={() => toggleDetail(row.error_id)}>{detail[row.error_id] ? t("收起明細", "Hide details") : t("看明細", "Details")}</button>
-              {row.status === "open" ? (
-                <>
-                  <button className="review-btn-primary" disabled={busy[row.error_id]} onClick={() => setStatus(row, "resolved")}>{t("標記已處理", "Mark resolved")}</button>
-                  <button disabled={busy[row.error_id]} onClick={() => setStatus(row, "ignored")}>{t("忽略", "Ignore")}</button>
-                </>
-              ) : (
-                <button disabled={busy[row.error_id]} onClick={() => setStatus(row, "open")}>{t("重新開啟", "Reopen")}</button>
-              )}
-            </div>
-          </article>
-        );
-      })}
+      {data && data.errors.length > 0 && (
+        <ul className="admin-list syslog-error-list">
+          {data.errors.map((row) => (
+            <li key={row.error_id}>
+              <button type="button" className="syslog-error-row" onClick={() => openError(row)}>
+                <span className="syslog-error-body">
+                  <span className="syslog-error-line">
+                    <b className={`review-status-tag review-status-tag--${row.status === "open" ? "pending_review" : "confirmed"}`}>{statusText(row.status)}</b>
+                    <b>{codeLabel(row.code)}</b>
+                    <small>{t(`${row.occurrence_count} 次・最近 ${formatTime(row.last_seen_at)}`, `${row.occurrence_count}× · last ${formatTime(row.last_seen_at)}`)}</small>
+                  </span>
+                  <span className="syslog-error-summary">{row.message}</span>
+                </span>
+                <span className="rpt-row-arrow" aria-hidden="true">›</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       <Pager page={page} totalPages={data?.total_pages || 1} onChange={setPage} />
+      </div>
     </section>
   );
 }
@@ -324,7 +361,7 @@ function AuditTab({ token }) {
 
   return (
     <section className="admin-section">
-      {error && <p className="ai-admin-error">{error}</p>}
+      {error && <p className="ai-admin-error" role="alert">{error}</p>}
       <div className="syslog-filters">
         <label>{t("動作", "Action")}
           <select value={filters.action} onChange={(e) => update({ action: e.target.value })}>

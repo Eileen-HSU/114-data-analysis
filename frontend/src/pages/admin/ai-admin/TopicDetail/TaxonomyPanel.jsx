@@ -31,6 +31,10 @@ export default function TaxonomyPanel() {
   const [mergeResultText, setMergeResultText] = useState("");
   const [unmerging, setUnmerging] = useState(false);
   const [unmergeResultText, setUnmergeResultText] = useState("");
+  const [versionsFailed, setVersionsFailed] = useState(false); // 完整版本清單讀取失敗：顯示提示與重新讀取
+  const [archivedOpen, setArchivedOpen] = useState(false); // 封存版本清單的展開狀態（由管理員控制）
+  const versionsSeq = useRef(0);
+  const [versions, setVersions] = useState(null); // 這個主題的全部版本（含封存），讀取失敗時退回只用 published / draft
   const [answers, setAnswers] = useState(initial.answers); // 這個主題底下的原始回答（證據）
   // 還沒完成的欄位儲存。發布／複製／刪除前要先等它們做完：欄位是「離開輸入框」
   // 才儲存，打完字直接按發布時，儲存跟發布會同時送出，發布可能先完成。
@@ -70,6 +74,20 @@ export default function TaxonomyPanel() {
     }
   };
 
+  const loadVersions = async () => {
+    const seq = ++versionsSeq.current; // 切換主題後，舊主題的回應不得覆蓋
+    try {
+      const data = await api(`/api/admin/ai/topics/${topicKey}/taxonomy`, token);
+      if (seq !== versionsSeq.current) return;
+      setVersions(data.versions || null);
+      setVersionsFailed(false);
+    } catch {
+      if (seq !== versionsSeq.current) return;
+      setVersions(null);
+      setVersionsFailed(true);
+    }
+  };
+
   const openVersion = async (versionId) => {
     try {
       const path = `/api/admin/ai/topics/${topicKey}/taxonomy/${versionId}`;
@@ -91,6 +109,11 @@ export default function TaxonomyPanel() {
     setMergeResultText("");
     setUnmergeResultText("");
     setMergedTargetTitle("");
+    setVersions(null);
+    setVersionsFailed(false);
+    setArchivedOpen(false);
+    setError("");
+    loadVersions();
     (async () => {
       const meta = await loadTopicMeta();
       if (cancelled || !meta) { setLoading(false); return; }
@@ -144,6 +167,7 @@ export default function TaxonomyPanel() {
       const data = await api(`/api/admin/ai/topics/${topicKey}/taxonomy/${taxVersion.version_id}/clone`, token, { method: "POST" });
       setTaxVersion(data.taxonomy_version);
       await loadTopicMeta();
+      loadVersions();
     } catch (e) { setError(e.message); }
   };
   // 跟目前上線的版本比較，列出這次改了什麼，發布前讓 Admin 確認
@@ -183,6 +207,7 @@ export default function TaxonomyPanel() {
       const data = await api(`/api/admin/ai/topics/${topicKey}/taxonomy/${taxVersion.version_id}/publish`, token, { method: "POST" });
       setTaxVersion(data.taxonomy_version);
       await loadTopicMeta();
+      loadVersions();
     } catch (e) { setError(e.message); }
   };
   const deleteTaxVersion = async () => {
@@ -191,6 +216,7 @@ export default function TaxonomyPanel() {
     try {
       await api(`/api/admin/ai/topics/${topicKey}/taxonomy/${taxVersion.version_id}`, token, { method: "DELETE" });
       setTaxVersion(null);
+      loadVersions();
       const meta = await loadTopicMeta();
       if (meta) {
         const nextVersionId = meta.latest_draft_version?.version_id ?? meta.published_version?.version_id;
@@ -258,6 +284,19 @@ export default function TaxonomyPanel() {
   const taxKeys = new Set((taxVersion?.categories || []).map((c) => groupKey(c.main_category, c.sub_category)));
   const otherGroups = (answers?.groups || []).filter((g) => !taxKeys.has(groupKey(g.main_category, g.sub_category)));
 
+  const versionLabel = (status) => ({ published: t("使用中", "Live"), draft: t("草稿", "Draft"), in_review: t("審核中", "In review"), archived: t("封存", "Archived") }[status] || status);
+  // 版本清單：優先用完整清單（含封存），讀取失敗時只列出目前上線與最新草稿
+  const versionButtons = (() => {
+    const list = versions || [topicMeta?.published_version, topicMeta?.latest_draft_version]
+      .filter(Boolean).map((v) => ({ ...v, status: v.status || (v.version_id === topicMeta?.published_version?.version_id ? "published" : "draft") }));
+    const rank = { draft: 0, in_review: 0, published: 1 };
+    return {
+      main: list.filter((v) => v.status !== "archived").sort((a, b) => (rank[a.status] ?? 2) - (rank[b.status] ?? 2) || b.version_number - a.version_number),
+      archived: list.filter((v) => v.status === "archived").sort((a, b) => b.version_number - a.version_number),
+    };
+  })();
+  const editableNow = Boolean(taxVersion) && TAX_EDITABLE_STATUSES.includes(taxVersion.status);
+
   if (loading) return <SkeletonCards count={4} />;
 
   return <>
@@ -300,45 +339,66 @@ export default function TaxonomyPanel() {
     )}
 
     {topicMeta && taxVersion && <>
-      {topicMeta.published_version && topicMeta.latest_draft_version
-        && topicMeta.published_version.version_id !== topicMeta.latest_draft_version.version_id && (
-        <div className="admin-card" style={{ marginBottom: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <b>{t("查看版本：", "View version:")}</b>
-          {topicMeta.published_version && (
-            <button className={taxVersion.version_id === topicMeta.published_version.version_id ? "primary" : ""} onClick={() => openVersion(topicMeta.published_version.version_id)}>
-              {t("已發布", "Published")} v{topicMeta.published_version.version_number}
-            </button>
-          )}
-          {topicMeta.latest_draft_version && (
-            <button className={taxVersion.version_id === topicMeta.latest_draft_version.version_id ? "primary" : ""} onClick={() => openVersion(topicMeta.latest_draft_version.version_id)}>
-              {t("草稿", "Draft")} v{topicMeta.latest_draft_version.version_number} ({taxStatusText(topicMeta.latest_draft_version.status)})
-            </button>
-          )}
-        </div>
+      <div className="tax-version-bar">
+        <b>{t("版本", "Version")}</b>
+        {versionButtons.main.map((v) => (
+          <button key={v.version_id} type="button" aria-pressed={taxVersion.version_id === v.version_id}
+            className={`tax-ver${taxVersion.version_id === v.version_id ? " tax-ver--active" : ""}`}
+            onClick={() => openVersion(v.version_id)}>
+            v{v.version_number} {versionLabel(v.status)}
+          </button>
+        ))}
+        {versionButtons.archived.length > 0 && (
+          <details className="tax-ver-archived" open={archivedOpen} onToggle={(e) => setArchivedOpen(e.currentTarget.open)}>
+            <summary>{t(`封存版本（${versionButtons.archived.length}）`, `Archived (${versionButtons.archived.length})`)}</summary>
+            {versionButtons.archived.map((v) => (
+              <button key={v.version_id} type="button" aria-pressed={taxVersion.version_id === v.version_id}
+                className={`tax-ver${taxVersion.version_id === v.version_id ? " tax-ver--active" : ""}`}
+                onClick={() => openVersion(v.version_id)}>
+                v{v.version_number} {versionLabel(v.status)}
+              </button>
+            ))}
+          </details>
+        )}
+      </div>
+      {versionsFailed && (
+        <p className="tax-mode tax-mode--archived" role="status">
+          {t("完整版本清單讀取失敗，目前只顯示使用中與最新草稿。", "Couldn't load the full version list; showing only the live version and latest draft.")}{" "}
+          <button type="button" onClick={loadVersions}>{t("重新讀取", "Retry")}</button>
+        </p>
       )}
+      <p className={`tax-mode tax-mode--${taxVersion.status === "published" ? "live" : editableNow ? "draft" : "archived"}`} role="status">
+        {taxVersion.status === "published"
+          ? t(`目前查看：使用中的 v${taxVersion.version_number}。這是正式版本，唯讀；要修改請先建立新草稿。`, `Viewing live v${taxVersion.version_number}. Read-only — create a new draft to make changes.`)
+          : editableNow
+            ? t(`目前查看：${taxStatusText(taxVersion.status)} v${taxVersion.version_number}。可以編輯，發布後才會用於分類。`, `Viewing ${taxStatusText(taxVersion.status)} v${taxVersion.version_number}. Editable; it is used for classification only after publishing.`)
+            : t(`目前查看：封存的 v${taxVersion.version_number}。唯讀，僅供歷史參照。`, `Viewing archived v${taxVersion.version_number}. Read-only, for history only.`)}
+      </p>
 
       <p><small>v{taxVersion.version_number} · {taxStatusText(taxVersion.status)} · {t("來源：", "Source:")} {({ manual: t("手動建立", "Manual"), ai_generated: t("AI 產生", "AI generated"),
           migrated_legacy: t("舊版轉入", "Migrated") })[taxVersion.source] || taxVersion.source} · {t("建立於：", "Created:")} {taxVersion.created_at ? new Date(taxVersion.created_at).toLocaleString() : "—"}{taxVersion.published_at ? ` · ${t("發布於：", "Published:")} ${new Date(taxVersion.published_at).toLocaleString()}` : ""}</small></p>
 
-      <div style={{ display: "flex", gap: 10, margin: "14px 0" }}>
-        {taxVersion.status === "published" ? <button className="primary" onClick={cloneTaxVersion}>{t("建立新草稿版本（複製此版）", "Create new draft (clone this version)")}</button>
-          : <>{TAX_EDITABLE_STATUSES.includes(taxVersion.status) && <button onClick={addTaxCategory}>{t("＋ 新增子類別", "＋ Add category")}</button>}<button className="primary" onClick={publishTaxVersion}>{t("發布這個版本", "Publish as production taxonomy")}</button></>}
-        {taxVersion.status === "draft" && <button onClick={deleteTaxVersion}>{t("刪除草稿", "Delete draft")}</button>}
+      <div className="tax-actions">
+        {taxVersion.status === "published" && <button className="primary" onClick={cloneTaxVersion}>{t("建立新草稿版本（複製此版）", "Create new draft (clone this version)")}</button>}
+        {editableNow && <>
+          <button onClick={addTaxCategory}>{t("＋ 新增子類別", "＋ Add category")}</button>
+          <button className="primary" onClick={publishTaxVersion}>{t("發布這個版本", "Publish as production taxonomy")}</button>
+        </>}
+        {taxVersion.status === "draft" && <button className="review-btn-danger tax-danger" onClick={deleteTaxVersion}>{t("刪除草稿", "Delete draft")}</button>}
       </div>
       {!answers && <button onClick={loadAnswers} disabled={answersLoading}>
         {answersLoading ? t("載入回答範例…", "Loading answer examples…") : t("載入回答範例", "Load answer examples")}
       </button>}
-      {taxVersion.status === "published" && <p className="tax-legacy-note">{t("已發布版本唯讀，不可直接編輯；如需修改請先建立新草稿版本。", "Published versions are read-only. Create a new draft to make changes.")}</p>}
 
       {(taxVersion.categories || []).map((cat, i) => {
         const editable = TAX_EDITABLE_STATUSES.includes(taxVersion.status);
-        return <div className="admin-card" key={cat.category_id} style={{ marginBottom: 14 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        return <div className="admin-card tax-cat-card" key={cat.category_id}>
+          <div className="tax-cat-head">
             <b>{i + 1}. {cat.main_category} / {cat.sub_category}</b>
-            {editable && <span style={{ display: "flex", gap: 6 }}>
+            {editable && <span className="tax-cat-tools">
               <button onClick={() => moveTaxCategory(i, -1)} disabled={i === 0}>↑</button>
               <button onClick={() => moveTaxCategory(i, 1)} disabled={i === taxVersion.categories.length - 1}>↓</button>
-              <button onClick={() => deleteTaxCategory(cat.category_id)}>{t("刪除", "Delete")}</button>
+              <button className="review-btn-danger tax-danger" onClick={() => deleteTaxCategory(cat.category_id)}>{t("刪除", "Delete")}</button>
             </span>}
           </div>
           {answers && <CategoryAnswers topicKey={topicKey} token={token} group={groupFor(cat)} />}

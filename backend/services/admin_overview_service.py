@@ -180,6 +180,18 @@ def _undecided_topic_keys() -> set:
     return existing - published
 
 
+def undecided_auto_topic_keys() -> set:
+    """分類架構頁「AI 暫時主題」篩選的同一個定義：auto_ 開頭、未併入其他主題、沒有 published 版本，
+    並排除舊資料主題。不看有沒有回答、有沒有草稿或新類別候選。"""
+    from models import Topic
+    from services.admin_recovery_service import LEGACY_SOURCE_COLUMN
+    from services.open_classification import is_auto_topic
+
+    keys = {k for k, title in db.session.query(Topic.topic_key, Topic.title).all()
+            if is_auto_topic(k) and k != LEGACY_SOURCE_COLUMN and title != LEGACY_SOURCE_COLUMN}
+    return keys & _undecided_topic_keys()
+
+
 def residual_new_category_groups() -> int:
     from services.new_category_service import residual_group_count
 
@@ -254,6 +266,7 @@ def build_overview() -> dict:
             "second_opinion_failed": totals[BUCKET_SECOND_OPINION_FAILED],
             "other": totals[BUCKET_OTHER],
             "provisional_topics": provisional_topics,
+            "undecided_auto_topics": len(undecided_auto_topic_keys()),  # 與分類架構頁「AI 暫時主題」一致；不計入 total
             "total": decisions,
         },
         # 待人工審查（分類審查頁「待審查」）只算真正要人逐筆處理的列

@@ -50,7 +50,7 @@ function HistorySection({ history }) {
   // 的主要工作內容。
   return (
     <details className="review-history-section">
-      <summary>{t("審核歷史", "Review history")}（{history.length}）</summary>
+      <summary><span className="review-step">4</span>{t("審核紀錄", "Review history")}（{history.length}）</summary>
       {history.length === 0 && <p className="review-empty-hint">{t("目前沒有任何審核紀錄。", "No review sessions yet.")}</p>}
       {history.map((r) => (
         <details key={r.review_id} className="review-history-entry">
@@ -85,7 +85,7 @@ function HistorySection({ history }) {
  * mode="view"：由 confirmed/modified 這些已鎖定狀態的「查看審核紀錄」
  *   進入，不呼叫 start，只讀 GET review + GET history。
  */
-export default function ReviewConversation({ classificationId, mode = "start", onClose, onChanged }) {
+export default function ReviewConversation({ classificationId, mode = "start", onClose, onChanged, onNext = null, remaining = 0 }) {
   const { user } = useAuth();
   const token = user?.token;
   const currentAdminId = user?.admin_id;
@@ -303,6 +303,7 @@ export default function ReviewConversation({ classificationId, mode = "start", o
   };
 
   const handleExclude = async () => {
+    if (!window.confirm(t("確定不納入分析？這筆不會進入統計與報表，之後可重新開啟審核。", "Exclude from analysis? It is left out of statistics and reports; you can reopen the review later."))) return;
     setBusyAction("exclude");
     try {
       await runAction(`/api/classification/${classificationId}/review/exclude`, { method: "POST" });
@@ -383,6 +384,7 @@ export default function ReviewConversation({ classificationId, mode = "start", o
           </p>
         ))}
         <p><small>{t("新的結果會出現在目標主題的「分類審核」清單，等待確認；舊的結果保留在歷史紀錄。", "The new result waits for review in the target topic's review list; the old one stays in history.")}</small></p>
+        {onNext && <button className="review-btn-primary" onClick={onNext}>{t(`處理下一筆（本頁還有 ${remaining} 筆）`, `Next item (${remaining} left on this page)`)}</button>}{" "}
         <button onClick={onClose}>{t("← 返回列表", "← Back to list")}</button>
       </div>
     );
@@ -392,12 +394,15 @@ export default function ReviewConversation({ classificationId, mode = "start", o
     return (
       <div className="admin-card review-conversation">
         {error && <p className="ai-admin-error">{error}</p>}
+        {onNext && <button className="review-btn-primary" onClick={onNext}>{t("略過，處理下一筆", "Skip to next item")}</button>}{" "}
         <button onClick={onClose}>{t("← 返回列表", "← Back to list")}</button>
       </div>
     );
   }
 
   const segment = classification.answer_text.slice(classification.segment_start, classification.segment_end);
+  // 這筆剛審完（已確認／已修改／已排除）：提供直接處理下一筆的入口。
+  const justFinished = mode === "start" && ["confirmed", "modified", "excluded"].includes(classification.review_status);
 
   return (
     <div className="admin-card review-conversation">
@@ -407,14 +412,25 @@ export default function ReviewConversation({ classificationId, mode = "start", o
           {STATUS_LABEL[classification.review_status] || classification.review_status}
         </span>
       </div>
+      {justFinished && (
+        <p className="review-batch-message review-batch-message--ok" role="status">
+          ✓ {onNext
+            ? t(`這筆已處理完成，本頁還有 ${remaining} 筆待處理。`, `Done. ${remaining} more on this page.`)
+            : t("這筆已處理完成，本頁已處理完畢；返回列表會自動載入後面的項目。", "Done. This page is finished; the list reloads with the remaining items.")}{" "}
+          {onNext
+            ? <button className="review-btn-primary" onClick={onNext}>{t("處理下一筆 →", "Next item →")}</button>
+            : <button className="review-btn-primary" onClick={onClose}>{t("返回列表繼續", "Back to list")}</button>}
+        </p>
+      )}
 
-      {error && <p className="ai-admin-error">{error}<button onClick={() => setError("")}>×</button></p>}
+      {error && <p className="ai-admin-error" role="alert">{error}<button onClick={() => setError("")}>×</button></p>}
 
       {isConflict && (
-        <p className="review-conflict-banner">
+        <p className="review-conflict-banner" role="alert">
           ⚠ {t("此分類目前由", "This classification is currently being reviewed by")}{" "}
           <b>{conflictInfo.reviewing_admin_name || `Admin #${conflictInfo.reviewing_admin_id}`}</b>{" "}
-          {t("審核中，你目前無法送出訊息、採用候選或不納入分析，但仍可以查看資料與歷史紀錄。", "You cannot send messages, adopt a candidate, or exclude right now, but you can still view the data and history below.")}
+          {t("審核中，你目前無法送出訊息、採用候選或不納入分析，但仍可以查看資料與歷史紀錄。", "You cannot send messages, adopt a candidate, or exclude right now, but you can still view the data and history below.")}{" "}
+          {onNext && <button onClick={onNext}>{t("略過，處理下一筆", "Skip to next item")}</button>}
         </p>
       )}
 
@@ -422,7 +438,7 @@ export default function ReviewConversation({ classificationId, mode = "start", o
         // ── 已鎖定狀態（confirmed / modified / excluded）：單欄唯讀 ──
         <div className="review-readonly">
           <section className="review-section">
-            <h3>{t("原始回覆片段", "Original segment")}</h3>
+            <h3><span className="review-step">1</span>{t("原始回答", "Original answer")}</h3>
             {reviewState?.source_question && (
               <p className="review-source-question"><span className="review-field-label">{t("回答的題目 / 欄位", "Question / column")}</span>{reviewState.source_question}</p>
             )}
@@ -471,7 +487,7 @@ export default function ReviewConversation({ classificationId, mode = "start", o
           <div className="review-layout">
             <div className="review-main">
               <section className="review-section">
-                <h3>{t("原始回覆片段", "Original segment")}</h3>
+                <h3><span className="review-step">1</span>{t("原始回答", "Original answer")}</h3>
                 {reviewState?.source_question && (
                   <p className="review-source-question"><span className="review-field-label">{t("回答的題目 / 欄位", "Question / column")}</span>{reviewState.source_question}</p>
                 )}
@@ -485,6 +501,7 @@ export default function ReviewConversation({ classificationId, mode = "start", o
               </section>
 
               <section className="review-section">
+                <h3><span className="review-step">2</span>{t("AI 分類結果", "AI classification")}</h3>
                 <CategoryBlock
                   title={t("AI 原始判斷", "AI original classification")}
                   main={classification.main_category}
@@ -504,7 +521,7 @@ export default function ReviewConversation({ classificationId, mode = "start", o
               </section>
 
               <section className="review-section review-manual-pick">
-                <h3>{t("選擇最終分類", "Choose the final category")}</h3>
+                <h3><span className="review-step">3</span>{t("人工審核：改成其他分類", "Review: choose another category")}</h3>
                 {options.length === 0 ? (
                   <p className="review-empty-hint">{t("這筆資料沒有可用的分類清單，請先到「其他 / 未歸屬資料」指派主題。", "No category list is available for this item. Assign a topic first under Other / Unassigned.")}</p>
                 ) : (
@@ -575,7 +592,7 @@ export default function ReviewConversation({ classificationId, mode = "start", o
 
             <div className="review-side">
               <section className="review-section">
-                <h3>{t("跟 AI 討論（選用）", "Discuss with AI (optional)")}</h3>
+                <h3><span className="review-step">3</span>{t("人工審核：跟 AI 討論（選用）", "Review: discuss with AI (optional)")}</h3>
                 <p className="review-empty-hint">{t("可以請 AI 說明判斷理由或建議其他分類；AI 只能從分類清單裡建議。", "Ask the AI to explain or suggest another category; it can only suggest categories from the list.")}</p>
                 <div className="review-message-list">
                   {activeMessages.length === 0 && !pendingMessage && <p className="review-empty-hint">{t("尚無對話。例如：「這段比較像在講工作量，應該歸哪一類？」", "No messages yet. e.g. “This seems to be about workload — which category fits?”")}</p>}
@@ -631,6 +648,7 @@ export default function ReviewConversation({ classificationId, mode = "start", o
             </div>
           </div>
 
+          <p className="review-actions-label">{t("完成這筆", "Finish this item")}</p>
           <div className="review-bottom-actions">
             <button
               className="review-btn-primary"
@@ -649,10 +667,10 @@ export default function ReviewConversation({ classificationId, mode = "start", o
             >
               {busyAction === "confirm-candidate" ? t("處理中…", "Working…") : t("採用 AI 最新建議", "Adopt AI's latest suggestion")}
             </button>
-            <button onClick={handleExclude} disabled={isConflict || busyAction !== ""} className="review-btn-danger">
+            <button onClick={onClose}>{t("返回列表", "Back to list")}</button>
+            <button onClick={handleExclude} disabled={isConflict || busyAction !== ""} className="review-btn-danger review-btn-danger--end">
               {busyAction === "exclude" ? t("處理中…", "Working…") : t("不納入分析", "Exclude from analysis")}
             </button>
-            <button onClick={onClose}>{t("返回列表", "Back to list")}</button>
           </div>
 
           <HistorySection history={history} />

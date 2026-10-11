@@ -16,6 +16,7 @@ const NAV = [
 const SYSTEM_VIEWS = {
   status: ["系統狀態", "System status"], jobs: ["背景工作", "Background jobs"],
   errors: ["錯誤紀錄", "Error log"], audit: ["操作紀錄", "Activity log"],
+  maintenance: ["資料維護", "Data maintenance"],
 };
 
 // 依目前網址（路徑 + ?view=）決定麵包屑；總覽與主題詳細頁不在這裡處理

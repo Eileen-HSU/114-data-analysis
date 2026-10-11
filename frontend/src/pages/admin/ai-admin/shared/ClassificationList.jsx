@@ -19,22 +19,29 @@ const newBatchId = () => (
 // 分頁、計數、篩選全部由後端處理（GET /api/admin/ai/classifications 回傳
 // total / status_counts），畫面上的數字永遠是「全部符合條件的資料」，不是
 // 目前頁面。所有操作成功後都重新向後端讀取，不在前端假裝修改 state。
+// 篩選條件（state / source / queue / topic）以網址為唯一來源，由父層傳入；
+// 本元件只負責依這些值讀取資料，網址變動（返回、首頁連結）會立即反映。
 export default function ClassificationList({
-  topicParam, onOpenReview, refreshSignal, initialTab, initialConfirmedSource, queue = "human",
+  topicParam, onOpenReview, refreshSignal, tab, source, onFilterChange, queue = "human",
 }) {
   const [promptDialog, askText] = useTextPrompt();
   const { user } = useAuth();
   const token = user?.token;
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState(STATE_TABS.includes(initialTab) ? initialTab : "pending_review");
+  const activeTab = STATE_TABS.includes(tab) ? tab : "pending_review";
   // 「已確認」分頁的篩選：all / auto（只看自動通過，抽查用）/ human（只看人工確認）
-  const [confirmedSource, setConfirmedSource] = useState(
-    ["all", "auto", "human"].includes(initialConfirmedSource) ? initialConfirmedSource : "all",
-  );
-  const [backfillBusy, setBackfillBusy] = useState(false);
-  const [page, setPage] = useState(1);
-  const listUrl = () => {
+  const confirmedSource = ["all", "auto", "human"].includes(source) ? source : "all";
+  // 頁數綁定在「篩選組合」上：篩選一變，頁數自動回到第 1 頁，
+  // 不會先用舊頁數發出一次多餘的請求。
+  const filterKey = [topicParam || "", activeTab, confirmedSource, activeTab === "pending_review" ? queue : ""].join("|");
+  const [pageState, setPageState] = useState({ key: filterKey, page: 1 });
+  const page = pageState.key === filterKey ? pageState.page : 1;
+  const setPage = (next) => setPageState((prev) => {
+    const current = prev.key === filterKey ? prev.page : 1;
+    return { key: filterKey, page: typeof next === "function" ? next(current) : next };
+  });
+  const buildUrl = () => {
     const params = new URLSearchParams({ state: activeTab, page: String(page), page_size: String(PAGE_SIZE) });
     if (topicParam) params.set("topic", topicParam);
     // 待審只留需要人工逐筆處理的；系統自動處理中（等 AI 再確認、等自動通過）、新類別群組不列在這裡
@@ -44,10 +51,11 @@ export default function ClassificationList({
     }
     return `/api/admin/ai/classifications?${params}`;
   };
+  const listUrl = buildUrl();
   const EMPTY = { classifications: [], total: 0, total_pages: 0, status_counts: {} };
   // 抓過的就先顯示；沒抓過的一開始就是「載入中」，不會先閃出「沒有資料」
-  const [data, setData] = useState(() => peekCache(listUrl()) || EMPTY);
-  const [loading, setLoading] = useState(() => !peekCache(listUrl()));
+  const [data, setData] = useState(() => peekCache(listUrl) || EMPTY);
+  const [loading, setLoading] = useState(() => !peekCache(listUrl));
   const [error, setError] = useState("");
 
   const [rowBusy, setRowBusy] = useState({});
@@ -56,7 +64,7 @@ export default function ClassificationList({
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [batchBusy, setBatchBusy] = useState(false);
   const [batchMessage, setBatchMessage] = useState("");
-  const [excludeLegacyBusy, setExcludeLegacyBusy] = useState(false);
+  const [batchWarn, setBatchWarn] = useState(false); // 部分成功／失敗：用警示色，不要像全部成功
 
   // 每次載入都有編號，只採用最後一次請求的結果：快速切換分頁時，較慢回來
   // 的舊請求不會蓋掉新分頁的資料。
@@ -65,9 +73,11 @@ export default function ClassificationList({
   // 只有切換分頁 / 篩選 / 頁數才顯示「搜尋中」。
   const load = async ({ silent = false } = {}) => {
     const seq = ++requestSeq.current;
-    const url = listUrl();
+    const url = listUrl;
     const cached = peekCache(url);
-    if (cached && !silent) setData(cached);       // 先顯示上次的結果，背景更新
+    // 切換篩選時一律先換掉畫面：有快取就顯示快取（背景更新），沒有就清空並顯示載入中，
+    // 避免短暫顯示上一個篩選的舊資料。
+    if (!silent) setData(cached || EMPTY);
     if (!silent) setLoading(!cached);
     try {
       setError("");
@@ -80,19 +90,24 @@ export default function ClassificationList({
     }
   };
 
+  // listUrl 已包含 topic / state / source / queue / 頁數，任何一項變動都會重新讀取；
+  // refreshSignal 用於審核對話完成後的重新整理（背景更新，不清空畫面）。
+  const lastUrl = useRef(listUrl);
   useEffect(() => {
-    load();
+    const silent = lastUrl.current === listUrl && refreshSignal > 0;
+    lastUrl.current = listUrl;
+    load({ silent });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [topicParam, refreshSignal, activeTab, confirmedSource, page]);
+  }, [listUrl, refreshSignal]);
 
   // 切換 topic / tab / 篩選 / 頁數時不保留上一個畫面的勾選：批次操作
   // 的對象永遠是「目前這一頁、使用者看得到並勾選的那些列」。
   useEffect(() => {
     setSelectedIds(new Set());
     setBatchMessage("");
-  }, [topicParam, activeTab, confirmedSource, page]);
-
-  useEffect(() => { setPage(1); }, [topicParam]);
+    setBatchWarn(false);
+    setRowError({});
+  }, [listUrl]);
 
   const rows = data.classifications || [];
   const counts = data.status_counts || {};
@@ -114,6 +129,16 @@ export default function ClassificationList({
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
+
+  // 開啟逐筆審核時，一併交出「本頁接下來還需要處理的項目」，審完可直接接著處理下一筆。
+  // 只包含一般待處理的項目（不含正在被審核、AI 新類別）。順序：目前這筆之後，
+  // 再接本頁前面還沒處理的，不會漏掉。
+  const nextQueueAfter = (id) => {
+    const index = rows.findIndex((row) => row.classification_id === id);
+    return [...rows.slice(index + 1), ...rows.slice(0, Math.max(index, 0))]
+      .filter((row) => row.review_state === "pending_review" && row.status !== "new_category")
+      .map((row) => row.classification_id);
+  };
 
   const withRow = async (id, fn) => {
     setRowBusy((p) => ({ ...p, [id]: true }));
@@ -159,6 +184,7 @@ export default function ClassificationList({
 
   const retry = (row) => withRow(row.classification_id, async () => {
     const result = await api(`/api/admin/ai/classifications/${row.classification_id}/retry`, token, { method: "POST" });
+    setBatchWarn(!result.succeeded);
     setBatchMessage(result.succeeded
       ? t("已重新處理，新的分類結果在「待處理」。", "Reprocessed; the new result is under Pending.")
       : t(`重新處理仍然失敗${result.kept_previous ? "，原本的結果維持不變" : ""}：${result.failure?.message || ""}`,
@@ -173,6 +199,7 @@ export default function ClassificationList({
     ))) return;
     setBatchBusy(true);
     setBatchMessage("");
+    setBatchWarn(false);
     setRowError({});
     try {
       const result = await api("/api/classification/review/batch-confirm", token, {
@@ -181,6 +208,7 @@ export default function ClassificationList({
       });
       const skipped = result.skipped || [];
       setRowError(Object.fromEntries(skipped.map((s) => [s.classification_id, s.message])));
+      setBatchWarn(skipped.length > 0);
       setBatchMessage(skipped.length
         ? t(`已確認 ${result.confirmed_count} 筆，${skipped.length} 筆未處理（原因標示在各項目上）。`,
           `${result.confirmed_count} confirmed, ${skipped.length} skipped (reasons shown on each item).`)
@@ -194,85 +222,27 @@ export default function ClassificationList({
     }
   };
 
-  const runExcludeLegacy = async () => {
-    if (excludeLegacyBusy) return;
-    setExcludeLegacyBusy(true);
-    setBatchMessage("");
-    setError("");
-    try {
-      const preview = await api("/api/classification/review/exclude-legacy/preview", token);
-      if (preview.eligible_count === 0) {
-        setBatchMessage(t("沒有符合條件的舊版資料。", "No eligible legacy data."));
-        return;
-      }
-      const reasons = (preview.skipped_reasons || []).map((r) => `  • ${r.message}：${r.count}`).join("\n");
-      if (!window.confirm(t(
-        `將排除 ${preview.eligible_count} 筆舊版分類資料（沒有信心分數、沒有 taxonomy 版本、從未人工處理）。\n略過 ${preview.skipped_count} 筆：\n${reasons || "  （無）"}\n\n原始紀錄會保留，但不再納入分析。是否繼續？`,
-        `Exclude ${preview.eligible_count} legacy classifications.\nSkipped ${preview.skipped_count}:\n${reasons || "  (none)"}\n\nRecords are kept but no longer analysed. Continue?`,
-      ))) return;
-      const result = await api("/api/classification/review/exclude-legacy", token, {
-        method: "POST",
-        body: JSON.stringify({ batch_id: newBatchId(), expected_ids: preview.eligible_ids }),
-      });
-      setBatchMessage(t(
-        `已排除 ${result.affected_count} 筆舊版資料（批次 ${result.batch_id.slice(0, 8)}）`,
-        `Excluded ${result.affected_count} legacy classification(s) (batch ${result.batch_id.slice(0, 8)})`,
-      ));
-      await load({ silent: true });
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setExcludeLegacyBusy(false);
-    }
-  };
-
-  // 自動通過上線前就分析好的資料：先預覽筆數，確認後才寫入。
-  const runAutoConfirmBackfill = async () => {
-    if (backfillBusy) return;
-    setBackfillBusy(true);
-    setBatchMessage("");
-    setError("");
-    try {
-      const preview = await api("/api/admin/ai/classifications/auto-confirm", token, {
-        method: "POST", body: JSON.stringify({ dry_run: true }),
-      });
-      if (preview.eligible_count === 0) {
-        setBatchMessage(t("沒有符合自動通過條件的待處理資料。", "No pending items meet the auto-approval rules."));
-        return;
-      }
-      if (!window.confirm(t(
-        `有 ${preview.eligible_count} 筆待處理的結果符合自動通過條件（信心 ≥ 0.75、類別在已發布的分類架構內、沒有需要人工判斷的問題）。\n\n要把它們改成「自動通過」嗎？之後仍可在「已確認 › 自動通過」重新審核。`,
-        `${preview.eligible_count} pending items meet the auto-approval rules (confidence ≥ 0.75, category in the published taxonomy, nothing flagged).\n\nAuto-approve them? You can still re-review them under Confirmed › Auto-approved.`,
-      ))) return;
-      const result = await api("/api/admin/ai/classifications/auto-confirm", token, {
-        method: "POST", body: JSON.stringify({ dry_run: false }),
-      });
-      setBatchMessage(t(`已自動通過 ${result.eligible_count} 筆。`, `Auto-approved ${result.eligible_count} items.`)
-        + (result.limit_reached ? t("還有更多符合條件的資料，請再按一次。", " More remain; run it again.") : ""));
-      await load({ silent: true });
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setBackfillBusy(false);
-    }
-  };
-
   const totalPages = Math.max(data.total_pages || 0, 1);
+  // 處理完後後面的頁數可能消失：頁數超出範圍時退回最後一頁，不要顯示空白的「沒有資料」。
+  useEffect(() => {
+    if (!loading && page > totalPages) setPage(totalPages);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, page, totalPages]);
 
   return (
     <div className="review-workbench">{promptDialog}
       {error && <p className="ai-admin-error">{error}<button onClick={() => setError("")}>×</button></p>}
 
       <p className="review-workbench-intro">
-        {t("AI 有把握、類別也在分類架構裡的結果會自動通過，這裡只剩需要人看的項目。標示「需人工審核」的請逐筆確認；自動通過的可在「已確認」分頁抽查。",
-          "Confident results whose category is in the taxonomy are approved automatically, so only items that need a person are left here. Confirm flagged items one by one; spot-check auto-approved ones under Confirmed.")}
+        {t("這裡只列需要人看的項目；AI 有把握的結果已自動通過，可在「已確認」分頁抽查。",
+          "Only items that need a person are listed; confident results are auto-approved (spot-check them under Confirmed).")}
       </p>
 
       <div className="review-tabs" role="tablist">
         {STATE_TABS.map((state) => (
           <button key={state} role="tab" aria-selected={activeTab === state}
             className={`review-tab${activeTab === state ? " review-tab--active" : ""}`}
-            onClick={() => { setActiveTab(state); setPage(1); }}>
+            onClick={() => onFilterChange?.({ state, source: state === "confirmed" ? confirmedSource : "all" })}>
             {stateLabel(state)}
             <span className="review-tab-count">{counts[state] ?? 0}</span>
           </button>
@@ -291,7 +261,7 @@ export default function ClassificationList({
           ].map(([key, label]) => (
             <button key={key} role="tab" aria-selected={confirmedSource === key}
               className={`review-tab${confirmedSource === key ? " review-tab--active" : ""}`}
-              onClick={() => { setConfirmedSource(key); setPage(1); }}>
+              onClick={() => onFilterChange?.({ state: "confirmed", source: key })}>
               {label}
             </button>
           ))}
@@ -306,32 +276,25 @@ export default function ClassificationList({
             <span>{t(`本頁 ${rows.length} 筆／共 ${data.total} 筆`, `${rows.length} on this page / ${data.total} total`)}</span>
           </div>
           <div className="review-batch-actions">
-            <button type="button" disabled={batchBusy || excludeLegacyBusy} onClick={() => setSelectedIds(new Set(selectableRows.map((r) => r.classification_id)))}>
+            <button type="button" disabled={batchBusy} onClick={() => setSelectedIds(new Set(selectableRows.map((r) => r.classification_id)))}>
               {t("全選本頁", "Select this page")}
             </button>
-            <button type="button" disabled={batchBusy || excludeLegacyBusy || highConfidenceRows.length === 0}
+            <button type="button" disabled={batchBusy || highConfidenceRows.length === 0}
               onClick={() => setSelectedIds(new Set(highConfidenceRows.map((r) => r.classification_id)))}
               title={t(`選取本頁信心分數 ≥ ${HIGH_CONFIDENCE_THRESHOLD.toFixed(1)} 且不需人工審核的項目`, `Select items on this page with confidence ≥ ${HIGH_CONFIDENCE_THRESHOLD.toFixed(1)}`)}>
               {t(`選取高信心 (${highConfidenceRows.length})`, `Select high-confidence (${highConfidenceRows.length})`)}
             </button>
-            <button type="button" disabled={batchBusy || excludeLegacyBusy || selectedCount === 0} onClick={() => setSelectedIds(new Set())}>
+            <button type="button" disabled={batchBusy || selectedCount === 0} onClick={() => setSelectedIds(new Set())}>
               {t("清除選取", "Clear")}
             </button>
-            <button type="button" className="review-btn-primary" disabled={batchBusy || excludeLegacyBusy || selectedCount === 0} onClick={runBatchConfirm}>
+            <button type="button" className="review-btn-primary" disabled={batchBusy || selectedCount === 0} onClick={runBatchConfirm}>
               {batchBusy ? t("批次處理中…", "Processing…") : t(`批次維持 AI 分類 (${selectedCount})`, `Keep AI classification (${selectedCount})`)}
-            </button>
-            <button type="button" disabled={batchBusy || excludeLegacyBusy || backfillBusy} onClick={runAutoConfirmBackfill}
-              title={t("把自動通過功能上線前就分析好、符合條件的待處理結果改成自動通過", "Apply auto-approval to pending items analysed before it was enabled")}>
-              {backfillBusy ? t("處理中…", "Working…") : t("套用自動通過到既有資料", "Auto-approve existing items")}
-            </button>
-            <button type="button" className="review-btn-danger" disabled={batchBusy || excludeLegacyBusy || backfillBusy} onClick={runExcludeLegacy}>
-              {excludeLegacyBusy ? t("處理中…", "Working…") : t("排除舊版資料", "Exclude Legacy Data")}
             </button>
           </div>
         </div>
       )}
 
-      {batchMessage && <p className="review-batch-message">{batchMessage}</p>}
+      {batchMessage && <p className={`review-batch-message${batchWarn ? " review-batch-message--warn" : ""}`} role="status">{batchMessage}</p>}
 
       {loading && <SkeletonCards />}
 
@@ -353,8 +316,11 @@ export default function ClassificationList({
           error={rowError[row.classification_id]}
           onDismissError={() => setRowError((p) => ({ ...p, [row.classification_id]: "" }))}
           onAcceptOriginal={() => withRow(row.classification_id, () => api(`/api/classification/${row.classification_id}/review/confirm-original`, token, { method: "POST" }))}
-          onExclude={() => withRow(row.classification_id, () => api(`/api/classification/${row.classification_id}/review/exclude`, token, { method: "POST" }))}
-          onStartReview={onOpenReview ? () => onOpenReview(row.classification_id, "start") : null}
+          onExclude={() => {
+            if (!window.confirm(t("確定不納入分析？這筆不會進入統計與報表，之後可在「已排除」重新開啟。", "Exclude from analysis? It is left out of statistics and reports; you can reopen it under Excluded."))) return;
+            withRow(row.classification_id, () => api(`/api/classification/${row.classification_id}/review/exclude`, token, { method: "POST" }));
+          }}
+          onStartReview={onOpenReview ? () => onOpenReview(row.classification_id, "start", { queue: nextQueueAfter(row.classification_id) }) : null}
           onViewHistory={onOpenReview ? () => onOpenReview(row.classification_id, "view") : null}
           onReopen={() => reopen(row)}
           onRetry={() => retry(row)}
@@ -417,11 +383,13 @@ function ClassificationCard({
 
       {showsAiResult && (
         <div className="review-card-mid">
-          <p><span className="review-field-label">{t("AI 大類別", "AI main category")}</span>{row.main_category || "—"}</p>
-          <p><span className="review-field-label">{t("AI 子類別", "AI sub category")}</span>{row.sub_category || "—"}</p>
-          <p><span className="review-field-label">{t("信心分數", "Confidence")}</span>{typeof row.confidence === "number" ? row.confidence.toFixed(2) : "—"}</p>
+          <p className="review-ai-line">
+            <span className="review-field-label">{t("AI 判斷", "AI result")}</span>
+            <b>{row.main_category || "—"} / {row.sub_category || "—"}</b>
+            <span className="review-confidence-chip">{t("信心", "Conf.")} {typeof row.confidence === "number" ? row.confidence.toFixed(2) : "—"}</span>
+          </p>
           {row.needs_human_review && (
-            <p className="review-flag-badge">⚠ {t("需人工審核", "Needs human review")}{row.review_flag_reason && ` — ${reviewFlagReasonText(row.review_flag_reason)}`}</p>
+            <p className="review-flag-badge">⚠ {t("待審原因", "Why pending")}：{row.review_flag_reason ? reviewFlagReasonText(row.review_flag_reason) : t("需人工審核", "Needs human review")}</p>
           )}
           {auto && (
             <p><small>{row.second_opinion_status === "agreed"
@@ -489,7 +457,7 @@ function ClassificationCard({
             <button className={aiDisagreed ? "" : "review-btn-primary"} disabled={busy} onClick={onAcceptOriginal}>
               {aiDisagreed ? t("維持第一次的分類", "Keep first classification") : t("維持 AI 分類", "Keep AI classification")}
             </button>
-            {onStartReview && <button disabled={busy} onClick={onStartReview}>{state === "in_review" ? t("繼續審核", "Continue review") : t("重新審核", "Re-review")}</button>}
+            {onStartReview && <button disabled={busy} onClick={onStartReview}>{state === "in_review" ? t("繼續審核", "Continue review") : t("審核／修改", "Review / modify")}</button>}
             <button disabled={busy} className="review-btn-danger" onClick={onExclude}>{t("不納入分析", "Exclude from analysis")}</button>
           </>
         )}

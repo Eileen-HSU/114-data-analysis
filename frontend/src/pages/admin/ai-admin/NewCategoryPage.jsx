@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useTextPrompt } from "./shared/TextPromptDialog";
 import Navbar from "../../../components/feature/Navbar";
 import { useAuth } from "../../../hooks/AuthContext";
@@ -107,12 +107,189 @@ function MergeTargetNotice({ info, loading }) {
   </div>;
 }
 
+// AI 暫時主題的決策區：先看 AI 提出的實際內容 → 比較目標主題的分類架構 → 再決定去向。
+// 只用現有 API：GET /topics/<key>/answers（回答彙總與範例；每類最多 200 筆）、
+// GET /topics/<key>/taxonomy/<version_id>（已發布版本的分類與定義），不新增任何 AI 呼叫。
+const ANSWERS_PAGE = 50;
+const groupKeyOf = (item) => `${item.main_category}|${item.sub_category}`;
+
+function AutoTopicDecision({
+  token, topicKey, sourceName, items, topics, topicsLoading, target, onTargetChange, busy, onMerge, onKeep,
+}) {
+  const [summary, setSummary] = useState(null); // answers API 的彙總：total_segments
+  const [choice, setChoice] = useState(""); // 處理方式：""（尚未選擇）| "merge" | "keep"；只是切換畫面，不會寫入任何資料
+  const [opened, setOpened] = useState({}); // 候選群組 -> 是否展開回答（預設收合）
+  const [expanded, setExpanded] = useState({}); // 候選群組 -> { items, count } | { error }
+  const [taxonomies, setTaxonomies] = useState({}); // 目標主題 key -> { version, categories } | { error }
+
+  useEffect(() => {
+    let cancelled = false;
+    api(`/api/admin/ai/topics/${encodeURIComponent(topicKey)}/answers?per_category=0`, token)
+      .then((result) => { if (!cancelled) setSummary(result); })
+      .catch(() => {}); // 只是用來顯示影響筆數；失敗時改用候選群組的筆數加總
+    return () => { cancelled = true; };
+  }, [topicKey, token]);
+
+  const targetTopic = topics.find((candidate) => candidate.topic_key === target);
+  const versionId = targetTopic?.published_version?.version_id;
+  useEffect(() => {
+    if (!target || !versionId || taxonomies[target]) return;
+    setTaxonomies((state) => ({ ...state, [target]: { loading: true } }));
+    api(`/api/admin/ai/topics/${encodeURIComponent(target)}/taxonomy/${versionId}`, token)
+      .then((result) => setTaxonomies((state) => ({
+        ...state, [target]: { version: result.taxonomy_version, categories: result.taxonomy_version?.categories || [] },
+      })))
+      .catch((e) => setTaxonomies((state) => ({ ...state, [target]: { error: errorMessage(e) } })));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target, versionId]);
+
+  const toggleMore = async (item) => {
+    const key = groupKeyOf(item);
+    if (expanded[key]) { setExpanded((state) => ({ ...state, [key]: null })); return; }
+    setExpanded((state) => ({ ...state, [key]: { loading: true } }));
+    try {
+      const params = new URLSearchParams({
+        per_category: String(ANSWERS_PAGE), main_category: item.main_category ?? "", sub_category: item.sub_category ?? "",
+      });
+      const result = await api(`/api/admin/ai/topics/${encodeURIComponent(topicKey)}/answers?${params}`, token);
+      const group = (result.groups || []).find((g) => g.main_category === item.main_category && g.sub_category === item.sub_category);
+      setExpanded((state) => ({ ...state, [key]: { items: group?.items || [], count: group?.count ?? item.count } }));
+    } catch (e) {
+      setExpanded((state) => ({ ...state, [key]: { error: errorMessage(e) } }));
+    }
+  };
+
+  // total_answers = 回答數；total_segments = 分類片段數（一則回答可能拆成多個片段），兩者不同。
+  // 讀不到彙總時，只能用候選群組的筆數加總（也是片段數），不推估回答數。
+  const segmentCount = summary?.total_segments ?? items.reduce((total, item) => total + Number(item.count || 0), 0);
+  const impact = summary?.total_answers != null
+    ? t(`${summary.total_answers} 筆回答（${segmentCount} 個分類片段）`, `${summary.total_answers} answer(s) (${segmentCount} classified segment(s))`)
+    : t(`${segmentCount} 個分類片段`, `${segmentCount} classified segment(s)`);
+  const targetName = target ? topicDisplayName(targetTopic || target) : "";
+  const taxonomy = target ? taxonomies[target] : null;
+  const byMain = (taxonomy?.categories || []).reduce((groups, category) => {
+    (groups[category.main_category || "—"] ||= []).push(category);
+    return groups;
+  }, {});
+
+  // 切換處理方式或取消選擇時一律清掉原本選的目標主題，避免帶著舊目標誤按確認。
+  const selectChoice = (next) => { setChoice(next); onTargetChange(""); };
+  const mergeTargets = topics.filter((candidate) => candidate.topic_key !== topicKey && candidate.published_version && !candidate.merged_into && !isLegacyTechnicalTopic(candidate));
+
+  return (
+    <div className="admin-topic-decision">
+      <h3 className="admin-topic-decision__sub">{t("此主題的候選類別", "Candidate categories in this topic")}</h3>
+      <ul className="admin-auto-contents">
+        {items.map((item) => {
+          const key = groupKeyOf(item);
+          const more = expanded[key];
+          return <li key={key}>
+            <button type="button" className="admin-auto-contents__head" aria-expanded={Boolean(opened[key])}
+              onClick={() => setOpened((state) => ({ ...state, [key]: !state[key] }))}>
+              <span>{opened[key] ? "▾" : "▸"} {item.main_category} / {item.sub_category}</span>
+              <small>{t(`${item.count} 個片段`, `${item.count} segment(s)`)}</small>
+            </button>
+            {opened[key] && <div className="admin-auto-contents__body">
+              {!more && item.examples.map((example, index) => <p key={index} className="admin-auto-contents__example">{example}</p>)}
+              {more?.loading && <p className="admin-muted">{t("載入回答…", "Loading answers…")}</p>}
+              {more?.error && <p className="ai-admin-error" role="alert">{more.error}</p>}
+              {more?.items && <>
+                <ol className="admin-auto-contents__answers">
+                  {more.items.map((answer) => <li key={answer.classification_id}>
+                    {answer.segment_text}
+                    {answer.source_question && <small>{answer.source_question}</small>}
+                  </li>)}
+                </ol>
+                {more.count > more.items.length && <p className="admin-muted">{t(`僅列出前 ${more.items.length} 筆，共 ${more.count} 筆（API 每類最多回傳 200 筆）。`, `Showing the first ${more.items.length} of ${more.count} (the API returns at most 200 per category).`)}</p>}
+              </>}
+              {(more || item.count > item.examples.length) && (
+                <button type="button" className="link-button" onClick={() => toggleMore(item)}>
+                  {more ? t("只看範例", "Show examples only") : t(`查看更多（共 ${item.count} 個片段）`, `Show more (${item.count} segments)`)}
+                </button>
+              )}
+            </div>}
+          </li>;
+        })}
+      </ul>
+
+      <fieldset className="admin-decision-choice" disabled={busy}>
+        <legend>{t("處理方式", "What to do with this topic")}</legend>
+        <label className={`choice${choice === "merge" ? " is-selected" : ""}`}>
+          <input type="radio" name={`decision-${topicKey}`} value="merge" checked={choice === "merge"} onChange={() => selectChoice("merge")} />
+          <span>{t("併入既有正式主題", "Merge into an existing official topic")}</span>
+        </label>
+        <label className={`choice${choice === "keep" ? " is-selected" : ""}`}>
+          <input type="radio" name={`decision-${topicKey}`} value="keep" checked={choice === "keep"} onChange={() => selectChoice("keep")} />
+          <span>{t("保留為正式主題", "Keep as an official topic")}</span>
+        </label>
+        {choice && <button type="button" className="link-button admin-decision-clear" onClick={() => selectChoice("")}>{t("取消選擇", "Clear selection")}</button>}
+      </fieldset>
+
+      {choice === "merge" && <div className="admin-decision-panel">
+        <label>
+          <span>{t("目標正式主題", "Target official topic")}</span>
+          <select value={target} disabled={topicsLoading || busy} onChange={(e) => onTargetChange(e.target.value)}>
+            <option value="">{topicsLoading ? t("載入正式主題…", "Loading official topics…") : t("選擇正式主題…", "Choose an official topic…")}</option>
+            {mergeTargets.map((candidate) => <option key={candidate.topic_key} value={candidate.topic_key}>{topicDisplayName(candidate)}</option>)}
+          </select>
+        </label>
+        {target && <div className="admin-topic-compare">
+          <p className="admin-topic-compare__title">
+            {taxonomy?.version
+              ? t(`「${targetName}」目前的分類架構（v${taxonomy.version.version_number}，${taxonomy.categories.length} 類）`, `Current taxonomy of "${targetName}" (v${taxonomy.version.version_number}, ${taxonomy.categories.length} categories)`)
+              : t(`「${targetName}」目前的分類架構`, `Current taxonomy of "${targetName}"`)}
+          </p>
+          {taxonomy?.loading && <p className="admin-muted">{t("載入分類架構…", "Loading taxonomy…")}</p>}
+          {taxonomy?.error && <p className="ai-admin-error" role="alert">{taxonomy.error}</p>}
+          {!versionId && <p className="admin-muted">{t("這個主題沒有已發布的分類架構可比較。", "This topic has no published taxonomy to compare.")}</p>}
+          {Object.entries(byMain).map(([main, categories]) => <div key={main}>
+            <b>{main}</b>
+            <ul>{categories.map((category) => <li key={category.category_id}>
+              <span>{category.sub_category}</span>
+              <small>{category.definition || t("（沒有填寫定義）", "(no definition)")}</small>
+            </li>)}</ul>
+          </div>)}
+        </div>}
+        {target && <p className="admin-topic-decision__impact">
+          {t(`確認後，會把「${sourceName}」約 ${impact} 逐則重新分類到「${targetName}」。這是預估範圍，實際處理筆數以完成後的結果為準：已人工確認的回答會跳過，個別重新分類失敗的會保留原結果。`,
+            `On confirm, about ${impact} of "${sourceName}" are re-classified one by one into "${targetName}". This is an estimate; the actual counts are shown afterwards. Reviewed answers are skipped and any that fail to re-classify keep their previous result.`)}
+        </p>}
+        <div>
+          <button type="button" className="primary" disabled={!target || busy} onClick={() => onMerge(impact)}>
+            {busy ? t("處理中…", "Working…") : t("確認併入並重新分類", "Confirm merge & re-classify")}
+          </button>
+        </div>
+      </div>}
+
+      {choice === "keep" && <div className="admin-decision-panel">
+        <p className="admin-muted">{t("到主題頁設定並發布這個主題的分類架構。", "Set up and publish this topic's taxonomy on the topic page.")}</p>
+        <div><button type="button" className="primary" disabled={busy} onClick={onKeep}>{t("前往設定分類架構", "Set up taxonomy")}</button></div>
+      </div>}
+    </div>
+  );
+}
+
 // 開放式分類的「新類別候選」：AI 分類時提出、不在目前分類清單裡的類別。
 // 採用 -> 加進該主題的分類架構草稿（到「分類架構」頁檢查後發布）；
 // 合併 -> 這組回答改成某個既有類別。
 export default function NewCategoryPage() {
   const [promptDialog, askText] = useTextPrompt();
   const navigate = useNavigate();
+  // 目前選中的主題放在網址 ?topic=：重新整理、瀏覽器返回與分享連結都能回到同一個畫面。
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedTopic = searchParams.get("topic") || "";
+  const openTopic = (key) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("topic", key);
+    setSearchParams(next);
+    window.scrollTo(0, 0);
+  };
+  const closeTopic = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("topic");
+    setSearchParams(next);
+    window.scrollTo(0, 0);
+  };
   const { user, isLoggedIn } = useAuth();
   const token = user?.token;
   const canAccess = isLoggedIn && user?.account_type === "admin";
@@ -130,6 +307,7 @@ export default function NewCategoryPage() {
   const [topicTargets, setTopicTargets] = useState({});
   const [topicBusy, setTopicBusy] = useState({});
   const [batchMessage, setBatchMessage] = useState("");
+  const [batchKind, setBatchKind] = useState("ok"); // ok | warn（部分成功）| error
   const [actionNotice, setActionNotice] = useState(null);
   const [residualState, setResidualState] = useState({}); // residualKey -> { busy, message }
   const requestSeq = useRef(0);
@@ -209,6 +387,11 @@ export default function NewCategoryPage() {
         text: topicComplete
           ? `${message.text} ${t("此主題的新類別已全部處理完成。", "All new category candidates for this topic are handled.")}`
           : message.text,
+        // 全部處理完 → 引導到第 3 步：到分類審查確認結果
+        ...(topicComplete && !message.to ? {
+          to: `/admin/ai/review?topic=${encodeURIComponent(item.topic_key)}`,
+          toLabel: t("到分類審查確認結果", "Check the result in Review"),
+        } : {}),
       });
     } catch (e) {
       setRowState((p) => ({ ...p, [key]: { ...(p[key] || {}), busy: false, message: { ok: false, text: errorMessage(e) } } }));
@@ -273,6 +456,8 @@ export default function NewCategoryPage() {
     const target = mergeTargets[topicKey];
     if (!items.length || !target) return;
     setBatchMessage("");
+    setBatchKind("ok");
+    setActionNotice(null);
     let mergedCount = 0;
     let skippedCount = 0;
     const failures = [];
@@ -299,12 +484,18 @@ export default function NewCategoryPage() {
     setTargets({});
     const refreshed = await load({ silent: true });
     const topicComplete = Boolean(refreshed) && !refreshed.items.some((item) => item.topic_key === topicKey);
+    setBatchKind(failures.length ? (mergedCount > 0 ? "warn" : "error") : skippedCount ? "warn" : "ok");
     setBatchMessage(t(
       `已合併 ${mergedCount} 筆${skippedCount ? `；${skippedCount} 筆因綁定版本沒有目標類別而略過` : ""}${failures.length ? `；${failures.length} 組失敗：${failures.join("；")}` : ""}`,
       `Merged ${mergedCount} item(s)${skippedCount ? `; ${skippedCount} skipped (target not in their bound version)` : ""}${failures.length ? `; ${failures.length} group(s) failed: ${failures.join("; ")}` : ""}`,
-    ) + (topicComplete && !failures.length && !skippedCount
-      ? ` ${t("此主題的新類別已全部處理完成。", "All new category candidates for this topic are handled.")}`
-      : ""));
+    ));
+    if (topicComplete && !failures.length && !skippedCount) {
+      setActionNotice({
+        text: t("此主題的新類別已全部處理完成。", "All new category candidates for this topic are handled."),
+        to: `/admin/ai/review?topic=${encodeURIComponent(topicKey)}`,
+        toLabel: t("到分類審查確認結果", "Check the result in Review"),
+      });
+    }
   };
 
   // ── 殘留／舊候選：重試併入 / 排除 ──
@@ -367,34 +558,60 @@ export default function NewCategoryPage() {
     ));
   };
 
-  const mergeAutoTopic = async (topicKey) => {
+  const mergeAutoTopic = async (topicKey, impact) => {
     const target = topicTargets[topicKey];
     if (!target) return;
     const source = topicByKey[topicKey];
+    const sourceName = topicDisplayName(source || topicKey);
+    const targetName = topicDisplayName(topicByKey[target] || target);
     if (!window.confirm(t(
-      `將「${topicDisplayName(source || topicKey)}」及其回答重新分類到所選主題？`,
-      `Merge "${topicDisplayName(source || topicKey)}" and re-classify its answers into the selected topic?`,
+      `將「${sourceName}」${impact ? `約 ${impact} ` : "的回答"}重新分類到「${targetName}」？\n這是預估範圍，實際處理筆數以完成後的結果為準；已人工確認的回答會跳過，個別失敗的會保留原結果。這個 AI 暫時主題會併入「${targetName}」。`,
+      `Re-classify ${impact ? `about ${impact} of` : "the answers of"} "${sourceName}" into "${targetName}"?\nThis is an estimate; actual counts are shown afterwards. Reviewed answers are skipped and any that fail keep their previous result. This temporary AI topic is merged into "${targetName}".`,
     ))) return;
     setTopicBusy((state) => ({ ...state, [topicKey]: true }));
     setBatchMessage("");
+    setBatchKind("ok");
+    setActionNotice(null);
     try {
       const result = await api(`/api/admin/ai/topics/${encodeURIComponent(topicKey)}/merge-into`, token, {
         method: "POST", body: JSON.stringify({ target_topic_key: target }),
       });
+      const targetName = topicDisplayName(topicByKey[target] || target);
+      setBatchKind(result.skipped_count || result.aborted ? "warn" : "ok");
       setBatchMessage(t(
-        `主題已合併；重新分類 ${result.moved_count} 筆，${result.skipped_count} 筆略過。`,
-        `Topic merged; ${result.moved_count} re-classified, ${result.skipped_count} skipped.`,
+        `主題已併入「${targetName}」；重新分類 ${result.moved_count} 筆，${result.skipped_count} 筆略過。若目標主題出現新的候選類別，會列在下方，請接著處理。`,
+        `Topic merged into "${targetName}"; ${result.moved_count} re-classified, ${result.skipped_count} skipped. Any new candidates under the target topic are listed below.`,
       ) + mergeBusyNote(result));
+      setTopicTargets((state) => ({ ...state, [topicKey]: "" }));
       await Promise.all([
         load({ silent: true }),
         api("/api/admin/ai/taxonomy-topics", token).then((result) => setTopics(result.topics || [])),
       ]);
     } catch (e) {
+      setBatchKind("error");
       setBatchMessage(errorMessage(e));
     } finally {
       setTopicBusy((state) => ({ ...state, [topicKey]: false }));
     }
   };
+
+  // topics 還在載入、而且還找不到這個主題：先不判定（不退回只看 "auto_" 前綴，
+  // 否則已發布的 auto_ 主題會在載入期間閃出「未決定」流程）。
+  // 「未決定」= AI 暫時主題、還沒有正式發布版本、也沒被併入其他主題。
+  // 已發布的 auto_ 主題已經是正式主題，走一般新類別候選流程。
+  // topics 載入完成卻仍找不到該主題時，才退回前綴判斷。
+  const classify = (topicKey, items) => {
+    const topic = topicByKey[topicKey];
+    const legacyTopic = isLegacyTechnicalTopic(topic || items[0].topic_title || topicKey);
+    const topicPending = topicsLoading && !topic;
+    const undecidedTopic = !topicPending && (topic
+      ? topic.is_auto_topic && !topic.published_version && !topic.merged_into && !legacyTopic
+      : topicKey.startsWith("auto_") && !legacyTopic);
+    return { topic, legacyTopic, topicPending, undecidedTopic };
+  };
+  const statusOf = ({ topicPending, undecidedTopic }) => (topicPending
+    ? { label: t("確認中…", "Checking…"), tag: "pending_review" }
+    : undecidedTopic ? { label: t("AI 暫時", "AI temporary"), tag: "in_review" } : { label: t("正式", "Official"), tag: "confirmed" });
 
   if (!canAccess) {
     return <><Navbar /><main className="ai-admin-empty"><h1>{t("僅管理者可存取 AI 管理介面", "AI admin access restricted to administrators")}</h1><button onClick={() => navigate("/workspace")}>{t("回到分析助理", "Back to Analysis Assistant")}</button></main></>;
@@ -402,81 +619,80 @@ export default function NewCategoryPage() {
 
   return <>{promptDialog}<div className="admin-page">
     <h1>{t("新類別候選", "New Category Candidates")}</h1>
-    <p><small>{t("AI 分類時遇到現有分類都不適合的內容，會提出新類別。採用會把它加入分類架構並立刻發布，這些回答一起確認；如果其實就是某個既有類別，請用合併。",
-      "When no existing category fits, the AI proposes a new one. Adopting adds it to the taxonomy, publishes it and confirms these answers in one step. If it's really an existing category, merge it instead.")}</small></p>
+    {!selectedTopic && <p className="admin-muted">{t("AI 遇到現有分類都不適合的內容時會提出新類別：採用＝加入分類架構並發布；合併＝改成既有類別。",
+      "When no category fits, the AI proposes a new one. Adopt it to add and publish it, or merge it into an existing category.")}</p>}
     {error && <p className="ai-admin-error">{error}<button onClick={() => setError("")}>×</button></p>}
-    {batchMessage && <p className="review-batch-message">{batchMessage}</p>}
+    {batchMessage && <p className={batchKind === "error" ? "ai-admin-error" : `review-batch-message${batchKind === "warn" ? " review-batch-message--warn" : ""}`}
+      role={batchKind === "error" ? "alert" : "status"}>{batchMessage}</p>}
     {actionNotice && <p className="review-batch-message" role="status">
       {actionNotice.text}
-      {actionNotice.to && <>{" "}<Link to={actionNotice.to}>{t("前往完成草稿", "Finish the draft")}</Link></>}
+      {actionNotice.to && <>{" "}<Link to={actionNotice.to}>{actionNotice.toLabel || t("前往完成草稿", "Finish the draft")}</Link></>}
     </p>}
     {loading && <LoadingNotice />}
-    {!loading && data.items.length === 0 && <p className="review-empty-hint">
+    {!loading && !selectedTopic && data.items.length === 0 && <p className="review-empty-hint">
       {actionNotice
         ? t("所有新類別候選已處理完。", "All new category candidates have been handled.")
         : t("目前沒有待處理的新類別。", "No new categories waiting.")}
     </p>}
 
-    {!loading && Object.entries(groupedItems).map(([topicKey, items]) => {
-      const topic = topicByKey[topicKey];
-      const legacyTopic = isLegacyTechnicalTopic(topic || items[0].topic_title || topicKey);
-      // topics 還在載入、而且還找不到這個主題：先不判定（不退回只看 "auto_" 前綴，
-      // 否則已發布的 auto_ 主題會在載入期間閃出「未決定」流程）。
-      const topicPending = topicsLoading && !topic;
-      // 「未決定」= AI 暫時主題、還沒有正式發布版本、也沒被併入其他主題。
-      // 已發布的 auto_ 主題已經是正式主題，走一般新類別候選流程。
-      // topics 載入完成卻仍找不到該主題時，才退回前綴判斷。
-      const undecidedTopic = !topicPending && (topic
-        ? topic.is_auto_topic && !topic.published_version && !topic.merged_into && !legacyTopic
-        : topicKey.startsWith("auto_") && !legacyTopic);
+    {!loading && !selectedTopic && Object.keys(groupedItems).length > 0 && (
+      <ul className="admin-topic-list" aria-label={t("有新類別候選的主題", "Topics with new category candidates")}>
+        {Object.entries(groupedItems).map(([topicKey, items]) => {
+          const info = classify(topicKey, items);
+          const status = statusOf(info);
+          const answerCount = items.reduce((total, item) => total + Number(item.count || 0), 0);
+          return <li key={topicKey} className="admin-topic-row">
+            <div className="admin-topic-row__main">
+              <b>{topicDisplayName(info.topic || items[0].topic_title)}</b>
+              <span className={`review-status-tag review-status-tag--${status.tag}`}>{status.label}</span>
+            </div>
+            <span className="admin-topic-row__meta">{t(`${items.length} 組新類別・${answerCount} 筆回答`, `${items.length} group(s) · ${answerCount} answer(s)`)}</span>
+            <button type="button" className="primary" onClick={() => openTopic(topicKey)}>{t("查看詳情", "View details")}</button>
+          </li>;
+        })}
+      </ul>
+    )}
+
+    {!loading && selectedTopic && !groupedItems[selectedTopic] && (
+      <section className="admin-section-block">
+        <button type="button" className="admin-back-link" onClick={closeTopic}>{t("← 返回主題清單", "← Back to topic list")}</button>
+        <p className="review-empty-hint">{t("這個主題目前沒有待處理的新類別。", "This topic has no new category candidates waiting.")}</p>
+        <Link to={`/admin/ai/review?topic=${encodeURIComponent(selectedTopic)}`}>{t("到分類審查確認結果 →", "Check the result in Review →")}</Link>
+      </section>
+    )}
+
+    {!loading && selectedTopic && Object.entries(groupedItems).filter(([topicKey]) => topicKey === selectedTopic).map(([topicKey, items]) => {
+      const { topic, legacyTopic, topicPending, undecidedTopic } = classify(topicKey, items);
       const selectedItems = items.filter((item) => selected[keyOf(item)]);
       const answerCount = items.reduce((total, item) => total + Number(item.count || 0), 0);
+      const status = statusOf({ topicPending, undecidedTopic });
       return <section key={topicKey} className="admin-section-block">
-        <div className="admin-candidate-summary">
-          <h2>{topicDisplayName(topic || items[0].topic_title)}</h2>
-          <p className="admin-candidate-summary__count">
-            {t(`這個主題有 ${items.length} 組 AI 提出的新類別，涉及 ${answerCount} 筆回答，需要你決定如何處理。`,
-              `This topic has ${items.length} AI-proposed category group(s) across ${answerCount} answer(s) that need a decision.`)}
-          </p>
-          <p>{topicPending
-            ? t("正在確認這個主題的狀態…", "Checking the status of this topic…")
-            : undecidedTopic
-            ? t("先決定這個 AI 暫時主題的去向；完成主題決策後，再判斷底下的候選類別。",
-              "Decide the destination of this temporary AI topic first; review its candidate categories after the topic decision.")
-            : t("AI 提出了這些不在目前分類架構中的類別，請判斷它們是新類別，還是應合併到既有類別。",
-              "These AI-proposed categories are not in the current taxonomy. Decide whether each is new or belongs in an existing category.")}</p>
-        </div>
+        <button type="button" className="admin-back-link" onClick={closeTopic}>{t("← 返回主題清單", "← Back to topic list")}</button>
+        <header className="admin-candidate-head">
+          <div>
+            <h2>{topicDisplayName(topic || items[0].topic_title)}</h2>
+            <p className="admin-candidate-head__meta">
+              <span className={`review-status-tag review-status-tag--${status.tag}`}>{status.label}</span>{" "}
+              {t(`${items.length} 組新類別・${answerCount} 筆回答`, `${items.length} group(s) · ${answerCount} answer(s)`)}
+            </p>
+          </div>
+          {!topicPending && !undecidedTopic && (
+            <Link to={`/admin/ai/review?topic=${encodeURIComponent(topicKey)}`}>{t("到分類審查 →", "Open Review →")}</Link>
+          )}
+        </header>
         {legacyTopic && <details><summary>{t("技術資訊", "Technical details")}</summary><code>{topicKey}</code></details>}
         {topicPending ? (
           <LoadingNotice text={t("正在確認主題狀態…", "Checking topic status…")} />
         ) : undecidedTopic ? (
-          <div className="admin-undecided">
-            <strong>{t("這是 AI 暫時建立的主題，尚未正式採用。", "This topic was created temporarily by AI and has not been adopted.")}</strong>
-            <p>{t("請先決定主題去向，再處理底下的新類別。", "Decide what happens to the topic before reviewing its proposed categories.")}</p>
-            <div className="admin-auto-topic-actions">
-              <label>
-                <span>{t("A. 併入既有正式主題", "A. Merge into an existing official topic")}</span>
-                {topicsLoading && <small>{t("載入正式主題…", "Loading official topics…")}</small>}
-                <select value={topicTargets[topicKey] || ""} disabled={topicsLoading || topicBusy[topicKey]}
-                  onChange={(e) => setTopicTargets((state) => ({ ...state, [topicKey]: e.target.value }))}>
-                  <option value="">{t("選擇正式主題…", "Choose an official topic…")}</option>
-                  {topics.filter((candidate) => candidate.topic_key !== topicKey && candidate.published_version && !candidate.merged_into && !isLegacyTechnicalTopic(candidate))
-                    .map((candidate) => <option key={candidate.topic_key} value={candidate.topic_key}>{topicDisplayName(candidate)}</option>)}
-                </select>
-              </label>
-              <button className="primary" disabled={!topicTargets[topicKey] || topicBusy[topicKey]}
-                onClick={() => mergeAutoTopic(topicKey)}>
-                {topicBusy[topicKey] ? t("處理中…", "Working…") : t("併入正式主題並重新分類", "Merge into official topic & re-classify")}
-              </button>
-              <div className="admin-auto-topic-keep">
-                <span>{t("B. 保留為正式主題", "B. Keep as an official topic")}</span>
-                <button type="button" disabled={topicBusy[topicKey]}
-                  onClick={() => navigate(`/admin/ai/topics/${encodeURIComponent(topicKey)}`)}>
-                  {t("保留此主題並完成分類架構", "Keep topic & complete its taxonomy")}
-                </button>
-              </div>
-            </div>
-          </div>
+          <AutoTopicDecision
+            token={token} topicKey={topicKey} sourceName={topicDisplayName(topic || items[0].topic_title)}
+            items={items} topics={topics} topicsLoading={topicsLoading}
+            target={topicTargets[topicKey] || ""}
+            onTargetChange={(value) => setTopicTargets((state) => ({ ...state, [topicKey]: value }))}
+            busy={Boolean(topicBusy[topicKey])}
+            onMerge={(impact) => mergeAutoTopic(topicKey, impact)}
+            onKeep={() => navigate(`/admin/ai/topics/${encodeURIComponent(topicKey)}`)}
+          />
         ) : items.length > 1 && (
           <details className="admin-batch-select">
             <summary>{t("需要一次整理多組？展開批次選取", "Handling multiple groups? Expand batch selection")}</summary>
@@ -514,7 +730,10 @@ export default function NewCategoryPage() {
             <span className="review-card-segment">{item.main_category} / {item.sub_category}</span>
           </div>
           <div className="review-card-mid">
-            {item.examples.map((ex, i) => <p key={i}><span className="review-field-label">{t("範例", "Example")}</span>{ex}</p>)}
+            <details>
+              <summary>{t(`查看回答範例（${item.examples.length} 則）`, `View example answers (${item.examples.length})`)}</summary>
+              {item.examples.map((ex, i) => <p key={i}><span className="review-field-label">{t("範例", "Example")}</span>{ex}</p>)}
+            </details>
             {item.reasons[0] && <details><summary>{t("查看 AI 判斷補充", "View AI reasoning")}</summary><p>{item.reasons[0]}</p></details>}
           </div>
           {state.message && <p className={state.message.ok ? "review-batch-message" : "ai-admin-error"}>{state.message.text}</p>}
@@ -543,7 +762,7 @@ export default function NewCategoryPage() {
       </section>;
     })}
 
-    {!loading && (data.residual_items || []).length > 0 && <section className="admin-section-block admin-residual" aria-label="residual-candidates">
+    {!loading && !selectedTopic && (data.residual_items || []).length > 0 && <section className="admin-section-block admin-residual" aria-label="residual-candidates">
       <h2>{t(`殘留／舊候選（${data.residual_items.length} 組）`, `Leftover / legacy candidates (${data.residual_items.length})`)}</h2>
       <p><small>{t(
         "這些不是目前需要決策的新類別，所以不計入「新類別候選」數量：舊版資料、找不到主題，或主題已被合併後仍留下來的回答。可以重試併入（主題已合併時），或排除。",

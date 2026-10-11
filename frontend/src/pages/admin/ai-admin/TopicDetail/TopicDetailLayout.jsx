@@ -49,7 +49,8 @@ export default function TopicDetailLayout() {
       {topic?.is_auto_topic && !isLegacyTechnicalTopic(topic || topicKey) && <span className="topic-tag">{t("AI 自動主題", "Auto topic")}</span>}
       {topic?.published_version
         ? <span className="topic-tag">{t(`使用中 v${topic.published_version.version_number}`, `Live v${topic.published_version.version_number}`)}</span>
-        : topic && <span className="topic-tag topic-tag--draft">{t("尚未發布", "Not published")}</span>}
+        : topic && <span className="topic-tag">{t("尚未發布", "Not published")}</span>}
+      {topic?.latest_draft_version && <span className="topic-tag topic-tag--draft">{t(`草稿 v${topic.latest_draft_version.version_number}`, `Draft v${topic.latest_draft_version.version_number}`)}</span>}
       <NavLink className="admin-link-button" to={`/admin/ai/review?topic=${encodeURIComponent(topicKey)}`}>
         {t("審查這個主題的分類 →", "Review this topic →")}
       </NavLink>
