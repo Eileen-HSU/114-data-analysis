@@ -29,7 +29,7 @@ PPT_SURVEY_GEMINI_RETRY_ATTEMPTS = 3
 PPT_SURVEY_GEMINI_RETRY_DELAYS_SECONDS = (5, 15)
 PPT_SURVEY_GEMINI_MODELS = (
     GEMINI_MODEL,
-    "gemini-2.5-flash",
+    "gemini-3.8-flash",
 )
 # google-genai HttpOptions.timeout uses milliseconds.  The generation endpoint
 # runs in a background task, so allow a full two minutes for a binary document
