@@ -23,11 +23,14 @@ ALLOWED_TYPES = {"short", "rating"}
 GEMINI_MODEL = "gemini-3.5-flash"
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_EXTRACTED_CHARS = 18000
-# One initial request plus at most two retries gives transient Gemini overloads
-# more time to recover before model failover reports an error.
+# One initial request plus at most one retry keeps failover responsive while
+# retaining a small recovery window for brief Gemini overloads.
 PPT_SURVEY_GEMINI_RETRY_ATTEMPTS = 3
 PPT_SURVEY_GEMINI_RETRY_DELAYS_SECONDS = (5, 15)
-PPT_SURVEY_GEMINI_MODELS = (GEMINI_MODEL, "gemini-2.5-flash")
+PPT_SURVEY_GEMINI_MODELS = (
+    GEMINI_MODEL,
+    "gemini-2.5-flash",
+)
 # google-genai HttpOptions.timeout uses milliseconds.  The generation endpoint
 # runs in a background task, so allow a full two minutes for a binary document
 # to be processed before treating an individual model request as timed out.
@@ -289,9 +292,11 @@ def normalize_question_count(value):
     return max(1, min(20, parsed))
 
 
-def normalize_type_counts(raw_counts):
+def normalize_type_counts(raw_counts, config=None):
     if not isinstance(raw_counts, dict):
         raw_counts = {}
+    if not isinstance(config, dict):
+        config = {}
 
     def normalize(value, fallback):
         try:
@@ -301,6 +306,28 @@ def normalize_type_counts(raw_counts):
 
     short_count = normalize(raw_counts.get("short"), 0)
     rating_count = normalize(raw_counts.get("rating"), 0)
+    if short_count + rating_count == 0:
+        type_limits = config.get("typeLimits")
+        if isinstance(type_limits, str):
+            try:
+                type_limits = json.loads(type_limits)
+            except json.JSONDecodeError:
+                type_limits = {}
+        if not isinstance(type_limits, dict):
+            type_limits = {}
+
+        total = normalize_question_count(config.get("questionCount"))
+        allow_short = type_limits.get("short") is not False
+        allow_rating = type_limits.get("rating") is not False
+        if allow_short and allow_rating:
+            rating_count = min(2, total)
+            short_count = total - rating_count
+        elif allow_rating:
+            rating_count = total
+        else:
+            short_count = total
+    if short_count + rating_count == 0:
+        short_count = 1
     return {"short": short_count, "rating": rating_count}
 
 
@@ -318,6 +345,7 @@ def _parse_json_response(text):
             logger.error("AI response is not JSON: %s", cleaned[:1000])
             raise PptSurveyAiError("AI 回傳格式不是 JSON，請重新生成。", 502)
         return json.loads(match.group(0))
+
 
 
 INSUFFICIENT_CONTENT_MESSAGE = (
@@ -349,6 +377,7 @@ def _raise_if_insufficient_content(raw):
         or code == INSUFFICIENT_CONTENT_CODE
     ):
         raise PptSurveyAiError(INSUFFICIENT_CONTENT_MESSAGE, 400)
+
 
 def normalize_survey_draft(raw, fallback_title="AI 生成問卷"):
     if not isinstance(raw, dict):
@@ -425,6 +454,7 @@ short 代表問答題，rating 代表 0 到 5 評分題。
 options 必須維持空陣列，才能相容系統原本問卷資料結構。
 {insufficient_instruction}
 """
+
 
 def _handle_ai_exception(exc):
     message = str(exc)
@@ -518,6 +548,7 @@ def _call_gemini(contents):
     """
     genai, types = _load_genai_types()
     last_error = None
+    failures = []
 
     for model in PPT_SURVEY_GEMINI_MODELS:
         for key_role, api_key in _get_ppt_survey_api_keys():
@@ -548,12 +579,14 @@ def _call_gemini(contents):
                 except Exception as exc:
                     last_error = exc
                     transient_failure = _is_transient_gemini_error(exc)
+                    status_code = _gemini_error_status_code(exc)
                     if not transient_failure:
                         logger.warning(
-                            "PPT survey Gemini non-transient failure: model=%s key_role=%s "
-                            "error_type=%s error=%s",
+                            "PPT survey Gemini non-transient failure; trying next key/model: "
+                            "model=%s key_role=%s status_code=%s error_type=%s error=%s",
                             model,
                             key_role,
+                            status_code,
                             type(exc).__name__,
                             str(exc),
                             exc_info=True,
@@ -565,12 +598,13 @@ def _call_gemini(contents):
                         logger.warning(
                             "PPT survey Gemini transient failure; retrying same key: "
                             "model=%s key_role=%s attempt=%s/%s delay_seconds=%s "
-                            "error_type=%s error=%s",
+                            "status_code=%s error_type=%s error=%s",
                             model,
                             key_role,
                             attempt,
                             PPT_SURVEY_GEMINI_RETRY_ATTEMPTS,
                             delay_seconds,
+                            status_code,
                             type(exc).__name__,
                             str(exc),
                             exc_info=True,
@@ -580,10 +614,11 @@ def _call_gemini(contents):
 
                     logger.warning(
                         "PPT survey Gemini retries exhausted; switching key or model: "
-                        "model=%s key_role=%s attempts=%s error_type=%s error=%s",
+                        "model=%s key_role=%s attempts=%s status_code=%s error_type=%s error=%s",
                         model,
                         key_role,
                         PPT_SURVEY_GEMINI_RETRY_ATTEMPTS,
+                        status_code,
                         type(exc).__name__,
                         str(exc),
                         exc_info=True,
@@ -602,26 +637,48 @@ def _call_gemini(contents):
                     raise PptSurveyAiError("PPT survey AI returned an empty response.", 502)
                 return _parse_json_response(text)
 
-            if not transient_failure:
-                # A different key can recover from authentication or quota errors,
-                # but a model downgrade is only useful for temporary model overload.
-                if key_role == "primary":
-                    continue
-                _handle_ai_exception(last_error or RuntimeError("PPT survey Gemini call failed"))
+            if last_error is not None:
+                failures.append({
+                    "model": model,
+                    "key_role": key_role,
+                    "status_code": _gemini_error_status_code(last_error),
+                    "transient": transient_failure,
+                    "error_type": type(last_error).__name__,
+                })
 
         logger.warning(
             "PPT survey Gemini model unavailable after both keys; trying next model: model=%s",
             model,
         )
 
-    raise PptSurveyAiError(
-        "PPT survey Gemini is temporarily overloaded after retrying all models and keys.",
-        503,
-    ) from last_error
+    status_code = _gemini_error_status_code(last_error) if last_error else None
+    if status_code not in {401, 403, 404, 429, 500, 502, 503, 504}:
+        status_code = 503 if last_error and _is_transient_gemini_error(last_error) else 502
+
+    logger.error(
+        "PPT survey Gemini failed after all model/key combinations: status_code=%s "
+        "last_error_type=%s failures=%s",
+        status_code,
+        type(last_error).__name__ if last_error else None,
+        failures,
+    )
+
+    if status_code in {401, 403}:
+        message = "PPT survey AI authentication failed for all configured keys."
+    elif status_code == 404:
+        message = "PPT survey Gemini models were unavailable for the configured keys."
+    elif status_code == 429:
+        message = "PPT survey AI quota or rate limit was reached for all configured keys."
+    elif status_code == 504:
+        message = "PPT survey Gemini timed out after retrying all models and keys."
+    else:
+        message = "PPT survey Gemini is temporarily unavailable after retrying all models and keys."
+
+    raise PptSurveyAiError(message, status_code) from last_error
 
 
 def generate_survey_from_material(filename, file_bytes, config):
-    type_counts = normalize_type_counts(config.get("typeCounts"))
+    type_counts = normalize_type_counts(config.get("typeCounts"), config)
     question_count = type_counts["short"] + type_counts["rating"]
     allowed_types = [name for name, count in type_counts.items() if count > 0]
     direction = str(config.get("direction") or "").strip()
@@ -657,6 +714,7 @@ Content sufficiency is a hard gate:
 - For scanned/image-based files, inspect the visual content. Decorative posters, logos, QR codes, photos, dates, locations, slogans, or fragments without substantive background are insufficient.
 - Existing questionnaire content is usable only when enough background information is present.
 - If insufficient, return ONLY the insufficient-content JSON and no questions.
+
 
 Return exactly {type_counts['short']} questions with type "short" and exactly {type_counts['rating']} questions with type "rating".
 """
