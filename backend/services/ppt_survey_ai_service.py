@@ -1063,9 +1063,16 @@ Return exactly {type_counts['short']} questions with type "short" and exactly {t
             if summary["text_layer_pages"] > 0:
                 raise PptSurveyAiError(PDF_TEXT_EXTRACTION_FAILED_MESSAGE, 422)
             if summary["image_pages"] > 0:
-                raise PptSurveyAiError(SCANNED_PDF_UNSUPPORTED_MESSAGE, 422)
-            raise PptSurveyAiError(INSUFFICIENT_CONTENT_MESSAGE, 400)
-        if ext in {".ppt", ".pptx"}:
+                logger.warning("PDF OCR produced no text; falling back to binary upload for filename=%s", filename)
+                _, types = _load_genai_client()
+                binary_payload = _prepare_binary_upload(filename, file_bytes)
+                raw = _call_gemini([
+                    types.Part.from_bytes(data=binary_payload, mime_type=_guess_mime(filename)),
+                    prompt,
+                ])
+            else:
+                raise PptSurveyAiError(INSUFFICIENT_CONTENT_MESSAGE, 400)
+        elif ext in {".ppt", ".pptx"}:
             logger.warning("No text extracted; falling back to binary upload for filename=%s", filename)
             _, types = _load_genai_client()
             binary_payload = _prepare_binary_upload(filename, file_bytes)
