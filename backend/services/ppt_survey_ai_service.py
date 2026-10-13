@@ -486,6 +486,37 @@ def _gemini_error_status_code(exc):
         return int(match.group(1)) if match else None
 
 
+def _safe_gemini_error_summary(exc, max_length=500):
+    """Short, single-line Gemini error summary without common secret patterns."""
+    parts = []
+    for attr in ("message", "status", "reason"):
+        value = getattr(exc, attr, None)
+        if callable(value):
+            try:
+                value = value()
+            except Exception:
+                value = None
+        if value:
+            parts.append(f"{attr}={value}")
+
+    summary = " | ".join(parts) or str(exc)
+    summary = re.sub(r"\s+", " ", summary).strip()
+    summary = re.sub(r"AIza[0-9A-Za-z_-]{20,}", "[redacted-google-api-key]", summary)
+    summary = re.sub(
+        r"(?i)(api[_-]?key|x-goog-api-key|key)(['\"=: ]+)[^\s,'\")&]+",
+        r"\1\2[redacted]",
+        summary,
+    )
+    summary = re.sub(
+        r"(?i)(authorization['\"=: ]+bearer\s+)[^\s,'\")]+",
+        r"\1[redacted]",
+        summary,
+    )
+    if len(summary) > max_length:
+        return summary[:max_length].rstrip() + "..."
+    return summary
+
+
 def _is_gemini_unavailable_error(exc):
     message = str(exc)
     lower_message = message.lower()
@@ -580,16 +611,16 @@ def _call_gemini(contents):
                     last_error = exc
                     transient_failure = _is_transient_gemini_error(exc)
                     status_code = _gemini_error_status_code(exc)
+                    error_summary = _safe_gemini_error_summary(exc)
                     if not transient_failure:
                         logger.warning(
                             "PPT survey Gemini non-transient failure; trying next key/model: "
-                            "model=%s key_role=%s status_code=%s error_type=%s error=%s",
+                            "model=%s key_role=%s status_code=%s error_type=%s error_summary=%s",
                             model,
                             key_role,
                             status_code,
                             type(exc).__name__,
-                            str(exc),
-                            exc_info=True,
+                            error_summary,
                         )
                         break
 
@@ -598,7 +629,7 @@ def _call_gemini(contents):
                         logger.warning(
                             "PPT survey Gemini transient failure; retrying same key: "
                             "model=%s key_role=%s attempt=%s/%s delay_seconds=%s "
-                            "status_code=%s error_type=%s error=%s",
+                            "status_code=%s error_type=%s error_summary=%s",
                             model,
                             key_role,
                             attempt,
@@ -606,22 +637,21 @@ def _call_gemini(contents):
                             delay_seconds,
                             status_code,
                             type(exc).__name__,
-                            str(exc),
-                            exc_info=True,
+                            error_summary,
                         )
                         time.sleep(delay_seconds)
                         continue
 
                     logger.warning(
                         "PPT survey Gemini retries exhausted; switching key or model: "
-                        "model=%s key_role=%s attempts=%s status_code=%s error_type=%s error=%s",
+                        "model=%s key_role=%s attempts=%s status_code=%s error_type=%s "
+                        "error_summary=%s",
                         model,
                         key_role,
                         PPT_SURVEY_GEMINI_RETRY_ATTEMPTS,
                         status_code,
                         type(exc).__name__,
-                        str(exc),
-                        exc_info=True,
+                        error_summary,
                     )
                     break
 
@@ -644,6 +674,7 @@ def _call_gemini(contents):
                     "status_code": _gemini_error_status_code(last_error),
                     "transient": transient_failure,
                     "error_type": type(last_error).__name__,
+                    "error_summary": _safe_gemini_error_summary(last_error),
                 })
 
         logger.warning(
