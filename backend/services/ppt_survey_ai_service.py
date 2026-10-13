@@ -1,4 +1,5 @@
 import json
+import importlib.util
 import logging
 import mimetypes
 import os
@@ -39,6 +40,8 @@ PPT_SURVEY_GEMINI_MODELS = (
 PPT_SURVEY_GEMINI_TIMEOUT_MILLISECONDS = 90_000
 BINARY_UPLOAD_MAX_IMAGE_DIMENSION = 1600
 BINARY_UPLOAD_JPEG_QUALITY = 70
+PDF_OCR_MAX_PAGES = 12
+PDF_OCR_RENDER_SCALE = 2
 
 
 def _get_api_key():
@@ -248,6 +251,66 @@ def _inspect_pdf_content(file_bytes):
     except Exception:
         logger.exception("PDF content inspection failed")
         return {"pages": 0, "text_layer_pages": 0, "image_pages": 0}
+
+
+def _pdf_ocr_dependency_status():
+    return {
+        "PyMuPDF": bool(importlib.util.find_spec("pymupdf")),
+        "pytesseract": bool(importlib.util.find_spec("pytesseract")),
+        "PIL": bool(importlib.util.find_spec("PIL")),
+    }
+
+
+def _extract_scanned_pdf_ocr_text(file_bytes):
+    """OCR scanned PDF pages when optional offline dependencies are available."""
+    status = _pdf_ocr_dependency_status()
+    missing = [name for name, available in status.items() if not available]
+    if missing:
+        logger.warning(
+            "PDF OCR unavailable because optional dependencies are missing: missing=%s",
+            missing,
+        )
+        return ""
+
+    try:
+        import pymupdf as fitz
+        import pytesseract
+        from PIL import Image
+    except Exception:
+        logger.warning("PDF OCR dependencies could not be imported", exc_info=True)
+        return ""
+
+    try:
+        document = fitz.open(stream=file_bytes, filetype="pdf")
+    except Exception:
+        logger.warning("PDF OCR render setup failed", exc_info=True)
+        return ""
+
+    texts = []
+    try:
+        page_count = min(len(document), PDF_OCR_MAX_PAGES)
+        matrix = fitz.Matrix(PDF_OCR_RENDER_SCALE, PDF_OCR_RENDER_SCALE)
+        for page_index in range(page_count):
+            if sum(len(text) for text in texts) >= MAX_EXTRACTED_CHARS:
+                break
+            page = document.load_page(page_index)
+            pixmap = page.get_pixmap(matrix=matrix, alpha=False)
+            image = Image.open(BytesIO(pixmap.tobytes("png")))
+            text = pytesseract.image_to_string(image, lang=os.getenv("PPT_SURVEY_OCR_LANG", "eng+chi_tra"))
+            normalized = _normalize_pdf_text(text)
+            if normalized:
+                texts.append(normalized)
+        extracted = "\n\n".join(texts)[:MAX_EXTRACTED_CHARS]
+        logger.info("PDF OCR extracted text: pages=%s chars=%s", page_count, len(extracted))
+        return extracted
+    except Exception:
+        logger.warning("PDF OCR failed", exc_info=True)
+        return ""
+    finally:
+        try:
+            document.close()
+        except Exception:
+            pass
 
 
 def _extract_pdf_text(file_bytes):
@@ -919,6 +982,11 @@ def generate_survey_from_material(filename, file_bytes, config):
     direction = str(config.get("direction") or "").strip()
     focus = str(config.get("focus") or "").strip()
     extracted_text = extract_document_text(filename, file_bytes)
+    pdf_summary = None
+    if _extension(filename) == ".pdf" and not extracted_text:
+        pdf_summary = _inspect_pdf_content(file_bytes)
+        if pdf_summary["text_layer_pages"] == 0 and pdf_summary["image_pages"] > 0:
+            extracted_text = _extract_scanned_pdf_ocr_text(file_bytes)
 
     logger.info(
         "Generating PPT survey: filename=%s question_count=%s allowed_types=%s direction=%s focus=%s extracted_chars=%s",
@@ -984,7 +1052,7 @@ Return exactly {type_counts['short']} questions with type "short" and exactly {t
     else:
         ext = _extension(filename)
         if ext == ".pdf":
-            summary = _inspect_pdf_content(file_bytes)
+            summary = pdf_summary or _inspect_pdf_content(file_bytes)
             logger.warning(
                 "No PDF text extracted: filename=%s pages=%s text_layer_pages=%s image_pages=%s",
                 filename,

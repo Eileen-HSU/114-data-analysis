@@ -109,15 +109,18 @@ class PptSurveyAiServiceFallbackTest(unittest.TestCase):
         call_gemini.assert_not_called()
 
     @patch("services.ppt_survey_ai_service._inspect_pdf_content")
+    @patch("services.ppt_survey_ai_service._extract_scanned_pdf_ocr_text")
     @patch("services.ppt_survey_ai_service.extract_document_text")
     @patch("services.ppt_survey_ai_service._call_gemini")
-    def test_scanned_pdf_reports_ocr_limitation_without_gemini_call(
+    def test_scanned_pdf_reports_ocr_limitation_after_ocr_failure_without_gemini_call(
         self,
         call_gemini,
         extract_document_text,
+        extract_scanned_pdf_ocr_text,
         inspect_pdf_content,
     ):
         extract_document_text.return_value = ""
+        extract_scanned_pdf_ocr_text.return_value = ""
         inspect_pdf_content.return_value = {"pages": 2, "text_layer_pages": 0, "image_pages": 2}
 
         with self.assertRaises(PptSurveyAiError) as raised:
@@ -125,7 +128,36 @@ class PptSurveyAiServiceFallbackTest(unittest.TestCase):
 
         self.assertEqual(raised.exception.status_code, 422)
         self.assertEqual(str(raised.exception), SCANNED_PDF_UNSUPPORTED_MESSAGE)
+        extract_scanned_pdf_ocr_text.assert_called_once_with(b"%PDF mock")
         call_gemini.assert_not_called()
+
+    @patch("services.ppt_survey_ai_service._inspect_pdf_content")
+    @patch("services.ppt_survey_ai_service._extract_scanned_pdf_ocr_text")
+    @patch("services.ppt_survey_ai_service.extract_document_text")
+    @patch("services.ppt_survey_ai_service._call_gemini")
+    def test_scanned_pdf_ocr_text_uses_existing_generation_flow(
+        self,
+        call_gemini,
+        extract_document_text,
+        extract_scanned_pdf_ocr_text,
+        inspect_pdf_content,
+    ):
+        extract_document_text.return_value = ""
+        extract_scanned_pdf_ocr_text.return_value = SUFFICIENT_PDF_TEXT
+        inspect_pdf_content.return_value = {"pages": 2, "text_layer_pages": 0, "image_pages": 2}
+        call_gemini.side_effect = PptSurveyAiError("forbidden", 403)
+
+        draft = generate_survey_from_material(
+            "scan.pdf",
+            b"%PDF mock",
+            {"typeCounts": {"short": 1, "rating": 1}},
+        )
+
+        self.assertEqual([q["type"] for q in draft["questions"]], ["short", "rating"])
+        self.assertIn("project planning", draft["questions"][0]["title"])
+        extract_scanned_pdf_ocr_text.assert_called_once_with(b"%PDF mock")
+        call_gemini.assert_called_once()
+        self.assertEqual(call_gemini.call_args.kwargs, {"stop_on_status_codes": {403}})
 
     @patch("services.ppt_survey_ai_service._inspect_pdf_content")
     @patch("services.ppt_survey_ai_service.extract_document_text")

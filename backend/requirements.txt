@@ -22,4 +22,6 @@ pandas
 openpyxl==3.1.5
 python-docx
 pypdf
+PyMuPDF
+pytesseract
 Pillow
