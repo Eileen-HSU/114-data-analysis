@@ -36,6 +36,15 @@ class FakeGeminiTypes:
     Part = FakeGeminiPart
 
 
+def fake_image_part(page_number):
+    return {
+        "part": {
+            "data": f"jpeg page {page_number}".encode("utf-8"),
+            "mime_type": "image/jpeg",
+        }
+    }
+
+
 def valid_gemini_draft():
     return {
         "title": "scan survey",
@@ -131,24 +140,27 @@ class PptSurveyAiServiceFallbackTest(unittest.TestCase):
         self.assertEqual(str(raised.exception), INSUFFICIENT_CONTENT_MESSAGE)
         call_gemini.assert_not_called()
 
+    @patch("services.ppt_survey_ai_service._render_pdf_page_image_parts")
     @patch("services.ppt_survey_ai_service._inspect_pdf_content")
     @patch("services.ppt_survey_ai_service._extract_scanned_pdf_ocr_text")
     @patch("services.ppt_survey_ai_service.extract_document_text")
     @patch("services.ppt_survey_ai_service._load_genai_client")
     @patch("services.ppt_survey_ai_service._call_gemini")
-    def test_scanned_pdf_ocr_empty_uses_pdf_binary_fallback(
+    def test_scanned_pdf_ocr_empty_renders_pages_for_image_analysis(
         self,
         call_gemini,
         load_genai_client,
         extract_document_text,
         extract_scanned_pdf_ocr_text,
         inspect_pdf_content,
+        render_pdf_page_image_parts,
     ):
         FakeGeminiPart.calls = []
         extract_document_text.return_value = ""
         extract_scanned_pdf_ocr_text.return_value = ""
         inspect_pdf_content.return_value = {"pages": 2, "text_layer_pages": 0, "image_pages": 2}
         load_genai_client.return_value = (object(), FakeGeminiTypes)
+        render_pdf_page_image_parts.return_value = [fake_image_part(1), fake_image_part(2)]
         call_gemini.return_value = valid_gemini_draft()
 
         draft = generate_survey_from_material("scan.pdf", b"%PDF mock", {})
@@ -157,62 +169,71 @@ class PptSurveyAiServiceFallbackTest(unittest.TestCase):
         self.assertEqual([q["type"] for q in draft["questions"]], ["short", "rating"])
         extract_scanned_pdf_ocr_text.assert_called_once_with(b"%PDF mock")
         load_genai_client.assert_called_once()
+        render_pdf_page_image_parts.assert_called_once_with(b"%PDF mock", FakeGeminiTypes)
         call_gemini.assert_called_once()
         contents = call_gemini.call_args.args[0]
-        self.assertEqual(contents[0]["part"]["data"], b"%PDF mock")
-        self.assertEqual(contents[0]["part"]["mime_type"], "application/pdf")
-        self.assertIn("scan.pdf", contents[1])
-        self.assertEqual(FakeGeminiPart.calls, [{"data": b"%PDF mock", "mime_type": "application/pdf"}])
+        self.assertEqual(contents[0]["part"]["mime_type"], "image/jpeg")
+        self.assertEqual(contents[1]["part"]["mime_type"], "image/jpeg")
+        self.assertIn("scan.pdf", contents[2])
+        self.assertEqual(FakeGeminiPart.calls, [])
 
+    @patch("services.ppt_survey_ai_service._render_pdf_page_image_parts")
     @patch("services.ppt_survey_ai_service._inspect_pdf_content")
     @patch("services.ppt_survey_ai_service._extract_scanned_pdf_ocr_text")
     @patch("services.ppt_survey_ai_service.extract_document_text")
     @patch("services.ppt_survey_ai_service._load_genai_client")
     @patch("services.ppt_survey_ai_service._call_gemini")
-    def test_scanned_pdf_binary_fallback_failure_propagates_error(
+    def test_scanned_pdf_image_analysis_failure_propagates_error(
         self,
         call_gemini,
         load_genai_client,
         extract_document_text,
         extract_scanned_pdf_ocr_text,
         inspect_pdf_content,
+        render_pdf_page_image_parts,
     ):
         extract_document_text.return_value = ""
         extract_scanned_pdf_ocr_text.return_value = ""
         inspect_pdf_content.return_value = {"pages": 2, "text_layer_pages": 0, "image_pages": 2}
         load_genai_client.return_value = (object(), FakeGeminiTypes)
-        call_gemini.side_effect = PptSurveyAiError("binary fallback failed", 502)
+        render_pdf_page_image_parts.return_value = [fake_image_part(1)]
+        call_gemini.side_effect = PptSurveyAiError("image analysis failed", 502)
 
         with self.assertRaises(PptSurveyAiError) as raised:
             generate_survey_from_material("scan.pdf", b"%PDF mock", {})
 
         self.assertEqual(raised.exception.status_code, 502)
-        self.assertEqual(str(raised.exception), "binary fallback failed")
+        self.assertEqual(str(raised.exception), "image analysis failed")
+        render_pdf_page_image_parts.assert_called_once_with(b"%PDF mock", FakeGeminiTypes)
         call_gemini.assert_called_once()
 
+    @patch("services.ppt_survey_ai_service._render_pdf_page_image_parts")
     @patch("services.ppt_survey_ai_service._inspect_pdf_content")
     @patch("services.ppt_survey_ai_service._extract_scanned_pdf_ocr_text")
     @patch("services.ppt_survey_ai_service.extract_document_text")
     @patch("services.ppt_survey_ai_service._load_genai_client")
     @patch("services.ppt_survey_ai_service._call_gemini")
-    def test_scanned_pdf_binary_fallback_403_does_not_loop_in_generation_flow(
+    def test_scanned_pdf_image_analysis_403_does_not_loop_in_generation_flow(
         self,
         call_gemini,
         load_genai_client,
         extract_document_text,
         extract_scanned_pdf_ocr_text,
         inspect_pdf_content,
+        render_pdf_page_image_parts,
     ):
         extract_document_text.return_value = ""
         extract_scanned_pdf_ocr_text.return_value = ""
         inspect_pdf_content.return_value = {"pages": 2, "text_layer_pages": 0, "image_pages": 2}
         load_genai_client.return_value = (object(), FakeGeminiTypes)
+        render_pdf_page_image_parts.return_value = [fake_image_part(1)]
         call_gemini.side_effect = PptSurveyAiError("forbidden", 403)
 
         with self.assertRaises(PptSurveyAiError) as raised:
             generate_survey_from_material("scan.pdf", b"%PDF mock", {})
 
         self.assertEqual(raised.exception.status_code, 403)
+        render_pdf_page_image_parts.assert_called_once_with(b"%PDF mock", FakeGeminiTypes)
         call_gemini.assert_called_once()
 
     @patch("services.ppt_survey_ai_service._inspect_pdf_content")

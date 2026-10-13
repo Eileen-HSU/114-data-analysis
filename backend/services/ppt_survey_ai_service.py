@@ -42,6 +42,8 @@ BINARY_UPLOAD_MAX_IMAGE_DIMENSION = 1600
 BINARY_UPLOAD_JPEG_QUALITY = 70
 PDF_OCR_MAX_PAGES = 12
 PDF_OCR_RENDER_SCALE = 2
+PDF_IMAGE_ANALYSIS_MAX_PAGES = 12
+PDF_IMAGE_ANALYSIS_RENDER_SCALE = 2
 
 
 def _get_api_key():
@@ -306,6 +308,64 @@ def _extract_scanned_pdf_ocr_text(file_bytes):
     except Exception:
         logger.warning("PDF OCR failed", exc_info=True)
         return ""
+    finally:
+        try:
+            document.close()
+        except Exception:
+            pass
+
+
+def _render_pdf_page_image_parts(file_bytes, types):
+    """Render image-based PDF pages into Gemini-supported image parts."""
+    try:
+        import pymupdf as fitz
+        from PIL import Image
+    except Exception as exc:
+        logger.exception("PDF image analysis dependencies are unavailable")
+        raise PptSurveyAiError(
+            "後端缺少 PDF 影像分析套件，無法分析圖片型 PDF。",
+            503,
+        ) from exc
+
+    try:
+        document = fitz.open(stream=file_bytes, filetype="pdf")
+    except Exception as exc:
+        logger.exception("PDF image analysis render setup failed")
+        raise PptSurveyAiError("圖片型 PDF 無法開啟，請重新匯出後再試。", 422) from exc
+
+    parts = []
+    try:
+        page_count = min(len(document), PDF_IMAGE_ANALYSIS_MAX_PAGES)
+        matrix = fitz.Matrix(PDF_IMAGE_ANALYSIS_RENDER_SCALE, PDF_IMAGE_ANALYSIS_RENDER_SCALE)
+        for page_index in range(page_count):
+            page = document.load_page(page_index)
+            pixmap = page.get_pixmap(matrix=matrix, alpha=False)
+            with Image.open(BytesIO(pixmap.tobytes("png"))) as image:
+                image.thumbnail(
+                    (BINARY_UPLOAD_MAX_IMAGE_DIMENSION, BINARY_UPLOAD_MAX_IMAGE_DIMENSION)
+                )
+                if image.mode not in {"RGB", "L"}:
+                    image = image.convert("RGB")
+                output = BytesIO()
+                image.save(
+                    output,
+                    format="JPEG",
+                    quality=BINARY_UPLOAD_JPEG_QUALITY,
+                    optimize=True,
+                )
+                parts.append(
+                    types.Part.from_bytes(
+                        data=output.getvalue(),
+                        mime_type="image/jpeg",
+                    )
+                )
+        logger.info("Rendered PDF pages for image analysis: pages=%s", len(parts))
+        return parts
+    except PptSurveyAiError:
+        raise
+    except Exception as exc:
+        logger.exception("PDF image analysis rendering failed")
+        raise PptSurveyAiError("圖片型 PDF 轉換為頁面影像失敗，請重新匯出後再試。", 422) from exc
     finally:
         try:
             document.close()
@@ -1063,13 +1123,15 @@ Return exactly {type_counts['short']} questions with type "short" and exactly {t
             if summary["text_layer_pages"] > 0:
                 raise PptSurveyAiError(PDF_TEXT_EXTRACTION_FAILED_MESSAGE, 422)
             if summary["image_pages"] > 0:
-                logger.warning("PDF OCR produced no text; falling back to binary upload for filename=%s", filename)
+                logger.warning(
+                    "PDF OCR produced no text; rendering pages for image analysis: filename=%s",
+                    filename,
+                )
                 _, types = _load_genai_client()
-                binary_payload = _prepare_binary_upload(filename, file_bytes)
-                raw = _call_gemini([
-                    types.Part.from_bytes(data=binary_payload, mime_type=_guess_mime(filename)),
-                    prompt,
-                ])
+                image_parts = _render_pdf_page_image_parts(file_bytes, types)
+                if not image_parts:
+                    raise PptSurveyAiError(INSUFFICIENT_CONTENT_MESSAGE, 400)
+                raw = _call_gemini([*image_parts, prompt])
             else:
                 raise PptSurveyAiError(INSUFFICIENT_CONTENT_MESSAGE, 400)
         elif ext in {".ppt", ".pptx"}:
