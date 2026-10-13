@@ -153,19 +153,101 @@ def _extract_pptx_text(file_bytes):
 
 
 def _extract_pdf_page_text(page):
-    """Try the more resilient layout parser before pypdf's default parser."""
-    for options in ({"extraction_mode": "layout"}, {}):
+    """Try multiple pypdf extraction modes before deciding a page has no text."""
+    attempts = ({}, {"extraction_mode": "layout"})
+    for options in attempts:
         try:
             text = page.extract_text(**options) or ""
         except (TypeError, ValueError):
-            # Older pypdf versions do not provide extraction_mode.
+            # Older pypdf versions do not provide every extraction option.
             continue
         except Exception:
             logger.debug("PDF page text extraction attempt failed", exc_info=True)
             continue
-        if text.strip():
-            return text.strip()
+        normalized = _normalize_pdf_text(text)
+        if normalized:
+            return normalized
+
+    try:
+        parts = []
+
+        def visitor_text(text, *_args):
+            if text:
+                parts.append(text)
+
+        page.extract_text(visitor_text=visitor_text)
+        normalized = _normalize_pdf_text("\n".join(parts))
+        if normalized:
+            return normalized
+    except (TypeError, ValueError):
+        pass
+    except Exception:
+        logger.debug("PDF visitor text extraction failed", exc_info=True)
+
     return ""
+
+
+def _normalize_pdf_text(text):
+    text = (text or "").replace("\x00", "")
+    text = re.sub(r"[ \t\f\v]+", " ", text)
+    text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)
+    return text.strip()
+
+
+def _pdf_page_has_text_operators(page):
+    try:
+        contents = page.get_contents()
+        if not contents:
+            return False
+        data = contents.get_data()
+    except Exception:
+        return False
+    return bool(re.search(rb"\b(BT|Tj|TJ|')\b", data))
+
+
+def _pdf_page_has_images(page):
+    try:
+        resources = page.get("/Resources") or {}
+        xobjects = resources.get("/XObject") or {}
+        if hasattr(xobjects, "get_object"):
+            xobjects = xobjects.get_object()
+        for xobject in xobjects.values():
+            try:
+                resolved = xobject.get_object() if hasattr(xobject, "get_object") else xobject
+                if resolved.get("/Subtype") == "/Image":
+                    return True
+            except Exception:
+                continue
+    except Exception:
+        return False
+    return False
+
+
+def _inspect_pdf_content(file_bytes):
+    try:
+        from pypdf import PdfReader
+    except Exception as exc:
+        logger.exception("pypdf import failed")
+        raise PptSurveyAiError("後端缺少 pypdf 套件，請確認 requirements.txt 與新平台安裝流程。", 503) from exc
+
+    try:
+        reader = PdfReader(BytesIO(file_bytes), strict=False)
+        page_count = min(len(reader.pages), 80)
+        text_layer_pages = 0
+        image_pages = 0
+        for page_index, page in enumerate(reader.pages):
+            if page_index >= 80:
+                break
+            text_layer_pages += int(_pdf_page_has_text_operators(page))
+            image_pages += int(_pdf_page_has_images(page))
+        return {
+            "pages": page_count,
+            "text_layer_pages": text_layer_pages,
+            "image_pages": image_pages,
+        }
+    except Exception:
+        logger.exception("PDF content inspection failed")
+        return {"pages": 0, "text_layer_pages": 0, "image_pages": 0}
 
 
 def _extract_pdf_text(file_bytes):
@@ -189,7 +271,14 @@ def _extract_pdf_text(file_bytes):
                 pages.append(text)
                 extracted_chars += len(text)
         extracted = "\n\n".join(pages)[:MAX_EXTRACTED_CHARS]
-        logger.info("PDF text extracted: pages=%s chars=%s", processed_pages, len(extracted))
+        summary = _inspect_pdf_content(file_bytes)
+        logger.info(
+            "PDF text extracted: pages=%s chars=%s text_layer_pages=%s image_pages=%s",
+            processed_pages,
+            len(extracted),
+            summary["text_layer_pages"],
+            summary["image_pages"],
+        )
         return extracted
     except Exception:
         logger.exception("PDF text extraction failed")
@@ -355,6 +444,14 @@ INSUFFICIENT_CONTENT_MESSAGE = (
     "\u8acb\u63d0\u4f9b\u5305\u542b\u8f03\u5b8c\u6574\u4e3b\u984c\u3001\u5167\u5bb9\u6216\u80cc\u666f\u8cc7\u8a0a\u7684\u6a94\u6848\u3002"
 )
 INSUFFICIENT_CONTENT_CODE = "INSUFFICIENT_SURVEY_CONTENT"
+SCANNED_PDF_UNSUPPORTED_MESSAGE = (
+    "上傳的 PDF 看起來是掃描圖片，沒有可擷取的文字層。"
+    "目前後端未提供 OCR 文字辨識，請上傳可選取文字的 PDF 或 PPTX。"
+)
+PDF_TEXT_EXTRACTION_FAILED_MESSAGE = (
+    "PDF 似乎包含文字層，但後端無法擷取有效文字。"
+    "請重新匯出可選取文字的 PDF，或改用 PPTX。"
+)
 
 
 def _is_false_marker(value):
@@ -653,7 +750,7 @@ def _is_model_not_found_error(exc):
     ) and "model" in lower_message
 
 
-def _call_gemini(contents):
+def _call_gemini(contents, stop_on_status_codes=None):
     """Call PPT Gemini with transient-error retry, key, and model failover.
 
     A key is never passed to shared Gemini helpers, so this failover cannot
@@ -662,6 +759,7 @@ def _call_gemini(contents):
     genai, types = _load_genai_types()
     last_error = None
     failures = []
+    stop_on_status_codes = set(stop_on_status_codes or [])
 
     for model in PPT_SURVEY_GEMINI_MODELS:
         for key_role, api_key in _get_ppt_survey_api_keys():
@@ -694,6 +792,28 @@ def _call_gemini(contents):
                     transient_failure = _is_transient_gemini_error(exc)
                     status_code = _gemini_error_status_code(exc)
                     error_summary = _safe_gemini_error_summary(exc)
+                    if status_code in stop_on_status_codes:
+                        failures.append({
+                            "model": model,
+                            "key_role": key_role,
+                            "status_code": status_code,
+                            "transient": transient_failure,
+                            "error_type": type(exc).__name__,
+                            "error_summary": error_summary,
+                        })
+                        logger.warning(
+                            "PPT survey Gemini stopped on configured status: "
+                            "model=%s key_role=%s status_code=%s error_type=%s "
+                            "error_summary=%s",
+                            model,
+                            key_role,
+                            status_code,
+                            type(exc).__name__,
+                            error_summary,
+                        )
+                        error = PptSurveyAiError(str(exc), status_code)
+                        error.gemini_failures = failures
+                        raise error from exc
                     if not transient_failure:
                         logger.warning(
                             "PPT survey Gemini non-transient failure; trying next key/model: "
@@ -845,7 +965,7 @@ Return exactly {type_counts['short']} questions with type "short" and exactly {t
 
         prompt += f"\n以下是從檔案擷取出的文字內容：\n{extracted_text}"
         try:
-            raw = _call_gemini([prompt])
+            raw = _call_gemini([prompt], stop_on_status_codes={403})
         except PptSurveyAiError as exc:
             gemini_failures = getattr(exc, "gemini_failures", [])
             has_forbidden_failure = exc.status_code == 403 or any(
@@ -864,7 +984,18 @@ Return exactly {type_counts['short']} questions with type "short" and exactly {t
     else:
         ext = _extension(filename)
         if ext == ".pdf":
-            logger.warning("No PDF text extracted; rejecting insufficient material: filename=%s", filename)
+            summary = _inspect_pdf_content(file_bytes)
+            logger.warning(
+                "No PDF text extracted: filename=%s pages=%s text_layer_pages=%s image_pages=%s",
+                filename,
+                summary["pages"],
+                summary["text_layer_pages"],
+                summary["image_pages"],
+            )
+            if summary["text_layer_pages"] > 0:
+                raise PptSurveyAiError(PDF_TEXT_EXTRACTION_FAILED_MESSAGE, 422)
+            if summary["image_pages"] > 0:
+                raise PptSurveyAiError(SCANNED_PDF_UNSUPPORTED_MESSAGE, 422)
             raise PptSurveyAiError(INSUFFICIENT_CONTENT_MESSAGE, 400)
         if ext in {".ppt", ".pptx"}:
             logger.warning("No text extracted; falling back to binary upload for filename=%s", filename)
