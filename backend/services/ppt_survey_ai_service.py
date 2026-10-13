@@ -23,6 +23,8 @@ ALLOWED_TYPES = {"short", "rating"}
 GEMINI_MODEL = "gemini-3.5-flash"
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_EXTRACTED_CHARS = 18000
+MIN_RULE_BASED_FALLBACK_CHARS = 160
+MIN_RULE_BASED_FALLBACK_WORDS = 18
 # One initial request plus at most one retry keeps failover responsive while
 # retaining a small recovery window for brief Gemini overloads.
 PPT_SURVEY_GEMINI_RETRY_ATTEMPTS = 3
@@ -379,6 +381,86 @@ def _raise_if_insufficient_content(raw):
         raise PptSurveyAiError(INSUFFICIENT_CONTENT_MESSAGE, 400)
 
 
+def _meaningful_text_units(text):
+    cleaned = re.sub(r"\s+", " ", text or "").strip()
+    if not cleaned:
+        return []
+
+    rough_units = re.split(r"[\n\r。！？!?；;]|(?<=[.!?])\s+", text)
+    units = []
+    seen = set()
+    for unit in rough_units:
+        normalized = re.sub(r"\s+", " ", unit or "").strip(" -:：,，.。")
+        if len(normalized) < 12:
+            continue
+        if re.fullmatch(r"[\d\s:/.,年月日()-]+", normalized):
+            continue
+        if re.fullmatch(r"https?://\S+|www\.\S+|\S+@\S+", normalized, flags=re.I):
+            continue
+        key = normalized.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        units.append(normalized[:120])
+    return units
+
+
+def _has_sufficient_extracted_text(text):
+    cleaned = re.sub(r"\s+", " ", text or "").strip()
+    if len(cleaned) < MIN_RULE_BASED_FALLBACK_CHARS:
+        return False
+
+    words = re.findall(r"[\w\u4e00-\u9fff]+", cleaned, flags=re.UNICODE)
+    if len(words) < MIN_RULE_BASED_FALLBACK_WORDS:
+        return False
+
+    return len(_meaningful_text_units(cleaned)) >= 3
+
+
+def _rule_based_survey_from_text(filename, extracted_text, type_counts):
+    units = _meaningful_text_units(extracted_text)
+    if not units:
+        raise PptSurveyAiError(INSUFFICIENT_CONTENT_MESSAGE, 400)
+
+    def topic_for(index):
+        return units[index % len(units)]
+
+    questions = []
+    question_index = 1
+    for _ in range(type_counts["short"]):
+        topic = topic_for(question_index - 1)
+        questions.append({
+            "id": f"fallback-q-{question_index}",
+            "type": "short",
+            "title": (
+                f"Question {question_index}: Based on the material, describe your "
+                f"understanding or feedback about: {topic}"
+            ),
+            "required": True,
+            "options": [],
+        })
+        question_index += 1
+
+    for _ in range(type_counts["rating"]):
+        topic = topic_for(question_index - 1)
+        questions.append({
+            "id": f"fallback-q-{question_index}",
+            "type": "rating",
+            "title": f"Question {question_index}: Please rate how clearly the material explains: {topic}",
+            "required": True,
+            "options": [],
+        })
+        question_index += 1
+
+    return {
+        "title": f"{os.path.splitext(filename)[0]} survey",
+        "description": "Rule-based draft generated from extracted document text because AI access was unavailable.",
+        "identity_mode": "anonymous",
+        "deadline_at": "",
+        "questions": questions,
+    }
+
+
 def normalize_survey_draft(raw, fallback_title="AI 生成問卷"):
     if not isinstance(raw, dict):
         raise PptSurveyAiError("AI 回傳格式不正確，無法建立問卷草稿。", 502)
@@ -705,7 +787,9 @@ def _call_gemini(contents):
     else:
         message = "PPT survey Gemini is temporarily unavailable after retrying all models and keys."
 
-    raise PptSurveyAiError(message, status_code) from last_error
+    error = PptSurveyAiError(message, status_code)
+    error.gemini_failures = failures
+    raise error from last_error
 
 
 def generate_survey_from_material(filename, file_bytes, config):
@@ -751,11 +835,38 @@ Return exactly {type_counts['short']} questions with type "short" and exactly {t
 """
 
     if extracted_text:
+        if _extension(filename) == ".pdf" and not _has_sufficient_extracted_text(extracted_text):
+            logger.warning(
+                "PDF extracted text is insufficient for PPT survey generation: filename=%s chars=%s",
+                filename,
+                len(extracted_text),
+            )
+            raise PptSurveyAiError(INSUFFICIENT_CONTENT_MESSAGE, 400)
+
         prompt += f"\n以下是從檔案擷取出的文字內容：\n{extracted_text}"
-        raw = _call_gemini([prompt])
+        try:
+            raw = _call_gemini([prompt])
+        except PptSurveyAiError as exc:
+            gemini_failures = getattr(exc, "gemini_failures", [])
+            has_forbidden_failure = exc.status_code == 403 or any(
+                failure.get("status_code") == 403 for failure in gemini_failures
+            )
+            if not has_forbidden_failure or _extension(filename) != ".pdf":
+                raise
+            logger.warning(
+                "Gemini returned 403 for sufficient PDF text; using rule-based fallback: "
+                "filename=%s chars=%s question_count=%s",
+                filename,
+                len(extracted_text),
+                question_count,
+            )
+            raw = _rule_based_survey_from_text(filename, extracted_text, type_counts)
     else:
         ext = _extension(filename)
-        if ext in {".ppt", ".pptx", ".pdf"}:
+        if ext == ".pdf":
+            logger.warning("No PDF text extracted; rejecting insufficient material: filename=%s", filename)
+            raise PptSurveyAiError(INSUFFICIENT_CONTENT_MESSAGE, 400)
+        if ext in {".ppt", ".pptx"}:
             logger.warning("No text extracted; falling back to binary upload for filename=%s", filename)
             _, types = _load_genai_client()
             binary_payload = _prepare_binary_upload(filename, file_bytes)
