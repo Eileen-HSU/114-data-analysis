@@ -181,6 +181,9 @@ function ErrorsTab({ token, navigate }) {
   const detailSeq = useRef(0);
   const [busy, setBusy] = useState({});
   const [selected, setSelected] = useState(null); // 目前打開的錯誤（清單保持掛載，篩選與頁數不會掉）
+  const [checked, setChecked] = useState(() => new Set()); // 清單上勾選的（批次用）
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [batchMsg, setBatchMsg] = useState("");
   const seq = useRef(0);
   const statusText = (status) => ({ open: t("未處理", "Unresolved"), resolved: t("已處理", "Resolved"), ignored: t("已忽略", "Ignored") }[status] || status);
 
@@ -190,13 +193,71 @@ function ErrorsTab({ token, navigate }) {
     Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, v); });
     try {
       const next = await api(`/api/admin/ai/system/errors?${params}`, token);
-      if (mine === seq.current) setData(next);
+      if (mine === seq.current) {
+        setData(next);
+        // 只保留還在這一頁、而且仍是「未處理」的勾選，避免對看不到的資料動手
+        const openIds = new Set(next.errors.filter((r) => r.status === "open").map((r) => r.error_id));
+        setChecked((cur) => new Set([...cur].filter((id) => openIds.has(id))));
+      }
     } catch (e) {
       setError(errorMessage(e));
     }
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [filters, page]);
+
+  const openRows = (data?.errors || []).filter((r) => r.status === "open");
+  const allChecked = openRows.length > 0 && openRows.every((r) => checked.has(r.error_id));
+  const toggleOne = (id) => setChecked((cur) => {
+    const next = new Set(cur);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const toggleAll = () => setChecked(allChecked ? new Set() : new Set(openRows.map((r) => r.error_id)));
+
+  // 批次處理：只問一次說明，逐筆送出；失敗的保留勾選，可以再按一次
+  const batchSet = async (status) => {
+    const ids = openRows.filter((r) => checked.has(r.error_id)).map((r) => r.error_id);
+    if (!ids.length || batchBusy) return;
+    const resolved = status === "resolved";
+    const note = await askText({
+      title: resolved
+        ? t(`標記 ${ids.length} 筆為已處理`, `Resolve ${ids.length} errors`)
+        : t(`忽略 ${ids.length} 筆錯誤`, `Ignore ${ids.length} errors`),
+      placeholder: resolved
+        ? t("怎麼處理的？（可留空，會套用到這些錯誤）", "How was it fixed? (optional, applies to all)")
+        : t("為什麼忽略？（可留空，會套用到這些錯誤）", "Why ignore? (optional, applies to all)"),
+      confirmLabel: resolved ? t(`標記 ${ids.length} 筆已處理`, `Resolve ${ids.length}`) : t(`忽略 ${ids.length} 筆`, `Ignore ${ids.length}`),
+      rows: 3,
+    });
+    if (note === null) return;
+    setBatchBusy(true);
+    setBatchMsg("");
+    const failed = [];
+    let lastError = null;
+    for (let i = 0; i < ids.length; i += 1) {
+      setBatchMsg(t(`處理中 ${i + 1} / ${ids.length}…`, `Working ${i + 1} / ${ids.length}…`));
+      try {
+        await api(`/api/admin/ai/system/errors/${ids[i]}/status`, token, {
+          method: "POST", body: JSON.stringify({ status, note }),
+        });
+      } catch (e) {
+        failed.push(ids[i]);
+        lastError = e;
+      }
+    }
+    setChecked(new Set(failed));
+    await load();
+    setBatchBusy(false);
+    if (failed.length) {
+      setBatchMsg("");
+      setError(t(`${ids.length - failed.length} 筆完成，${failed.length} 筆失敗（已保留勾選，可再按一次）：${errorMessage(lastError)}`,
+        `${ids.length - failed.length} done, ${failed.length} failed (kept selected): ${errorMessage(lastError)}`));
+    } else {
+      setError("");
+      setBatchMsg(t(`已${resolved ? "標記已處理" : "忽略"} ${ids.length} 筆。`, `${resolved ? "Resolved" : "Ignored"} ${ids.length}.`));
+    }
+  };
 
   const loadDetail = async (id) => {
     const mine = ++detailSeq.current;
@@ -301,6 +362,22 @@ function ErrorsTab({ token, navigate }) {
             onKeyDown={(e) => { if (e.key === "Enter") update({ q: e.currentTarget.value.trim() }); }} />
         </label>
       </div>
+      {openRows.length > 0 && (
+        <div className="syslog-batchbar">
+          <label>
+            <input type="checkbox" checked={allChecked} disabled={batchBusy} onChange={toggleAll} />
+            {t(`全選本頁未處理（${openRows.length} 筆）`, `Select all unresolved on this page (${openRows.length})`)}
+          </label>
+          {checked.size > 0 && (
+            <>
+              <b>{t(`已選 ${checked.size} 筆`, `${checked.size} selected`)}</b>
+              <button className="review-btn-primary" disabled={batchBusy} onClick={() => batchSet("resolved")}>{t("批次標記已處理", "Resolve selected")}</button>
+              <button disabled={batchBusy} onClick={() => batchSet("ignored")}>{t("批次忽略", "Ignore selected")}</button>
+            </>
+          )}
+          {batchMsg && <small role="status">{batchMsg}</small>}
+        </div>
+      )}
       {!data && <LoadingNotice text={t("正在載入錯誤紀錄…", "Loading errors…")} />}
       {data && data.errors.length === 0 && (
         <p className="review-empty">{filters.status === "open" ? t("目前沒有未處理的錯誤。", "No unresolved errors.") : t("沒有符合條件的錯誤。", "No matching errors.")}</p>
@@ -308,7 +385,11 @@ function ErrorsTab({ token, navigate }) {
       {data && data.errors.length > 0 && (
         <ul className="admin-list syslog-error-list">
           {data.errors.map((row) => (
-            <li key={row.error_id}>
+            <li key={row.error_id} className={row.status === "open" ? "syslog-error-item--check" : undefined}>
+              {row.status === "open" && (
+                <input type="checkbox" className="syslog-error-check" aria-label={t("選取這筆錯誤", "Select this error")}
+                  checked={checked.has(row.error_id)} disabled={batchBusy} onChange={() => toggleOne(row.error_id)} />
+              )}
               <button type="button" className="syslog-error-row" onClick={() => openError(row)}>
                 <span className="syslog-error-body">
                   <span className="syslog-error-line">

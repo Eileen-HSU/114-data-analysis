@@ -77,7 +77,7 @@ export default function SandboxPanel() {
 
   return <>
     {needsPublish && !result && (
-      <p className="tax-legacy-note">{t("發布前需要先通過沙盒驗證：請貼上測試回答並按「執行測試」，每一筆都成功後就能回去發布。", "Publishing requires passing sandbox validation first: paste sample answers and run the test. Once every item succeeds, go back and publish.")}</p>
+      <p className="sandbox-notice sandbox-notice-cost">{t("發布前需要先通過沙盒驗證：請貼上測試回答並按「執行測試」，每一筆都成功後就能回去發布。", "Publishing requires passing sandbox validation first: paste sample answers and run the test. Once every item succeeds, go back and publish.")}</p>
     )}
     {error && <p className="ai-admin-error">{error}<button onClick={() => setError("")}>×</button></p>}
     <h2>{topicTitle}</h2>
@@ -126,7 +126,7 @@ export default function SandboxPanel() {
     {result && (
       <div className="admin-card">
         {result.results.length > 0 && result.results.every((r) => r.segmentation_status === "completed") && (
-          <p className="tax-legacy-note">
+          <p className="tax-mode tax-mode--live">
             {t(`v${result.taxonomy_version.version_number} 已通過沙盒驗證，可以回到分類架構發布。`, `v${result.taxonomy_version.version_number} passed sandbox validation. You can go back and publish it.`)}
             {" "}<Link to={`/admin/ai/topics/${topicKey}`}>{t("回到分類架構 →", "Back to taxonomy →")}</Link>
           </p>

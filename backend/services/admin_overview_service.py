@@ -53,12 +53,17 @@ def bucket_expr():
     /classifications 的 queue 篩選與首頁數字共用這一份定義，清單跟數字才會一致。"""
     from classification_models import Classification_Review
     from models import Taxonomy_Version
-    from taxonomy import TAXONOMY_VERSION_STATUS_PUBLISHED
+    from taxonomy import TAXONOMY_VERSION_STATUS_ARCHIVED, TAXONOMY_VERSION_STATUS_PUBLISHED
 
     R = Response_Classification
     published_ids = db.session.query(Taxonomy_Version.version_id).filter(
         Taxonomy_Version.status == TAXONOMY_VERSION_STATUS_PUBLISHED)
     published = R.taxonomy_version_id.in_(published_ids)
+    # 暫定 = 這筆分類用的版本還是草稿／審核中（還沒發布過）。已被新版取代（archived）的舊版本
+    # 不是暫定：它底下還在待審的分類照樣要出現在人工待處理，不能因為發布新版就消失。
+    unpublished_ids = db.session.query(Taxonomy_Version.version_id).filter(
+        Taxonomy_Version.status.notin_((TAXONOMY_VERSION_STATUS_PUBLISHED, TAXONOMY_VERSION_STATUS_ARCHIVED)))
+    provisional = R.taxonomy_version_id.in_(unpublished_ids)
     reviewed = R.classification_id.in_(db.session.query(Classification_Review.classification_id).distinct())
     completed = R.status == "completed"
     return case(
@@ -66,7 +71,7 @@ def bucket_expr():
         (R.review_status != REVIEW_STATUS_PENDING, BUCKET_DONE),
         (R.status.in_(_NON_LIVE_STATUSES), BUCKET_DONE),
         (R.status == NEW_CATEGORY_STATUS, BUCKET_NEW_CATEGORY),
-        (db.and_(R.taxonomy_version_id.isnot(None), ~published), BUCKET_PROVISIONAL),
+        (provisional, BUCKET_PROVISIONAL),
         (R.review_flag_reason == "ai_disagreement", BUCKET_AI_DISAGREEMENT),
         (R.second_opinion_status == "failed", BUCKET_SECOND_OPINION_FAILED),
         (db.and_(completed, R.review_flag_reason == "low_confidence", R.second_opinion_status.is_(None),

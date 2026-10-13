@@ -65,6 +65,8 @@ const request = async (path, token, options, method) => {
     responseCache.set(path, body);
   } else {
     responseCache.clear();
+    // 寫入成功：通知畫面重新讀取上方的數字（例如分類審查頁的待審查）
+    try { window.dispatchEvent(new Event("admin-data-changed")); } catch { /* 非瀏覽器環境忽略 */ }
   }
   return body;
 };

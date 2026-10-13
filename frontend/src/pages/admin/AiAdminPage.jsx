@@ -86,8 +86,8 @@ export default function AiAdminPage() {
     },
     {
       key: "reports", value: reportsValue, unavailableText: t("無法取得報告狀態", "Report status unavailable"),
-      title: t("需要重新產生的報告", "Reports to regenerate"),
-      text: t("資料有變動的報告", "Reports whose data changed"),
+      title: t("待產生／需更新的報告", "Reports to generate or refresh"),
+      text: t("尚未產生，或資料有變動的報告", "Not generated yet, or data has changed"),
       to: "/admin/ai/reports?regen=1",
     },
     {

@@ -28,6 +28,18 @@ export default function ReviewHubPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 確認、排除、重新開啟等寫入成功後，重新讀取上方的數字（連續多筆時合併成一次）
+  useEffect(() => {
+    let timer = null;
+    const refresh = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => { api("/api/admin/ai/overview", token).then(setOverview).catch(() => {}); }, 300);
+    };
+    window.addEventListener("admin-data-changed", refresh);
+    return () => { clearTimeout(timer); window.removeEventListener("admin-data-changed", refresh); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!legacyFailedView) return;
     setSearchParams({ view: "unassigned", kind: "failed" }, { replace: true });

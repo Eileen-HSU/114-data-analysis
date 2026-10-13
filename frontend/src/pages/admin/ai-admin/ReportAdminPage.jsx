@@ -300,11 +300,11 @@ export default function ReportAdminPage() {
 
     <label className="review-secondary-filter">
       <input type="checkbox" checked={onlyNeedsRegen} onChange={(e) => setParams({ regen: e.target.checked ? "1" : "", page: "" })} />
-      {t("只看需要重新產生的報告", "Only show reports that need regeneration")}
+      {t("只看待產生或需更新的報告", "Only show reports that need regeneration")}
     </label>
 
     {loading && <LoadingNotice />}
-    {!loading && !error && data.items.length === 0 && <p className="review-empty-hint">{onlyNeedsRegen ? t("沒有需要重新產生的報告。", "No reports need regeneration.") : t("目前沒有任何分析資料。", "No analysis data yet.")}</p>}
+    {!loading && !error && data.items.length === 0 && <p className="review-empty-hint">{onlyNeedsRegen ? t("沒有待產生或需更新的報告。", "No reports need regeneration.") : t("目前沒有任何分析資料。", "No analysis data yet.")}</p>}
 
     {!loading && data.items.length > 0 && (
       <ul className="admin-list">

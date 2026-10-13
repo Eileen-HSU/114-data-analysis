@@ -7,7 +7,9 @@ import { AUTO_CONFIRMED_LABEL, STATE_TABS, errorMessage, isAutoConfirmed, stateL
 import { FailureNotice, SkeletonCards } from "./StatusWidgets";
 import { useAuth } from "../../../../hooks/AuthContext";
 
-const HIGH_CONFIDENCE_THRESHOLD = 0.9;
+// 與後端信心度檢查的門檻一致（services/confidence_gate.py 的 CONFIDENCE_THRESHOLD）：達到這個分數、
+// 且不需人工審核的，才能用「選取高信心」批次維持 AI 分類。
+const HIGH_CONFIDENCE_THRESHOLD = 0.75;
 const PAGE_SIZE = 50;
 
 const newBatchId = () => (
@@ -281,7 +283,7 @@ export default function ClassificationList({
             </button>
             <button type="button" disabled={batchBusy || highConfidenceRows.length === 0}
               onClick={() => setSelectedIds(new Set(highConfidenceRows.map((r) => r.classification_id)))}
-              title={t(`選取本頁信心分數 ≥ ${HIGH_CONFIDENCE_THRESHOLD.toFixed(1)} 且不需人工審核的項目`, `Select items on this page with confidence ≥ ${HIGH_CONFIDENCE_THRESHOLD.toFixed(1)}`)}>
+              title={t(`選取本頁信心分數 ≥ ${HIGH_CONFIDENCE_THRESHOLD.toFixed(2)} 且不需人工審核的項目`, `Select items on this page with confidence ≥ ${HIGH_CONFIDENCE_THRESHOLD.toFixed(2)}`)}>
               {t(`選取高信心 (${highConfidenceRows.length})`, `Select high-confidence (${highConfidenceRows.length})`)}
             </button>
             <button type="button" disabled={batchBusy || selectedCount === 0} onClick={() => setSelectedIds(new Set())}>
