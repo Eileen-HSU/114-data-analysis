@@ -929,3 +929,25 @@ details.admin-section-block > summary { cursor: pointer; }
 .tax-filter-btn--active { background: #1f2937; border-color: #1f2937; color: #fff; }
 .tax-filter-btn--active .admin-tab-count { background: rgba(255,255,255,.2); color: #fff; }
 .tax-row-key { font-size: 12px; color: #64748b; overflow-wrap: anywhere; }
+
+/* 寫入進行中：管理畫面的按鈕變灰、不能再按，避免連點重複送出（見 shared/apiClient.js） */
+html[data-api-busy] .admin-main button,
+html[data-api-busy] .admin-main .rpt-row-btn {
+  opacity: .55;
+  cursor: progress;
+  pointer-events: none;
+}
+html[data-api-busy] body::after {
+  content: "處理中，請稍候…";
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 3000;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: #1f2937;
+  color: #fff;
+  font-size: 14px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .25);
+}
+html[lang^="en"][data-api-busy] body::after { content: "Working…"; }

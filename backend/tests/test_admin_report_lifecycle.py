@@ -129,6 +129,14 @@ regenerate_fresh()
 # taxonomy publish（同一 Topic 的新版本）
 with app.app_context():
     draft = seed_topic("report_topic", status="draft", version_number=2)
+def _grant_sandbox(topic, vid):
+    """手冊規則：發布前必須先通過沙盒；測試直接寫入通過紀錄。"""
+    from services.taxonomy_sandbox_service import record_sandbox_pass
+    with app.app_context():
+        record_sandbox_pass(topic, vid, admin_id=1)
+
+
+_grant_sandbox("report_topic", draft)
 resp = client.post(f"/api/admin/ai/topics/report_topic/taxonomy/{draft}/publish", headers=admin_header(1))
 check("publish 200", resp.status_code == 200)
 check("taxonomy publish -> outdated（taxonomy_published）", latest() == (True, "taxonomy_published"))

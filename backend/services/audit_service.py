@@ -17,6 +17,7 @@ ACTION_RETRY_FAILED = "retry_failed"
 ACTION_TAXONOMY_PUBLISH = "taxonomy_publish"
 ACTION_REPORT_REGENERATE = "report_regenerate"
 ACTION_TAXONOMY_BOOTSTRAP = "taxonomy_bootstrap"
+ACTION_TAXONOMY_SANDBOX_PASS = "taxonomy_sandbox_pass"
 
 ENTITY_CLASSIFICATION = "classification"
 ENTITY_UPLOADED_ANSWER = "uploaded_answer"

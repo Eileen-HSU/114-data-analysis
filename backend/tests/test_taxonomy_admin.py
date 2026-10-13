@@ -298,6 +298,14 @@ resp_dup_add = api(
 )
 check("可以新增一筆跟既有 sub_category 同名、但 main_category 不同的 category", resp_dup_add.status_code == 201)
 
+def _grant_sandbox(topic, vid):
+    """手冊規則：發布前必須先通過沙盒；測試直接寫入通過紀錄。"""
+    from services.taxonomy_sandbox_service import record_sandbox_pass
+    with app.app_context():
+        record_sandbox_pass(topic, vid, admin_id=1)
+
+
+_grant_sandbox("topic_published", cloned_version_id)
 resp_publish_dup = api("post", f"/api/admin/ai/topics/topic_published/taxonomy/{cloned_version_id}/publish", headers=AUTH)
 check("publish 時偵測到 sub_category 重複，回 422", resp_publish_dup.status_code == 422)
 
@@ -320,6 +328,7 @@ with app.app_context():
     db.session.commit()
     invalid_version_id = v_invalid.version_id
 
+_grant_sandbox("topic_invalid_draft", invalid_version_id)
 resp = api("post", f"/api/admin/ai/topics/topic_invalid_draft/taxonomy/{invalid_version_id}/publish", headers=AUTH)
 check("缺少 definition/source_raw_text 時 publish 回 422", resp.status_code == 422)
 with app.app_context():
@@ -328,6 +337,7 @@ with app.app_context():
 
 print("\n========== 測試 9/12：publish 成功 ==========")
 
+_grant_sandbox("topic_published", cloned_version_id)
 resp = api("post", f"/api/admin/ai/topics/topic_published/taxonomy/{cloned_version_id}/publish", headers=AUTH)
 check("HTTP 200", resp.status_code == 200)
 published_result = resp.get_json()["taxonomy_version"]

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../shared/apiClient";
 import { t, taxStatusText, reviewFlagReasonText } from "../shared/taxStatus";
 import { useAuth } from "../../../../hooks/AuthContext";
@@ -8,6 +8,9 @@ const NORMAL_STATUSES = ["published", "draft", "in_review"];
 
 export default function SandboxPanel() {
   const { topicKey } = useParams();
+  const [searchParams] = useSearchParams();
+  const needsPublish = searchParams.get("needs") === "publish";
+  const requestedVersionId = Number(searchParams.get("version")) || null; // 從「發布」被導過來時，預選要驗證的版本
   const { user } = useAuth();
   const token = user?.token;
 
@@ -35,7 +38,8 @@ export default function SandboxPanel() {
         setTopicTitle(mine?.title || topicKey);
         const list = versionsData.versions || [];
         setVersions(list);
-        const defaultVersion = list.find((v) => NORMAL_STATUSES.includes(v.status));
+        const requested = requestedVersionId ? list.find((v) => v.version_id === requestedVersionId) : null;
+        const defaultVersion = requested || list.find((v) => NORMAL_STATUSES.includes(v.status));
         setSelectedVersionId(defaultVersion?.version_id ?? null);
       } catch (e) {
         if (!cancelled) setError(e.message);
@@ -72,6 +76,9 @@ export default function SandboxPanel() {
   if (loading) return <div className="admin-card"><p>{t("載入中...", "Loading...")}</p></div>;
 
   return <>
+    {needsPublish && !result && (
+      <p className="tax-legacy-note">{t("發布前需要先通過沙盒驗證：請貼上測試回答並按「執行測試」，每一筆都成功後就能回去發布。", "Publishing requires passing sandbox validation first: paste sample answers and run the test. Once every item succeeds, go back and publish.")}</p>
+    )}
     {error && <p className="ai-admin-error">{error}<button onClick={() => setError("")}>×</button></p>}
     <h2>{topicTitle}</h2>
 
@@ -118,6 +125,12 @@ export default function SandboxPanel() {
 
     {result && (
       <div className="admin-card">
+        {result.results.length > 0 && result.results.every((r) => r.segmentation_status === "completed") && (
+          <p className="tax-legacy-note">
+            {t(`v${result.taxonomy_version.version_number} 已通過沙盒驗證，可以回到分類架構發布。`, `v${result.taxonomy_version.version_number} passed sandbox validation. You can go back and publish it.`)}
+            {" "}<Link to={`/admin/ai/topics/${topicKey}`}>{t("回到分類架構 →", "Back to taxonomy →")}</Link>
+          </p>
+        )}
         <p><small>{t("使用版本：", "Version used:")} v{result.taxonomy_version.version_number} · {taxStatusText(result.taxonomy_version.status)}</small></p>
         {result.results.map((r, i) => (
           <article className="sandbox-result-row" key={i}>

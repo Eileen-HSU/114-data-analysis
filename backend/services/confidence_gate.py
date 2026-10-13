@@ -62,6 +62,10 @@ def evaluate_confidence_gate(segment: dict):
     if segment.get("status") == "methodology_not_found":
         return True, REASON_METHODOLOGY_NOT_FOUND
 
+    if segment.get("main_category_mismatch"):
+        # AI 回的大類別和分類架構裡該子類別所屬的大類別不一致：已改用架構的大類別，但要人工確認
+        return True, "main_category_mismatch"
+
     if segment.get("status") == "new_category":
         # 開放式分類：AI 提出清單外的新類別，一律交給人工確認
         return True, "new_category_proposed"

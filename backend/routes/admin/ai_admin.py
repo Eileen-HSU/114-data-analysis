@@ -29,6 +29,9 @@ from services.taxonomy_generation_service import (
 from services import taxonomy_service as taxo
 from services.taxonomy_sandbox_service import (
     run_sandbox_classification,
+    sandbox_run_passed,
+    record_sandbox_pass,
+    has_sandbox_pass,
     SandboxValidationError,
     SandboxExecutionError,
 )
@@ -950,7 +953,11 @@ def taxonomy_version_detail(topic_key, version_id):
     version = taxo.get_taxonomy_version(topic_key, version_id)
     if version is None:
         return jsonify({"error": "taxonomy version not found"}), 404
-    return jsonify({"taxonomy_version": version.to_dict(include_categories=True)})
+    # sandbox_passed：目前內容是否已通過沙盒驗證（前端按「發布」前用來決定要不要直接導向沙盒）
+    return jsonify({
+        "taxonomy_version": version.to_dict(include_categories=True),
+        "sandbox_passed": has_sandbox_pass(version),
+    })
 
 
 @ai_admin_bp.put("/topics/<topic_key>/taxonomy/<int:version_id>/categories/<int:category_id>")
@@ -1052,6 +1059,14 @@ def publish_taxonomy(topic_key, version_id):
     admin, failure = _admin_or_error()
     if failure:
         return failure
+    target = taxo.get_taxonomy_version(topic_key, version_id)
+    if target is not None and not has_sandbox_pass(target):
+        return api_error(
+            "TAXONOMY_SANDBOX_REQUIRED",
+            "發布前必須先通過沙盒驗證：請先用「沙盒」試跑這個版本（全部成功）。"
+            "若試跑後又修改了類別內容，需要重新試跑。",
+            422,
+        )
     try:
         version = taxo.publish_taxonomy_version_with_validation(topic_key, version_id, admin_id=admin.admin_id)
     except taxo.TaxonomyPublishValidationError as exc:
@@ -1074,7 +1089,7 @@ def sandbox_taxonomy_classification(topic_key, version_id):
     允許測試 archived 版本（歷史比較/問題重現用途），不在這裡擋，
     前端預設選單另外處理「不鼓勵但不禁止」的呈現方式。
     """
-    _, failure = _admin_or_error()
+    admin, failure = _admin_or_error()
     if failure:
         return failure
 
@@ -1093,6 +1108,9 @@ def sandbox_taxonomy_classification(topic_key, version_id):
     except SandboxExecutionError as exc:
         return jsonify({"error": str(exc)}), 502
 
+    # 手冊規則：試跑全部成功才算通過，記錄當下的內容指紋供發布時檢查。
+    if sandbox_run_passed(result):
+        record_sandbox_pass(topic_key, version_id, admin_id=admin.admin_id)
     return jsonify(result)
 
 

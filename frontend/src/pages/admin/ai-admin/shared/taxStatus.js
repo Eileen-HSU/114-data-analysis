@@ -21,6 +21,7 @@ const reviewFlagReasonTextEn = (reason) => ({
   classification_incomplete: "Incomplete classification result",
   new_category_proposed: "AI proposed a new category",
   ai_disagreement: "Two AI checks disagreed",
+  main_category_mismatch: "AI main category did not match the taxonomy (corrected, please confirm)",
 }[reason] || reason);
 const reviewFlagReasonTextZh = (reason) => ({
   low_confidence: "信心分數偏低",
@@ -29,5 +30,6 @@ const reviewFlagReasonTextZh = (reason) => ({
   classification_incomplete: "分類結果不完整",
   new_category_proposed: "AI 提出新類別（不在目前清單中）",
   ai_disagreement: "兩次 AI 判斷不一致",
+  main_category_mismatch: "AI 回傳的大類別與分類架構不符（已更正，請確認）",
 }[reason] || reason);
 export const reviewFlagReasonText = (reason) => (getLang() === "zh" ? reviewFlagReasonTextZh(reason) : reviewFlagReasonTextEn(reason));

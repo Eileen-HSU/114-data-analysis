@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { NavLink, useParams } from "react-router-dom";
+import { NavLink, useNavigate, useParams } from "react-router-dom";
 import { api, peekCache } from "../shared/apiClient";
 import { SkeletonCards } from "../shared/StatusWidgets";
 import { t, taxStatusText, TAX_EDITABLE_STATUSES } from "../shared/taxStatus";
@@ -11,13 +11,14 @@ import { topicDisplayName } from "../shared/reviewStates";
 
 export default function TaxonomyPanel() {
   const { topicKey } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const token = user?.token;
 
   // 抓過的資料先拿來立刻顯示（首頁、上次進來時抓的），背景再更新
   const cached = () => {
     const meta = (peekCache("/api/admin/ai/taxonomy-topics")?.topics || []).find((x) => x.topic_key === topicKey) || null;
-    const versionId = meta?.latest_draft_version?.version_id ?? meta?.published_version?.version_id;
+    const versionId = meta?.published_version?.version_id ?? meta?.latest_draft_version?.version_id;
     const version = versionId ? peekCache(`/api/admin/ai/topics/${topicKey}/taxonomy/${versionId}`)?.taxonomy_version : null;
     return { meta, version: version || null, answers: peekCache(answersUrl(topicKey, { per_category: 5 })) || null };
   };
@@ -119,7 +120,7 @@ export default function TaxonomyPanel() {
       if (cancelled || !meta) { setLoading(false); return; }
       // 預設顯示：有草稿優先顯示草稿（那是需要 Admin 動作的版本），
       // 否則顯示已發布版本。
-      const defaultVersionId = meta.latest_draft_version?.version_id ?? meta.published_version?.version_id;
+      const defaultVersionId = meta.published_version?.version_id ?? meta.latest_draft_version?.version_id;
       if (defaultVersionId) await openVersion(defaultVersionId);
       if (!cancelled) setLoading(false);
     })();
@@ -198,6 +199,12 @@ export default function TaxonomyPanel() {
 
   const publishTaxVersion = async () => {
     await flushPendingSaves();
+    // 發布前必須通過沙盒驗證：還沒通過就直接帶去沙盒（預選這個版本），不用先確認一次
+    const sandboxUrl = `/admin/ai/topics/${topicKey}/sandbox?version=${taxVersion.version_id}&needs=publish`;
+    try {
+      const check = await api(`/api/admin/ai/topics/${topicKey}/taxonomy/${taxVersion.version_id}`, token);
+      if (check.sandbox_passed === false) { navigate(sandboxUrl); return; }
+    } catch (e) { setError(e.message); return; }
     const changes = await describeChanges();
     if (!window.confirm(t(
       `確定要發布 v${taxVersion.version_number} 嗎？\n發布後，之後的分類都會用這個版本，目前上線的版本會封存，相關報告會標記為需要更新。${changes}`,
@@ -208,7 +215,11 @@ export default function TaxonomyPanel() {
       setTaxVersion(data.taxonomy_version);
       await loadTopicMeta();
       loadVersions();
-    } catch (e) { setError(e.message); }
+    } catch (e) {
+      // 檢查之後才被改動而失效：一樣帶去沙盒
+      if (e.body?.code === "TAXONOMY_SANDBOX_REQUIRED") { navigate(sandboxUrl); return; }
+      setError(e.message);
+    }
   };
   const deleteTaxVersion = async () => {
     await flushPendingSaves();
@@ -219,7 +230,7 @@ export default function TaxonomyPanel() {
       loadVersions();
       const meta = await loadTopicMeta();
       if (meta) {
-        const nextVersionId = meta.latest_draft_version?.version_id ?? meta.published_version?.version_id;
+        const nextVersionId = meta.published_version?.version_id ?? meta.latest_draft_version?.version_id;
         if (nextVersionId) await openVersion(nextVersionId);
       }
     } catch (e) { setError(e.message); }
@@ -260,7 +271,7 @@ export default function TaxonomyPanel() {
       setMergeResultText("");
       setTaxVersion(null);
       const meta = await loadTopicMeta();
-      const versionId = meta?.latest_draft_version?.version_id ?? meta?.published_version?.version_id;
+      const versionId = meta?.published_version?.version_id ?? meta?.latest_draft_version?.version_id;
       if (versionId) await openVersion(versionId);
       await loadAnswers();
       const restored = result.restored_version_ids?.length || 0;
@@ -382,7 +393,7 @@ export default function TaxonomyPanel() {
         {taxVersion.status === "published" && <button className="primary" onClick={cloneTaxVersion}>{t("建立新草稿版本（複製此版）", "Create new draft (clone this version)")}</button>}
         {editableNow && <>
           <button onClick={addTaxCategory}>{t("＋ 新增子類別", "＋ Add category")}</button>
-          <button className="primary" onClick={publishTaxVersion}>{t("發布這個版本", "Publish as production taxonomy")}</button>
+          <button className="primary" onClick={publishTaxVersion}>{t("驗證通過後發布", "Publish (after sandbox validation)")}</button>
         </>}
         {taxVersion.status === "draft" && <button className="review-btn-danger tax-danger" onClick={deleteTaxVersion}>{t("刪除草稿", "Delete draft")}</button>}
       </div>

@@ -110,6 +110,8 @@ with app.app_context():
         m.Response_Classification.__table__,
         m.Response_Classification_Secondary.__table__,
         m.Uploaded_Answer.__table__,
+        m.Admin_Audit_Log.__table__,
+        m.Report.__table__,
     ]
     db.metadata.create_all(bind=db.engine, tables=tables)
     admin = m.Admin(admin_name="tester", email="admin@example.com", password_hash="x")
@@ -299,6 +301,65 @@ print("\n========== 測試 7：Admin auth 保護 ==========")
 
 resp = post_sandbox(draft_id, ["a"], auth=False)
 check("沒帶 token 時回 401", resp.status_code == 401)
+
+
+print("\n========== 測試 9：發布前必須通過沙盒，且試跑後內容不能再改 ==========")
+
+def post_publish(version_id):
+    return client.post(f"/api/admin/ai/topics/topic_sandbox/taxonomy/{version_id}/publish", headers=AUTH)
+
+def run_ok(version_id):
+    _queue.clear()
+    q({"segments": ["測試回答內容"]})
+    q({"classifications": [classification_with_index(0)]})
+    return post_sandbox(version_id, ["測試回答內容"])
+
+with app.app_context():
+    d4 = m.Taxonomy_Version(topic_key="topic_sandbox", version_number=4, status="draft", source="manual")
+    db.session.add(d4)
+    db.session.flush()
+    db.session.add(m.Taxonomy_Category(version_id=d4.version_id, main_category="M", sub_category="有方法論", sort_order=1, definition="d", methodology="法A", citation="Author (2020)"))
+    db.session.commit()
+    d4_id = d4.version_id
+    pass_count = lambda: m.Admin_Audit_Log.query.filter_by(action="taxonomy_sandbox_pass").count()
+    n0 = pass_count()
+
+def detail_passed(version_id):
+    return client.get(f"/api/admin/ai/topics/topic_sandbox/taxonomy/{version_id}", headers=AUTH).get_json().get("sandbox_passed")
+
+check("沒跑過沙盒：版本詳情 sandbox_passed=False", detail_passed(d4_id) is False)
+resp = post_publish(d4_id)
+check("沒跑過沙盒 -> 422 TAXONOMY_SANDBOX_REQUIRED", resp.status_code == 422 and "TAXONOMY_SANDBOX_REQUIRED" in resp.get_data(as_text=True))
+with app.app_context():
+    check("被擋下後版本仍是 draft", m.Taxonomy_Version.query.get(d4_id).status == "draft")
+
+_queue.clear()
+q(RuntimeError("boom"))
+q(RuntimeError("boom"))
+resp = post_sandbox(d4_id, ["測試回答內容"])
+check("沙盒內分類失敗 -> 200 但 segmentation_status 不是 completed", resp.status_code == 200 and resp.get_json()["results"][0]["segmentation_status"] != "completed")
+with app.app_context():
+    check("沙盒失敗不留通過紀錄", pass_count() == n0)
+check("沙盒失敗後仍不能發布", post_publish(d4_id).status_code == 422)
+
+check("沙盒成功 HTTP 200", run_ok(d4_id).status_code == 200)
+with app.app_context():
+    check("沙盒成功留下 1 筆通過紀錄", pass_count() == n0 + 1)
+check("沙盒成功後：版本詳情 sandbox_passed=True", detail_passed(d4_id) is True)
+
+with app.app_context():
+    cat = m.Taxonomy_Category.query.filter_by(version_id=d4_id).first()
+    cat.definition = "試跑後又改了定義"
+    db.session.commit()
+check("試跑後修改內容：版本詳情 sandbox_passed 回到 False", detail_passed(d4_id) is False)
+resp = post_publish(d4_id)
+check("試跑後修改內容 -> 再次被擋 422", resp.status_code == 422 and "TAXONOMY_SANDBOX_REQUIRED" in resp.get_data(as_text=True))
+
+check("重新試跑成功", run_ok(d4_id).status_code == 200)
+resp = post_publish(d4_id)
+check("重跑後可以發布 200", resp.status_code == 200)
+with app.app_context():
+    check("發布後版本為 published", m.Taxonomy_Version.query.get(d4_id).status == "published")
 
 
 print("\n" + "=" * 50)

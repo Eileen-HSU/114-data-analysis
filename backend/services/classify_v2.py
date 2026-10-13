@@ -320,6 +320,7 @@ def _call_gemini_and_parse(masked_text: str, prompt_content: str, category_looku
 
         methodology_info = category_lookup(result["sub_category"])
         if methodology_info:
+            _apply_lookup_info(result, methodology_info)
             result["methodology"] = methodology_info["methodology"]
             result["citation"] = methodology_info["citation"]
             result["status"] = "completed"
@@ -337,6 +338,19 @@ def _call_gemini_and_parse(masked_text: str, prompt_content: str, category_looku
         result["error_detail"] = f"GEMINI_API_FAILED: {str(e)[:180]}"
 
     return result
+
+
+def _apply_lookup_info(result: dict, methodology_info: dict) -> None:
+    """子類別查到分類架構後：改存標準名稱；大類別以分類架構為準，
+    AI 回的大類別和架構不一致時蓋掉並標記，交給人工確認（不自動通過）。"""
+    canonical_sub = methodology_info.get("sub_category")
+    if canonical_sub:
+        result["sub_category"] = canonical_sub
+    expected_main = methodology_info.get("main_category")
+    if expected_main and result.get("main_category") != expected_main:
+        result["ai_main_category"] = result.get("main_category")
+        result["main_category"] = expected_main
+        result["main_category_mismatch"] = True
 
 
 def _build_classification_result(parsed: dict, category_lookup) -> dict:
@@ -363,6 +377,7 @@ def _build_classification_result(parsed: dict, category_lookup) -> dict:
 
     methodology_info = category_lookup(result["sub_category"])
     if methodology_info:
+        _apply_lookup_info(result, methodology_info)
         result["methodology"] = methodology_info["methodology"]
         result["citation"] = methodology_info["citation"]
         result["status"] = "completed"

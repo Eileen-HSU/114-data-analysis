@@ -13,8 +13,40 @@ export const prefetch = (path, token) => {
   api(path, token).catch(() => {});
 };
 
-export const api = async (path, token, options = {}) => {
+// ── 寫入保護：同一個寫入請求還在跑的時候，再按一次不會重送（回傳同一個結果）；
+// 任何寫入進行中，管理畫面的按鈕會變灰、右下角顯示「處理中」（見 ai-admin.css 的 data-api-busy）。
+const inflightWrites = new Map();
+let pendingWrites = 0;
+const BUSY_SAFETY_MS = 120000; // 請求卡住太久就不再讓畫面一直灰著
+const syncBusyFlag = () => {
+  try {
+    if (pendingWrites > 0) document.documentElement.setAttribute("data-api-busy", "");
+    else document.documentElement.removeAttribute("data-api-busy");
+  } catch { /* 非瀏覽器環境（測試）忽略 */ }
+};
+
+export const api = (path, token, options = {}) => {
   const method = (options.method || "GET").toUpperCase();
+  if (method === "GET") return request(path, token, options, method);
+  const key = `${method} ${path} ${typeof options.body === "string" ? options.body : ""}`;
+  if (inflightWrites.has(key)) return inflightWrites.get(key);
+  pendingWrites += 1;
+  syncBusyFlag();
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    pendingWrites = Math.max(0, pendingWrites - 1);
+    inflightWrites.delete(key);
+    syncBusyFlag();
+  };
+  const safety = setTimeout(release, BUSY_SAFETY_MS);
+  const promise = request(path, token, options, method).finally(() => { clearTimeout(safety); release(); });
+  inflightWrites.set(key, promise);
+  return promise;
+};
+
+const request = async (path, token, options, method) => {
   const response = await fetch(apiUrl(path), { ...options, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...(options.headers || {}) } });
   // 非 JSON 回應（例如 proxy 回的 HTML 錯誤頁）也要給出具體錯誤，不讓
   // response.json() 直接丟出難懂的 SyntaxError。

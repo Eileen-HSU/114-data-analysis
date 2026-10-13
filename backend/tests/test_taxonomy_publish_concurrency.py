@@ -95,8 +95,17 @@ with app.app_context():
 
 
 print("\n========== 2. 透過 API：失敗方重試 / 已發布版本重試 ==========")
+def _grant_sandbox(topic, vid):
+    """手冊規則：發布前必須先通過沙盒；測試直接寫入通過紀錄。"""
+    from services.taxonomy_sandbox_service import record_sandbox_pass
+    with app.app_context():
+        record_sandbox_pass(topic, vid, admin_id=1)
+
+
+_grant_sandbox("race_topic", winner)
 resp = client.post(f"/api/admin/ai/topics/race_topic/taxonomy/{winner}/publish", headers=admin_header(1))
 check("已發布版本重試 -> 422 TAXONOMY_PUBLISH_INVALID", resp.status_code == 422 and resp.get_json()["code"] == "TAXONOMY_PUBLISH_INVALID")
+_grant_sandbox("race_topic", loser)
 resp = client.post(f"/api/admin/ai/topics/race_topic/taxonomy/{loser}/publish", headers=admin_header(2))
 check("失敗方稍後正常重試 -> 200", resp.status_code == 200)
 with app.app_context():

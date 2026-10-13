@@ -299,6 +299,15 @@ def build_classification_prompt(taxonomy_version, open_set: bool = False) -> str
     return "\n\n".join(parts)
 
 
+def normalize_category_name(name) -> str:
+    """比對類別名稱用：NFKC（全形半形）、去空白、轉小寫、去掉開頭的編號前綴（如 A1、B2）。"""
+    import re
+    import unicodedata
+    text = unicodedata.normalize("NFKC", str(name or "")).strip().lower()
+    text = re.sub(r"^[a-z]\d+[\s.、:：\-]*", "", text)
+    return re.sub(r"\s+", "", text)
+
+
 def methodology_lookup_for_taxonomy_version(taxonomy_version):
     """
     回傳一個 sub_category -> {"main_category", "methodology", "citation"}
@@ -314,12 +323,23 @@ def methodology_lookup_for_taxonomy_version(taxonomy_version):
             "citation": category.citation,
             # 次要分類要保存 taxonomy category identity（不只顯示名稱）
             "category_id": category.category_id,
+            # 分類架構裡的標準名稱（AI 回的名稱只差空白／全形半形／編號前綴時，
+            # 呼叫端要改存這個，避免被當成「新類別」）
+            "sub_category": category.sub_category,
         }
         for category in taxonomy_version.categories
     }
+    # 正規化後唯一對得上的才算同一個類別；有歧義（兩個以上）就不猜
+    normalized = {}
+    for name, info in table.items():
+        normalized.setdefault(normalize_category_name(name), []).append(info)
 
     def _lookup(sub_category):
-        return table.get(sub_category)
+        info = table.get(sub_category)
+        if info is not None:
+            return info
+        matches = normalized.get(normalize_category_name(sub_category)) or []
+        return matches[0] if len(matches) == 1 else None
 
     return _lookup
 

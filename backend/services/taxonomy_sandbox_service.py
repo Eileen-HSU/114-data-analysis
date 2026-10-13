@@ -170,3 +170,54 @@ def run_sandbox_classification(topic_key: str, version_id: int, answer_texts: li
         },
         "results": results,
     }
+
+
+# ── 發布前必須通過沙盒（手冊規則）────────────────────────────────
+# 「通過」= 該版本在目前內容下，用沙盒試跑成功（每一筆都 completed）。
+# 紀錄寫在稽核紀錄（Admin_Audit_Log），不新增資料表欄位；內容指紋
+# 一旦與試跑當時不同（試跑後又改了類別），就視為未通過、必須重跑。
+_FINGERPRINT_FIELDS = (
+    "main_category", "sub_category", "definition", "include_rules",
+    "exclude_rules", "boundary_rules", "methodology", "citation",
+    "source_raw_text", "sort_order",
+)
+
+
+def taxonomy_fingerprint(version) -> str:
+    import hashlib
+    import json as _json
+    rows = sorted(
+        ([getattr(c, f, None) for f in _FINGERPRINT_FIELDS] for c in (version.categories or [])),
+        key=lambda r: _json.dumps(r, ensure_ascii=False, default=str),
+    )
+    raw = _json.dumps(rows, ensure_ascii=False, default=str)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def sandbox_run_passed(result: dict) -> bool:
+    results = result.get("results") or []
+    return bool(results) and all(r.get("segmentation_status") == "completed" for r in results)
+
+
+def record_sandbox_pass(topic_key: str, version_id: int, admin_id=None) -> bool:
+    """沙盒試跑通過時由路由呼叫，寫一筆稽核紀錄（不 commit 以外的任何正式資料）。"""
+    from extensions import db
+    from services import audit_service
+    version = get_taxonomy_version(topic_key, version_id)
+    if version is None:
+        return False
+    audit_service.record(
+        audit_service.ACTION_TAXONOMY_SANDBOX_PASS, audit_service.ENTITY_TAXONOMY_VERSION,
+        version_id, admin_id, after={"fingerprint": taxonomy_fingerprint(version)},
+    )
+    db.session.commit()
+    return True
+
+
+def has_sandbox_pass(version) -> bool:
+    from services import audit_service
+    fp = taxonomy_fingerprint(version)
+    for row in audit_service.list_for_entity(audit_service.ENTITY_TAXONOMY_VERSION, version.version_id):
+        if row.action == audit_service.ACTION_TAXONOMY_SANDBOX_PASS and (row.after_state or {}).get("fingerprint") == fp:
+            return True
+    return False
