@@ -1,4 +1,5 @@
 import json
+import importlib.util
 import logging
 import mimetypes
 import os
@@ -23,17 +24,26 @@ ALLOWED_TYPES = {"short", "rating"}
 GEMINI_MODEL = "gemini-3.5-flash"
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_EXTRACTED_CHARS = 18000
+MIN_RULE_BASED_FALLBACK_CHARS = 160
+MIN_RULE_BASED_FALLBACK_WORDS = 18
 # One initial request plus at most one retry keeps failover responsive while
 # retaining a small recovery window for brief Gemini overloads.
-PPT_SURVEY_GEMINI_RETRY_ATTEMPTS = 2
-PPT_SURVEY_GEMINI_RETRY_DELAYS_SECONDS = (1,)
-PPT_SURVEY_GEMINI_MODELS = (GEMINI_MODEL, "gemini-2.5-flash")
+PPT_SURVEY_GEMINI_RETRY_ATTEMPTS = 3
+PPT_SURVEY_GEMINI_RETRY_DELAYS_SECONDS = (5, 15)
+PPT_SURVEY_GEMINI_MODELS = (
+    GEMINI_MODEL,
+    "gemini-3.8-flash",
+)
 # google-genai HttpOptions.timeout uses milliseconds.  The generation endpoint
 # runs in a background task, so allow a full two minutes for a binary document
 # to be processed before treating an individual model request as timed out.
 PPT_SURVEY_GEMINI_TIMEOUT_MILLISECONDS = 90_000
 BINARY_UPLOAD_MAX_IMAGE_DIMENSION = 1600
 BINARY_UPLOAD_JPEG_QUALITY = 70
+PDF_OCR_MAX_PAGES = 12
+PDF_OCR_RENDER_SCALE = 2
+PDF_IMAGE_ANALYSIS_MAX_PAGES = 12
+PDF_IMAGE_ANALYSIS_RENDER_SCALE = 2
 
 
 def _get_api_key():
@@ -148,19 +158,219 @@ def _extract_pptx_text(file_bytes):
 
 
 def _extract_pdf_page_text(page):
-    """Try the more resilient layout parser before pypdf's default parser."""
-    for options in ({"extraction_mode": "layout"}, {}):
+    """Try multiple pypdf extraction modes before deciding a page has no text."""
+    attempts = ({}, {"extraction_mode": "layout"})
+    for options in attempts:
         try:
             text = page.extract_text(**options) or ""
         except (TypeError, ValueError):
-            # Older pypdf versions do not provide extraction_mode.
+            # Older pypdf versions do not provide every extraction option.
             continue
         except Exception:
             logger.debug("PDF page text extraction attempt failed", exc_info=True)
             continue
-        if text.strip():
-            return text.strip()
+        normalized = _normalize_pdf_text(text)
+        if normalized:
+            return normalized
+
+    try:
+        parts = []
+
+        def visitor_text(text, *_args):
+            if text:
+                parts.append(text)
+
+        page.extract_text(visitor_text=visitor_text)
+        normalized = _normalize_pdf_text("\n".join(parts))
+        if normalized:
+            return normalized
+    except (TypeError, ValueError):
+        pass
+    except Exception:
+        logger.debug("PDF visitor text extraction failed", exc_info=True)
+
     return ""
+
+
+def _normalize_pdf_text(text):
+    text = (text or "").replace("\x00", "")
+    text = re.sub(r"[ \t\f\v]+", " ", text)
+    text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)
+    return text.strip()
+
+
+def _pdf_page_has_text_operators(page):
+    try:
+        contents = page.get_contents()
+        if not contents:
+            return False
+        data = contents.get_data()
+    except Exception:
+        return False
+    return bool(re.search(rb"\b(BT|Tj|TJ|')\b", data))
+
+
+def _pdf_page_has_images(page):
+    try:
+        resources = page.get("/Resources") or {}
+        xobjects = resources.get("/XObject") or {}
+        if hasattr(xobjects, "get_object"):
+            xobjects = xobjects.get_object()
+        for xobject in xobjects.values():
+            try:
+                resolved = xobject.get_object() if hasattr(xobject, "get_object") else xobject
+                if resolved.get("/Subtype") == "/Image":
+                    return True
+            except Exception:
+                continue
+    except Exception:
+        return False
+    return False
+
+
+def _inspect_pdf_content(file_bytes):
+    try:
+        from pypdf import PdfReader
+    except Exception as exc:
+        logger.exception("pypdf import failed")
+        raise PptSurveyAiError("後端缺少 pypdf 套件，請確認 requirements.txt 與新平台安裝流程。", 503) from exc
+
+    try:
+        reader = PdfReader(BytesIO(file_bytes), strict=False)
+        page_count = min(len(reader.pages), 80)
+        text_layer_pages = 0
+        image_pages = 0
+        for page_index, page in enumerate(reader.pages):
+            if page_index >= 80:
+                break
+            text_layer_pages += int(_pdf_page_has_text_operators(page))
+            image_pages += int(_pdf_page_has_images(page))
+        return {
+            "pages": page_count,
+            "text_layer_pages": text_layer_pages,
+            "image_pages": image_pages,
+        }
+    except Exception:
+        logger.exception("PDF content inspection failed")
+        return {"pages": 0, "text_layer_pages": 0, "image_pages": 0}
+
+
+def _pdf_ocr_dependency_status():
+    return {
+        "PyMuPDF": bool(importlib.util.find_spec("pymupdf")),
+        "pytesseract": bool(importlib.util.find_spec("pytesseract")),
+        "PIL": bool(importlib.util.find_spec("PIL")),
+    }
+
+
+def _extract_scanned_pdf_ocr_text(file_bytes):
+    """OCR scanned PDF pages when optional offline dependencies are available."""
+    status = _pdf_ocr_dependency_status()
+    missing = [name for name, available in status.items() if not available]
+    if missing:
+        logger.warning(
+            "PDF OCR unavailable because optional dependencies are missing: missing=%s",
+            missing,
+        )
+        return ""
+
+    try:
+        import pymupdf as fitz
+        import pytesseract
+        from PIL import Image
+    except Exception:
+        logger.warning("PDF OCR dependencies could not be imported", exc_info=True)
+        return ""
+
+    try:
+        document = fitz.open(stream=file_bytes, filetype="pdf")
+    except Exception:
+        logger.warning("PDF OCR render setup failed", exc_info=True)
+        return ""
+
+    texts = []
+    try:
+        page_count = min(len(document), PDF_OCR_MAX_PAGES)
+        matrix = fitz.Matrix(PDF_OCR_RENDER_SCALE, PDF_OCR_RENDER_SCALE)
+        for page_index in range(page_count):
+            if sum(len(text) for text in texts) >= MAX_EXTRACTED_CHARS:
+                break
+            page = document.load_page(page_index)
+            pixmap = page.get_pixmap(matrix=matrix, alpha=False)
+            image = Image.open(BytesIO(pixmap.tobytes("png")))
+            text = pytesseract.image_to_string(image, lang=os.getenv("PPT_SURVEY_OCR_LANG", "eng+chi_tra"))
+            normalized = _normalize_pdf_text(text)
+            if normalized:
+                texts.append(normalized)
+        extracted = "\n\n".join(texts)[:MAX_EXTRACTED_CHARS]
+        logger.info("PDF OCR extracted text: pages=%s chars=%s", page_count, len(extracted))
+        return extracted
+    except Exception:
+        logger.warning("PDF OCR failed", exc_info=True)
+        return ""
+    finally:
+        try:
+            document.close()
+        except Exception:
+            pass
+
+
+def _render_pdf_page_image_parts(file_bytes, types):
+    """Render image-based PDF pages into Gemini-supported image parts."""
+    try:
+        import pymupdf as fitz
+        from PIL import Image
+    except Exception as exc:
+        logger.exception("PDF image analysis dependencies are unavailable")
+        raise PptSurveyAiError(
+            "後端缺少 PDF 影像分析套件，無法分析圖片型 PDF。",
+            503,
+        ) from exc
+
+    try:
+        document = fitz.open(stream=file_bytes, filetype="pdf")
+    except Exception as exc:
+        logger.exception("PDF image analysis render setup failed")
+        raise PptSurveyAiError("圖片型 PDF 無法開啟，請重新匯出後再試。", 422) from exc
+
+    parts = []
+    try:
+        page_count = min(len(document), PDF_IMAGE_ANALYSIS_MAX_PAGES)
+        matrix = fitz.Matrix(PDF_IMAGE_ANALYSIS_RENDER_SCALE, PDF_IMAGE_ANALYSIS_RENDER_SCALE)
+        for page_index in range(page_count):
+            page = document.load_page(page_index)
+            pixmap = page.get_pixmap(matrix=matrix, alpha=False)
+            with Image.open(BytesIO(pixmap.tobytes("png"))) as image:
+                image.thumbnail(
+                    (BINARY_UPLOAD_MAX_IMAGE_DIMENSION, BINARY_UPLOAD_MAX_IMAGE_DIMENSION)
+                )
+                if image.mode not in {"RGB", "L"}:
+                    image = image.convert("RGB")
+                output = BytesIO()
+                image.save(
+                    output,
+                    format="JPEG",
+                    quality=BINARY_UPLOAD_JPEG_QUALITY,
+                    optimize=True,
+                )
+                parts.append(
+                    types.Part.from_bytes(
+                        data=output.getvalue(),
+                        mime_type="image/jpeg",
+                    )
+                )
+        logger.info("Rendered PDF pages for image analysis: pages=%s", len(parts))
+        return parts
+    except PptSurveyAiError:
+        raise
+    except Exception as exc:
+        logger.exception("PDF image analysis rendering failed")
+        raise PptSurveyAiError("圖片型 PDF 轉換為頁面影像失敗，請重新匯出後再試。", 422) from exc
+    finally:
+        try:
+            document.close()
+        except Exception:
+            pass
 
 
 def _extract_pdf_text(file_bytes):
@@ -184,7 +394,14 @@ def _extract_pdf_text(file_bytes):
                 pages.append(text)
                 extracted_chars += len(text)
         extracted = "\n\n".join(pages)[:MAX_EXTRACTED_CHARS]
-        logger.info("PDF text extracted: pages=%s chars=%s", processed_pages, len(extracted))
+        summary = _inspect_pdf_content(file_bytes)
+        logger.info(
+            "PDF text extracted: pages=%s chars=%s text_layer_pages=%s image_pages=%s",
+            processed_pages,
+            len(extracted),
+            summary["text_layer_pages"],
+            summary["image_pages"],
+        )
         return extracted
     except Exception:
         logger.exception("PDF text extraction failed")
@@ -289,9 +506,11 @@ def normalize_question_count(value):
     return max(1, min(20, parsed))
 
 
-def normalize_type_counts(raw_counts):
+def normalize_type_counts(raw_counts, config=None):
     if not isinstance(raw_counts, dict):
         raw_counts = {}
+    if not isinstance(config, dict):
+        config = {}
 
     def normalize(value, fallback):
         try:
@@ -301,6 +520,28 @@ def normalize_type_counts(raw_counts):
 
     short_count = normalize(raw_counts.get("short"), 0)
     rating_count = normalize(raw_counts.get("rating"), 0)
+    if short_count + rating_count == 0:
+        type_limits = config.get("typeLimits")
+        if isinstance(type_limits, str):
+            try:
+                type_limits = json.loads(type_limits)
+            except json.JSONDecodeError:
+                type_limits = {}
+        if not isinstance(type_limits, dict):
+            type_limits = {}
+
+        total = normalize_question_count(config.get("questionCount"))
+        allow_short = type_limits.get("short") is not False
+        allow_rating = type_limits.get("rating") is not False
+        if allow_short and allow_rating:
+            rating_count = min(2, total)
+            short_count = total - rating_count
+        elif allow_rating:
+            rating_count = total
+        else:
+            short_count = total
+    if short_count + rating_count == 0:
+        short_count = 1
     return {"short": short_count, "rating": rating_count}
 
 
@@ -318,6 +559,126 @@ def _parse_json_response(text):
             logger.error("AI response is not JSON: %s", cleaned[:1000])
             raise PptSurveyAiError("AI 回傳格式不是 JSON，請重新生成。", 502)
         return json.loads(match.group(0))
+
+
+
+INSUFFICIENT_CONTENT_MESSAGE = (
+    "\u4e0a\u50b3\u8cc7\u6599\u63d0\u4f9b\u7684\u6709\u6548\u8cc7\u8a0a\u4e0d\u8db3\uff0c\u7121\u6cd5\u751f\u6210\u5177\u9ad4\u554f\u5377\u3002"
+    "\u8acb\u63d0\u4f9b\u5305\u542b\u8f03\u5b8c\u6574\u4e3b\u984c\u3001\u5167\u5bb9\u6216\u80cc\u666f\u8cc7\u8a0a\u7684\u6a94\u6848\u3002"
+)
+INSUFFICIENT_CONTENT_CODE = "INSUFFICIENT_SURVEY_CONTENT"
+SCANNED_PDF_UNSUPPORTED_MESSAGE = (
+    "上傳的 PDF 看起來是掃描圖片，沒有可擷取的文字層。"
+    "目前後端未提供 OCR 文字辨識，請上傳可選取文字的 PDF 或 PPTX。"
+)
+PDF_TEXT_EXTRACTION_FAILED_MESSAGE = (
+    "PDF 似乎包含文字層，但後端無法擷取有效文字。"
+    "請重新匯出可選取文字的 PDF，或改用 PPTX。"
+)
+
+
+def _is_false_marker(value):
+    if isinstance(value, bool):
+        return value is False
+    if isinstance(value, str):
+        return value.strip().lower() in {"false", "no", "0", "null", "none", ""}
+    return False
+
+
+def _raise_if_insufficient_content(raw):
+    if not isinstance(raw, dict):
+        return
+
+    status = str(raw.get("status") or "").strip().lower()
+    code = str(raw.get("code") or "").strip()
+
+    if (
+        raw.get("insufficient_content") is True
+        or _is_false_marker(raw.get("is_sufficient"))
+        or status in {"insufficient_content", "insufficient", "rejected"}
+        or code == INSUFFICIENT_CONTENT_CODE
+    ):
+        raise PptSurveyAiError(INSUFFICIENT_CONTENT_MESSAGE, 400)
+
+
+def _meaningful_text_units(text):
+    cleaned = re.sub(r"\s+", " ", text or "").strip()
+    if not cleaned:
+        return []
+
+    rough_units = re.split(r"[\n\r。！？!?；;]|(?<=[.!?])\s+", text)
+    units = []
+    seen = set()
+    for unit in rough_units:
+        normalized = re.sub(r"\s+", " ", unit or "").strip(" -:：,，.。")
+        if len(normalized) < 12:
+            continue
+        if re.fullmatch(r"[\d\s:/.,年月日()-]+", normalized):
+            continue
+        if re.fullmatch(r"https?://\S+|www\.\S+|\S+@\S+", normalized, flags=re.I):
+            continue
+        key = normalized.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        units.append(normalized[:120])
+    return units
+
+
+def _has_sufficient_extracted_text(text):
+    cleaned = re.sub(r"\s+", " ", text or "").strip()
+    if len(cleaned) < MIN_RULE_BASED_FALLBACK_CHARS:
+        return False
+
+    words = re.findall(r"[\w\u4e00-\u9fff]+", cleaned, flags=re.UNICODE)
+    if len(words) < MIN_RULE_BASED_FALLBACK_WORDS:
+        return False
+
+    return len(_meaningful_text_units(cleaned)) >= 3
+
+
+def _rule_based_survey_from_text(filename, extracted_text, type_counts):
+    units = _meaningful_text_units(extracted_text)
+    if not units:
+        raise PptSurveyAiError(INSUFFICIENT_CONTENT_MESSAGE, 400)
+
+    def topic_for(index):
+        return units[index % len(units)]
+
+    questions = []
+    question_index = 1
+    for _ in range(type_counts["short"]):
+        topic = topic_for(question_index - 1)
+        questions.append({
+            "id": f"fallback-q-{question_index}",
+            "type": "short",
+            "title": (
+                f"Question {question_index}: Based on the material, describe your "
+                f"understanding or feedback about: {topic}"
+            ),
+            "required": True,
+            "options": [],
+        })
+        question_index += 1
+
+    for _ in range(type_counts["rating"]):
+        topic = topic_for(question_index - 1)
+        questions.append({
+            "id": f"fallback-q-{question_index}",
+            "type": "rating",
+            "title": f"Question {question_index}: Please rate how clearly the material explains: {topic}",
+            "required": True,
+            "options": [],
+        })
+        question_index += 1
+
+    return {
+        "title": f"{os.path.splitext(filename)[0]} survey",
+        "description": "Rule-based draft generated from extracted document text because AI access was unavailable.",
+        "identity_mode": "anonymous",
+        "deadline_at": "",
+        "questions": questions,
+    }
 
 
 def normalize_survey_draft(raw, fallback_title="AI 生成問卷"):
@@ -353,8 +714,26 @@ def normalize_survey_draft(raw, fallback_title="AI 生成問卷"):
     }
 
 
-def _survey_json_instruction(allowed_types, question_count):
+def _survey_json_instruction(allowed_types, question_count, allow_insufficient=False):
     type_text = ", ".join(allowed_types)
+
+    insufficient_instruction = ""
+    if allow_insufficient:
+        insufficient_instruction = f"""
+If the uploaded material is insufficient to understand what should actually be evaluated,
+DO NOT generate questions.
+
+Return ONLY:
+{{
+  "is_sufficient": false,
+  "insufficient_content": true,
+  "code": "{INSUFFICIENT_CONTENT_CODE}",
+  "message": "{INSUFFICIENT_CONTENT_MESSAGE}"
+}}
+
+Do not include questions in this case.
+"""
+
     return f"""
 請只回傳 JSON，不要加 Markdown 或說明文字。格式必須完全符合：
 {{
@@ -375,6 +754,7 @@ def _survey_json_instruction(allowed_types, question_count):
 請產生 {question_count} 題。題型只能使用：{type_text}。
 short 代表問答題，rating 代表 0 到 5 評分題。
 options 必須維持空陣列，才能相容系統原本問卷資料結構。
+{insufficient_instruction}
 """
 
 
@@ -406,6 +786,37 @@ def _gemini_error_status_code(exc):
     except (TypeError, ValueError):
         match = re.search(r"\\b([1-5]\\d{2})\\b", str(exc))
         return int(match.group(1)) if match else None
+
+
+def _safe_gemini_error_summary(exc, max_length=500):
+    """Short, single-line Gemini error summary without common secret patterns."""
+    parts = []
+    for attr in ("message", "status", "reason"):
+        value = getattr(exc, attr, None)
+        if callable(value):
+            try:
+                value = value()
+            except Exception:
+                value = None
+        if value:
+            parts.append(f"{attr}={value}")
+
+    summary = " | ".join(parts) or str(exc)
+    summary = re.sub(r"\s+", " ", summary).strip()
+    summary = re.sub(r"AIza[0-9A-Za-z_-]{20,}", "[redacted-google-api-key]", summary)
+    summary = re.sub(
+        r"(?i)(api[_-]?key|x-goog-api-key|key)(['\"=: ]+)[^\s,'\")&]+",
+        r"\1\2[redacted]",
+        summary,
+    )
+    summary = re.sub(
+        r"(?i)(authorization['\"=: ]+bearer\s+)[^\s,'\")]+",
+        r"\1[redacted]",
+        summary,
+    )
+    if len(summary) > max_length:
+        return summary[:max_length].rstrip() + "..."
+    return summary
 
 
 def _is_gemini_unavailable_error(exc):
@@ -462,7 +873,7 @@ def _is_model_not_found_error(exc):
     ) and "model" in lower_message
 
 
-def _call_gemini(contents):
+def _call_gemini(contents, stop_on_status_codes=None):
     """Call PPT Gemini with transient-error retry, key, and model failover.
 
     A key is never passed to shared Gemini helpers, so this failover cannot
@@ -470,6 +881,8 @@ def _call_gemini(contents):
     """
     genai, types = _load_genai_types()
     last_error = None
+    failures = []
+    stop_on_status_codes = set(stop_on_status_codes or [])
 
     for model in PPT_SURVEY_GEMINI_MODELS:
         for key_role, api_key in _get_ppt_survey_api_keys():
@@ -500,15 +913,39 @@ def _call_gemini(contents):
                 except Exception as exc:
                     last_error = exc
                     transient_failure = _is_transient_gemini_error(exc)
-                    if not transient_failure:
+                    status_code = _gemini_error_status_code(exc)
+                    error_summary = _safe_gemini_error_summary(exc)
+                    if status_code in stop_on_status_codes:
+                        failures.append({
+                            "model": model,
+                            "key_role": key_role,
+                            "status_code": status_code,
+                            "transient": transient_failure,
+                            "error_type": type(exc).__name__,
+                            "error_summary": error_summary,
+                        })
                         logger.warning(
-                            "PPT survey Gemini non-transient failure: model=%s key_role=%s "
-                            "error_type=%s error=%s",
+                            "PPT survey Gemini stopped on configured status: "
+                            "model=%s key_role=%s status_code=%s error_type=%s "
+                            "error_summary=%s",
                             model,
                             key_role,
+                            status_code,
                             type(exc).__name__,
-                            str(exc),
-                            exc_info=True,
+                            error_summary,
+                        )
+                        error = PptSurveyAiError(str(exc), status_code)
+                        error.gemini_failures = failures
+                        raise error from exc
+                    if not transient_failure:
+                        logger.warning(
+                            "PPT survey Gemini non-transient failure; trying next key/model: "
+                            "model=%s key_role=%s status_code=%s error_type=%s error_summary=%s",
+                            model,
+                            key_role,
+                            status_code,
+                            type(exc).__name__,
+                            error_summary,
                         )
                         break
 
@@ -517,28 +954,29 @@ def _call_gemini(contents):
                         logger.warning(
                             "PPT survey Gemini transient failure; retrying same key: "
                             "model=%s key_role=%s attempt=%s/%s delay_seconds=%s "
-                            "error_type=%s error=%s",
+                            "status_code=%s error_type=%s error_summary=%s",
                             model,
                             key_role,
                             attempt,
                             PPT_SURVEY_GEMINI_RETRY_ATTEMPTS,
                             delay_seconds,
+                            status_code,
                             type(exc).__name__,
-                            str(exc),
-                            exc_info=True,
+                            error_summary,
                         )
                         time.sleep(delay_seconds)
                         continue
 
                     logger.warning(
                         "PPT survey Gemini retries exhausted; switching key or model: "
-                        "model=%s key_role=%s attempts=%s error_type=%s error=%s",
+                        "model=%s key_role=%s attempts=%s status_code=%s error_type=%s "
+                        "error_summary=%s",
                         model,
                         key_role,
                         PPT_SURVEY_GEMINI_RETRY_ATTEMPTS,
+                        status_code,
                         type(exc).__name__,
-                        str(exc),
-                        exc_info=True,
+                        error_summary,
                     )
                     break
 
@@ -554,31 +992,61 @@ def _call_gemini(contents):
                     raise PptSurveyAiError("PPT survey AI returned an empty response.", 502)
                 return _parse_json_response(text)
 
-            if not transient_failure:
-                # A different key can recover from authentication or quota errors,
-                # but a model downgrade is only useful for temporary model overload.
-                if key_role == "primary":
-                    continue
-                _handle_ai_exception(last_error or RuntimeError("PPT survey Gemini call failed"))
+            if last_error is not None:
+                failures.append({
+                    "model": model,
+                    "key_role": key_role,
+                    "status_code": _gemini_error_status_code(last_error),
+                    "transient": transient_failure,
+                    "error_type": type(last_error).__name__,
+                    "error_summary": _safe_gemini_error_summary(last_error),
+                })
 
         logger.warning(
             "PPT survey Gemini model unavailable after both keys; trying next model: model=%s",
             model,
         )
 
-    raise PptSurveyAiError(
-        "PPT survey Gemini is temporarily overloaded after retrying all models and keys.",
-        503,
-    ) from last_error
+    status_code = _gemini_error_status_code(last_error) if last_error else None
+    if status_code not in {401, 403, 404, 429, 500, 502, 503, 504}:
+        status_code = 503 if last_error and _is_transient_gemini_error(last_error) else 502
+
+    logger.error(
+        "PPT survey Gemini failed after all model/key combinations: status_code=%s "
+        "last_error_type=%s failures=%s",
+        status_code,
+        type(last_error).__name__ if last_error else None,
+        failures,
+    )
+
+    if status_code in {401, 403}:
+        message = "PPT survey AI authentication failed for all configured keys."
+    elif status_code == 404:
+        message = "PPT survey Gemini models were unavailable for the configured keys."
+    elif status_code == 429:
+        message = "PPT survey AI quota or rate limit was reached for all configured keys."
+    elif status_code == 504:
+        message = "PPT survey Gemini timed out after retrying all models and keys."
+    else:
+        message = "PPT survey Gemini is temporarily unavailable after retrying all models and keys."
+
+    error = PptSurveyAiError(message, status_code)
+    error.gemini_failures = failures
+    raise error from last_error
 
 
 def generate_survey_from_material(filename, file_bytes, config):
-    type_counts = normalize_type_counts(config.get("typeCounts"))
+    type_counts = normalize_type_counts(config.get("typeCounts"), config)
     question_count = type_counts["short"] + type_counts["rating"]
     allowed_types = [name for name, count in type_counts.items() if count > 0]
     direction = str(config.get("direction") or "").strip()
     focus = str(config.get("focus") or "").strip()
     extracted_text = extract_document_text(filename, file_bytes)
+    pdf_summary = None
+    if _extension(filename) == ".pdf" and not extracted_text:
+        pdf_summary = _inspect_pdf_content(file_bytes)
+        if pdf_summary["text_layer_pages"] == 0 and pdf_summary["image_pages"] > 0:
+            extracted_text = _extract_scanned_pdf_ocr_text(file_bytes)
 
     logger.info(
         "Generating PPT survey: filename=%s question_count=%s allowed_types=%s direction=%s focus=%s extracted_chars=%s",
@@ -595,16 +1063,78 @@ def generate_survey_from_material(filename, file_bytes, config):
 檔名：{filename}
 題目方向：{direction or "學習成效"}
 生成重點：{focus or "課程內容"}
-{_survey_json_instruction(allowed_types, question_count)}
+{_survey_json_instruction(allowed_types, question_count, allow_insufficient=True)}
+
+
+Content sufficiency is a hard gate:
+- A title or topic name alone is NOT sufficient.
+- Text, images, or a polished document layout alone are NOT sufficient.
+- Dates, locations, logos, QR codes, URLs, contact information, slogans, or short fragments alone are insufficient.
+- You must understand what specifically should be evaluated from the uploaded material.
+- direction and focus are design constraints, not facts. Never invent missing facts.
+- If generating questions requires substantial guessing, reject the material.
+- Sufficient material should contain substantive background such as course content, activity flow, product or service details, system functions, research background, or comparable information.
+- For scanned/image-based files, inspect the visual content. Decorative posters, logos, QR codes, photos, dates, locations, slogans, or fragments without substantive background are insufficient.
+- Existing questionnaire content is usable only when enough background information is present.
+- If insufficient, return ONLY the insufficient-content JSON and no questions.
+
+
 Return exactly {type_counts['short']} questions with type "short" and exactly {type_counts['rating']} questions with type "rating".
 """
 
     if extracted_text:
+        if _extension(filename) == ".pdf" and not _has_sufficient_extracted_text(extracted_text):
+            logger.warning(
+                "PDF extracted text is insufficient for PPT survey generation: filename=%s chars=%s",
+                filename,
+                len(extracted_text),
+            )
+            raise PptSurveyAiError(INSUFFICIENT_CONTENT_MESSAGE, 400)
+
         prompt += f"\n以下是從檔案擷取出的文字內容：\n{extracted_text}"
-        raw = _call_gemini([prompt])
+        try:
+            raw = _call_gemini([prompt], stop_on_status_codes={403})
+        except PptSurveyAiError as exc:
+            gemini_failures = getattr(exc, "gemini_failures", [])
+            has_forbidden_failure = exc.status_code == 403 or any(
+                failure.get("status_code") == 403 for failure in gemini_failures
+            )
+            if not has_forbidden_failure or _extension(filename) != ".pdf":
+                raise
+            logger.warning(
+                "Gemini returned 403 for sufficient PDF text; using rule-based fallback: "
+                "filename=%s chars=%s question_count=%s",
+                filename,
+                len(extracted_text),
+                question_count,
+            )
+            raw = _rule_based_survey_from_text(filename, extracted_text, type_counts)
     else:
         ext = _extension(filename)
-        if ext in {".ppt", ".pptx", ".pdf"}:
+        if ext == ".pdf":
+            summary = pdf_summary or _inspect_pdf_content(file_bytes)
+            logger.warning(
+                "No PDF text extracted: filename=%s pages=%s text_layer_pages=%s image_pages=%s",
+                filename,
+                summary["pages"],
+                summary["text_layer_pages"],
+                summary["image_pages"],
+            )
+            if summary["text_layer_pages"] > 0:
+                raise PptSurveyAiError(PDF_TEXT_EXTRACTION_FAILED_MESSAGE, 422)
+            if summary["image_pages"] > 0:
+                logger.warning(
+                    "PDF OCR produced no text; rendering pages for image analysis: filename=%s",
+                    filename,
+                )
+                _, types = _load_genai_client()
+                image_parts = _render_pdf_page_image_parts(file_bytes, types)
+                if not image_parts:
+                    raise PptSurveyAiError(INSUFFICIENT_CONTENT_MESSAGE, 400)
+                raw = _call_gemini([*image_parts, prompt])
+            else:
+                raise PptSurveyAiError(INSUFFICIENT_CONTENT_MESSAGE, 400)
+        elif ext in {".ppt", ".pptx"}:
             logger.warning("No text extracted; falling back to binary upload for filename=%s", filename)
             _, types = _load_genai_client()
             binary_payload = _prepare_binary_upload(filename, file_bytes)
@@ -615,6 +1145,7 @@ Return exactly {type_counts['short']} questions with type "short" and exactly {t
         else:
             raise PptSurveyAiError("無法讀取檔案文字，請改用 .pptx 或可選取文字的 .pdf。", 400)
 
+    _raise_if_insufficient_content(raw)
     fallback_title = f"{os.path.splitext(filename)[0]} 問卷"
     return normalize_survey_draft(raw, fallback_title=fallback_title)
 
