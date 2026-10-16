@@ -404,7 +404,23 @@ _ID_LIKE_COLUMN_KEYWORDS = (
     "姓名", "名字", "email", "e-mail", "電子郵件",
     "電話", "手機", "聯絡電話", "身分證", "身分證字號",
     "tel", "phone",
+    # 英文欄位名稱（英文版 Excel 的姓名 / 編號 / 聯絡資料欄，不能被當成開放式回答）
+    "name", "full name", "first name", "last name", "surname", "given name", "family name",
+    "username", "user name", "nickname", "respondent", "respondent name", "respondent id",
+    "participant", "participant name", "participant id", "subject", "subject id", "student id",
+    "employee id", "emp id", "serial", "serial no", "serial no.", "serial number", "number", "#", "index",
+    "email address", "mobile", "mobile number", "phone number", "telephone", "contact number", "cell",
+    # 其他中文常見的識別欄位
+    "受試者", "填答者", "填答人", "學號", "員工編號", "員編", "手機號碼", "電話號碼", "暱稱", "帳號",
 )
+
+# 內容判斷：欄位名稱沒看出來，但內容全是「受試者 A」「Respondent 3」「P01」這種代號 / 標籤，也不是開放式回答
+_IDENTITY_LABEL_RE = re.compile(
+    r"^\s*(?:受試者|填答者|填答人|受訪者|學員|參與者|respondent|participant|subject|user|student|employee|anonymous)\s*[#_\-]?\s*[0-9A-Za-z]{1,6}\s*$"
+    r"|^\s*[A-Za-z]{0,3}[#_\-]?\d{1,6}\s*$",
+    re.I,
+)
+_IDENTITY_LABEL_RATIO = 0.8
 
 
 def _detect_candidate_text_columns(df):
@@ -436,6 +452,9 @@ def _detect_candidate_text_columns(df):
             continue
         avg_len = series.str.len().mean()
         if avg_len < 2:
+            continue
+        # 內容幾乎都是「受試者A / Respondent 3 / P01」這類識別標籤：是姓名 / 編號欄，不是開放式回答
+        if series.map(lambda v: bool(_IDENTITY_LABEL_RE.match(v))).mean() >= _IDENTITY_LABEL_RATIO:
             continue
         candidates.append(col)
     return candidates
