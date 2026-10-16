@@ -40,9 +40,12 @@ def is_transient_unavailable_error(exc: Exception) -> bool:
 # 一致就會被當成「雙重確認」自動通過，失去再確認的意義。
 #
 # 環境變數 GEMINI_FALLBACK_MODEL：備援模型名稱，可用逗號分隔多個，依序嘗試
-# （預設 gemini-2.5-flash,gemini-3.5-flash）；設成空字串可完全關閉備援。
+# （預設 gemini-3.5-flash-lite,gemini-3.6-flash,gemini-3.8-flash）；設成空字串可完全關閉備援。
+# 預設值依 Google 官方模型清單（ai.google.dev/gemini-api/docs/models）：舊預設的 gemini-3.5-flash 不在清單內
+# （只有 gemini-3.5-flash-lite），gemini-2.5-flash 是 Legacy 且只開放給近期用過的帳號，兩者都可能整個備援失效。
+# 模型停用 / 改名時可直接用環境變數覆蓋，不必改程式。
 _PRIMARY_MODELS_WITH_FALLBACK = ("gemini-3.1-flash-lite",)
-_DEFAULT_FALLBACK_MODELS = "gemini-2.5-flash,gemini-3.5-flash"
+_DEFAULT_FALLBACK_MODELS = "gemini-3.5-flash-lite,gemini-3.6-flash,gemini-3.8-flash"
 
 
 def fallback_models_for(model_name):
