@@ -21,18 +21,19 @@ class PptSurveyAiError(Exception):
 
 ALLOWED_EXTENSIONS = {".ppt", ".pptx", ".pdf"}
 ALLOWED_TYPES = {"short", "rating"}
-GEMINI_MODEL = "gemini-3.5-flash"
+GEMINI_MODEL = "gemini-3.8-flash"
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_EXTRACTED_CHARS = 18000
 MIN_RULE_BASED_FALLBACK_CHARS = 160
 MIN_RULE_BASED_FALLBACK_WORDS = 18
-# One initial request plus at most one retry keeps failover responsive while
+# One initial request plus at most two retries keeps failover responsive while
 # retaining a small recovery window for brief Gemini overloads.
 PPT_SURVEY_GEMINI_RETRY_ATTEMPTS = 3
 PPT_SURVEY_GEMINI_RETRY_DELAYS_SECONDS = (5, 15)
 PPT_SURVEY_GEMINI_MODELS = (
     GEMINI_MODEL,
-    "gemini-3.8-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite",
 )
 # google-genai HttpOptions.timeout uses milliseconds.  The generation endpoint
 # runs in a background task, so allow a full two minutes for a binary document
@@ -873,6 +874,34 @@ def _is_model_not_found_error(exc):
     ) and "model" in lower_message
 
 
+def _classify_gemini_failures(failures, last_error):
+    statuses = [
+        failure.get("status_code")
+        for failure in failures
+        if failure.get("status_code") is not None
+    ]
+    status_set = set(statuses)
+
+    if status_set and status_set <= {401, 403}:
+        return 403, "PPT survey AI authentication failed for all configured keys."
+    if status_set and status_set <= {404}:
+        return 404, "PPT survey Gemini models were unavailable for the configured keys."
+    if status_set and status_set <= {429}:
+        return 429, "PPT survey AI quota or rate limit was reached for all configured keys."
+    if status_set and status_set <= {504}:
+        return 504, "PPT survey Gemini timed out after retrying all models and keys."
+
+    if status_set:
+        return 502, "PPT survey Gemini failed across model/key fallbacks."
+
+    status_code = _gemini_error_status_code(last_error) if last_error else None
+    if status_code in {401, 403, 404, 429, 500, 502, 503, 504}:
+        return status_code, "PPT survey Gemini is temporarily unavailable after retrying all models and keys."
+    if last_error and _is_transient_gemini_error(last_error):
+        return 503, "PPT survey Gemini is temporarily unavailable after retrying all models and keys."
+    return 502, "PPT survey Gemini is temporarily unavailable after retrying all models and keys."
+
+
 def _call_gemini(contents, stop_on_status_codes=None):
     """Call PPT Gemini with transient-error retry, key, and model failover.
 
@@ -1007,9 +1036,7 @@ def _call_gemini(contents, stop_on_status_codes=None):
             model,
         )
 
-    status_code = _gemini_error_status_code(last_error) if last_error else None
-    if status_code not in {401, 403, 404, 429, 500, 502, 503, 504}:
-        status_code = 503 if last_error and _is_transient_gemini_error(last_error) else 502
+    status_code, message = _classify_gemini_failures(failures, last_error)
 
     logger.error(
         "PPT survey Gemini failed after all model/key combinations: status_code=%s "
@@ -1018,17 +1045,6 @@ def _call_gemini(contents, stop_on_status_codes=None):
         type(last_error).__name__ if last_error else None,
         failures,
     )
-
-    if status_code in {401, 403}:
-        message = "PPT survey AI authentication failed for all configured keys."
-    elif status_code == 404:
-        message = "PPT survey Gemini models were unavailable for the configured keys."
-    elif status_code == 429:
-        message = "PPT survey AI quota or rate limit was reached for all configured keys."
-    elif status_code == 504:
-        message = "PPT survey Gemini timed out after retrying all models and keys."
-    else:
-        message = "PPT survey Gemini is temporarily unavailable after retrying all models and keys."
 
     error = PptSurveyAiError(message, status_code)
     error.gemini_failures = failures
