@@ -1,6 +1,6 @@
 import InterfaceText from "../../components/feature/InterfaceText";
 import AnalysisDiagnostics, { diagnosticMeta } from "./AnalysisDiagnostics";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Navbar from "../../components/feature/Navbar";
 import LoginRequiredModal from "../../components/feature/LoginRequiredModal";
@@ -589,6 +589,43 @@ function SystemText({ k, lang }) {
   return <span data-output-lang={lang}>{systemSentence(k, lang)}</span>;
 }
 
+// 大類別 / 子類別名稱的「顯示用」翻譯：英文介面向後端要英文名稱（內建分類查表、其他由 AI 翻譯並快取）；
+// 中文介面或翻譯失敗時原樣顯示。名稱只用來顯示，分組 / 合併儲存格仍用原名稱比對。
+const categoryNameCache = new Map(); // `${lang}|${name}` -> display name
+function useCategoryLabels(rows) {
+  const { language } = useLanguage();
+  const [, bump] = useState(0);
+  const names = useMemo(() => {
+    const set = new Set();
+    (Array.isArray(rows) ? rows : []).forEach((r) => {
+      if (r?.main_category) set.add(r.main_category);
+      if (r?.sub_category) set.add(r.sub_category);
+    });
+    return [...set];
+  }, [rows]);
+  useEffect(() => {
+    if (language !== "en") return undefined;
+    const missing = names.filter((n) => !categoryNameCache.has(`en|${n}`));
+    if (!missing.length) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(apiUrl("/api/classification/category-names"), {
+          method: "POST",
+          headers: { ...getAuthHeader(), "Content-Type": "application/json" },
+          body: JSON.stringify({ names: missing }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        missing.forEach((n) => categoryNameCache.set(`en|${n}`, data?.names?.[n] || n));
+        if (!cancelled) bump((v) => v + 1);
+      } catch { /* 翻譯失敗就顯示原名稱 */ }
+    })();
+    return () => { cancelled = true; };
+  }, [language, names]);
+  return (name) => (language === "en" && categoryNameCache.get(`en|${name}`)) || name;
+}
+
 function ClassificationTable({ rows, ratingStats, meta, chatId, showToast, readOnly = false }) {
   const sentenceLang = useSentenceLang(meta);
   const [live, setLive] = useState(null);
@@ -648,6 +685,7 @@ function ClassificationTable({ rows, ratingStats, meta, chatId, showToast, readO
 
 function ClassificationTableView({ rows, ratingStats, meta, chatId, showToast, readOnly = false }) {
   const sentenceLang = useSentenceLang(meta);
+  const categoryLabel = useCategoryLabels(rows);
   const hasRatingStats = Array.isArray(ratingStats) && ratingStats.length > 0;
   const hasClassificationRows = Array.isArray(rows) && rows.length > 0;
 
@@ -725,13 +763,14 @@ function ClassificationTableView({ rows, ratingStats, meta, chatId, showToast, r
                         <td
                           rowSpan={mainCategoryRowSpan}
                           className="merged-cell-center"
+                          data-output-lang
                         >
-                          {row.main_category}
+                          {categoryLabel(row.main_category)}
                         </td>
                       )}
 
                       <td className="sub-category-cell">
-                        {row.sub_category}
+                        <span data-output-lang>{categoryLabel(row.sub_category)}</span>
                         {row.is_new_category && (
                           <span className="new-category-badge"><InterfaceText>{"AI 新類別・待確認"}</InterfaceText></span>
                         )}

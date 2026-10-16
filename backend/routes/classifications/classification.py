@@ -318,6 +318,13 @@ def _build_aggregated_groups(all_classification_rows, id_to_row_index, question_
         lang, [it["excerpt"] for key in order for it in groups[key]["items"] if not it.get("is_secondary")],
     )
 
+    # 英文輸出時，一次把這批資料的類別名稱翻好（放進快取），之後每個分組的 AI 提示直接用英文名稱
+    try:
+        from services.category_name_service import translate_category_names
+        translate_category_names([n for key in order for n in key], summary_lang)
+    except Exception:  # noqa: BLE001 - 翻譯只是顯示用
+        pass
+
     renumbered_sub_category = compute_display_sub_categories(order, question_type)
     order = list(renumbered_sub_category.keys())
 
@@ -499,6 +506,20 @@ def _persist_segmentation_result(
 
 
 # ---------- 2. Excel 上傳分類 ----------
+@classification_bp.route("/api/classification/category-names", methods=["POST"])
+def translate_category_names_route():
+    """顯示用：把大類別 / 子類別名稱換成目前介面語言。中文介面原樣回傳；不改任何資料。"""
+    from routes.workspaces.workspace import authorize_request
+    from services.category_name_service import translate_category_names
+    _uid, err = authorize_request()
+    if err:
+        return err
+    names = (request.get_json(silent=True) or {}).get("names")
+    if not isinstance(names, list) or len(names) > 500:
+        return jsonify({"error": "names 必須是陣列（最多 500 筆）"}), 400
+    return jsonify({"names": translate_category_names(names, ui_lang_from_request())})
+
+
 @classification_bp.route("/api/classification/upload", methods=["POST"])
 def upload_excel_for_classification():
     

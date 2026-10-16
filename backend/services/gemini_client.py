@@ -89,6 +89,11 @@ def admin_api_key():
     return os.getenv("ADMIN_GEMINI_API_KEY", "").strip() or None
 
 
+def translation_api_key():
+    """類別名稱翻譯專用的 key（TRANSLATION_GEMINI_API_KEY）。沒設定時回傳 None（沿用原本的 key）。"""
+    return os.getenv("TRANSLATION_GEMINI_API_KEY", "").strip() or None
+
+
 def use_api_key(api_key):
     """在目前的 context 改用 api_key（None 表示沿用預設）。回傳 token 給 reset_api_key。"""
     return _key_override.set(api_key or None)

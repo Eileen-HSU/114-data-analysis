@@ -27,6 +27,7 @@ from routes.workspaces.workspace import authorize_request
 from services.export_file_service import build_xlsx, build_docx
 from services.export_labels import export_labels
 from services.language_service import ui_lang_from_request
+from services.category_name_service import localize_category_rows
 from services import workspace_result_service
 from sqlalchemy.orm import defer
 
@@ -140,6 +141,8 @@ def create_export():
     # 匯出檔的固定文字（欄位標題、分頁名稱…）語言 = ui_lang（Accept-Language）；
     # 使用者的資料與 AI 產生的內容不翻譯
     lang = ui_lang_from_request()
+    # 大類別 / 子類別名稱：英文介面匯出英文名稱（顯示用；中文介面原樣）
+    rows = localize_category_rows(rows, lang)
     title = data.get("title") or export_labels(lang)["sheet_results"]
 
     try:

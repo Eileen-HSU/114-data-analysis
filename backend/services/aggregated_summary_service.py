@@ -97,6 +97,14 @@ class AggregatedSummaryError(RuntimeError):
     generation 失敗，不產生半份看起來成功的 Report。"""
 
 
+def _display_category_names(main_category: str, sub_category: str, lang) -> tuple:
+    """給 AI 看的類別名稱：輸出英文時換成英文名稱，AI 寫的文字裡提到類別才會是英文。
+    中文原樣；翻譯失敗退回原名稱。"""
+    from services.category_name_service import translate_category_names
+    table = translate_category_names([main_category, sub_category], lang)
+    return table.get(main_category, main_category), table.get(sub_category, sub_category)
+
+
 def _parse_json(raw_text: str) -> dict:
     cleaned = re.sub(r"```json|```", "", raw_text).strip()
     return json.loads(cleaned)
@@ -130,8 +138,9 @@ def build_aggregated_summary(main_category: str, sub_category: str, items: list,
             ) from e
 
     segments_block = "\n".join(f"- {s}" for s in masked_segments)
+    shown_main, shown_sub = _display_category_names(main_category, sub_category, lang)
     user_content = (
-        f"類別：{main_category} / {sub_category}\n\n"
+        f"類別：{shown_main} / {shown_sub}\n\n"
         f"這個類別底下的回覆片段：\n{segments_block}"
     )
 
@@ -233,8 +242,9 @@ def build_aggregated_summary_pair(
                 ) from e
         return "\n".join(f"- {s}" for s in masked) if masked else "（此組沒有片段）"
 
+    shown_main, shown_sub = _display_category_names(main_category, sub_category, lang)
     user_content = (
-        f"類別：{main_category} / {sub_category}\n\n"
+        f"類別：{shown_main} / {shown_sub}\n\n"
         f"【reasoning 片段】\n{_mask_block(reasoning_items)}\n\n"
         f"【summary 片段】\n{_mask_block(summary_items)}"
     )

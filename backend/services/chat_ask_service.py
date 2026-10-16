@@ -434,7 +434,7 @@ def _collect_items(source):
     return items
 
 
-def _build_context_text(items, user_message: str, aggregated_lookup: dict) -> str:
+def _build_context_text(items, user_message: str, aggregated_lookup: dict, lang=None) -> str:
     """把 _collect_items() 撈到的資料，依使用者這次問題（有沒有提到
     A9/B2 這種代碼、有沒有提到「受試者N」）篩出最相關的片段，組成純
     文字 context。
@@ -454,13 +454,25 @@ def _build_context_text(items, user_message: str, aggregated_lookup: dict) -> st
     發現」），維持原本行為：帶入全部片段（受 _MAX_CONTEXT_ITEMS
     上限保護）。
     """
+    # 回答用英文時，給 AI 看的類別名稱也用英文（只影響顯示；代碼比對仍用原名稱）
+    from services.category_name_service import translate_category_names
+    _all_names = []
+    for it in items:
+        _all_names += [it["main_category"], it["sub_category"]]
+        for sc in it.get("secondary_categories") or []:
+            _all_names += [sc.get("main_category"), sc.get("sub_category")]
+    _names = translate_category_names(_all_names, lang)
+
+    def nm(x):
+        return _names.get(x, x) if isinstance(x, str) else x
+
     seen_keys = set()
     category_index_lines = []
     for it in items:
         key = (it["main_category"], it["sub_category"])
         if key not in seen_keys:
             seen_keys.add(key)
-            category_index_lines.append(f"- {it['main_category']}／{it['sub_category']}")
+            category_index_lines.append(f"- {nm(it['main_category'])}／{nm(it['sub_category'])}")
 
     mentioned_codes = _extract_mentioned_codes(user_message)
     mentioned_respondents = _extract_mentioned_respondents(user_message)
@@ -515,7 +527,7 @@ def _build_context_text(items, user_message: str, aggregated_lookup: dict) -> st
         )
 
         lines = [
-            f"[{respondent_label}] 大類別：{it['main_category']}／子類別：{it['sub_category']}{status_note}",
+            f"[{respondent_label}] 大類別：{nm(it['main_category'])}／子類別：{nm(it['sub_category'])}{status_note}",
             f"  原文片段：{it['excerpt'][:_MAX_EXCERPT_CHARS]}",
             f"  分類原因：{it['reasoning'] or '（無）'}",
             f"  建議摘要：{it['summary'] or '（無）'}",
@@ -525,7 +537,7 @@ def _build_context_text(items, user_message: str, aggregated_lookup: dict) -> st
         if it.get("citation"):
             lines.append(f"  文獻依據：{it['citation']}")
         for sc in it.get("secondary_categories") or []:
-            lines.append(f"  次要分類：{sc.get('main_category') or ''}／{sc['sub_category']}")
+            lines.append(f"  次要分類：{nm(sc.get('main_category')) or ''}／{nm(sc['sub_category'])}")
             if sc.get("methodology"):
                 lines.append(f"  次要分類對應方法論：{sc['methodology']}")
 
@@ -603,5 +615,5 @@ def answer_chat_question(project_id: int, user_message: str, lang: str = DEFAULT
         raise ChatAskError("目前沒有可供追問的分類結果", 422)
 
     aggregated_lookup = _build_aggregated_lookup(source.get("aggregated_rows"))
-    context_text = _build_context_text(items, user_message, aggregated_lookup)
+    context_text = _build_context_text(items, user_message, aggregated_lookup, lang)
     return _call_gemini(context_text, user_message, lang)
