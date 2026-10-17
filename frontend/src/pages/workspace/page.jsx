@@ -684,6 +684,7 @@ function ClassificationTable({ rows, ratingStats, meta, chatId, showToast, readO
 }
 
 function ClassificationTableView({ rows, ratingStats, meta, chatId, showToast, readOnly = false }) {
+  const { language: uiLanguage } = useLanguage();
   const sentenceLang = useSentenceLang(meta);
   const categoryLabel = useCategoryLabels(rows);
   const hasRatingStats = Array.isArray(ratingStats) && ratingStats.length > 0;
@@ -717,7 +718,7 @@ function ClassificationTableView({ rows, ratingStats, meta, chatId, showToast, r
 
       {hasClassificationRows ? (
         <>
-          <div className="assistant-output-intro" data-output-lang={sentenceLang}>{classificationDoneSentence(rows.length, sentenceLang)}</div>
+          <div className="assistant-output-intro" data-output-lang={uiLanguage}>{classificationDoneSentence(rows.length, uiLanguage)}</div>
           {/* 多欄上傳：成功欄位照常顯示在表格，失敗 / 部分失敗的欄位在這裡分別說明 */}
           <AnalysisDiagnostics meta={meta} />
 

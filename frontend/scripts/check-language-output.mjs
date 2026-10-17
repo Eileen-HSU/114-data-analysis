@@ -137,14 +137,14 @@ console.log("\n========== 歡迎訊息 = ui_lang ==========");
 console.log("\n========== 系統固定句 = instruction_lang；標題 = ui_lang ==========");
 {
   const a = await render("en", message({ language: { ui_lang: "en", instruction_lang: "zh-TW", data_lang: "zh-TW" } }));
-  check("介面英文 + 指令中文：系統句維持中文（不被全域翻譯改成英文）", a.text.includes(DONE_ZH) && !a.text.includes("Classification complete"));
+  check("English UI uses English completion status for Chinese instructions", a.text.includes(DONE_EN) && !a.text.includes(DONE_ZH));
   check("介面英文：表格標題是英文（ui_lang）", a.text.includes("Main category") && !a.text.includes("大類別"));
-  check("系統句標記 data-output-lang=zh-TW", !!a.container.querySelector('[data-output-lang="zh-TW"]'));
+  check("Completion status is marked with UI language", a.container.querySelector(".assistant-output-intro").getAttribute("data-output-lang") === "en");
   check("資料內容（類別名稱 / 受試者回答）原封不動", a.text.includes("課程需求") && a.text.includes("想上 Excel 課"));
   await a.cleanup();
 
   const b = await render("zh-TW", message({ language: { ui_lang: "zh-TW", instruction_lang: "en", data_lang: "en" } }));
-  check("介面中文 + 指令英文：系統句是英文", b.text.includes(DONE_EN) && !b.text.includes("分類完成"));
+  check("Chinese UI uses Chinese completion status for English instructions", b.text.includes(DONE_ZH) && !b.text.includes(DONE_EN));
   check("介面中文：表格標題是中文（ui_lang）", b.text.includes("大類別") && !b.text.includes("Main category"));
   await b.cleanup();
 
@@ -166,7 +166,7 @@ console.log("\n========== 其他固定句也跟 instruction_lang ==========");
   check("沒有分類結果的說明句：指令英文 -> 英文（介面中文也一樣）", emptyEn.text.includes("No classification results were generated for this data."));
   await emptyEn.cleanup();
   const prov = await render("en", message({ provisional_taxonomy: true, language: { ui_lang: "en", instruction_lang: "zh-TW" } }));
-  check("暫定分類架構的說明句跟 instruction_lang", prov.text.includes("類別由 AI 依內容自動歸納（暫定）"));
+  check("Provisional taxonomy notice is hidden", !prov.container.querySelector(".assistant-output-diagnostic"));
   await prov.cleanup();
 }
 
