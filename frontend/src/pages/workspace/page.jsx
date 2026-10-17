@@ -720,11 +720,6 @@ function ClassificationTableView({ rows, ratingStats, meta, chatId, showToast, r
           <div className="assistant-output-intro" data-output-lang={sentenceLang}>{classificationDoneSentence(rows.length, sentenceLang)}</div>
           {/* 多欄上傳：成功欄位照常顯示在表格，失敗 / 部分失敗的欄位在這裡分別說明 */}
           <AnalysisDiagnostics meta={meta} />
-          {meta?.provisional_taxonomy && (
-            <div className="assistant-output-diagnostic">
-              <SystemText k="這批資料沒有既有的分類架構，類別由 AI 依內容自動歸納（暫定），管理員審核發布後會成為正式分類。" lang={sentenceLang} />
-            </div>
-          )}
 
           <div className="assistant-output-table-wrap">
             <table className="assistant-output-table classification-table">
@@ -771,9 +766,6 @@ function ClassificationTableView({ rows, ratingStats, meta, chatId, showToast, r
 
                       <td className="sub-category-cell">
                         <span data-output-lang>{categoryLabel(row.sub_category)}</span>
-                        {row.is_new_category && (
-                          <span className="new-category-badge"><InterfaceText>{"AI 新類別・待確認"}</InterfaceText></span>
-                        )}
                         {row.secondary_count > 0 && (
                           <span className="secondary-count-note">
                             <InterfaceText>{"含次要分類"}</InterfaceText>
