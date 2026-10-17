@@ -783,6 +783,7 @@ export default function SurveyPage({ pptOnly = false }) {
                         min="0"
                         max="20"
                         value={pptConfig.typeCounts.short}
+                        onWheel={(event) => event.currentTarget.blur()}
                         onChange={(event) => updateTypeCount("short", event.target.value)}
                       />
                     </label>
@@ -793,6 +794,7 @@ export default function SurveyPage({ pptOnly = false }) {
                         min="0"
                         max="20"
                         value={pptConfig.typeCounts.rating}
+                        onWheel={(event) => event.currentTarget.blur()}
                         onChange={(event) => updateTypeCount("rating", event.target.value)}
                       />
                     </label>
