@@ -1,3 +1,4 @@
+import SurveyNotice from "./SurveyNotice";
 import InterfaceText from "../../components/feature/InterfaceText";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -73,6 +74,7 @@ export default function SurveyPage({ pptOnly = false }) {
   const isPptPage = pptOnly || location.pathname === "/survey/ppt";
   const { isLoggedIn, user } = useAuth();
   const { recordActivity } = useActivity();
+  const [surveyNotice, setSurveyNotice] = useState(null);
   const [apiSurveys, setApiSurveys] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isPptModalOpen, setIsPptModalOpen] = useState(isPptPage);
@@ -372,7 +374,7 @@ export default function SurveyPage({ pptOnly = false }) {
       const message = error?.message || "生成草稿失敗，請稍後再試。";
       setPptTaskStatus("");
       setPptError(message);
-      window.alert(translateInterfaceText(message, language));
+      setSurveyNotice(translateInterfaceText(message, language));
     } finally {
       setIsGenerating(false);
     }
@@ -568,6 +570,12 @@ export default function SurveyPage({ pptOnly = false }) {
   return (
     <>
       <Navbar />
+      {surveyNotice && <SurveyNotice
+        message={surveyNotice}
+        language={language}
+        onClose={() => setSurveyNotice(null)}
+        onLogin={() => navigate("/login")}
+      />}
       {(!isPptPage || !isPptModalOpen) && <main className="survey-page">
         <section className="survey-workspace" data-localized>
           <div className="survey-intro">
