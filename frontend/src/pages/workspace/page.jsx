@@ -767,12 +767,6 @@ function ClassificationTableView({ rows, ratingStats, meta, chatId, showToast, r
 
                       <td className="sub-category-cell">
                         <span data-output-lang>{categoryLabel(row.sub_category)}</span>
-                        {row.secondary_count > 0 && (
-                          <span className="secondary-count-note">
-                            <InterfaceText>{"含次要分類"}</InterfaceText>
-                            {` ${row.secondary_count}`}
-                          </span>
-                        )}
                       </td>
 
                       <td>
