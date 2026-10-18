@@ -11,6 +11,8 @@ import os
 chat_bp = Blueprint("chat", __name__)
 
 # 負責處理與聊天紀錄相關的 API，包括儲存對話紀錄、取得對話紀錄，以及上傳和取得對話相關的檔案。
+MAX_CHAT_UPLOAD_BYTES = 2 * 1024 * 1024
+
 @chat_bp.route("/api/chat/history", methods=["POST"])
 def save_chat_history():
     # 1. 權限驗證
@@ -281,6 +283,13 @@ def upload_file(chat_id):
     ext = os.path.splitext(file_name)[-1].lower().lstrip(".")
     if ext not in ("csv", "xlsx", "txt"):
         return jsonify({"error": "不支援的檔案格式"}), 400
+
+    # 對話上傳檔案大小上限 2MB（前端也會先擋，這裡是真正的把關）
+    file.stream.seek(0, os.SEEK_END)
+    file_size = file.stream.tell()
+    file.stream.seek(0)
+    if file_size > MAX_CHAT_UPLOAD_BYTES:
+        return jsonify({"error": "檔案太大，請上傳 2MB 以下的檔案。"}), 413
 
     # 4. 儲存檔案
     upload_dir = os.path.join("uploads", str(chat.project_id))
