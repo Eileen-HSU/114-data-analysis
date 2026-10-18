@@ -20,8 +20,9 @@ scikit-learn
 google-genai
 pandas
 openpyxl==3.1.5
-python-docx
+python-docx>=1.2.0
 pypdf
 PyMuPDF
 pytesseract
 Pillow
+xlrd>=2.0.1

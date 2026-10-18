@@ -67,7 +67,7 @@ export const WELCOME_MSG = {
   id: "welcome",
   role: "assistant",
   content:
-    "您好！我是 DataAnalysis AI 助手。請上傳您的資料檔案（CSV、Excel 或 TXT），或直接輸入您的分析問題，我將為您提供深度洞察。",
+    "您好！我是 DataAnalysis AI 助手。請上傳 Excel 或 Word 檔案（上限 2MB），或直接輸入您的分析問題，我將為您提供深度洞察。",
 };
 const ACTIVE_WORKSPACE_KEY = "dataanalysis_active_workspace";
 const EMPTY_SURVEY_TABLE_MARKER = "[[EMPTY_SURVEY_TABLE]]";
@@ -83,8 +83,8 @@ const EMPTY_SURVEY_TABLE_MARKER = "[[EMPTY_SURVEY_TABLE]]";
 const CLASSIFICATION_TABLE_MARKER = "[[CLASSIFICATION_TABLE]]";
 
 // 判斷附加的檔案是不是 Excel（.xlsx / .xls），用來決定要不要走真分類流程
-function isExcelFile(file) {
-  return !!file && /\.(xlsx|xls)$/i.test(file.name || "");
+function isAnalysisFile(file) {
+  return !!file && /\.(xlsx|xls|docx)$/i.test(file.name || "");
 }
 
 // 把 /api/classification/upload（或問卷 /analyze）回傳的 aggregated_groups
@@ -1624,7 +1624,7 @@ export default function WorkspacePage() {
      * （後端自動判斷最可能的開放式回答欄位）。
      * 其他所有情況（沒附檔、附的不是 Excel）都會直接往下掉到原本的邏輯，
      * 跟改之前完全一樣，沒有被動到。 */
-    if (attachedFile && isExcelFile(attachedFile)) {
+    if (attachedFile && isAnalysisFile(attachedFile)) {
       const sid = activeSessionId;
       const session = sessions.find((s) => s.id === sid);
       const projectId = session?.project_id;
@@ -2126,7 +2126,7 @@ export default function WorkspacePage() {
                     <div className="file-attachment">
                       <i className="ri-attachment-line"></i>
                       <span>{attachedFile.name}</span>
-                      {isExcelFile(attachedFile) && (
+                      {isAnalysisFile(attachedFile) && (
                         <span className="classification-hint"><InterfaceText>{"（送出後將自動分類）"}</InterfaceText></span>
                       )}
                       <button onClick={() => setAttachedFile(null)} disabled={isClassifying}>
@@ -2221,10 +2221,19 @@ export default function WorkspacePage() {
                       ref={fileInputRef}
                       type="file"
                       className="d-none"
-                      accept=".csv,.xlsx,.txt"
+                      accept=".xlsx,.xls,.docx"
                       onChange={(e) => {
                         const f = e.target.files?.[0];
                         if (!f) return;
+                        e.target.value = "";
+                        if (!isAnalysisFile(f)) {
+                          showToast(language === "en" ? "Only Excel (.xlsx, .xls) and Word (.docx) files are supported." : "僅支援 Excel（.xlsx、.xls）及 Word（.docx）檔案。");
+                          return;
+                        }
+                        if (f.size > 2 * 1024 * 1024) {
+                          showToast(language === "en" ? "File size must not exceed 2MB." : "檔案大小不可超過 2MB。");
+                          return;
+                        }
                         setAttachedFile(f);
                         showToast(language === "en" ? `“${f.name}” attached. It will upload when you send.` : `「${f.name}」已附加，發送後將上傳`);
                         e.target.value = "";
@@ -2248,7 +2257,7 @@ export default function WorkspacePage() {
                     </button>
                   </div>
                   <p className="input-hint">
-                    <i className="ri-survey-line" style={{ marginRight: 4 }}></i><InterfaceText>{"點擊問卷圖示可直接選擇問卷分析 · 支援 CSV、Excel、TXT · Enter 發送"}</InterfaceText></p>
+                    <i className="ri-survey-line" style={{ marginRight: 4 }}></i><InterfaceText>{"點擊問卷圖示可直接選擇問卷分析 · 支援 Excel、Word · 檔案上限 2MB · Enter 發送"}</InterfaceText></p>
                 </div>
               </>
             )}

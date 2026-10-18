@@ -52,6 +52,7 @@ from models import (
     Uploaded_Answer,
 )
 from services.classify_v2 import classify_existing_segments, is_text_response, resolve_published_taxonomy_prompt
+from services.classification_upload import read_analysis_upload, UploadValidationError
 from services import classification_attempt_service as attempt_service
 from services.secondary_classification_service import get_secondaries, legacy_fields
 from classification_models import SECONDARY_KIND_AI
@@ -550,7 +551,10 @@ def upload_excel_for_classification():
     if not file:
         return jsonify({"error": "請提供檔案"}), 400
 
-    df = pd.read_excel(file)
+    try:
+        df = read_analysis_upload(file)
+    except UploadValidationError as error:
+        return jsonify({"error": str(error)}), error.status
     text_column_param = request.form.get("text_column")
     total_row_count = len(df)
 

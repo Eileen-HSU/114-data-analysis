@@ -101,8 +101,8 @@ export function buildLanguageMeta({ uiLang, instructionLang, dataLang }) {
 
 // 歡迎訊息：跟介面語言（ui_lang）。
 const WELCOME = {
-  "zh-TW": "您好！我是 DataAnalysis AI 助手。請上傳您的資料檔案（CSV、Excel 或 TXT），或直接輸入您的分析問題，我將為您提供深度洞察。",
-  en: "Hello! I'm the DataAnalysis AI assistant. Upload your data file (CSV, Excel or TXT), or type your analysis question, and I'll help you find deeper insights.",
+  "zh-TW": "您好！我是 DataAnalysis AI 助手。請上傳 Excel 或 Word 檔案（上限 2MB），或直接輸入您的分析問題，我將為您提供深度洞察。",
+  en: "Hello! I'm the DataAnalysis AI assistant. Upload an Excel or Word file (up to 2MB), or type your analysis question, and I'll help you find deeper insights.",
 };
 export const welcomeText = (uiLang) => WELCOME[normalizeLang(uiLang) || DEFAULT_LANG];
 
