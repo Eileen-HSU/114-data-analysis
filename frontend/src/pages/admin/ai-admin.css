@@ -956,3 +956,20 @@ html[data-api-busy] body::after {
   box-shadow: 0 4px 14px rgba(0, 0, 0, .25);
 }
 html[lang^="en"][data-api-busy] body::after { content: "Working…"; }
+
+
+/* 建立草稿／切換版本時的等待圈圈 */
+.tax-spinner {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  margin-right: 0.45em;
+  vertical-align: -0.1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: tax-spin 0.7s linear infinite;
+}
+.tax-busy { display: flex; align-items: center; margin: 8px 0; font-weight: 600; }
+@keyframes tax-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .tax-spinner { animation-duration: 1.6s; } }

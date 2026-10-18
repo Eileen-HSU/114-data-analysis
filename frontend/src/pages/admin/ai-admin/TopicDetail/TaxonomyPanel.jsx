@@ -28,6 +28,8 @@ export default function TaxonomyPanel() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(!(initial.meta && initial.version));
   const [answersLoading, setAnswersLoading] = useState(false);
+  // 建立草稿／切換版本／發布／刪除進行中：{ type: "clone" | "switch" | "publish" | "delete", id? }，用來顯示等待圈圈並避免重複點擊
+  const [busyAction, setBusyAction] = useState(null);
   const [mergedTargetTitle, setMergedTargetTitle] = useState("");
   const [mergeResultText, setMergeResultText] = useState("");
   const [unmerging, setUnmerging] = useState(false);
@@ -163,13 +165,23 @@ export default function TaxonomyPanel() {
     } catch (e) { setError(e.message); }
   };
   const cloneTaxVersion = async () => {
-    await flushPendingSaves();
+    if (busyAction) return;
+    setBusyAction({ type: "clone" });
     try {
+      await flushPendingSaves();
       const data = await api(`/api/admin/ai/topics/${topicKey}/taxonomy/${taxVersion.version_id}/clone`, token, { method: "POST" });
       setTaxVersion(data.taxonomy_version);
       await loadTopicMeta();
       loadVersions();
     } catch (e) { setError(e.message); }
+    finally { setBusyAction(null); }
+  };
+  // 切換／跳轉到某個版本（含草稿）：顯示等待圈圈直到內容載入完成
+  const switchVersion = async (versionId) => {
+    if (busyAction) return;
+    setBusyAction({ type: "switch", id: versionId });
+    try { await openVersion(versionId); }
+    finally { setBusyAction(null); }
   };
   // 跟目前上線的版本比較，列出這次改了什麼，發布前讓 Admin 確認
   const describeChanges = async () => {
@@ -198,6 +210,12 @@ export default function TaxonomyPanel() {
   };
 
   const publishTaxVersion = async () => {
+    if (busyAction) return;
+    setBusyAction({ type: "publish" });
+    try { await publishTaxVersionInner(); }
+    finally { setBusyAction(null); }
+  };
+  const publishTaxVersionInner = async () => {
     await flushPendingSaves();
     // 發布前必須通過沙盒驗證：還沒通過就直接帶去沙盒（預選這個版本），不用先確認一次
     const sandboxUrl = `/admin/ai/topics/${topicKey}/sandbox?version=${taxVersion.version_id}&needs=publish`;
@@ -224,6 +242,8 @@ export default function TaxonomyPanel() {
   const deleteTaxVersion = async () => {
     await flushPendingSaves();
     if (!window.confirm(t("確定要刪除此草稿版本嗎？刪除後無法復原。", "Are you sure you want to delete this draft version? This cannot be undone."))) return;
+    if (busyAction) return;
+    setBusyAction({ type: "delete" });
     try {
       await api(`/api/admin/ai/topics/${topicKey}/taxonomy/${taxVersion.version_id}`, token, { method: "DELETE" });
       setTaxVersion(null);
@@ -234,6 +254,7 @@ export default function TaxonomyPanel() {
         if (nextVersionId) await openVersion(nextVersionId);
       }
     } catch (e) { setError(e.message); }
+    finally { setBusyAction(null); }
   };
 
   // 整個主題併入另一個主題（後端會重新分類底下的回答，已人工定案的跳過並回報）
@@ -355,7 +376,8 @@ export default function TaxonomyPanel() {
         {versionButtons.main.map((v) => (
           <button key={v.version_id} type="button" aria-pressed={taxVersion.version_id === v.version_id}
             className={`tax-ver${taxVersion.version_id === v.version_id ? " tax-ver--active" : ""}`}
-            onClick={() => openVersion(v.version_id)}>
+            disabled={Boolean(busyAction)} onClick={() => switchVersion(v.version_id)}>
+            {busyAction?.type === "switch" && busyAction.id === v.version_id && <span className="tax-spinner" aria-hidden="true" />}
             v{v.version_number} {versionLabel(v.status)}
           </button>
         ))}
@@ -365,7 +387,8 @@ export default function TaxonomyPanel() {
             {versionButtons.archived.map((v) => (
               <button key={v.version_id} type="button" aria-pressed={taxVersion.version_id === v.version_id}
                 className={`tax-ver${taxVersion.version_id === v.version_id ? " tax-ver--active" : ""}`}
-                onClick={() => openVersion(v.version_id)}>
+                disabled={Boolean(busyAction)} onClick={() => switchVersion(v.version_id)}>
+                {busyAction?.type === "switch" && busyAction.id === v.version_id && <span className="tax-spinner" aria-hidden="true" />}
                 v{v.version_number} {versionLabel(v.status)}
               </button>
             ))}
@@ -376,6 +399,16 @@ export default function TaxonomyPanel() {
         <p className="tax-mode tax-mode--archived" role="status">
           {t("完整版本清單讀取失敗，目前只顯示使用中與最新草稿。", "Couldn't load the full version list; showing only the live version and latest draft.")}{" "}
           <button type="button" onClick={loadVersions}>{t("重新讀取", "Retry")}</button>
+        </p>
+      )}
+      {busyAction && (
+        <p className="tax-busy" role="status" aria-live="polite">
+          <span className="tax-spinner" aria-hidden="true" />
+          {({
+            clone: t("正在建立新草稿，請稍候…", "Creating a new draft, please wait…"),
+            publish: t("正在檢查並發布，請稍候…", "Checking and publishing, please wait…"),
+            delete: t("正在刪除草稿，請稍候…", "Deleting the draft, please wait…"),
+          })[busyAction.type] || t("正在載入版本內容，請稍候…", "Loading this version, please wait…")}
         </p>
       )}
       <p className={`tax-mode tax-mode--${taxVersion.status === "published" ? "live" : editableNow ? "draft" : "archived"}`} role="status">
@@ -390,12 +423,21 @@ export default function TaxonomyPanel() {
           migrated_legacy: t("舊版轉入", "Migrated") })[taxVersion.source] || taxVersion.source} · {t("建立於：", "Created:")} {taxVersion.created_at ? new Date(taxVersion.created_at).toLocaleString() : "—"}{taxVersion.published_at ? ` · ${t("發布於：", "Published:")} ${new Date(taxVersion.published_at).toLocaleString()}` : ""}</small></p>
 
       <div className="tax-actions">
-        {taxVersion.status === "published" && <button className="primary" onClick={cloneTaxVersion}>{t("建立新草稿版本（複製此版）", "Create new draft (clone this version)")}</button>}
+        {taxVersion.status === "published" && <button className="primary" onClick={cloneTaxVersion} disabled={Boolean(busyAction)}>
+          {busyAction?.type === "clone" && <span className="tax-spinner" aria-hidden="true" />}
+          {busyAction?.type === "clone" ? t("建立中…", "Creating…") : t("建立新草稿版本（複製此版）", "Create new draft (clone this version)")}
+        </button>}
         {editableNow && <>
           <button onClick={addTaxCategory}>{t("＋ 新增子類別", "＋ Add category")}</button>
-          <button className="primary" onClick={publishTaxVersion}>{t("驗證通過後發布", "Publish (after sandbox validation)")}</button>
+          <button className="primary" onClick={publishTaxVersion} disabled={Boolean(busyAction)}>
+            {busyAction?.type === "publish" && <span className="tax-spinner" aria-hidden="true" />}
+            {busyAction?.type === "publish" ? t("發布中…", "Publishing…") : t("驗證通過後發布", "Publish (after sandbox validation)")}
+          </button>
         </>}
-        {taxVersion.status === "draft" && <button className="review-btn-danger tax-danger" onClick={deleteTaxVersion}>{t("刪除草稿", "Delete draft")}</button>}
+        {taxVersion.status === "draft" && <button className="review-btn-danger tax-danger" onClick={deleteTaxVersion} disabled={Boolean(busyAction)}>
+          {busyAction?.type === "delete" && <span className="tax-spinner" aria-hidden="true" />}
+          {busyAction?.type === "delete" ? t("刪除中…", "Deleting…") : t("刪除草稿", "Delete draft")}
+        </button>}
       </div>
       {!answers && <button onClick={loadAnswers} disabled={answersLoading}>
         {answersLoading ? t("載入回答範例…", "Loading answer examples…") : t("載入回答範例", "Load answer examples")}
