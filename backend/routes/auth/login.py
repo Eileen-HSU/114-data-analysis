@@ -47,7 +47,10 @@ def build_token(user_id: int, now=None) -> str:
 
 def _too_many(wait_seconds):
     minutes = max(1, (int(wait_seconds) + 59) // 60)
-    resp = jsonify({"error": f"密碼已連續輸錯多次，為保護帳號暫時停止登入，約 {minutes} 分鐘後可再試。"})
+    resp = jsonify({
+        "error": f"嘗試次數過多，請約 {minutes} 分鐘後再試",
+        "retry_after": int(wait_seconds),  # 前端用來顯示倒數
+    })
     resp.status_code = 429
     resp.headers["Retry-After"] = str(int(wait_seconds))
     return resp

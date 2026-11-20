@@ -9,7 +9,7 @@ import { useAuth } from "../../../../hooks/AuthContext";
 
 // 與後端信心度檢查的門檻一致（services/confidence_gate.py 的 CONFIDENCE_THRESHOLD）：達到這個分數、
 // 且不需人工審核的，才能用「選取高信心」批次維持 AI 分類。
-const HIGH_CONFIDENCE_THRESHOLD = 0.75;
+const HIGH_CONFIDENCE_THRESHOLD = 0.7;
 const PAGE_SIZE = 50;
 
 const newBatchId = () => (

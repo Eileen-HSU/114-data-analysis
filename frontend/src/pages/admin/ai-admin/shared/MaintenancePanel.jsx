@@ -90,8 +90,8 @@ export default function MaintenancePanel({ token }) {
 
   const runBackfill = async (p) => {
     if (!window.confirm(t(
-      `有 ${p.data.eligible_count} 筆待處理的結果符合自動通過條件（信心 ≥ 0.75、類別在已發布的分類架構內、沒有需要人工判斷的問題）。\n\n要把它們改成「自動通過」嗎？之後仍可在「已確認 › 自動通過」重新審核。`,
-      `${p.data.eligible_count} pending items meet the auto-approval rules (confidence ≥ 0.75, category in the published taxonomy, nothing flagged).\n\nAuto-approve them? You can still re-review them under Confirmed › Auto-approved.`,
+      `有 ${p.data.eligible_count} 筆待處理的結果符合自動通過條件（信心 ≥ 0.7、類別在已發布的分類架構內、沒有需要人工判斷的問題）。\n\n要把它們改成「自動通過」嗎？之後仍可在「已確認 › 自動通過」重新審核。`,
+      `${p.data.eligible_count} pending items meet the auto-approval rules (confidence ≥ 0.7, category in the published taxonomy, nothing flagged).\n\nAuto-approve them? You can still re-review them under Confirmed › Auto-approved.`,
     ))) return null;
     if (previewExpired(p)) return EXPIRED; // 確認視窗停留過久：寫入前再驗一次
     const res = await api("/api/admin/ai/classifications/auto-confirm", token, { method: "POST", body: JSON.stringify({ dry_run: false }) });

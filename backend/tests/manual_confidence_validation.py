@@ -18,7 +18,7 @@ backend/tests/test_*.py 全部用假 GenerativeModel、不打真實 API 的
     對 10 個刻意涵蓋不同難度的測試案例，實際呼叫 Gemini，記錄回傳的
     confidence 分布，驗證目前的 confidence rubric（已經加進
     prompt 裡的【分類信心評分規則】）是否真的能讓「應該要低信心」的
-    案例產生 <0.75 的 confidence，而不是像修正前那樣幾乎全部落在
+    案例產生 <0.7 的 confidence，而不是像修正前那樣幾乎全部落在
     高信心區間。
 
 這支腳本本身：

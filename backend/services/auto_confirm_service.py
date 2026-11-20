@@ -5,7 +5,7 @@
     1. status == "completed"：AI 分類成功。新類別（status=new_category）、
        失敗、methodology_not_found 都不算。
     2. needs_human_review == False：Confidence Gate 沒有標記
-       （分類完整、類別在清單內、信心分數有效且 >= 0.75，見
+       （分類完整、類別在清單內、信心分數有效且 >= 0.7，見
        services/confidence_gate.py）。
     3. 這筆分類使用的分類架構版本是「已發布」的。AI 自動建立的主題
        只有 AI 自己歸納、還沒有人審過的草稿（暫定分類架構），「類別在

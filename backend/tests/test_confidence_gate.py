@@ -4,8 +4,8 @@
 
 涵蓋（對應需求討論的 11 個純函式案例）：
     1. 高信心、資料完整 -> (False, None)
-    2. confidence < 0.75 -> low_confidence
-    3. confidence == 0.75（等於門檻，不觸發）
+    2. confidence < 0.7 -> low_confidence
+    3. confidence == 0.7（等於門檻，不觸發）
     4. confidence 缺失（None）-> invalid_confidence
     5. confidence 是字串殘留（型別錯誤）-> invalid_confidence
     6. confidence 超出上界 -> invalid_confidence
@@ -58,7 +58,7 @@ def base_segment(**overrides):
 
 print("========== evaluate_confidence_gate() 純函式測試 ==========")
 
-check("CONFIDENCE_THRESHOLD 是 0.75", CONFIDENCE_THRESHOLD == 0.75)
+check("CONFIDENCE_THRESHOLD 是 0.7", CONFIDENCE_THRESHOLD == 0.7)
 
 # 1. 高信心、資料完整
 needs, reason = evaluate_confidence_gate(base_segment(confidence=0.9))
@@ -66,11 +66,11 @@ check("高信心 + 資料完整 -> (False, None)", needs is False and reason is 
 
 # 2. confidence < threshold
 needs, reason = evaluate_confidence_gate(base_segment(confidence=0.5))
-check("confidence=0.5（<0.75） -> (True, low_confidence)", needs is True and reason == REASON_LOW_CONFIDENCE)
+check("confidence=0.5（<0.7） -> (True, low_confidence)", needs is True and reason == REASON_LOW_CONFIDENCE)
 
 # 3. confidence == threshold（等於門檻，不觸發）
-needs, reason = evaluate_confidence_gate(base_segment(confidence=0.75))
-check("confidence=0.75（等於門檻） -> (False, None)", needs is False and reason is None)
+needs, reason = evaluate_confidence_gate(base_segment(confidence=0.7))
+check("confidence=0.7（等於門檻） -> (False, None)", needs is False and reason is None)
 
 # 4. confidence 缺失
 needs, reason = evaluate_confidence_gate(base_segment(confidence=None))

@@ -25,7 +25,7 @@ pending_review/confirmed/modified/excluded）是兩個獨立概念，刻意
 # 第一版 operational threshold；之後會用人工標註結果評估是否要調整。
 # confidence 是模型自陳信心分數（0.0～1.0），不是 calibrated
 # probability，不代表「正確率」，不要在文件或 UI 上這樣描述它。
-CONFIDENCE_THRESHOLD = 0.75
+CONFIDENCE_THRESHOLD = 0.7
 
 REASON_CLASSIFICATION_INCOMPLETE = "classification_incomplete"
 REASON_METHODOLOGY_NOT_FOUND = "methodology_not_found"

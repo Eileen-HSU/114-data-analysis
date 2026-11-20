@@ -55,6 +55,7 @@ for i in range(5):
         check(f"錯誤密碼 #{i+1} -> 401 且不顯示剩餘次數",
               r.status_code == 401 and "剩餘" not in (r.get_json() or {}).get("error", ""))
 check("第 5 次錯誤立刻回 429 冷卻（不用等到第 6 次）", r.status_code == 429)
+check("429 回應帶 retry_after 秒數（前端倒數用）", 0 < (r.get_json() or {}).get("retry_after", 0) <= 15 * 60)
 r = login("pw-123456")
 check("達上限後即使密碼正確也冷卻 429", r.status_code == 429 and r.headers.get("Retry-After"))
 check("429 訊息不含剩餘次數與重設旗標", "require_password_reset" not in (r.get_json() or {}))

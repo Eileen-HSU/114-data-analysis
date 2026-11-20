@@ -10,9 +10,9 @@ feedback loop、DB 寫入、aggregation/report/export、CONFIDENCE_THRESHOLD
     1. services/taxonomy_service.py 的 build_classification_prompt()
        （正式 production taxonomy classification 走的唯一 prompt 組裝
        入口）確實包含明確的「【分類信心評分規則】」，含四個級距
-       （0.90–1.00 / 0.75–0.89 / 0.50–0.74 / 0.00–0.49）與五條補充
-       規則（不可因選出類別就給高分／兩個以上候選須 <0.75／需要腦補
-       須 <0.75／極短模糊須 <0.75／confidence 不是格式成功率）。
+       （0.90–1.00 / 0.7–0.89 / 0.50–0.69 / 0.00–0.49）與五條補充
+       規則（不可因選出類別就給高分／兩個以上候選須 <0.7／需要腦補
+       須 <0.7／極短模糊須 <0.7／confidence 不是格式成功率）。
     2. 這段規則區塊在 prompt 裡的位置：接在分類規則/次要類別規則
        之後、【輸出格式】JSON schema 之前，且早於 BATCH_OUTPUT_FORMAT_OVERRIDE
        附加的內容。
@@ -24,7 +24,7 @@ feedback loop、DB 寫入、aggregation/report/export、CONFIDENCE_THRESHOLD
        + BATCH_OUTPUT_FORMAT_OVERRIDE，這裡 reviewed_examples_block 為
        空字串）之後，同時包含 rubric 本身跟 batch override 的 numeric
        schema 說明，且完全找不到舊版模糊寫法 '"confidence": "..."'。
-    5. services/confidence_gate.py 的 CONFIDENCE_THRESHOLD 仍是 0.75，
+    5. services/confidence_gate.py 的 CONFIDENCE_THRESHOLD 仍是 0.7，
        這次修正沒有動到它。
 
 不依賴真實 google.genai 網路呼叫：跟
@@ -108,11 +108,11 @@ check(
     "不可習慣性給高分" in PROMPT_CONTENT,
 )
 
-for band_label in ["0.90", "1.00", "0.75", "0.89", "0.50", "0.74", "0.00", "0.49"]:
+for band_label in ["0.90", "1.00", "0.7", "0.89", "0.50", "0.69", "0.00", "0.49"]:
     check(f"rubric 包含級距數字 {band_label}", band_label in PROMPT_CONTENT)
 
 check("rubric 包含最高級距的描述（語意明確、與其他類別幾乎沒有合理競爭）", "幾乎沒有合理競爭" in PROMPT_CONTENT)
-check("rubric 明確要求 0.50–0.74 這個級距必須進 Human Review", "這類必須進 Human Review" in PROMPT_CONTENT)
+check("rubric 明確要求 0.50–0.69 這個級距必須進 Human Review", "這類必須進 Human Review" in PROMPT_CONTENT)
 check(
     "rubric 明確列出『兩個以上合理候選類別、落在類別邊界、文字過短、語意不足、需要推論』",
     all(s in PROMPT_CONTENT for s in ["兩個以上合理候選類別", "落在類別邊界", "文字過短", "語意不足", "需要推論"]),
@@ -123,13 +123,13 @@ check(
 )
 
 check(
-    "補充規則 1：不可因為『成功選出一個類別』就給 >=0.75",
-    "不可因為「成功選出一個類別」就給 >= 0.75" in PROMPT_CONTENT
-    or "不可因為「成功選出一個類別」就給 >=0.75" in PROMPT_CONTENT,
+    "補充規則 1：不可因為『成功選出一個類別』就給 >=0.7",
+    "不可因為「成功選出一個類別」就給 >= 0.7" in PROMPT_CONTENT
+    or "不可因為「成功選出一個類別」就給 >=0.7" in PROMPT_CONTENT,
 )
-check("補充規則 2：兩個類別都合理時 confidence 必須 <0.75", "confidence 必須 < 0.75" in PROMPT_CONTENT)
-check("補充規則 3：需要自行補足原文未說出的資訊時 confidence 必須 <0.75", "推測、腦補" in PROMPT_CONTENT or "自行補足原文未明確說出的資訊" in PROMPT_CONTENT)
-check("補充規則 4：極短／模糊回答沒有明確類別證據時 confidence 必須 <0.75", "極短" in PROMPT_CONTENT and "模糊" in PROMPT_CONTENT)
+check("補充規則 2：兩個類別都合理時 confidence 必須 <0.7", "confidence 必須 < 0.7" in PROMPT_CONTENT)
+check("補充規則 3：需要自行補足原文未說出的資訊時 confidence 必須 <0.7", "推測、腦補" in PROMPT_CONTENT or "自行補足原文未明確說出的資訊" in PROMPT_CONTENT)
+check("補充規則 4：極短／模糊回答沒有明確類別證據時 confidence 必須 <0.7", "極短" in PROMPT_CONTENT and "模糊" in PROMPT_CONTENT)
 check(
     "補充規則 5：confidence 是分類確定程度、不是 JSON 格式成功率",
     "分類判斷的確定程度" in PROMPT_CONTENT and "JSON 格式是否成功產生" in PROMPT_CONTENT,
@@ -186,7 +186,7 @@ print("\n========== 4. CONFIDENCE_THRESHOLD 這次沒有被動到 ==========")
 
 from services.confidence_gate import CONFIDENCE_THRESHOLD
 
-check("CONFIDENCE_THRESHOLD 仍是 0.75（本次修正不動 threshold）", CONFIDENCE_THRESHOLD == 0.75)
+check("CONFIDENCE_THRESHOLD 仍是 0.7（本次修正不動 threshold）", CONFIDENCE_THRESHOLD == 0.7)
 
 
 print("\n========== 5. 端到端：完整 system_instruction 同時具備 rubric + numeric batch schema ==========")

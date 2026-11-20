@@ -14,9 +14,19 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
-  const [loginLocked, setLoginLocked] = useState(false); // 嘗試次數過多（冷卻中）
+  const [lockSeconds, setLockSeconds] = useState(0); // 冷卻剩餘秒數（即時倒數）
   const [alertModal, setAlertModal] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // 冷卻倒數：每秒減 1，歸零時清除錯誤訊息
+  useEffect(() => {
+    if (lockSeconds <= 0) return undefined;
+    const timer = setTimeout(() => {
+      setLockSeconds(lockSeconds - 1);
+      if (lockSeconds <= 1) setLoginError("");
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [lockSeconds]);
 
   useEffect(() => {
     const clearFields = () => {
@@ -40,7 +50,6 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoginError("");
-    setLoginLocked(false);
 
     if (isSubmitting) return;
 
@@ -80,7 +89,9 @@ export default function LoginPage() {
           return;
         }
 
-        setLoginLocked(res.status === 429);
+        if (res.status === 429 && Number(data.retry_after) > 0) {
+          setLockSeconds(Math.ceil(Number(data.retry_after)));
+        }
         setLoginError(data.error || "登入失敗，請確認帳號或密碼是否正確。");
         return;
       }
@@ -231,18 +242,15 @@ export default function LoginPage() {
               {loginError && (
                 <div className="auth-error-message" role="alert" data-localized>
                   <i className="ri-error-warning-line"></i>
-                  <span>{translateInterfaceText(loginError, language)}</span>
-                  {loginLocked && (
-                    <div style={{ marginTop: 6 }}>
-                      <a className="forgot-link" onClick={() => navigate(`/forgot-password${email ? `?email=${encodeURIComponent(email)}` : ""}`)} style={{ cursor: "pointer", textDecoration: "underline" }}>
-                        忘記密碼？立即重設密碼
-                      </a>
-                    </div>
-                  )}
+                  <span>
+                    {lockSeconds > 0
+                      ? translateInterfaceText(`嘗試次數過多，請於 ${String(Math.floor(lockSeconds / 60)).padStart(2, "0")}:${String(lockSeconds % 60).padStart(2, "0")} 後再試`, language)
+                      : translateInterfaceText(loginError, language)}
+                  </span>
                 </div>
               )}
 
-              <button type="submit" className="btn btn-auth-submit w-100" disabled={isSubmitting}>
+              <button type="submit" className="btn btn-auth-submit w-100" disabled={isSubmitting || lockSeconds > 0}>
                 {isSubmitting ? "登入中..." : "登入"}
               </button>
             </form>
