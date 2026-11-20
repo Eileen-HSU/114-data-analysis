@@ -13,6 +13,18 @@ const AuthContext = createContext({
   updateUser: () => {},
 });
 
+// 讀取 JWT 的到期時間（毫秒）；只解碼 payload，不驗證簽章（驗證由後端負責）
+function tokenExpiryMs(token) {
+  try {
+    const part = String(token || "").split(".")[1];
+    if (!part) return null;
+    const json = JSON.parse(atob(part.replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof json.exp === "number" ? json.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
 function loadStoredUser() {
   const raw = localStorage.getItem(AUTH_KEY);
   if (!raw) return null;
@@ -140,32 +152,53 @@ function ReauthDialog({ user, onSuccess, onLogout }) {
 
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="reauth-title"
-      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 5000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, .35)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)", zIndex: 5000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <form onSubmit={submit} autoComplete="off"
-        style={{ background: "#fff", borderRadius: 12, padding: 24, width: "100%", maxWidth: 380, boxShadow: "0 10px 40px rgba(0,0,0,.25)" }}>
-        <h2 id="reauth-title" style={{ fontSize: 18, margin: "0 0 6px" }}>登入已逾時，請重新登入</h2>
-        <p style={{ fontSize: 13, color: "#666", margin: "0 0 14px" }}>
-          你目前頁面上輸入的內容都還在。重新登入後會自動繼續剛才的操作。
-        </p>
-        <label style={{ fontSize: 13 }}>帳號</label>
-        <input className="form-control mb-2" value={user?.email || ""} readOnly />
+        style={{ background: "#fff", borderRadius: 20, padding: "32px 28px 24px", width: "100%", maxWidth: 400, boxShadow: "0 20px 60px rgba(236, 72, 153, .18)" }}>
+        <div style={{ textAlign: "center", marginBottom: 20 }}>
+          <div style={{ width: 52, height: 52, borderRadius: 16, margin: "0 auto 14px", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #ffe4e6, #fce7f3)", color: "var(--pink-500)", fontSize: 24 }}>
+            <i className="ri-time-line" aria-hidden="true"></i>
+          </div>
+          <h2 id="reauth-title" style={{ fontSize: 20, fontWeight: 700, color: "var(--slate-800, #1e293b)", margin: "0 0 6px" }}>登入已逾時</h2>
+          <p style={{ fontSize: 14, color: "var(--slate-500)", margin: 0, lineHeight: 1.6 }}>
+            請重新輸入密碼，頁面上的內容都會保留。
+          </p>
+          <p style={{ fontSize: 13, color: "var(--slate-400)", margin: "8px 0 0" }}>{user?.email}</p>
+        </div>
+
         {preAuth ? (
           <>
-            <label style={{ fontSize: 13 }}>Email 驗證碼</label>
-            <input className="form-control mb-2" inputMode="numeric" autoFocus value={otp} onChange={(e) => setOtp(e.target.value)} />
+            <label className="auth-label" htmlFor="reauth-otp">Email 驗證碼</label>
+            <div className="position-relative mb-3">
+              <i className="ri-mail-check-line form-icon" aria-hidden="true"></i>
+              <input id="reauth-otp" className="form-control-custom" inputMode="numeric" autoFocus placeholder="6 位數驗證碼"
+                value={otp} onChange={(e) => setOtp(e.target.value)} />
+            </div>
           </>
         ) : (
           <>
-            <label style={{ fontSize: 13 }}>密碼</label>
-            <input className="form-control mb-2" type="password" autoFocus autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <label className="auth-label" htmlFor="reauth-password">密碼</label>
+            <div className="position-relative mb-3">
+              <i className="ri-lock-line form-icon" aria-hidden="true"></i>
+              <input id="reauth-password" className="form-control-custom" type="password" autoFocus autoComplete="current-password"
+                placeholder="請輸入密碼" value={password} onChange={(e) => setPassword(e.target.value)} />
+            </div>
           </>
         )}
-        {error && <div style={{ color: "#c0392b", fontSize: 13, marginBottom: 8 }}>{error}</div>}
-        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-          <button type="submit" className="btn btn-primary flex-grow-1" disabled={busy || (preAuth ? !otp : !password)}>
-            {busy ? "登入中…" : "重新登入"}
+
+        {error && (
+          <div style={{ color: "#dc2626", background: "#fef2f2", borderRadius: 10, padding: "8px 12px", fontSize: 13, marginBottom: 12 }}>{error}</div>
+        )}
+
+        <button type="submit" className="btn-auth-submit w-100" disabled={busy || (preAuth ? !otp : !password)}
+          style={{ opacity: busy || (preAuth ? !otp : !password) ? 0.6 : 1 }}>
+          {busy ? "登入中…" : "重新登入"}
+        </button>
+        <div style={{ textAlign: "center", marginTop: 14 }}>
+          <button type="button" onClick={onLogout}
+            style={{ background: "none", border: "none", color: "var(--slate-400)", fontSize: 13, cursor: "pointer" }}>
+            改用其他帳號（登出）
           </button>
-          <button type="button" className="btn btn-outline-secondary" onClick={onLogout}>登出</button>
         </div>
       </form>
     </div>
@@ -250,6 +283,26 @@ export function AuthProvider({ children }) {
     });
     return () => { reauthHandler = null; };
   }, []);
+
+  // 時間一到就主動跳出重新登入視窗（使用者正在輸入也一樣），不用等到送出請求才發現。
+  // 每 5 秒檢查一次，並在切回分頁、電腦從睡眠醒來時立即檢查（睡眠時計時器會暫停）。
+  useEffect(() => {
+    const expiry = tokenExpiryMs(user?.token);
+    if (!expiry) return undefined;
+    const check = () => {
+      if (Date.now() >= expiry && !reauthPromise) requestReauth();
+    };
+    check();
+    const timer = setInterval(check, 5000);
+    const onVisible = () => { if (document.visibilityState === "visible") check(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", check);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", check);
+    };
+  }, [user?.token]);
 
   const handleReauthSuccess = useCallback((data) => {
     const token = data?.token;
