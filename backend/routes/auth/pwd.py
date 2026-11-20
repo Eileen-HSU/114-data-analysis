@@ -207,6 +207,8 @@ def reset_password():
 
     try:
         user.password_hash = generate_password_hash(new_password)
+        from routes.auth.token_service import bump_token_version
+        bump_token_version(user.user_id)  # 舊 token 立即失效
         record.is_used = True
         db.session.commit()
         return jsonify({"message": "密碼已更新"}), 200

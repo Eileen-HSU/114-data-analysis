@@ -35,6 +35,9 @@ def verify_token(req):
     token = auth_header.split(" ")[1]
     try:
         payload = jwt.decode(token, get_jwt_secret(), algorithms=["HS256"])
+        from routes.auth.token_service import token_is_current
+        if not token_is_current(payload):
+            return None, "Token revoked"
         return payload.get("user_id"), None
     except jwt.ExpiredSignatureError:
         return None, "Token expired"
@@ -208,11 +211,8 @@ def _verify_user_2fa(email, otp):
 
     user = db.session.get(User, record.user_id)
 
-    token = jwt.encode({
-        'account_type': 'user',
-        'user_id': user.user_id,
-        'exp': taiwan_now() + timedelta(hours=24)
-    }, get_jwt_secret(), algorithm="HS256")
+    from routes.auth.token_service import issue_user_token
+    token = issue_user_token(user.user_id, get_jwt_secret(), taiwan_now())
 
     record.is_used = True
     db.session.commit()

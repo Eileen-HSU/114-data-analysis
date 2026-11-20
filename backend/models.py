@@ -31,6 +31,8 @@ class User(db.Model):
     email = db.Column(db.String(100), nullable=False, unique=True)
     password_hash = db.Column(db.String(255), nullable=False)
     email_2fa_enabled = db.Column(db.Boolean, default=False)
+    # 改密碼／登出時 +1，舊 token 立即失效（見 routes/auth/token_service.py）
+    token_version = db.Column(db.Integer, nullable=False, default=0, server_default="0")
     created_at = db.Column(db.DateTime(timezone=True), default=taiwan_now)
 
     # 關聯設定

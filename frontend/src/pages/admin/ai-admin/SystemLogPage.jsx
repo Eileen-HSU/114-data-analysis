@@ -1,6 +1,7 @@
 import { useTextPrompt } from "./shared/TextPromptDialog";
 import { BackgroundJobsPanel } from "./shared/BackgroundJobs";
 import MaintenancePanel from "./shared/MaintenancePanel";
+import SecurityHeadersPanel from "./shared/SecurityHeadersPanel";
 import { AdminPageHeader, AdminTabs } from "./shared/AdminLayout";
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useNavigate, useSearchParams } from "react-router-dom";
@@ -161,6 +162,7 @@ function StatusTab({ token, onShowErrors }) {
           {status.errors.open > 0 && <> <button className="link-button" onClick={onShowErrors}>{t("查看錯誤紀錄", "View errors")}</button></>}
         </StatusRow>
       </ul>
+      <SecurityHeadersPanel token={token} />
       <p><small>{jobText(status.background_jobs?.retry, t("全部重試", "retry"))}<br />
         {jobText(status.background_jobs?.second_opinion, t("AI 再確認", "AI re-check"))}</small></p>
       <p><small>{t(`檢查時間：${formatTime(status.checked_at)}`, `Checked at ${formatTime(status.checked_at)}`)}</small>{" "}

@@ -436,6 +436,10 @@ def ensure_runtime_schema():
 
 ensure_runtime_schema()
 
+# 資安：token 版本號欄位、CSP 回報表、後端安全標頭、登出端點
+from routes.security import init_security
+init_security(app)
+
 
 def ensure_integrity_followup_schema():
     """分類資料正確性修正（fix/classification-integrity-followup）的

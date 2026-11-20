@@ -33,6 +33,9 @@ def verify_token(request):
     token = auth_header.split(" ")[1]
     try:
         payload = jwt.decode(token, get_jwt_secret(), algorithms=["HS256"])
+        from routes.auth.token_service import token_is_current
+        if not token_is_current(payload):
+            return None, "Token revoked"
         return payload.get("user_id"), None
     except jwt.ExpiredSignatureError:
         return None, "Token expired"

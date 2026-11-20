@@ -28,21 +28,13 @@ def get_jwt_secret() -> str:
 
 
 def build_token(user_id: int, now=None) -> str:
-    """User 專用 token。管理員權限一律看 account_type=="admin"（Admin 另有
-    自己的帳號表與 token），User 沒有角色欄位。
+    """User 專用 token（效期與版本號見 routes/auth/token_service.py）。管理員權限一律看
+    account_type=="admin"（Admin 另有自己的帳號表與 token），User 沒有角色欄位。
     """
     if now is None:
         now = taiwan_now()
-    exp_time = (now + timedelta(hours=24)).replace(tzinfo=None)
-    return jwt.encode(
-        {
-            "account_type": "user",
-            "user_id": user_id,
-            "exp": exp_time,
-        },
-        get_jwt_secret(),
-        algorithm="HS256",
-    )
+    from routes.auth.token_service import issue_user_token
+    return issue_user_token(user_id, get_jwt_secret(), now)
 
 
 def _too_many(wait_seconds):

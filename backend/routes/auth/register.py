@@ -36,12 +36,8 @@ def get_jwt_secret() -> str:
 def build_token(user_id: int, now=None) -> str:
     if now is None:
         now = taiwan_now()
-    exp_time = (now + timedelta(hours=24)).replace(tzinfo=None)
-    return jwt.encode(
-        {"user_id": user_id, "exp": exp_time},
-        get_jwt_secret(),
-        algorithm="HS256",
-    )
+    from routes.auth.token_service import issue_user_token
+    return issue_user_token(user_id, get_jwt_secret(), now)
 
 
 def is_valid_password(password: str) -> bool:

@@ -38,7 +38,9 @@ def build_admin_token(admin_id: int, now=None) -> str:
     """
     if now is None:
         now = taiwan_now()
-    exp_time = (now + timedelta(hours=24)).replace(tzinfo=None)
+    from datetime import datetime as _dt
+    from routes.auth.token_service import token_ttl
+    exp_time = _dt.utcnow() + token_ttl()  # UTC（PyJWT 把無時區時間當 UTC）
     return jwt.encode(
         {
             "account_type": "admin",
