@@ -572,7 +572,11 @@ def upload_excel_for_classification():
 
     upload_batch_id = str(uuid.uuid4())
     # AI 用量：這次上傳分析的所有 AI 呼叫歸到同一個分析批次（request 結束時自動收尾）
-    ai_usage_service.bind_request_unit(ai_usage_service.UNIT_ANALYSIS_BATCH, upload_batch_id, user_id=auth_user_id)
+    _usage_file = request.files.get("file")
+    ai_usage_service.bind_request_unit(
+        ai_usage_service.UNIT_ANALYSIS_BATCH, upload_batch_id, user_id=auth_user_id,
+        label=getattr(_usage_file, "filename", None),
+    )
     # 自動主題的範圍：同一個 workspace/project（前端帶 project_id）或同一個使用者
     scope = _upload_scope(auth_user_id, request.form.get("project_id"))
 
@@ -854,6 +858,7 @@ def analyze_survey(access_code):
     # AI 用量：每按一次「分析」是一個新的分析批次（只有真的送進 AI 的回覆會被計數）
     ai_usage_service.bind_request_unit(
         ai_usage_service.UNIT_ANALYSIS_BATCH, f"survey-{template_id}-{uuid.uuid4().hex[:16]}", user_id=auth_user_id,
+        label=f"問卷：{survey.title}" if getattr(survey, "title", None) else None,
     )
 
     # 【新增｜rating 題後端直接統計】跟 question_type_map（只收

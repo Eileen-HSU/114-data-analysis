@@ -155,7 +155,7 @@ with app.app_context():
 
 
 def background():
-    token = usage.begin_unit(usage.UNIT_SURVEY_GENERATION, "task-bg", user_id=7)
+    token = usage.begin_unit(usage.UNIT_SURVEY_GENERATION, "task-bg", user_id=7, label="課程簡報.pdf")
     usage.record_call(usage.current_feature("survey_generation"), "gemini-3.8-flash", "gemini-3.8-flash",
                       response=response(5000, 800))
     usage.finish_unit(token)
@@ -170,6 +170,7 @@ with app.app_context():
     check("歸到背景工作開的單位", r.unit_type == "survey_generation" and r.unit_id == "task-bg" and r.user_id == 7)
     unit = um.AI_Usage_Unit.query.filter_by(unit_id="task-bg").first()
     check("單位寫入 completed", unit is not None and unit.status == "completed")
+    check("單位記下顯示名稱（檔名）", unit.label == "課程簡報.pdf")
 
 print("== 5. request 內的分析批次：teardown 自動收尾 ==")
 resp = client.post("/test/analysis")
@@ -290,6 +291,10 @@ with app.app_context():
     check("每 1,000 字平均 = 2,000 tokens", abs(s["unit_metrics"]["per_1000_chars"]["tokens"]["avg"] - 2000) < 1e-6)
     check("步驟拆分：classification 每 100 筆", per100["by_feature"][0]["feature"] == "classification")
     check("匯率一起回傳", s["currency"]["usd_twd"] == 32.5)
+    b0 = next(u for u in s["recent_units"] if u["unit_type"] == "analysis_batch" and u["total_tokens"] == 10000)
+    check("單份明細：每次分析各自的 token", b0["input_tokens"] == 9000 and b0["output_tokens"] == 1000)
+    check("單份明細：失敗呼叫另計、不算成本", b0["failed_calls"] == 1 and abs(b0["cost_usd"] - 0.0013) < 1e-9)
+    check("單份明細：回覆筆數與類型", b0["item_count"] == 100 and b0["type_label"] == "回覆分析")
 
     # 第三份問卷生成 → 可以算了；失敗的生成不算
     add_unit("survey_generation", "gen2")

@@ -232,6 +232,7 @@ def _run_generation_task(task_id, user_id, filename, file_bytes, config):
     # 用來算「每份問卷生成平均 token」。背景 thread 要自己開單位。
     usage_token = ai_usage_service.begin_unit(
         ai_usage_service.UNIT_SURVEY_GENERATION, task_id, user_id=user_id, feature="survey_generation",
+        label=filename,
     )
     usage_status = "failed"
     try:

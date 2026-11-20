@@ -9,10 +9,10 @@ export function fmtAmount(value) {
   return value.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
-export function formatMoney(usd, fx) {
+// 金額一律只顯示美金（第二個參數保留只為相容舊呼叫）
+export function formatMoney(usd) {
   if (usd == null) return "—";
-  if (!fx) return `US$ ${fmtAmount(usd)}`;
-  return `NT$ ${fmtAmount(usd * fx)}（US$ ${fmtAmount(usd)}）`;
+  return `US$ ${fmtAmount(usd)}`;
 }
 
 export function estimate(metrics, { surveys, responses, chars }) {

@@ -63,6 +63,8 @@ class AI_Usage_Unit(db.Model):
     # 送進 AI 分析的回覆筆數與總字數（字元數）；問卷生成為 0
     item_count = db.Column(db.Integer, nullable=False, default=0)
     char_count = db.Column(db.Integer, nullable=False, default=0)
+    # 顯示用名稱（上傳檔名或問卷標題，最多 120 字）；不含回答內容
+    label = db.Column(db.String(120), nullable=True)
     # completed / failed
     status = db.Column(db.String(20), nullable=False, default="completed")
     created_at = db.Column(db.DateTime, nullable=False, index=True)

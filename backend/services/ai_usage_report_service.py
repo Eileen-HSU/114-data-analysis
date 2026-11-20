@@ -476,6 +476,73 @@ def quota_monitor(prices, now):
 
 # ── 對外：整頁資料 ───────────────────────────────────────────
 
+RECENT_UNITS_LIMIT = 30
+UNIT_LABELS = {usage.UNIT_SURVEY_GENERATION: "問卷生成", usage.UNIT_ANALYSIS_BATCH: "回覆分析"}
+
+
+def recent_units(prices, limit=RECENT_UNITS_LIMIT):
+    """最近每一次「問卷生成」「回覆分析」各自用了多少 token 與參考成本（單份明細）。"""
+    from models import User
+
+    units = (AI_Usage_Unit.query.order_by(AI_Usage_Unit.created_at.desc(), AI_Usage_Unit.unit_pk.desc())
+             .limit(limit).all())
+    if not units:
+        return []
+    ids = [u.unit_id for u in units]
+    log = AI_Usage_Log
+    rows = db.session.query(
+        log.unit_id, log.actual_model, log.outcome,
+        func.count(log.log_id),
+        func.coalesce(func.sum(log.input_tokens), 0),
+        func.coalesce(func.sum(log.output_tokens), 0),
+        func.coalesce(func.sum(log.thinking_tokens), 0),
+    ).filter(log.unit_id.in_(ids)).group_by(log.unit_id, log.actual_model, log.outcome).all()
+    agg = {}
+    for unit_id, model, outcome, calls, inp, out, think in rows:
+        a = agg.setdefault(unit_id, {"calls": 0, "failed": 0, "input_tokens": 0, "output_tokens": 0,
+                                     "thinking_tokens": 0, "cost_usd": 0.0, "cost_complete": True, "models": set()})
+        a["calls"] += int(calls)
+        if outcome != usage.OUTCOME_SUCCESS:
+            a["failed"] += int(calls)
+            continue
+        inp, out, think = int(inp), int(out), int(think)
+        a["input_tokens"] += inp
+        a["output_tokens"] += out
+        a["thinking_tokens"] += think
+        a["models"].add(model)
+        c = cost_usd(prices, model, inp, out, think)
+        if c is None:
+            a["cost_complete"] = False
+        else:
+            a["cost_usd"] += c
+    user_ids = {u.user_id for u in units if u.user_id}
+    names = dict(db.session.query(User.user_id, User.user_name).filter(User.user_id.in_(user_ids)).all()) if user_ids else {}
+    result = []
+    for u in units:
+        a = agg.get(u.unit_id, {"calls": 0, "failed": 0, "input_tokens": 0, "output_tokens": 0,
+                                "thinking_tokens": 0, "cost_usd": 0.0, "cost_complete": True, "models": set()})
+        total = a["input_tokens"] + a["output_tokens"] + a["thinking_tokens"]
+        result.append({
+            "unit_type": u.unit_type,
+            "type_label": UNIT_LABELS.get(u.unit_type, u.unit_type),
+            "label": u.label or "",
+            "user_name": names.get(u.user_id, ""),
+            "created_at": u.created_at.isoformat() if u.created_at else None,
+            "status": u.status,
+            "item_count": u.item_count or 0,
+            "char_count": u.char_count or 0,
+            "calls": a["calls"],
+            "failed_calls": a["failed"],
+            "input_tokens": a["input_tokens"],
+            "output_tokens": a["output_tokens"],
+            "thinking_tokens": a["thinking_tokens"],
+            "total_tokens": total,
+            "cost_usd": round(a["cost_usd"], 6) if (a["cost_complete"] and total) else (0.0 if not total else None),
+            "models": sorted(a["models"]),
+        })
+    return result
+
+
 def build_summary(now=None, month=None):
     """month：'YYYY-MM'，預設本月。"""
     now = now or usage.now_naive()
@@ -509,6 +576,7 @@ def build_summary(now=None, month=None):
         "by_model": by_model,
         "unit_metrics": unit_metrics(prices, now),
         "quota": quota_monitor(prices, now),
+        "recent_units": recent_units(prices),
         "missing_price_models": missing_prices,
         "price_reference_dates": sorted({p.reference_date.isoformat() for p in prices.values() if p.reference_date}),
         "retention_days": usage.retention_days(),

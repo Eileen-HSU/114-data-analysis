@@ -106,9 +106,10 @@ def feature_for_module(module_name):
 
 # ── 單位（unit）──────────────────────────────────────────────
 
-def begin_unit(unit_type, unit_id, user_id=None, feature=None):
-    """開始一個單位，回傳 token（交給 finish_unit 收尾）。"""
+def begin_unit(unit_type, unit_id, user_id=None, feature=None, label=None):
+    """開始一個單位，回傳 token（交給 finish_unit 收尾）。label：顯示用名稱（檔名或問卷標題）。"""
     state = {
+        "label": (str(label).strip()[:120] or None) if label else None,
         "unit_type": unit_type,
         "unit_id": str(unit_id)[:64] if unit_id is not None else None,
         "user_id": user_id,
@@ -120,7 +121,7 @@ def begin_unit(unit_type, unit_id, user_id=None, feature=None):
     return _ctx.set(state)
 
 
-def bind_request_unit(unit_type, unit_id, user_id=None, feature=None):
+def bind_request_unit(unit_type, unit_id, user_id=None, feature=None, label=None):
     """在 Flask request 裡開始一個單位；request 結束時（teardown）自動收尾。
     任何錯誤都只寫 log，不影響呼叫端。"""
     if _app is None:
@@ -133,7 +134,7 @@ def bind_request_unit(unit_type, unit_id, user_id=None, feature=None):
         previous = g.pop("_ai_usage_unit_token", None)
         if previous is not None:
             finish_unit(previous)
-        g._ai_usage_unit_token = begin_unit(unit_type, unit_id, user_id=user_id, feature=feature)
+        g._ai_usage_unit_token = begin_unit(unit_type, unit_id, user_id=user_id, feature=feature, label=label)
     except Exception:  # noqa: BLE001
         logger.warning("AI usage: bind_request_unit failed", exc_info=True)
 
@@ -329,6 +330,8 @@ def _write_unit(state, status):
                 "status": status,
                 "finished_at": now_naive(),
             }
+            if state.get("label"):
+                values["label"] = state["label"]
             if existing:
                 conn.execute(table.update().where(table.c.unit_pk == existing[0]).values(**values))
             else:

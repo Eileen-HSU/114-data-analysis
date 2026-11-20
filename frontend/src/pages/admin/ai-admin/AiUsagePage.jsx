@@ -161,6 +161,55 @@ function UsageTable({ title, rows, keyName, labelFn, fx }) {
   );
 }
 
+const fmtTime = (iso) => {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+// 單份明細：最近每一次問卷生成／回覆分析各自用了多少
+function RecentUnitsTable({ rows, fx }) {
+  return (
+    <section className="admin-summary-section">
+      <h2 className="admin-summary-section-title">{t("每次分析明細（最近 30 筆）", "Each run (latest 30)")}</h2>
+      {!rows?.length ? (
+        <p className="usage-note">{t("還沒有紀錄。上傳一份檔案分析或生成一份問卷後，這裡會列出那一次用了多少。",
+          "No records yet. Analyze a file or generate a survey and it will show up here.")}</p>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table className="usage-table">
+            <thead><tr>
+              <th>{t("時間", "Time")}</th><th>{t("類型", "Type")}</th><th>{t("檔案／問卷", "File / survey")}</th>
+              <th>{t("使用者", "User")}</th><th>{t("回覆筆數", "Responses")}</th>
+              <th>Input</th><th>Output</th><th>{t("合計 tokens", "Total tokens")}</th><th>{t("參考成本", "Reference cost")}</th>
+            </tr></thead>
+            <tbody>
+              {rows.map((row, i) => (
+                <tr key={`${row.created_at}-${i}`}>
+                  <td style={{ whiteSpace: "nowrap" }}>{fmtTime(row.created_at)}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    {row.unit_type === "survey_generation" ? t("問卷生成", "Survey generation") : t("回覆分析", "Response analysis")}
+                    {row.status === "failed" && <span style={{ color: "#c0392b" }}>{t("（失敗）", " (failed)")}</span>}
+                  </td>
+                  <td style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row.label}>{row.label || "—"}</td>
+                  <td>{row.user_name || "—"}</td>
+                  <td>{row.unit_type === "survey_generation" ? "—" : fmtInt(row.item_count)}</td>
+                  <td>{fmtInt(row.input_tokens)}</td>
+                  <td>{fmtInt(row.output_tokens + row.thinking_tokens)}</td>
+                  <td><b>{fmtInt(row.total_tokens)}</b>{row.failed_calls > 0 && <small style={{ color: "#888" }}>{t(`（另有 ${row.failed_calls} 次失敗）`, ` (+${row.failed_calls} failed)`)}</small>}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>{row.cost_usd == null ? t("未設定單價", "No price") : formatMoney(row.cost_usd, fx)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 const WARNING_TEXT = {
   quota_errors: ["今天已出現 429（額度用完）", "429 (quota) errors today"],
   near_rpd: ["今日請求數接近每日上限（RPD）", "Close to daily request limit (RPD)"],
@@ -235,7 +284,6 @@ function SettingsPanel({ token, onSaved }) {
       const body = {
         models: settings.models.map(({ model_name, input_usd_per_mtok, output_usd_per_mtok, rpm_limit, tpm_limit, rpd_limit, reference_date }) => (
           { model_name, input_usd_per_mtok, output_usd_per_mtok, rpm_limit, tpm_limit, rpd_limit, reference_date })),
-        fx: settings.fx,
       };
       const data = await api(SETTINGS_URL, token, { method: "PUT", body: JSON.stringify(body) });
       setSettings(toForm(data));
@@ -277,13 +325,7 @@ function SettingsPanel({ token, onSaved }) {
               </tbody>
             </table>
           </div>
-          <div className="usage-fx">
-            <label>{t("匯率：1 美金 = ? 新台幣", "Rate: 1 USD = ? TWD")}
-              <input inputMode="decimal" value={settings.fx.usd_twd} onChange={(e) => setSettings({ ...settings, fx: { ...settings.fx, usd_twd: e.target.value } })} />
-            </label>
-            <label>{t("匯率參考日期", "Rate date")}
-              <input type="date" value={settings.fx.reference_date} onChange={(e) => setSettings({ ...settings, fx: { ...settings.fx, reference_date: e.target.value } })} />
-            </label>
+          <div className="usage-fx" style={{ justifyContent: "flex-end" }}>
             <button className="primary" disabled={saving} onClick={save}>{saving ? t("儲存中…", "Saving…") : t("儲存", "Save")}</button>
           </div>
           {message?.ok && <p className="review-batch-message review-batch-message--ok" role="status">{message.ok}</p>}
@@ -323,14 +365,12 @@ export default function AiUsagePage() {
 
   return <>
     <AdminPageHeader title={t("AI 用量與成本", "AI usage & cost")}
-      description={t("金額為依後台設定單價估算的參考成本，不是實際帳單；目前使用免費額度時，實際花費為 0 元。",
+      description={t("金額為依後台設定單價估算的參考成本，不是實際帳單；目前使用免費額度時，實際花費為 0。",
         "Amounts are reference costs from the prices set below, not a bill. On the free tier the actual spend is zero.")}
       actions={<button disabled={loading} onClick={load}>{loading ? t("更新中…", "Refreshing…") : t("重新整理", "Refresh")}</button>} />
     {error && <p className="ai-admin-error" role="alert">{error}<button onClick={() => setError("")}>×</button></p>}
     {!summary ? <SkeletonCards count={3} /> : (
       <>
-        {!fx && <p className="review-batch-message review-batch-message--warn" role="status">
-          {t("尚未設定匯率，金額只顯示美金。", "No exchange rate set; amounts are in USD only.")}</p>}
         {summary.missing_price_models.length > 0 && <p className="review-batch-message review-batch-message--warn" role="status">
           {t(`以下模型尚未設定單價，金額不含這些模型（標 *）：${summary.missing_price_models.join("、")}`,
             `No price set for: ${summary.missing_price_models.join(", ")} (amounts marked * exclude them)`)}</p>}
@@ -341,9 +381,11 @@ export default function AiUsagePage() {
           <MetricCard title={t("每 1,000 字回覆", "Per 1,000 characters")} unit={t("個批次", "batches")} metric={metrics.per_1000_chars} fx={fx} minUnits={metrics.min_units} />
         </div>
         <p className="usage-note">
-          {t(`平均值取最近 ${metrics.window_days} 天的實際紀錄；只計算成功的呼叫。幣值：${fx ? `1 美金 = ${fx} 新台幣（${summary.currency.reference_date || "未填日期"}）` : "未設定匯率"}；單價參考日期：${summary.price_reference_dates.join("、") || "未填"}。`,
-            `Averages use real records from the last ${metrics.window_days} days (successful calls only). Rate: ${fx ? `1 USD = ${fx} TWD (${summary.currency.reference_date || "no date"})` : "not set"}; price dates: ${summary.price_reference_dates.join(", ") || "not set"}.`)}
+          {t(`平均值取最近 ${metrics.window_days} 天的實際紀錄；只計算成功的呼叫。金額單位：美金；單價參考日期：${summary.price_reference_dates.join("、") || "未填"}。`,
+            `Averages use real records from the last ${metrics.window_days} days (successful calls only). Amounts in USD; price dates: ${summary.price_reference_dates.join(", ") || "not set"}.`)}
         </p>
+
+        <RecentUnitsTable rows={summary.recent_units} fx={fx} />
 
         <Calculator metrics={metrics} fx={fx} />
 
@@ -384,8 +426,8 @@ export default function AiUsagePage() {
         <QuotaTable rows={summary.quota} />
         <SettingsPanel token={token} onSaved={load} />
         <p className="usage-note">
-          {t(`用量紀錄只保存數字（時間、功能、模型、token 數），不保存問卷內容、回答或 prompt。明細保留 ${summary.retention_days} 天，之後彙總為每日統計。`,
-            `Usage records keep numbers only (time, feature, model, tokens) — never survey content, answers or prompts. Details are kept ${summary.retention_days} days, then rolled up daily.`)}
+          {t(`用量紀錄只保存數字（時間、功能、模型、token 數）與檔名／問卷標題，不保存問卷內容、回答或 prompt。明細保留 ${summary.retention_days} 天，之後彙總為每日統計。`,
+            `Usage records keep numbers (time, feature, model, tokens) and file names / survey titles — never survey content, answers or prompts. Details are kept ${summary.retention_days} days, then rolled up daily.`)}
         </p>
       </>
     )}

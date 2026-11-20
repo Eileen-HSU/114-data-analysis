@@ -4,7 +4,7 @@
 //   - 有填平均字數時改用「每 1,000 字」計算
 //   - 資料不足的部分不計入，並標示出來（不會用 0 假裝有資料）
 //   - 有任一部分缺單價時，金額顯示「—」而不是少算的數字
-//   - 金額格式：新台幣為主、美金放括號；沒有匯率只顯示美金；小金額保留位數
+//   - 金額格式：一律只顯示美金；小金額保留位數
 import assert from "node:assert/strict";
 import { estimate, fmtAmount, formatMoney } from "../src/pages/admin/ai-admin/shared/usageMath.js";
 
@@ -47,7 +47,7 @@ assert.equal(r.avg.costUsd, null);
 // 金額格式
 assert.equal(formatMoney(null, 32), "—");
 assert.equal(formatMoney(0.5, null), "US$ 0.500");
-assert.equal(formatMoney(2, 32.5), "NT$ 65.00（US$ 2.00）");
+assert.equal(formatMoney(2, 32.5), "US$ 2.00");
 assert.equal(fmtAmount(0.0004), "0.0004");
 assert.equal(fmtAmount(0), "0.00");
 
