@@ -47,7 +47,7 @@ def build_token(user_id: int, now=None) -> str:
 
 def _too_many(wait_seconds):
     minutes = max(1, (int(wait_seconds) + 59) // 60)
-    resp = jsonify({"error": f"嘗試次數過多，請約 {minutes} 分鐘後再試"})
+    resp = jsonify({"error": f"密碼已連續輸錯多次，為保護帳號暫時停止登入，約 {minutes} 分鐘後可再試。"})
     resp.status_code = 429
     resp.headers["Retry-After"] = str(int(wait_seconds))
     return resp
@@ -91,6 +91,11 @@ def login():
             # 失敗才計數；訊息不顯示剩餘次數，也不透露帳號是否存在
             rl.record_failure("login_account", account_key)
             rl.record_failure("login_ip", ip)
+            # 這次失敗剛好達到上限：馬上告知冷卻，不要等到下一次才跳出
+            now_blocked_acct, wait_a = rl.blocked("login_account", account_key)
+            now_blocked_ip, wait_i = rl.blocked("login_ip", ip)
+            if now_blocked_acct or now_blocked_ip:
+                return _too_many(max(wait_a, wait_i))
             return jsonify({"error": "帳號或密碼錯誤"}), 401
 
         # 登入成功只清除「帳號」計數，不清除「IP」計數

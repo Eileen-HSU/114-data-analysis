@@ -233,12 +233,11 @@ export default function LoginPage() {
                   <i className="ri-error-warning-line"></i>
                   <span>{translateInterfaceText(loginError, language)}</span>
                   {loginLocked && (
-                    <>
-                      {" "}
+                    <div style={{ marginTop: 6 }}>
                       <a className="forgot-link" onClick={() => navigate(`/forgot-password${email ? `?email=${encodeURIComponent(email)}` : ""}`)} style={{ cursor: "pointer", textDecoration: "underline" }}>
-                        忘記密碼？
+                        忘記密碼？立即重設密碼
                       </a>
-                    </>
+                    </div>
                   )}
                 </div>
               )}

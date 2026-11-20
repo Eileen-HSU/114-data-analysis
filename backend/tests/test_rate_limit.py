@@ -54,7 +54,7 @@ for i in range(5):
     if i < 4:
         check(f"錯誤密碼 #{i+1} -> 401 且不顯示剩餘次數",
               r.status_code == 401 and "剩餘" not in (r.get_json() or {}).get("error", ""))
-check("第 5 次錯誤仍是 401", r.status_code == 401)
+check("第 5 次錯誤立刻回 429 冷卻（不用等到第 6 次）", r.status_code == 429)
 r = login("pw-123456")
 check("達上限後即使密碼正確也冷卻 429", r.status_code == 429 and r.headers.get("Retry-After"))
 check("429 訊息不含剩餘次數與重設旗標", "require_password_reset" not in (r.get_json() or {}))
@@ -81,7 +81,7 @@ with app.app_context():
     db.session.query(RateLimitCounter).delete(); db.session.commit()
 with mock.patch.dict(os.environ, {"RL_LOGIN_IP_MAX": "3"}):
     codes = [login("wrong", f"u{i}@example.com").status_code for i in range(5)]
-check("同 IP 超過上限後換帳號也被擋", codes[:3] == [401, 401, 401] and codes[3:] == [429, 429])
+check("同 IP 超過上限後換帳號也被擋", codes[:2] == [401, 401] and codes[2:] == [429, 429, 429])
 
 # ---- 寄送驗證碼 ----
 with app.app_context():
