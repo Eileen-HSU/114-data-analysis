@@ -973,3 +973,36 @@ html[lang^="en"][data-api-busy] body::after { content: "Working…"; }
 .tax-busy { display: flex; align-items: center; margin: 8px 0; font-weight: 600; }
 @keyframes tax-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .tax-spinner { animation-duration: 1.6s; } }
+
+.usage-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 10px; }
+.usage-card .ov-card-value small { font-size: 14px; font-weight: 600; color: var(--muted); }
+.usage-card-money { font-size: 15px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.usage-note { margin: 0 0 16px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.usage-muted { color: var(--muted); font-weight: 400; }
+.usage-error { color: var(--alert); font-size: 12px; font-weight: 600; }
+.usage-calc { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.usage-calc-inputs { display: flex; flex-direction: column; gap: 10px; }
+.usage-calc-field { display: flex; flex-direction: column; gap: 4px; margin: 0; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.usage-calc-field input, .usage-fx input, .usage-table--form input { border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; font: inherit; font-weight: 400; color: var(--ink); }
+.usage-calc-result { display: flex; flex-direction: column; gap: 12px; justify-content: center; }
+.usage-calc-result > div { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: 10px; background: var(--soft); }
+.usage-calc-result > div > span:first-child { font-size: 13px; color: var(--muted); font-weight: 600; }
+.usage-calc-result b { font-size: 22px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.usage-table-wrap { overflow-x: auto; }
+.usage-table { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; border: 1px solid var(--line); border-radius: 12px; }
+.usage-table th, .usage-table td { padding: 9px 10px; border-bottom: 1px solid var(--line); text-align: right; font-variant-numeric: tabular-nums; vertical-align: top; }
+.usage-table th:first-child, .usage-table td:first-child { text-align: left; }
+.usage-table th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+.usage-table tr:last-child td { border-bottom: 0; }
+.usage-table--form input { width: 92px; text-align: right; }
+.usage-table--form input[type="date"] { width: 140px; }
+.usage-row--warn td { background: #fffbeb; }
+.usage-share { display: inline-block; width: 48px; height: 6px; margin-right: 6px; vertical-align: middle; border-radius: 3px; background: var(--line); overflow: hidden; }
+.usage-share > span { display: block; height: 100%; background: var(--ink-2); }
+.usage-breakdown > li { display: flex; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.usage-breakdown > li:last-child { border-bottom: 0; }
+.usage-settings { margin: 0 0 20px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.usage-settings > summary { cursor: pointer; font-weight: 700; color: var(--ink); margin-bottom: 10px; }
+.usage-fx { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin: 14px 0 10px; }
+.usage-fx label { display: flex; flex-direction: column; gap: 4px; margin: 0; font-size: 13px; color: var(--ink-2); }
+@media (max-width: 900px) { .usage-cards, .usage-calc { grid-template-columns: 1fr; } }

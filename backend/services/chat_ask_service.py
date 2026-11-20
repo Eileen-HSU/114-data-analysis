@@ -65,6 +65,7 @@
 import json
 import os
 import re
+import time
 
 from models import Chat_History, Response_Classification, Survey_Response, Survey_Template, Uploaded_Answer
 from classification_models import (
@@ -583,6 +584,9 @@ def _call_gemini(context_text: str, user_message: str, lang: str = DEFAULT_LANG)
     client = genai.Client(api_key=api_key)
     contents = f"{context_text}\n\n【使用者問題】\n{user_message}"
 
+    from services import ai_usage_service
+
+    started = time.monotonic()
     try:
         response = client.models.generate_content(
             model=_ASK_MODEL,
@@ -593,8 +597,10 @@ def _call_gemini(context_text: str, user_message: str, lang: str = DEFAULT_LANG)
             ),
         )
     except Exception as exc:
+        ai_usage_service.record_call("chat_ask", _ASK_MODEL, _ASK_MODEL, error=exc, started=started)
         print("[CHAT_ASK][GEMINI_API_FAILED]", repr(exc))
         raise _map_gemini_exception(exc) from exc
+    ai_usage_service.record_call("chat_ask", _ASK_MODEL, _ASK_MODEL, response=response, started=started)
 
     text = (getattr(response, "text", "") or "").strip()
     if not text:

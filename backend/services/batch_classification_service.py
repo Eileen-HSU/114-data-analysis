@@ -28,6 +28,7 @@ TF-IDF 去重判斷，再決定每一筆是要完整跑一次分類，還是可�
 
 from typing import Any, Dict, List, Optional
 
+from services import ai_usage_service
 from services.classify_v2 import classify_response_multi_segment
 from services.response_dedup_service import dedupe_by_similarity
 from services.segmentation_service import find_coverage_gaps
@@ -148,6 +149,12 @@ def run_batch_analysis(
     """
     if not pending_items:
         return []
+
+    # AI 用量：這批送進分析的回覆筆數與字數（算「每 100 筆」「每 1,000 字」平均用）。
+    # 只累加數字，不保存內容；沒有開分析批次時不做事。
+    ai_usage_service.add_items(
+        len(pending_items), sum(len(str(item.get("answer_text") or "")) for item in pending_items),
+    )
 
     # ── 組合清單：existing_references 排在前面，pending_items 排在後面 ──
     # dedupe_by_similarity() 的規則是「歸到第一個出現的索引」，

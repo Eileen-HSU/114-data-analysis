@@ -159,6 +159,11 @@ def start_scheduler(app):
                       id="auto_confirm_backfill", max_instances=1, coalesce=True)
     # 系統錯誤紀錄保留期限：已處理 90 天、未處理 180 天（見 services/error_log_service.py）
     scheduler.add_job(_purge_error_logs, trigger="interval", hours=24, args=[app], id="purge_error_logs")
+    # AI 用量明細超過保留期限（AI_USAGE_RETENTION_DAYS，預設 180 天）彙總成每日一筆後刪除
+    from services.ai_usage_service import scheduled_rollup
+
+    scheduler.add_job(scheduled_rollup, trigger="interval", hours=24, args=[app], id="ai_usage_rollup",
+                      max_instances=1, coalesce=True)
     if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
         scheduler.start()
         _scheduler = scheduler

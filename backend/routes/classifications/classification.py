@@ -72,6 +72,7 @@ from services import analysis_diagnostics as diag
 from services.failure_explainer import explain_failure
 from services.safe_error import safe_error_summary
 from services.batch_classification_service import run_batch_analysis
+from services import ai_usage_service
 from services.aggregated_summary_service import build_aggregated_summary, build_aggregated_summary_pair, AggregatedSummaryError
 from services.language_service import detect_data_lang, language_meta, resolve_output_lang, ui_lang_from_request
 from services.subcategory_methodology import QUESTION_OTHER, compute_display_sub_categories
@@ -570,6 +571,8 @@ def upload_excel_for_classification():
         return jsonify({"error": "無法自動判斷文字欄位，請確認 Excel 內容是否包含開放式文字回答"}), 400
 
     upload_batch_id = str(uuid.uuid4())
+    # AI 用量：這次上傳分析的所有 AI 呼叫歸到同一個分析批次（request 結束時自動收尾）
+    ai_usage_service.bind_request_unit(ai_usage_service.UNIT_ANALYSIS_BATCH, upload_batch_id, user_id=auth_user_id)
     # 自動主題的範圍：同一個 workspace/project（前端帶 project_id）或同一個使用者
     scope = _upload_scope(auth_user_id, request.form.get("project_id"))
 
@@ -848,6 +851,10 @@ def analyze_survey(access_code):
     template_id = survey.template_id
     question_json = survey.question_json or {}
     items = question_json.get("items", [])
+    # AI 用量：每按一次「分析」是一個新的分析批次（只有真的送進 AI 的回覆會被計數）
+    ai_usage_service.bind_request_unit(
+        ai_usage_service.UNIT_ANALYSIS_BATCH, f"survey-{template_id}-{uuid.uuid4().hex[:16]}", user_id=auth_user_id,
+    )
 
     # 【新增｜rating 題後端直接統計】跟 question_type_map（只收
     # type == "short"）完全平行、互不相干：rating 的 question_id 從頭

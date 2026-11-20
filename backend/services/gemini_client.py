@@ -1,6 +1,8 @@
 import contextvars
 import logging
 import os
+import sys
+import time
 
 from google import genai
 from google.genai import types
@@ -125,9 +127,19 @@ def _normalize_model_name(model_name):
 
 
 class GenerativeModel:
-    def __init__(self, model_name, system_instruction=None, **_kwargs):
+    def __init__(self, model_name, system_instruction=None, usage_feature=None, **_kwargs):
         self.model_name = model_name
         self.system_instruction = system_instruction
+        # AI 用量紀錄的功能代碼：沒指定時依「建立這個 model 的模組」判斷
+        # （見 services/ai_usage_service.MODULE_FEATURES），呼叫點不用改。
+        if usage_feature is None:
+            try:
+                from services.ai_usage_service import feature_for_module
+
+                usage_feature = feature_for_module(sys._getframe(1).f_globals.get("__name__"))
+            except Exception:  # noqa: BLE001
+                usage_feature = "other"
+        self.usage_feature = usage_feature
 
     def generate_content(self, contents, generation_config=None, **_kwargs):
         config_data = dict(generation_config or {})
@@ -137,7 +149,7 @@ class GenerativeModel:
         client = _create_client()
         log = logging.getLogger(__name__)
         try:
-            return self._call(client, self.model_name, contents, config)
+            return self._recorded_call(client, self.model_name, contents, config)
         except Exception as exc:
             fallbacks = fallback_models_for(self.model_name) if should_switch_model(exc) else []
             for fallback in fallbacks:
@@ -145,7 +157,7 @@ class GenerativeModel:
                 log.warning("Gemini 模型 %s 暫時無法使用（%s），改用備援模型 %s",
                             self.model_name, str(exc)[:120], fallback)
                 try:
-                    result = self._call(client, fallback, contents, config)
+                    result = self._recorded_call(client, fallback, contents, config)
                     log.info("Gemini 備援模型 %s 呼叫成功", fallback)
                     return result
                 except Exception as fallback_exc:  # noqa: BLE001
@@ -155,6 +167,19 @@ class GenerativeModel:
             # 一律拋出「主要模型」的原始錯誤，呼叫端原本依錯誤內容做的重試／等待照舊。
             log.error("Gemini 呼叫失敗（模型 %s）：%s", self.model_name, exc, exc_info=True)
             raise
+
+    def _recorded_call(self, client, model_name, contents, config):
+        """呼叫一次模型並記錄用量（成功記 token、失敗記狀態碼）；記錄本身不會拋例外。"""
+        from services import ai_usage_service
+
+        started = time.monotonic()
+        try:
+            response = self._call(client, model_name, contents, config)
+        except Exception as exc:
+            ai_usage_service.record_call(self.usage_feature, self.model_name, model_name, error=exc, started=started)
+            raise
+        ai_usage_service.record_call(self.usage_feature, self.model_name, model_name, response=response, started=started)
+        return response
 
     @staticmethod
     def _call(client, model_name, contents, config):

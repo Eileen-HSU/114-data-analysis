@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from flask import Blueprint, jsonify, request, url_for
 
 from routes.surveys.survey import verify_token
+from services import ai_usage_service
 from services.ppt_survey_ai_service import (
     PptSurveyAiError,
     generate_survey_from_material,
@@ -227,6 +228,20 @@ def _run_generation_task(task_id, user_id, filename, file_bytes, config):
         len(file_bytes),
     )
     _set_task(task_id, status="processing", message="AI 正在分析檔案並產生問卷草稿。")
+    # AI 用量：這次生成的所有 AI 呼叫（含重試、換模型）歸到同一個單位，
+    # 用來算「每份問卷生成平均 token」。背景 thread 要自己開單位。
+    usage_token = ai_usage_service.begin_unit(
+        ai_usage_service.UNIT_SURVEY_GENERATION, task_id, user_id=user_id, feature="survey_generation",
+    )
+    usage_status = "failed"
+    try:
+        if _run_generation_steps(task_id, user_id, filename, file_bytes, config):
+            usage_status = "completed"
+    finally:
+        ai_usage_service.finish_unit(usage_token, status=usage_status)
+
+
+def _run_generation_steps(task_id, user_id, filename, file_bytes, config):
     try:
         draft = generate_survey_from_material(filename, file_bytes, config)
         _set_task(
@@ -241,6 +256,7 @@ def _run_generation_task(task_id, user_id, filename, file_bytes, config):
             user_id,
             len(draft.get("questions", [])),
         )
+        return True
     except PptSurveyAiError as exc:
         tb = traceback.format_exc()
         logger.error(

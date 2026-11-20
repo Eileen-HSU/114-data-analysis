@@ -25,6 +25,7 @@ import AdminLayout from "../pages/admin/ai-admin/shared/AdminLayout.jsx";
 import ReviewHubPage from "../pages/admin/ai-admin/ReviewHubPage.jsx";
 import TaxonomyHubPage from "../pages/admin/ai-admin/TaxonomyHubPage.jsx";
 import SystemLogPage from "../pages/admin/ai-admin/SystemLogPage.jsx";
+import AiUsagePage from "../pages/admin/ai-admin/AiUsagePage.jsx";
 
 import SharedWorkspacePage from "../pages/workspace/SharedWorkspacePage.jsx";
 
@@ -58,6 +59,7 @@ const routes = [
       { path: "taxonomy", element: <TaxonomyHubPage /> },
       { path: "reports", element: <ReportAdminPage /> },
       { path: "system", element: <SystemLogPage /> },
+      { path: "usage", element: <AiUsagePage /> },
       // 舊網址
       { path: "unassigned", element: <Navigate to="/admin/ai/review?view=unassigned" replace /> },
       { path: "new-categories", element: <Navigate to="/admin/ai/taxonomy?view=candidates" replace /> },

@@ -902,6 +902,17 @@ def _classify_gemini_failures(failures, last_error):
     return 502, "PPT survey Gemini is temporarily unavailable after retrying all models and keys."
 
 
+def _record_usage(model, response=None, error=None, started=None):
+    """AI 用量紀錄（每一次實際呼叫都記，含重試與換模型）；功能預設為問卷生成，
+    revise_survey_with_ai 會改成問卷 AI 修改。記錄失敗不影響問卷生成。"""
+    from services import ai_usage_service
+
+    ai_usage_service.record_call(
+        ai_usage_service.current_feature(default="survey_generation"),
+        PPT_SURVEY_GEMINI_MODELS[0], model, response=response, error=error, started=started,
+    )
+
+
 def _call_gemini(contents, stop_on_status_codes=None):
     """Call PPT Gemini with transient-error retry, key, and model failover.
 
@@ -929,6 +940,7 @@ def _call_gemini(contents, stop_on_status_codes=None):
                     attempt,
                     PPT_SURVEY_GEMINI_RETRY_ATTEMPTS,
                 )
+                started = time.monotonic()
                 try:
                     response = client.models.generate_content(
                         model=model,
@@ -938,8 +950,10 @@ def _call_gemini(contents, stop_on_status_codes=None):
                             response_mime_type="application/json",
                         ),
                     )
+                    _record_usage(model, response=response, started=started)
                     break
                 except Exception as exc:
+                    _record_usage(model, error=exc, started=started)
                     last_error = exc
                     transient_failure = _is_transient_gemini_error(exc)
                     status_code = _gemini_error_status_code(exc)
@@ -1182,5 +1196,8 @@ def revise_survey_with_ai(draft, message):
 {_survey_json_instruction(allowed_types, question_count)}
 請盡量保留原本題數、題型與問卷結構，只修改講師要求的部分。
 """
-    raw = _call_gemini([prompt])
+    from services import ai_usage_service
+
+    with ai_usage_service.feature_scope("survey_revision"):
+        raw = _call_gemini([prompt])
     return normalize_survey_draft(raw, fallback_title=current_draft["title"])

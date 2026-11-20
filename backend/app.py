@@ -24,6 +24,8 @@ from routes.classifications.report import report_bp
 from routes.exports.export import exports_bp
 from routes.ai.ppt_survey import ppt_survey_ai_bp
 from routes.admin.ai_admin import ai_admin_bp
+from routes.admin.ai_usage import ai_usage_bp
+from services import ai_usage_service
 
 load_dotenv()
 
@@ -100,6 +102,8 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 # 最後再初始化資料庫
 db.init_app(app)
 mail.init_app(app)
+# AI 用量紀錄：背景 thread 沒有 app context 時也能寫入；request 結束時收尾分析批次
+ai_usage_service.init_app(app)
 
 def ensure_column(table_name, column_name, column_definition):
     exists = db.session.execute(
@@ -464,6 +468,25 @@ def ensure_integrity_followup_schema():
 ensure_integrity_followup_schema()
 
 
+def ensure_ai_usage_schema():
+    """AI 用量與成本（Admin「AI 用量與成本」頁）的資料表：只在不存在時建立，
+    不改動既有資料；獨立一個 try，失敗不影響其他功能（用量紀錄本身也會
+    在寫入失敗時安靜略過）。"""
+    with app.app_context():
+        try:
+            from ai_usage_models import AI_USAGE_MODELS
+            for model in AI_USAGE_MODELS:
+                ensure_table(model)
+            ensure_index("AI_Usage_Log", "ix_ai_usage_unit_created", "`unit_type`, `unit_id`, `created_at`")
+            db.session.commit()
+        except Exception as exc:
+            db.session.rollback()
+            app.logger.exception("AI usage schema check failed: %s", exc)
+
+
+ensure_ai_usage_schema()
+
+
 def bootstrap_taxonomy_on_startup():
     """新 DB / taxonomy 表為空時，安全、冪等地把 legacy taxonomy 帶入
     （見 services/taxonomy_bootstrap_service.py）。失敗會明確 log，但不
@@ -508,6 +531,7 @@ app.register_blueprint(report_bp)
 app.register_blueprint(exports_bp)
 app.register_blueprint(ppt_survey_ai_bp)
 app.register_blueprint(ai_admin_bp)
+app.register_blueprint(ai_usage_bp)
 
 start_scheduler(app)
 

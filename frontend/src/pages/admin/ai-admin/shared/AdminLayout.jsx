@@ -10,6 +10,7 @@ const NAV = [
   // 主題詳細頁（/admin/ai/topics/...）屬於分類架構
   { to: "/admin/ai/taxonomy", icon: "ri-node-tree", zh: "分類架構", en: "Taxonomy", also: "/admin/ai/topics/" },
   { to: "/admin/ai/reports", icon: "ri-file-chart-line", zh: "報告管理", en: "Reports" },
+  { to: "/admin/ai/usage", icon: "ri-coins-line", zh: "AI 用量與成本", en: "AI usage & cost" },
   { to: "/admin/ai/system", icon: "ri-settings-3-line", zh: "系統管理", en: "System" },
 ];
 
@@ -19,8 +20,7 @@ const SYSTEM_VIEWS = {
   maintenance: ["資料維護", "Data maintenance"],
 };
 
-// 依目前網址（路徑 + ?view=）決定麵包屑；總覽與主題詳細頁不在這裡處理
-// （主題詳細頁需要主題名稱，由 TopicDetailLayout 自己組）。
+
 function crumbsFor(pathname, view) {
   const path = pathname.replace(/\/+$/, "");
   if (path === "/admin/ai/review") {
@@ -33,6 +33,7 @@ function crumbsFor(pathname, view) {
       : [{ label: t("分類架構", "Taxonomy") }];
   }
   if (path === "/admin/ai/reports") return [{ label: t("報告管理", "Reports") }];
+  if (path === "/admin/ai/usage") return [{ label: t("AI 用量與成本", "AI usage & cost") }];
   if (path === "/admin/ai/system") {
     const tab = SYSTEM_VIEWS[view] || SYSTEM_VIEWS.status;
     return [{ label: t("系統管理", "System"), to: "/admin/ai/system" }, { label: t(...tab) }];
