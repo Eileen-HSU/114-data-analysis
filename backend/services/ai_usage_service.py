@@ -151,6 +151,17 @@ def add_items(count, chars):
         logger.warning("AI usage: add_items failed", exc_info=True)
 
 
+def set_response_total(count):
+    """記下這次分析範圍內的回覆總數（含沿用舊結果、不送 AI 的回覆）。沒有單位時不做事。"""
+    state = _ctx.get()
+    if not state:
+        return
+    try:
+        state["response_total"] = max(0, int(count or 0))
+    except Exception:  # noqa: BLE001
+        logger.warning("AI usage: set_response_total failed", exc_info=True)
+
+
 def current_unit():
     return _ctx.get()
 
@@ -332,6 +343,8 @@ def _write_unit(state, status):
             }
             if state.get("label"):
                 values["label"] = state["label"]
+            if state.get("response_total") is not None:
+                values["response_total"] = state["response_total"]
             if existing:
                 conn.execute(table.update().where(table.c.unit_pk == existing[0]).values(**values))
             else:

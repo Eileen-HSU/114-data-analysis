@@ -577,6 +577,7 @@ def upload_excel_for_classification():
         ai_usage_service.UNIT_ANALYSIS_BATCH, upload_batch_id, user_id=auth_user_id,
         label=getattr(_usage_file, "filename", None),
     )
+    ai_usage_service.set_response_total(total_row_count)
     # 自動主題的範圍：同一個 workspace/project（前端帶 project_id）或同一個使用者
     scope = _upload_scope(auth_user_id, request.form.get("project_id"))
 
@@ -873,6 +874,7 @@ def analyze_survey(access_code):
         Survey_Response.response_id.asc()
     ).all()
 
+    ai_usage_service.set_response_total(len(responses))
     rating_stats = _build_rating_stats(items, responses)
 
     

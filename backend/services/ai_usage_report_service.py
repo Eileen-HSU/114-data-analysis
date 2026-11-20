@@ -530,6 +530,7 @@ def recent_units(prices, limit=RECENT_UNITS_LIMIT):
             "created_at": u.created_at.isoformat() if u.created_at else None,
             "status": u.status,
             "item_count": u.item_count or 0,
+            "response_total": u.response_total,
             "char_count": u.char_count or 0,
             "calls": a["calls"],
             "failed_calls": a["failed"],

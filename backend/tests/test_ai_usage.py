@@ -156,6 +156,7 @@ with app.app_context():
 
 def background():
     token = usage.begin_unit(usage.UNIT_SURVEY_GENERATION, "task-bg", user_id=7, label="課程簡報.pdf")
+    usage.set_response_total(42)
     usage.record_call(usage.current_feature("survey_generation"), "gemini-3.8-flash", "gemini-3.8-flash",
                       response=response(5000, 800))
     usage.finish_unit(token)
@@ -171,6 +172,7 @@ with app.app_context():
     unit = um.AI_Usage_Unit.query.filter_by(unit_id="task-bg").first()
     check("單位寫入 completed", unit is not None and unit.status == "completed")
     check("單位記下顯示名稱（檔名）", unit.label == "課程簡報.pdf")
+    check("單位記下回覆總數（含沿用、不送 AI 的）", unit.response_total == 42)
 
 print("== 5. request 內的分析批次：teardown 自動收尾 ==")
 resp = client.post("/test/analysis")

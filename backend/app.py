@@ -507,6 +507,7 @@ def ensure_ai_usage_schema():
                 ensure_table(model)
             ensure_index("AI_Usage_Log", "ix_ai_usage_unit_created", "`unit_type`, `unit_id`, `created_at`")
             ensure_column("AI_Usage_Unit", "label", "`label` VARCHAR(120) NULL")
+            ensure_column("AI_Usage_Unit", "response_total", "`response_total` INT NULL")
             db.session.commit()
         except Exception as exc:
             db.session.rollback()

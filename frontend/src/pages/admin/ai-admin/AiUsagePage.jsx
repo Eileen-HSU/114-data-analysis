@@ -195,7 +195,7 @@ function RecentUnitsTable({ rows, fx }) {
                   </td>
                   <td style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row.label}>{row.label || "—"}</td>
                   <td>{row.user_name || "—"}</td>
-                  <td>{row.unit_type === "survey_generation" ? "—" : fmtInt(row.item_count)}</td>
+                  <td>{row.unit_type === "survey_generation" ? "—" : fmtInt(row.response_total ?? row.item_count)}</td>
                   <td>{fmtInt(row.input_tokens)}</td>
                   <td>{fmtInt(row.output_tokens + row.thinking_tokens)}</td>
                   <td><b>{fmtInt(row.total_tokens)}</b>{row.failed_calls > 0 && <small style={{ color: "#888" }}>{t(`（另有 ${row.failed_calls} 次失敗）`, ` (+${row.failed_calls} failed)`)}</small>}</td>
