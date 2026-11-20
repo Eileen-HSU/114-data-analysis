@@ -25,13 +25,13 @@ logger = logging.getLogger(__name__)
 
 # (環境變數名, 預設次數, 預設時間窗秒數)
 LIMITS = {
-    "login_account": ("RL_LOGIN_ACCOUNT_MAX", 5, 15 * 60),
-    "login_ip": ("RL_LOGIN_IP_MAX", 20, 15 * 60),
+    "login_account": ("RL_LOGIN_ACCOUNT_MAX", 5, 10 * 60),
+    "login_ip": ("RL_LOGIN_IP_MAX", 20, 10 * 60),
     "otp_email_min": ("RL_OTP_EMAIL_PER_MIN", 1, 60),
     "otp_email_hour": ("RL_OTP_EMAIL_PER_HOUR", 5, 3600),
     "otp_ip_hour": ("RL_OTP_IP_PER_HOUR", 20, 3600),
-    "disable2fa_account": ("RL_DISABLE2FA_ACCOUNT_MAX", 5, 15 * 60),
-    "disable2fa_ip": ("RL_DISABLE2FA_IP_MAX", 20, 15 * 60),
+    "disable2fa_account": ("RL_DISABLE2FA_ACCOUNT_MAX", 5, 10 * 60),
+    "disable2fa_ip": ("RL_DISABLE2FA_IP_MAX", 20, 10 * 60),
     "register_ip": ("RL_REGISTER_IP_PER_HOUR", 5, 3600),
     "survey_min": ("RL_SURVEY_PER_MIN", 60, 60),
     "survey_hour": ("RL_SURVEY_PER_HOUR", 150, 3600),

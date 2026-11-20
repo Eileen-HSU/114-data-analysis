@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/AuthContext";
 import { translateInterfaceText, useLanguage } from "../../context/LanguageContext";
 import { apiUrl } from "../../lib/api";
+import GoogleSignInButton from "../../components/feature/GoogleSignInButton";
 import conqightLogo from "../../assets/conqight-logo.png";
 import "./auth.css";
 
@@ -14,6 +15,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
+  const [googleAvailable, setGoogleAvailable] = useState(true);
   const [lockSeconds, setLockSeconds] = useState(0); // 冷卻剩餘秒數（即時倒數）
   const [alertModal, setAlertModal] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -123,6 +125,40 @@ export default function LoginPage() {
       sessionStorage.removeItem("dataanalysis_login_loading");
       setLoginError("連線失敗，請確認後端服務是否正常。");
       console.error(err);
+    }
+  };
+
+  // Google 登入：只接受已在個人資料頁綁定的 Google 帳號，不需 Email 驗證碼
+  const handleGoogleCredential = async (credential) => {
+    if (!credential || isSubmitting || lockSeconds > 0) return;
+    setLoginError("");
+    try {
+      setIsSubmitting(true);
+      const res = await fetch(apiUrl("/api/auth/google/login"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setIsSubmitting(false);
+      if (!res.ok) {
+        if (res.status === 429 && Number(data.retry_after) > 0) setLockSeconds(Math.ceil(Number(data.retry_after)));
+        setLoginError(data.error || "Google 登入失敗，請再試一次。");
+        return;
+      }
+      login({
+        name: data.user_name,
+        user_name: data.user_name,
+        email: data.email,
+        user_id: data.user_id,
+        account_type: data.account_type,
+        token: data.token,
+        email_2fa_enabled: data.email_2fa_enabled,
+      });
+      navigate("/workspace");
+    } catch {
+      setIsSubmitting(false);
+      setLoginError("連線失敗，請確認後端服務是否正常。");
     }
   };
 
@@ -254,6 +290,24 @@ export default function LoginPage() {
                 {isSubmitting ? "登入中..." : "登入"}
               </button>
             </form>
+
+            {googleAvailable && (
+              <div className="mt-3">
+                <div className="d-flex align-items-center gap-2 my-3" style={{ color: "#999", fontSize: 13 }}>
+                  <hr className="flex-grow-1 m-0" /><span>{language === "en" ? "or" : "或"}</span><hr className="flex-grow-1 m-0" />
+                </div>
+                <GoogleSignInButton
+                  onCredential={handleGoogleCredential}
+                  disabled={isSubmitting || lockSeconds > 0}
+                  onUnavailable={() => setGoogleAvailable(false)}
+                />
+                <p className="text-center mt-2 mb-0" style={{ fontSize: 12, color: "#888" }}>
+                  {language === "en"
+                    ? "Google sign-in works after you link your Google account in Profile."
+                    : "需先用密碼登入，並在個人資料頁綁定 Google 帳號後才能使用。"}
+                </p>
+              </div>
+            )}
 
             <p className="auth-terms text-center mt-4" data-localized>
               {language === "en" ? "By logging in, you agree to our " : "登入即表示您同意我們的 "}

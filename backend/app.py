@@ -557,6 +557,9 @@ app.register_blueprint(ppt_survey_ai_bp)
 app.register_blueprint(ai_admin_bp)
 app.register_blueprint(ai_usage_bp)
 
+from routes.auth.google_auth import init_google_auth
+init_google_auth(app)
+
 start_scheduler(app)
 
 @app.route("/api/2fa/disable", methods=["OPTIONS"])
@@ -583,9 +586,6 @@ def health():
     return jsonify({"status": "ok"}), 200
 
 
-# 錯誤處理與系統錯誤紀錄（手冊 4.3）：HTTP 錯誤維持原本的回應；非預期的 500
-# 不再把內部錯誤細節傳給瀏覽器，改成記進 System_Error_Log 並回傳錯誤編號。
-# 程式裡的 logging.error / logger.exception 也會寫進錯誤紀錄。
 from services.error_log_service import install as install_error_logging  # noqa: E402
 
 install_error_logging(app)

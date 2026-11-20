@@ -8,6 +8,7 @@ import { useActivity } from "../../hooks/ActivityContext";
 import { apiUrl } from "../../lib/api";
 import { useLanguage } from "../../context/LanguageContext";
 import "./profile.css";
+import GoogleLinkSection from "./GoogleLinkSection";
 
 const DEFAULT_AVATAR = "https://static.readdy.ai/image/db4f710102ca6cc45db44808c8658987/b181cfaad2165c1909b7c8fa8339cbe7.png";
 const TWO_FACTOR_KEY_PREFIX = "dataanalysis_two_factor_enabled";
@@ -831,6 +832,7 @@ export default function ProfilePage() {
                   <span className="two-factor-switch-knob"></span>
                 </button>
               </div>
+              <GoogleLinkSection token={user?.token} email={user?.email || profile?.email} twoFactorEnabled={twoFactorEnabled} />
             </section>
           )}
 
