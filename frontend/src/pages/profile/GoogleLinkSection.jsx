@@ -28,6 +28,13 @@ export default function GoogleLinkSection({ token, email, twoFactorEnabled }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
+  // 成功訊息顯示 4 秒後自動消失；錯誤訊息保留到下一次操作
+  useEffect(() => {
+    if (message.type !== "ok") return undefined;
+    const timer = setTimeout(() => setMessage({ type: "", text: "" }), 4000);
+    return () => clearTimeout(timer);
+  }, [message]);
+
   const reset = () => { setMode(""); setPassword(""); setOtp(""); setOtpSent(false); };
 
   const sendOtp = async () => {
