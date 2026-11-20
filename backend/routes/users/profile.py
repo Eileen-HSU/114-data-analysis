@@ -120,7 +120,7 @@ def profile_handler(user_id):
 
             profile = user.profile
             if not profile:
-                profile = UserProfile(user_id=user_id, phone_number='')
+                profile = UserProfile(user_id=user_id)
                 db.session.add(profile)
 
             # 只更新有傳的欄位，沒傳的保留原值
@@ -128,9 +128,16 @@ def profile_handler(user_id):
                 'phone_number', 'company_name', 'gender',
                 'bio', 'location', 'avatar_url', 'language',
             )
+            # 個資欄位（電話／公司／性別）為選填：清空時存 NULL，不存空字串
+            nullable_fields = {'phone_number': 20, 'company_name': 100, 'gender': 20}
             for field in updatable_fields:
                 if field in data:
-                    setattr(profile, field, data[field] or '')
+                    if field in nullable_fields:
+                        v = data[field]
+                        v = v.strip() if isinstance(v, str) else ''
+                        setattr(profile, field, v[:nullable_fields[field]] or None)
+                    else:
+                        setattr(profile, field, data[field] or '')
 
             profile.updated_at = taiwan_now()
             db.session.commit()

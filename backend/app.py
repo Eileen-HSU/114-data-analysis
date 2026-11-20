@@ -218,9 +218,36 @@ def ensure_unique_index(table_name, column_name, index_name):
         )
 
 
+def ensure_column_nullable(table_name, column_name, column_definition):
+    """欄位目前為 NOT NULL 時才放寬為可 NULL（已可 NULL 則不執行任何 DDL）。"""
+    is_nullable = db.session.execute(
+        text("""
+            SELECT IS_NULLABLE
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = :table_name
+              AND COLUMN_NAME = :column_name
+        """),
+        {"table_name": table_name, "column_name": column_name},
+    ).scalar()
+    if is_nullable == "NO":
+        db.session.execute(
+            text(f"ALTER TABLE `{table_name}` MODIFY COLUMN {column_definition}")
+        )
+
+
 def ensure_runtime_schema():
     with app.app_context():
         try:
+            # 電話／公司／性別改為選填（個資最小化）
+            ensure_column_nullable("User_Profile", "phone_number", "`phone_number` VARCHAR(20) NULL")
+            ensure_column_nullable("User_Profile", "company_name", "`company_name` VARCHAR(100) NULL")
+            ensure_column_nullable("User_Profile", "gender", "`gender` VARCHAR(20) NULL")
+            # 既有的空字串一併整理成 NULL（只動空字串，不動有內容的資料）
+            for _col in ("phone_number", "company_name", "gender"):
+                db.session.execute(
+                    text(f"UPDATE `User_Profile` SET `{_col}` = NULL WHERE `{_col}` = ''")
+                )
             ensure_column("User", "email_2fa_enabled", "`email_2fa_enabled` TINYINT(1) DEFAULT 0")
             ensure_column("User_Verification", "attempts", "`attempts` INT NOT NULL DEFAULT 0")
             ensure_column("Workspace", "is_deleted", "`is_deleted` TINYINT(1) DEFAULT 0")

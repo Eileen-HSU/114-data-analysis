@@ -51,9 +51,9 @@ class UserProfile(db.Model):
 
     profile_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_id = db.Column(db.Integer, db.ForeignKey("User.user_id"), nullable=False)
-    phone_number = db.Column(db.String(20), nullable=False)
-    company_name = db.Column(db.String(100), nullable=False)
-    gender = db.Column(db.String(20), nullable=False)
+    phone_number = db.Column(db.String(20), nullable=True)
+    company_name = db.Column(db.String(100), nullable=True)
+    gender = db.Column(db.String(20), nullable=True)
     language = db.Column(db.String(36))
     bio = db.Column(db.String(500))
     location = db.Column(db.String(100))

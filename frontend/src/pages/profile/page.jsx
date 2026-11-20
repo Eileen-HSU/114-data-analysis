@@ -667,9 +667,9 @@ export default function ProfilePage() {
 
   const infoFields = [
     { label: "姓名", key: "name", icon: "ri-user-line", iconColor: "text-violet", iconBg: "bg-violet-50", type: "text" },
-    { label: "電話", key: "phone", icon: "ri-smartphone-line", iconColor: "text-sky", iconBg: "bg-sky-50", type: "tel" },
-    { label: "公司 / 組織", key: "company", icon: "ri-building-line", iconColor: "text-cyan", iconBg: "bg-cyan-50", type: "text" },
-    { label: "性別", key: "gender", icon: "ri-user-heart-line", iconColor: "text-teal", iconBg: "bg-teal-50", type: "text" },
+    { label: "電話（選填）", key: "phone", icon: "ri-smartphone-line", iconColor: "text-sky", iconBg: "bg-sky-50", type: "tel" },
+    { label: "公司 / 組織（選填）", key: "company", icon: "ri-building-line", iconColor: "text-cyan", iconBg: "bg-cyan-50", type: "text" },
+    { label: "性別（選填）", key: "gender", icon: "ri-user-heart-line", iconColor: "text-teal", iconBg: "bg-teal-50", type: "text" },
     { label: "所在地", key: "location", icon: "ri-map-pin-line", iconColor: "text-violet", iconBg: "bg-violet-50", type: "text" },
   ];
 
@@ -756,12 +756,12 @@ export default function ProfilePage() {
                     {isEditing ? (
                       <div className="position-relative">
                         <div className={`field-icon-sm ${field.iconBg}`}><i className={`${field.icon} ${field.iconColor}`}></i></div>
-                        <input className="form-control form-control-custom" type={field.type} value={editProfile[field.key]} onChange={(e) => setEditProfile((prev) => ({ ...prev, [field.key]: e.target.value }))} />
+                        <input className="form-control form-control-custom" type={field.type} placeholder={["phone", "company", "gender"].includes(field.key) ? "可留空（不願透露可填「不願透露」）" : undefined} value={editProfile[field.key]} onChange={(e) => setEditProfile((prev) => ({ ...prev, [field.key]: e.target.value }))} />
                       </div>
                     ) : (
                       <div className="profile-field">
                         <div className={`field-icon ${field.iconBg}`}><i className={`${field.icon} ${field.iconColor}`}></i></div>
-                        <span className="field-value">{profile[field.key]}</span>
+                        <span className="field-value">{profile[field.key] || (["phone", "company", "gender"].includes(field.key) ? "未填寫" : "")}</span>
                       </div>
                     )}
                   </div>

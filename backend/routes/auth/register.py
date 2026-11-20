@@ -53,6 +53,14 @@ def is_valid_password(password: str) -> bool:
     return True
 
 
+def _optional_text(value, max_len):
+    """選填欄位：空白／非字串 → None；否則去頭尾空白並截斷。"""
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    return value[:max_len] if value else None
+
+
 @register_bp.route('/api/register', methods=['POST'])
 def register():
     data = request.get_json(silent=True)
@@ -60,7 +68,7 @@ def register():
         return jsonify({"error": "未接收到資料"}), 400
 
     # 1. 必填欄位檢查
-    required = ['user_name', 'email', 'phone_number', 'gender', 'password']
+    required = ['user_name', 'email', 'password']
     missing = [f for f in required if not data.get(f)]
     if missing:
         return jsonify({"error": "請填寫所有必填欄位"}), 400
@@ -93,10 +101,11 @@ def register():
 
         new_profile = UserProfile(
             user_id=new_user.user_id,
-            phone_number=data.get('phone_number', ''),
-            gender=data.get('gender', ''),
+            # 電話／性別／公司為選填：未填存 NULL，不存空字串
+            phone_number=_optional_text(data.get('phone_number'), 20),
+            gender=_optional_text(data.get('gender'), 20),
             language=data.get('language', 'zh-TW'),
-            company_name=data.get('company', data.get('company_name', '')),
+            company_name=_optional_text(data.get('company', data.get('company_name')), 100),
         )
         db.session.add(new_profile)
         db.session.commit()
