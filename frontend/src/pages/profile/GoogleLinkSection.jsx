@@ -114,16 +114,22 @@ export default function GoogleLinkSection({ token, email, twoFactorEnabled }) {
               </div>
             </>
           )}
-          {mode === "bind" ? (
+          {mode === "bind" && (
             <div className="mb-2">
               <p style={{ fontSize: 13, margin: "4px 0 6px" }}>輸入完成後，按下方按鈕選擇 Google 帳號：</p>
               <GoogleSignInButton text="continue_with" onCredential={bind}
                 disabled={busy || !password || (twoFactorEnabled && !otp)} onUnavailable={() => setUnavailable(true)} />
             </div>
-          ) : (
-            <button type="submit" className="btn btn-danger mb-2" disabled={busy || !password}>{busy ? "處理中…" : "確認解除綁定"}</button>
           )}
-          <button type="button" className="btn btn-link p-0" onClick={() => { reset(); setMessage({ type: "", text: "" }); }}>取消</button>
+          <div className="d-flex align-items-center justify-content-end gap-2 mt-2">
+            <button type="button" className="btn-security-action" onClick={() => { reset(); setMessage({ type: "", text: "" }); }}>取消</button>
+            {mode === "unbind" && (
+              <button type="submit" className="btn-security-action" disabled={busy || !password}
+                style={{ background: "#c0392b", borderColor: "#c0392b", color: "#fff", opacity: busy || !password ? 0.5 : 1 }}>
+                {busy ? "處理中…" : "確認解除綁定"}
+              </button>
+            )}
+          </div>
         </form>
       )}
 
