@@ -9,16 +9,11 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from extensions import db
 from models import User, UserVerification
 from routes.auth.pwd import send_email_via_brevo, taiwan_now
+from services import rate_limit_service as rl
 
 two_factor_bp = Blueprint('two_factor', __name__)
 
 MAX_OTP_ATTEMPTS = 5
-OTP_SEND_COOLDOWN_SECONDS = 60  # 同一 email 發送間隔限制
-
-# 記錄上次發送時間（以 email 為 key）
-_last_otp_sent = {}
-# 關閉 2FA 失敗次數
-_disable_attempts = {}
 
 
 _JWT_SECRET: str | None = None
@@ -56,12 +51,13 @@ def send_2fa_code():
     if not email:
         return jsonify({"error": "請提供電子郵件"}), 400
 
-    # 發送頻率限制（60 秒內不能重複發送）
-    import time
-    last_sent = _last_otp_sent.get(email, 0)
-    if time.time() - last_sent < OTP_SEND_COOLDOWN_SECONDS:
-        remaining = int(OTP_SEND_COOLDOWN_SECONDS - (time.time() - last_sent))
-        return jsonify({"error": f"請等待 {remaining} 秒後再重新發送"}), 429
+    # 發送頻率限制：同 email 每 60 秒 1 次、每小時 5 次；同 IP 每小時 20 次（存資料庫）
+    ok, wait = rl.check_otp_send(str(email).strip().lower())
+    if not ok:
+        resp = jsonify({"error": "寄送太頻繁，請稍後再試"})
+        resp.status_code = 429
+        resp.headers["Retry-After"] = str(wait)
+        return resp
 
     user = User.query.filter_by(email=email).first()
 
@@ -90,7 +86,6 @@ def send_2fa_code():
     try:
         db.session.add(new_verify)
         db.session.commit()
-        _last_otp_sent[email] = time.time()
         subject = "【DataAnalysis】您的雙因子驗證碼"
         message_body = f"您的驗證碼為：{otp}\n請於 10 分鐘內輸入。若非本人操作請忽略。"
         send_email_via_brevo(email, subject, message_body)
@@ -252,9 +247,16 @@ def disable_2fa():
     if not email or not password:
         return jsonify({"error": "請提供電子郵件與密碼以進行驗證"}), 400
 
-    attempts = _disable_attempts.get(email, 0)
-    if attempts >= MAX_OTP_ATTEMPTS:
-        return jsonify({"error": "嘗試次數過多，請稍後再試"}), 429
+    ip = rl.client_ip()
+    account_key = f"user:{auth_user_id}"
+    blocked_acct, wait_a = rl.blocked("disable2fa_account", account_key)
+    blocked_ip, wait_i = rl.blocked("disable2fa_ip", ip)
+    if blocked_acct or blocked_ip:
+        wait = max(wait_a, wait_i)
+        resp = jsonify({"error": f"嘗試次數過多，請約 {max(1, (wait + 59) // 60)} 分鐘後再試"})
+        resp.status_code = 429
+        resp.headers["Retry-After"] = str(wait)
+        return resp
 
     try:
         user = User.query.filter_by(email=email).first()
@@ -266,11 +268,11 @@ def disable_2fa():
             return jsonify({"error": "Forbidden"}), 403
 
         if not check_password_hash(user.password_hash, password):
-            _disable_attempts[email] = attempts + 1
-            remaining = MAX_OTP_ATTEMPTS - _disable_attempts[email]
-            return jsonify({"error": f"密碼錯誤，剩餘 {remaining} 次機會"}), 403
+            rl.record_failure("disable2fa_account", account_key)
+            rl.record_failure("disable2fa_ip", ip)
+            return jsonify({"error": "密碼錯誤"}), 403
 
-        _disable_attempts.pop(email, None)
+        rl.reset("disable2fa_account", account_key)
         user.email_2fa_enabled = False
         db.session.commit()
         return jsonify({"message": "雙因子驗證已成功停用"}), 200

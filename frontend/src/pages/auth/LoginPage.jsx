@@ -14,6 +14,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
+  const [loginLocked, setLoginLocked] = useState(false); // 嘗試次數過多（冷卻中）
   const [alertModal, setAlertModal] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -39,6 +40,7 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoginError("");
+    setLoginLocked(false);
 
     if (isSubmitting) return;
 
@@ -78,6 +80,7 @@ export default function LoginPage() {
           return;
         }
 
+        setLoginLocked(res.status === 429);
         setLoginError(data.error || "登入失敗，請確認帳號或密碼是否正確。");
         return;
       }
@@ -229,6 +232,14 @@ export default function LoginPage() {
                 <div className="auth-error-message" role="alert" data-localized>
                   <i className="ri-error-warning-line"></i>
                   <span>{translateInterfaceText(loginError, language)}</span>
+                  {loginLocked && (
+                    <>
+                      {" "}
+                      <a className="forgot-link" onClick={() => navigate(`/forgot-password${email ? `?email=${encodeURIComponent(email)}` : ""}`)} style={{ cursor: "pointer", textDecoration: "underline" }}>
+                        忘記密碼？
+                      </a>
+                    </>
+                  )}
                 </div>
               )}
 

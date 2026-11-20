@@ -1,4 +1,5 @@
 import os
+import logging
 from dotenv import load_dotenv
 load_dotenv()
 from urllib.parse import urlsplit, parse_qsl, urlunsplit, urlencode
@@ -30,6 +31,14 @@ from services import ai_usage_service
 load_dotenv()
 
 app = Flask(__name__)
+
+# 真實 IP：Northflank 等平台的 proxy 會把來源 IP 放在 X-Forwarded-For。
+# PROXY_FIX_X_FOR = 信任的 proxy 層數（預設 1；0 = 不信任任何 proxy 標頭）。
+# 設太小：所有人被看成同一個 IP；設太大：使用者可偽造 X-Forwarded-For。
+_proxy_layers = int(os.environ.get("PROXY_FIX_X_FOR", "1") or 0)
+if _proxy_layers > 0:
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=_proxy_layers, x_proto=_proxy_layers, x_host=0, x_prefix=0)
 ALLOWED_CORS_ORIGINS = {
     "https://site--frontend--d6tvmpswrhlp.code.run",
     "http://localhost:5173",
@@ -194,6 +203,21 @@ def ensure_table(model):
 
     if not exists:
         db.metadata.create_all(bind=db.session.get_bind(), tables=[model.__table__])
+
+
+def ensure_rate_limit_schema():
+    """頻率限制計數表（只在完全不存在時建立）。"""
+    from rate_limit_models import RateLimitCounter
+    with app.app_context():
+        try:
+            ensure_table(RateLimitCounter)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            logging.error("ensure_rate_limit_schema failed", exc_info=True)
+
+
+ensure_rate_limit_schema()
 
 
 def ensure_unique_index(table_name, column_name, index_name):

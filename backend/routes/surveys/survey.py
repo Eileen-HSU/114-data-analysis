@@ -19,6 +19,7 @@ from models import Survey_Template, Survey_Response, Chat_History
 from services.question_routing_service import ROUTING_REASON_API_FAILURE, route_question_type_detailed
 from services.export_file_service import build_survey_xlsx, build_survey_docx
 from services.export_labels import export_labels
+from services import rate_limit_service as rl
 from services.language_service import ui_lang_from_request
 
 survey_bp = Blueprint('survey', __name__)
@@ -319,7 +320,7 @@ def create_survey():
     except Exception as e:
         logging.error(f"Survey creation failed: {e}", exc_info=True)
         db.session.rollback()
-        return jsonify({"error": "問卷建立失敗", "detail": str(e)}), 500
+        return jsonify({"error": "問卷建立失敗，請稍後再試"}), 500
 
 
 @survey_bp.route('/api/surveys/<access_code>', methods=['GET'])
@@ -441,7 +442,7 @@ def update_survey_deadline(access_code):
     except Exception as e:
         logging.error(f"Survey deadline update failed: {e}", exc_info=True)
         db.session.rollback()
-        return jsonify({"error": "截止時間更新失敗", "detail": str(e)}), 500
+        return jsonify({"error": "截止時間更新失敗，請稍後再試"}), 500
 
 @survey_bp.route('/api/surveys/<access_code>/responses', methods=['GET'])
 def get_survey_responses(access_code):
@@ -468,8 +469,63 @@ def get_survey_responses(access_code):
         ]
     }), 200
 
+# ---- 問卷填答大小限制 ----
+MAX_ANSWER_CHARS = 10_000                 # 單題文字上限（字元數）
+MAX_BYTES_PER_QUESTION = 40 * 1024        # 每題 40KB
+MAX_RESPONSE_BYTES = 1024 * 1024          # 整份回覆最高 1MB
+MAX_IDENTITY_CHARS = 200
+MAX_MULTI_CHOICES = 200
+
+
+def response_size_limit(question_count):
+    """整份回覆上限 = 題數 × 40KB，最高 1MB（至少以 1 題計）。"""
+    return min(max(int(question_count or 0), 1) * MAX_BYTES_PER_QUESTION, MAX_RESPONSE_BYTES)
+
+
+def validate_survey_answers(answers, items, identity):
+    """回傳錯誤訊息；通過則回傳 None。答案欄位必須屬於這份問卷的題目。"""
+    allowed = {str(i.get("id")) for i in (items or []) if isinstance(i, dict) and i.get("id") is not None}
+    if allowed:
+        unknown = [k for k in answers if str(k) not in allowed]
+        if unknown:
+            return "答案欄位不屬於這份問卷"
+    for value in answers.values():
+        parts = value if isinstance(value, list) else [value]
+        if isinstance(value, list) and len(value) > MAX_MULTI_CHOICES:
+            return "選項數量過多"
+        for part in parts:
+            if part is None or isinstance(part, (int, float, bool)):
+                continue
+            if not isinstance(part, str):
+                return "答案格式不正確"
+            if len(part) > MAX_ANSWER_CHARS:
+                return f"單題回答不可超過 {MAX_ANSWER_CHARS:,} 字"
+    if identity is not None:
+        if not isinstance(identity, str) or len(identity) > MAX_IDENTITY_CHARS:
+            return "身分欄位格式不正確"
+    return None
+
+
 @survey_bp.route('/api/surveys/<access_code>/responses', methods=['POST'])
 def submit_survey_response(access_code):
+    # 頻率限制：同 IP＋同問卷 每分鐘 60 次、每小時 150 次
+    # （培訓現場 30–50 人可能共用同一個 IP，並在同一分鐘交卷，所以不能設太嚴）
+    ident = f"{rl.client_ip()}|{access_code}"
+    for name in ("survey_min", "survey_hour"):
+        ok, wait = rl.allow(name, ident)
+        if not ok:
+            resp = jsonify({"error": "送出太頻繁，請稍後再試", "retry_after": wait})
+            resp.status_code = 429
+            resp.headers["Retry-After"] = str(wait)
+            return resp
+
+    # 先看 Content-Length，超過 1MB 就在解析 JSON 前拒絕
+    if request.content_length is not None and request.content_length > MAX_RESPONSE_BYTES:
+        return jsonify({"error": "回覆內容過大"}), 413
+
+    raw_body = request.get_data(cache=True)
+    if len(raw_body) > MAX_RESPONSE_BYTES:
+        return jsonify({"error": "回覆內容過大"}), 413
     data = request.get_json(silent=True) or {}
     if not isinstance(data.get('answers'), dict):
         return jsonify({"error": "缺少問卷答案資料"}), 400
@@ -488,6 +544,13 @@ def submit_survey_response(access_code):
                 "deadline_at": deadline_at,
             }), 410
 
+        items = question_json.get("items") or []
+        if len(raw_body) > response_size_limit(len(items)):
+            return jsonify({"error": "回覆內容過大"}), 413
+        invalid = validate_survey_answers(data.get('answers'), items, data.get('respondent_identity'))
+        if invalid:
+            return jsonify({"error": invalid}), 400
+
         response = Survey_Response(
             template_id=survey.template_id,
             answer_json={
@@ -504,7 +567,7 @@ def submit_survey_response(access_code):
     except Exception as e:
         logging.error(f"Survey response submission failed: {e}", exc_info=True)
         db.session.rollback()
-        return jsonify({"error": "問卷送出失敗", "detail": str(e)}), 500
+        return jsonify({"error": "問卷送出失敗，請稍後再試"}), 500
 
 
 @survey_bp.route('/api/surveys/<access_code>/bind', methods=['PATCH'])

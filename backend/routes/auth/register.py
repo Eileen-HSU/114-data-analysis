@@ -10,6 +10,7 @@ from werkzeug.security import generate_password_hash
 
 from models import User, UserProfile
 from extensions import db
+from services import rate_limit_service as rl
 
 register_bp = Blueprint('register', __name__)
 
@@ -63,6 +64,13 @@ def _optional_text(value, max_len):
 
 @register_bp.route('/api/register', methods=['POST'])
 def register():
+    ok, wait = rl.allow("register_ip", rl.client_ip())
+    if not ok:
+        resp = jsonify({"error": "註冊太頻繁，請稍後再試"})
+        resp.status_code = 429
+        resp.headers["Retry-After"] = str(wait)
+        return resp
+
     data = request.get_json(silent=True)
     if not data:
         return jsonify({"error": "未接收到資料"}), 400

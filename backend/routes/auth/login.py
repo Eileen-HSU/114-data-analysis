@@ -11,11 +11,9 @@ from extensions import db
 from models import Admin, User, UserVerification
 from routes.auth.admin_guard import build_admin_token
 from routes.auth.pwd import send_email_via_brevo, taiwan_now
+from services import rate_limit_service as rl
 
 login_bp = Blueprint("login", __name__)
-
-_login_attempts = {}
-MAX_LOGIN_ATTEMPTS = 5
 
 _JWT_SECRET: str | None = None
 
@@ -47,6 +45,14 @@ def build_token(user_id: int, now=None) -> str:
     )
 
 
+def _too_many(wait_seconds):
+    minutes = max(1, (int(wait_seconds) + 59) // 60)
+    resp = jsonify({"error": f"嘗試次數過多，請約 {minutes} 分鐘後再試"})
+    resp.status_code = 429
+    resp.headers["Retry-After"] = str(int(wait_seconds))
+    return resp
+
+
 def _invalidate_old_codes(email: str, otp_type: str):
     """將同一 email 所有未使用的舊驗證碼標記為已使用（不單獨 commit，由呼叫端統一 commit）"""
     UserVerification.query.filter_by(
@@ -65,32 +71,30 @@ def login():
     if not email or not password:
         return jsonify({"error": "請輸入電子郵件和密碼"}), 400
 
-    attempts = _login_attempts.get(email, 0)
-    if attempts >= MAX_LOGIN_ATTEMPTS:
-        return jsonify({
-            "error": "登入失敗次數過多，請重設密碼後再試",
-            "require_password_reset": True,
-            "email": email,
-        }), 429
+    ip = rl.client_ip()
+    account_key = str(email).strip().lower()
+    blocked_acct, wait_a = rl.blocked("login_account", account_key)
+    blocked_ip, wait_i = rl.blocked("login_ip", ip)
+    if blocked_acct or blocked_ip:
+        return _too_many(max(wait_a, wait_i))
 
     try:
         
         admin = Admin.query.filter_by(email=email).first()
         if admin and check_password_hash(admin.password_hash, password):
-            _login_attempts.pop(email, None)
+            rl.reset("login_account", account_key)
             return _login_admin(admin)
 
         user = User.query.filter_by(email=email).first()
 
         if not user or not check_password_hash(user.password_hash, password):
-            _login_attempts[email] = attempts + 1
-            remaining = MAX_LOGIN_ATTEMPTS - _login_attempts[email]
-            if remaining > 0:
-                return jsonify({"error": f"帳號或密碼錯誤，剩餘 {remaining} 次機會"}), 401
-            else:
-                return jsonify({"error": "登入失敗次數過多，請稍後再試"}), 429
+            # 失敗才計數；訊息不顯示剩餘次數，也不透露帳號是否存在
+            rl.record_failure("login_account", account_key)
+            rl.record_failure("login_ip", ip)
+            return jsonify({"error": "帳號或密碼錯誤"}), 401
 
-        _login_attempts.pop(email, None)
+        # 登入成功只清除「帳號」計數，不清除「IP」計數
+        rl.reset("login_account", account_key)
 
         user_info = {
             "account_type": "user",

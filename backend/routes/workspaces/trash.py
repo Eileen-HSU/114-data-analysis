@@ -136,6 +136,10 @@ def start_scheduler(app):
         args    = [app],
         id      = "hard_delete_workspaces",
     )
+    # 頻率限制過期計數清除（見 services/rate_limit_service.py）
+    from services.rate_limit_service import scheduled_purge
+    scheduler.add_job(scheduled_purge, trigger="interval", hours=1, args=[app],
+                      id="rate_limit_purge", max_instances=1, coalesce=True)
     # AI 第二意見：每 10 分鐘檢查有沒有低信心、需要再確認的結果（見 services/second_opinion_service.py）
     from services.bulk_retry_service import scheduled_second_opinion
 

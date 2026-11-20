@@ -40,6 +40,8 @@ function formatDeadline(deadlineAt) {
   });
 }
 
+const ANSWER_MAX_CHARS = 10000;
+
 export default function FillSurveyPage() {
   const { code: codeFromPath } = useParams();
   const [searchParams] = useSearchParams();
@@ -268,8 +270,15 @@ export default function FillSurveyPage() {
           deadlineAt: expiredData.deadline_at || survey.deadlineAt,
         });
         setError("");
+      } else if (response.status === 429) {
+        setError("送出太頻繁，請稍等一分鐘後再試。");
+      } else if (response.status === 413) {
+        setError("回覆內容過大，請縮短回答後再送出。");
+      } else if (response.status === 400) {
+        const badData = await response.json().catch(() => ({}));
+        setError(badData.error || "回覆內容不正確，請檢查後再送出。");
       } else {
-        setError("伺服器儲存失敗，請檢查後端連線。");
+        setError("伺服器儲存失敗，請稍後再試。");
       }
     } catch (error) {
       console.error("提交失敗:", error);
@@ -319,10 +328,22 @@ export default function FillSurveyPage() {
     }
 
     if (question.type === "long") {
-      return <textarea className="answer-text-input" style={{ minHeight: 120 }} value={answers[question.id] || ""} onChange={(e) => setAnswer(question.id, e.target.value)} placeholder="請輸入回答" />;
+      return (
+        <>
+          <textarea className="answer-text-input" style={{ minHeight: 120 }} maxLength={ANSWER_MAX_CHARS} value={answers[question.id] || ""} onChange={(e) => setAnswer(question.id, e.target.value)} placeholder="請輸入回答" />
+          <div className="answer-char-count" style={{ fontSize: 12, color: "#888", textAlign: "right" }}>已輸入 {[...(answers[question.id] || "")].length.toLocaleString()}／{ANSWER_MAX_CHARS.toLocaleString()} 字</div>
+        </>
+      );
     }
 
-    return <input className="answer-text-input" value={answers[question.id] || ""} onChange={(e) => setAnswer(question.id, e.target.value)} placeholder="請輸入回答" />;
+    return (
+      <>
+        <input className="answer-text-input" maxLength={ANSWER_MAX_CHARS} value={answers[question.id] || ""} onChange={(e) => setAnswer(question.id, e.target.value)} placeholder="請輸入回答" />
+        {(answers[question.id] || "").length > ANSWER_MAX_CHARS * 0.8 && (
+          <div className="answer-char-count" style={{ fontSize: 12, color: "#888", textAlign: "right" }}>已輸入 {[...(answers[question.id] || "")].length.toLocaleString()}／{ANSWER_MAX_CHARS.toLocaleString()} 字</div>
+        )}
+      </>
+    );
   };
 
   return (

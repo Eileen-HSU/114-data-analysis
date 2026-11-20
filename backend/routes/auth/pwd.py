@@ -91,9 +91,19 @@ def send_otp():
     if not email:
         return jsonify({"error": "請輸入電子郵件"}), 400
 
+    from services import rate_limit_service as rl
+    ok, wait = rl.check_otp_send(str(email).strip().lower())
+    if not ok:
+        resp = jsonify({"error": "寄送太頻繁，請稍後再試"})
+        resp.status_code = 429
+        resp.headers["Retry-After"] = str(wait)
+        return resp
+
+    # 帳號列舉防護：不論 Email 是否已註冊，一律回相同訊息
+    generic_response = (jsonify({"message": "若此 Email 已註冊，系統將寄送驗證信"}), 200)
     user = User.query.filter_by(email=email).first()
     if not user:
-        return jsonify({"error": "找不到此 Email 對應的帳號"}), 404
+        return generic_response
 
     otp = str(secrets.randbelow(900000) + 100000)
     from_param = "change" if verify_type == "PASSWORD_CHANGE" else "forgot"
@@ -144,7 +154,7 @@ def send_otp():
                 f"如果您沒有發起這個請求，請忽略此信件。"
             )
         send_email_via_brevo(email, subject, message_body)
-        return jsonify({"message": f"{action_text}驗證碼已寄出"}), 200
+        return generic_response
 
     except Exception as e:
         db.session.rollback()
