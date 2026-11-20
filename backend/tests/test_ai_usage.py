@@ -284,7 +284,9 @@ with app.app_context():
     db.session.commit()
     s = report.build_summary(now=NOW)
     per100 = s["unit_metrics"]["per_100_responses"]
-    check("問卷生成只有 2 份 → 資料不足（None）", s["unit_metrics"]["per_survey_generation"] is None)
+    g2 = s["unit_metrics"]["per_survey_generation"]
+    check("問卷生成只有 2 份 → 仍顯示（樣本數 2，前端標示僅供參考）", g2 and g2["tokens"]["n"] == 2)
+    check("回傳建議樣本數 3", s["unit_metrics"]["reliable_units"] == 3)
     check("每 100 筆平均 = 20,000 tokens", per100 and abs(per100["tokens"]["avg"] - 20000) < 1e-6)
     check("每 100 筆 P90 = 30,000 tokens", per100["tokens"]["p90"] == 30000)
     check("樣本數 = 3", per100["tokens"]["n"] == 3)

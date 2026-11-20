@@ -36,15 +36,14 @@ const featureLabel = (key) => (FEATURES[key] ? t(...FEATURES[key]) : key);
 const fmtInt = (n) => (n == null ? "—" : Math.round(n).toLocaleString());
 const fmtPct = (r) => `${(r * 100).toFixed(1)}%`;
 
-function MetricCard({ title, unit, metric, fx, minUnits }) {
+function MetricCard({ title, unit, metric, fx, reliableUnits = 3 }) {
   if (!metric) {
     return (
       <div className="ov-card usage-card">
         <span className="ov-card-title">{title}</span>
         <b className="ov-card-value">—</b>
         <span className="ov-card-text">
-          {t(`資料不足：至少需要 ${minUnits} 次實際紀錄才會顯示，請先執行幾次。`,
-            `Not enough data yet: needs at least ${minUnits} real runs.`)}
+          {t("尚無資料：執行一次後就會顯示。", "No data yet: run it once to see numbers.")}
         </span>
       </div>
     );
@@ -60,6 +59,9 @@ function MetricCard({ title, unit, metric, fx, minUnits }) {
         {cost && <>｜{formatMoney(cost.p90, fx)}</>}
         <br />
         {t(`依過去 ${tokens.n} ${unit}實際資料估算`, `Based on the last ${tokens.n} real ${unit}`)}
+        {tokens.n < reliableUnits && (
+          <><br /><span style={{ color: "#b45309" }}>{t(`樣本少，僅供參考（建議累積 ${reliableUnits} 次以上）`, `Small sample; indicative only (${reliableUnits}+ recommended)`)}</span></>
+        )}
       </span>
     </div>
   );
@@ -85,6 +87,9 @@ function Calculator({ metrics, fx }) {
   const result = invalid ? null : estimate(metrics, {
     surveys: parsed.surveys.value, responses: parsed.responses.value, chars: parsed.chars.value,
   });
+  const reliable = metrics?.reliable_units || 3;
+  const smallSample = [metrics?.per_survey_generation, metrics?.per_100_responses, metrics?.per_1000_chars]
+    .some((m) => m && m.tokens.n < reliable);
   const field = (key, label, hint) => (
     <label className="usage-calc-field">
       <span>{label}</span>
@@ -123,8 +128,9 @@ function Calculator({ metrics, fx }) {
             ? t("分析成本依「每 1,000 字」實測平均計算。", "Analysis cost uses the measured per-1,000-character average.")
             : t("分析成本依「每 100 筆回覆」實測平均計算；填入平均字數可改用每 1,000 字估算（長回答較準）。",
               "Analysis cost uses the per-100-responses average; enter average characters to use the per-1,000-character average.")}
-          {result.missingGeneration && t(" 問卷生成資料不足，未計入。", " Survey generation not included (not enough data).")}
-          {result.missingAnalysis && t(" 回覆分析資料不足，未計入。", " Response analysis not included (not enough data).")}
+          {result.missingGeneration && t(" 尚無問卷生成紀錄，未計入。", " No survey-generation records yet; not included.")}
+          {result.missingAnalysis && t(" 尚無回覆分析紀錄，未計入。", " No response-analysis records yet; not included.")}
+          {smallSample && t(` 樣本少於 ${metrics?.reliable_units || 3} 次，結果僅供參考。`, " Small sample; indicative only.")}
           {t(" 試算只在畫面上計算，不會呼叫 AI。", " Calculated on this page only; no AI calls.")}
         </p>
       )}
@@ -376,9 +382,9 @@ export default function AiUsagePage() {
             `No price set for: ${summary.missing_price_models.join(", ")} (amounts marked * exclude them)`)}</p>}
 
         <div className="ov-cards usage-cards">
-          <MetricCard title={t("每份問卷生成", "Per survey generated")} unit={t("份", "surveys")} metric={metrics.per_survey_generation} fx={fx} minUnits={metrics.min_units} />
-          <MetricCard title={t("每 100 筆回覆分析", "Per 100 responses analyzed")} unit={t("個批次", "batches")} metric={metrics.per_100_responses} fx={fx} minUnits={metrics.min_units} />
-          <MetricCard title={t("每 1,000 字回覆", "Per 1,000 characters")} unit={t("個批次", "batches")} metric={metrics.per_1000_chars} fx={fx} minUnits={metrics.min_units} />
+          <MetricCard title={t("每份問卷生成", "Per survey generated")} unit={t("份", "surveys")} metric={metrics.per_survey_generation} fx={fx} reliableUnits={metrics.reliable_units} />
+          <MetricCard title={t("每 100 筆回覆分析", "Per 100 responses analyzed")} unit={t("個批次", "batches")} metric={metrics.per_100_responses} fx={fx} reliableUnits={metrics.reliable_units} />
+          <MetricCard title={t("每 1,000 字回覆", "Per 1,000 characters")} unit={t("個批次", "batches")} metric={metrics.per_1000_chars} fx={fx} reliableUnits={metrics.reliable_units} />
         </div>
         <p className="usage-note">
           {t(`平均值取最近 ${metrics.window_days} 天的實際紀錄；只計算成功的呼叫。金額單位：美金；單價參考日期：${summary.price_reference_dates.join("、") || "未填"}。`,

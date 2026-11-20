@@ -6,8 +6,8 @@ Admin「AI 用量與成本」頁的統計與設定。
 
 單位平均（每份問卷生成、每 100 筆回覆、每 1,000 字）：
     - 只看最近 UNIT_WINDOW_DAYS 天、有 token 紀錄的單位。
-    - 樣本少於 MIN_UNITS 個單位時回傳 None（前端顯示「資料不足」），
-      不顯示不可靠的數字。
+    - 至少有 1 個單位就顯示；少於 RELIABLE_UNITS 個時前端標示「樣本少，僅供參考」。
+      完全沒有紀錄時回傳 None（前端顯示「尚無資料」）。
     - 同時回傳平均值與第 90 百分位數（偏高情況）。
 """
 
@@ -26,7 +26,8 @@ from extensions import db
 from services import ai_usage_service as usage
 
 UNIT_WINDOW_DAYS = 90
-MIN_UNITS = 3
+MIN_UNITS = 1
+RELIABLE_UNITS = 3  # 少於這個數量，前端標示「樣本少，僅供參考」
 QUOTA_WARN_RATIO = 0.8
 FX_KEY = "fx_usd_twd"
 
@@ -406,6 +407,7 @@ def unit_metrics(prices, now):
     return {
         "window_days": UNIT_WINDOW_DAYS,
         "min_units": MIN_UNITS,
+        "reliable_units": RELIABLE_UNITS,
         "per_survey_generation": per_survey,
         "per_100_responses": per100,
         "per_1000_chars": per1k,
