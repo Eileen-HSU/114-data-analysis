@@ -61,14 +61,6 @@ const handleSubmit = async (e) => {
 
     if (isSubmitting) return;
 
-    if (!gender) {
-      setAlertModal({
-        type: "error",
-        title: "請選擇性別",
-        message: "請先選擇性別後再建立帳號。",
-      });
-      return;
-    }
     
     try {
       setIsSubmitting(true);
@@ -198,24 +190,24 @@ const handleSubmit = async (e) => {
                   </div>
                 </div>
                 <div className="col-md-6">
-                  <label className="auth-label"><InterfaceText>{"手機號碼"}</InterfaceText><span className="required-mark">*</span></label>
+                  <label className="auth-label"><InterfaceText>{"手機號碼"}</InterfaceText></label>
                   <div className="position-relative">
                     <i className="ri-smartphone-line form-icon"></i>
-                    <input type="tel" name="signup_phone" autoComplete="off" required className="form-control form-control-custom" placeholder="+886 912 345 678" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                    <input type="tel" name="signup_phone" autoComplete="off" className="form-control form-control-custom" placeholder="+886 912 345 678" value={phone} onChange={(e) => setPhone(e.target.value)} />
                   </div>
                 </div>
               </div>
 
               <div className="row g-3 mb-3">
                 <div className="col-md-6">
-                  <label className="auth-label"><InterfaceText>{"公司 / 機構"}</InterfaceText><span className="required-mark">*</span></label>
+                  <label className="auth-label"><InterfaceText>{"公司 / 機構"}</InterfaceText></label>
                   <div className="position-relative">
                     <i className="ri-building-line form-icon"></i>
-                    <input type="text" name="signup_company" autoComplete="off" required className="form-control form-control-custom" placeholder="您的公司名稱" value={company} onChange={(e) => setCompany(e.target.value)} />
+                    <input type="text" name="signup_company" autoComplete="off" className="form-control form-control-custom" placeholder="您的公司名稱" value={company} onChange={(e) => setCompany(e.target.value)} />
                   </div>
                 </div>
                 <div className="col-md-6">
-                  <label className="auth-label"><InterfaceText>{"性別"}</InterfaceText><span className="required-mark">*</span></label>
+                  <label className="auth-label"><InterfaceText>{"性別"}</InterfaceText></label>
                   <div className="position-relative">
                     <i className="ri-user-heart-line form-icon"></i>
                     <div className={`auth-select ${isGenderOpen ? "open" : ""}`}>
