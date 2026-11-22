@@ -7,14 +7,10 @@ import { AdminPageHeader } from "./shared/AdminLayout";
 import { estimate, formatMoney } from "./shared/usageMath";
 import "../ai-admin.css";
 
-// AI 用量與成本（後端：GET /api/admin/ai/usage/summary、GET/PUT /api/admin/ai/usage/settings，
-// 見 backend/services/ai_usage_report_service.py）。
-// 金額一律是「依後台設定單價估算的參考成本」，不是實際帳單。數字全部取自後端，
-// 前端只做試算器的乘法（不呼叫 AI、不寫資料庫）。
+
 const SUMMARY_URL = "/api/admin/ai/usage/summary";
 const SETTINGS_URL = "/api/admin/ai/usage/settings";
 
-// 試算器輸入上限（避免輸入過大的數字）
 const CALC_LIMITS = { surveys: 100000, responses: 1000000, chars: 100000 };
 
 const FEATURES = {
@@ -67,8 +63,8 @@ function MetricCard({ title, unit, metric, fx, reliableUnits = 3 }) {
   );
 }
 
-function parseCalcInput(raw, max, optional) {
-  if (raw === "" || raw == null) return optional ? { value: null } : { error: t("請輸入數字", "Enter a number") };
+function parseCalcInput(raw, max) {
+  if (raw === "" || raw == null) return { value: null }; // 空白不是錯誤；必填欄沒填時只是不顯示結果
   if (!/^\d+$/.test(String(raw).trim())) return { error: t("請輸入正整數", "Enter a whole number") };
   const value = Number(raw);
   if (value < 1) return { error: t("至少為 1", "Must be at least 1") };
@@ -76,23 +72,38 @@ function parseCalcInput(raw, max, optional) {
   return { value };
 }
 
+function genReason(d) {
+  if (!d || !d.generation_units) return "還沒有任何 AI 問卷生成紀錄（到系統上傳教材產生一次問卷即可）。";
+  if (d.generation_not_completed >= d.generation_units) return "有生成紀錄，但都沒有成功完成。";
+  return "有生成紀錄，但沒有對應的成功 token 紀錄。";
+}
+function anaReason(d) {
+  if (!d || !d.analysis_units) return "還沒有任何回覆分析紀錄。";
+  const parts = [];
+  if (d.analysis_no_items) parts.push(`${d.analysis_no_items} 筆沒有實際送進 AI 的回覆（沿用舊結果）`);
+  if (d.analysis_no_tokens) parts.push(`${d.analysis_no_tokens} 筆有送出回覆但沒有成功的 token 紀錄`);
+  return `共 ${d.analysis_units} 筆，其中 ${parts.join("、") || "原因不明"}。`;
+}
+
 function Calculator({ metrics, fx }) {
-  const [form, setForm] = useState({ surveys: "10", responses: "100", chars: "" });
+  const [form, setForm] = useState({ surveys: "", responses: "", chars: "" });
   const parsed = {
     surveys: parseCalcInput(form.surveys, CALC_LIMITS.surveys, false),
     responses: parseCalcInput(form.responses, CALC_LIMITS.responses, false),
     chars: parseCalcInput(form.chars, CALC_LIMITS.chars, true),
   };
   const invalid = Object.values(parsed).some((p) => p.error);
-  const result = invalid ? null : estimate(metrics, {
+  const filled = form.surveys.trim() !== "" && form.responses.trim() !== "";
+  const result = invalid || !filled ? null : estimate(metrics, {
     surveys: parsed.surveys.value, responses: parsed.responses.value, chars: parsed.chars.value,
   });
   const reliable = metrics?.reliable_units || 3;
   const smallSample = [metrics?.per_survey_generation, metrics?.per_100_responses, metrics?.per_1000_chars]
     .some((m) => m && m.tokens.n < reliable);
-  const field = (key, label, hint) => (
+  const field = (key, label, hint, sub) => (
     <label className="usage-calc-field">
       <span>{label}</span>
+      {sub && <small className="usage-note" style={{ margin: 0 }}>{sub}</small>}
       <input inputMode="numeric" value={form[key]} placeholder={hint}
         onChange={(e) => setForm({ ...form, [key]: e.target.value })} aria-invalid={Boolean(parsed[key].error)} />
       {parsed[key].error && <small className="usage-error">{parsed[key].error}</small>}
@@ -103,9 +114,10 @@ function Calculator({ metrics, fx }) {
       <h2 className="admin-summary-section-title">{t("成本試算器", "Cost estimator")}</h2>
       <div className="usage-calc">
         <div className="usage-calc-inputs">
-          {field("surveys", t("問卷份數", "Surveys"))}
-          {field("responses", t("每份平均回覆筆數", "Responses per survey"))}
-          {field("chars", t("平均每筆字數（選填）", "Avg characters per response (optional)"), t("例如 80", "e.g. 80"))}
+          {field("surveys", t("預計分析的問卷份數", "Surveys to analyze"), undefined,
+            t("每份問卷會各自進行一次分析", "Each survey is analyzed once on its own"))}
+          {field("responses", t("每份問卷平均回覆數", "Average responses per survey"))}
+          {field("chars", t("每筆回覆平均字數（選填）", "Average characters per response (optional)"), t("例如 80 字", "e.g. 80"))}
         </div>
         {result && (
           <div className="usage-calc-result">
@@ -122,14 +134,19 @@ function Calculator({ metrics, fx }) {
           </div>
         )}
       </div>
+      {!result && !invalid && (
+        <p className="usage-note">{t("請輸入預計分析的問卷份數與每份平均回覆數，即可估算 Token 用量與使用成本。", "Enter the number of surveys and average responses per survey to estimate token usage and cost.")}</p>
+      )}
       {result && (
         <p className="usage-note">
+          {t(`算式：${parsed.surveys.value} 份 × ${parsed.responses.value} 筆 = 共 ${parsed.surveys.value * parsed.responses.value} 筆回覆，每份問卷各生成與分析一次。`,
+            `${parsed.surveys.value} surveys × ${parsed.responses.value} responses = ${parsed.surveys.value * parsed.responses.value} responses; each survey generated and analyzed once.`)}{" "}
           {result.basis === "chars"
             ? t("分析成本依「每 1,000 字」實測平均計算。", "Analysis cost uses the measured per-1,000-character average.")
             : t("分析成本依「每 100 筆回覆」實測平均計算；填入平均字數可改用每 1,000 字估算（長回答較準）。",
               "Analysis cost uses the per-100-responses average; enter average characters to use the per-1,000-character average.")}
-          {result.missingGeneration && t(" 尚無問卷生成紀錄，未計入。", " No survey-generation records yet; not included.")}
-          {result.missingAnalysis && t(" 尚無回覆分析紀錄，未計入。", " No response-analysis records yet; not included.")}
+          {result.missingGeneration && t(` 問卷生成未計入：${genReason(metrics?.diagnostics)}`, " Survey generation not included.")}
+          {result.missingAnalysis && t(` 回覆分析未計入：${anaReason(metrics?.diagnostics)}`, " Response analysis not included.")}
           {smallSample && t(` 樣本少於 ${metrics?.reliable_units || 3} 次，結果僅供參考。`, " Small sample; indicative only.")}
           {t(" 試算只在畫面上計算，不會呼叫 AI。", " Calculated on this page only; no AI calls.")}
         </p>
@@ -175,7 +192,6 @@ const fmtTime = (iso) => {
   return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
-// 單份明細：最近每一次問卷生成／回覆分析各自用了多少
 function RecentUnitsTable({ rows, fx }) {
   return (
     <section className="admin-summary-section">
@@ -229,8 +245,8 @@ function QuotaTable({ rows }) {
     <section className="admin-summary-section">
       <h2 className="admin-summary-section-title">{t("用量／配額監控（今日）", "Usage vs. quota (today)")}</h2>
       <p className="usage-note">
-        {t("上限由管理者依 Google 官方公告填入（下方「單價與配額設定」）；沒填的模型只顯示用量。Google 的配額依模型、帳號分別計算，實際限制以官方為準。",
-          "Limits are entered from Google's published quotas (settings below); models without limits show usage only. Google's own limits always win.")}
+        {t("這裡只顯示今日實際用量；各模型的配額上限請到 Google AI Studio 的 rate-limit 頁面查看，實際限制以官方為準。",
+          "Shows today's actual usage only; check each model's quota limits on Google AI Studio. Google's own limits always win.")}
       </p>
       {!rows.length ? <p className="usage-note">{t("今天還沒有 AI 呼叫。", "No AI calls today.")}</p> : (
         <table className="usage-table">
@@ -260,7 +276,6 @@ function QuotaTable({ rows }) {
 
 const PRICE_FIELDS = [
   ["input_usd_per_mtok", "Input US$／1M"], ["output_usd_per_mtok", "Output US$／1M"],
-  ["rpm_limit", "RPM"], ["tpm_limit", "TPM"], ["rpd_limit", "RPD"],
 ];
 
 function SettingsPanel({ token, onSaved }) {
@@ -281,6 +296,36 @@ function SettingsPanel({ token, onSaved }) {
   const update = (index, key, value) => {
     const models = settings.models.map((m, i) => (i === index ? { ...m, [key]: value } : m));
     setSettings({ ...settings, models });
+  };
+
+  const [fetching, setFetching] = useState(false);
+  const fetchOfficial = async () => {
+    setFetching(true);
+    setMessage(null);
+    try {
+      const data = await api("/api/admin/ai/usage/prices/fetch", token, { method: "POST" });
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+      const names = Object.keys(data.prices || {});
+      // 只填入畫面，不儲存；沒讀到的模型維持原樣
+      const models = settings.models.map((m) => {
+        const p = data.prices?.[m.model_name];
+        return p ? { ...m, input_usd_per_mtok: String(p.input), output_usd_per_mtok: String(p.output), reference_date: todayStr } : m;
+      });
+      setSettings({ ...settings, models });
+      const missing = (data.not_found || []).join("、");
+      setMessage({
+        ok: names.length
+          ? t(`已從官方頁面讀取 ${names.length} 個模型的單價並填入欄位，請確認後按「儲存」才會生效。${missing ? `官方頁面沒找到：${missing}（請手動填）。` : ""}`,
+            `Read prices for ${names.length} model(s) into the form. Review, then press Save.${missing ? ` Not found: ${missing}.` : ""}`)
+          : "",
+        error: names.length ? null : t("官方頁面沒有讀到任何模型的單價（可能頁面改版），請手動填寫。", "No prices found on the official page; please enter them manually."),
+      });
+    } catch (e) {
+      setMessage({ error: e.message });
+    } finally {
+      setFetching(false);
+    }
   };
 
   const save = async () => {
@@ -304,10 +349,10 @@ function SettingsPanel({ token, onSaved }) {
 
   return (
     <details className="usage-settings">
-      <summary>{t("單價與配額設定", "Prices and quotas")}</summary>
+      <summary>{t("單價設定", "Prices")}</summary>
       <p className="usage-note">
-        {t("請依 Google 官方定價與配額頁填入，並寫上參考日期。單價為「美金／每百萬 token」；思考 token 依輸出單價計算。沒填單價的模型不估算金額。",
-          "Fill these in from Google's official pricing and quota pages, with the reference date. Prices are US$ per 1M tokens; thinking tokens use the output price.")}
+        {t("請依 Google 官方定價頁填入，並寫上參考日期。單價為「美金／每百萬 token」；思考 token 依輸出單價計算。沒填單價的模型不估算金額。",
+          "Fill these in from Google's official pricing page, with the reference date. Prices are US$ per 1M tokens; thinking tokens use the output price.")}
       </p>
       {!settings ? <p className="usage-note">{message?.error || t("載入中…", "Loading…")}</p> : (
         <>
@@ -331,8 +376,11 @@ function SettingsPanel({ token, onSaved }) {
               </tbody>
             </table>
           </div>
-          <div className="usage-fx" style={{ justifyContent: "flex-end" }}>
-            <button className="primary" disabled={saving} onClick={save}>{saving ? t("儲存中…", "Saving…") : t("儲存", "Save")}</button>
+          <div className="usage-fx" style={{ justifyContent: "flex-end", gap: 8 }}>
+            <button type="button" disabled={fetching || saving} onClick={fetchOfficial}>
+              {fetching ? t("讀取中…", "Reading…") : t("從官方頁面讀取", "Read from official page")}
+            </button>
+            <button className="primary" disabled={saving || fetching} onClick={save}>{saving ? t("儲存中…", "Saving…") : t("儲存", "Save")}</button>
           </div>
           {message?.ok && <p className="review-batch-message review-batch-message--ok" role="status">{message.ok}</p>}
           {message?.error && <p className="ai-admin-error" role="alert">{message.error}</p>}

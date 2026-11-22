@@ -4,6 +4,7 @@ Admin「AI 用量與成本」API。全部需要 Admin token（account_type == "a
     GET /api/admin/ai/usage/summary[?month=YYYY-MM]  整頁資料（用量、平均成本、配額監控）
     GET /api/admin/ai/usage/settings                 各模型單價／配額、匯率
     PUT /api/admin/ai/usage/settings                 更新單價／配額、匯率（寫入操作紀錄）
+    POST /api/admin/ai/usage/prices/fetch            從 Google 官方定價頁讀取單價（只回傳結果，不寫入）
 
 回應只有數字，不含任何 prompt、回答內容或使用者 email。
 """
@@ -15,6 +16,7 @@ from flask import Blueprint, jsonify, request
 from extensions import db
 from models import Admin
 from routes.auth.admin_guard import verify_admin_token
+from services import ai_price_fetch_service as price_fetch
 from services import ai_usage_report_service as report
 
 logger = logging.getLogger(__name__)
@@ -76,3 +78,19 @@ def update_usage_settings():
         logger.exception("AI usage settings update failed")
         return jsonify({"error": "儲存失敗，請稍後再試"}), 500
     return jsonify({"changed": changed, **report.get_settings()})
+
+
+@ai_usage_bp.route("/prices/fetch", methods=["POST"])
+def fetch_official_prices():
+    """讀官方定價頁，回傳各模型的 Input／Output 價格供 Admin 確認；不寫入資料庫。"""
+    admin, error = _admin_or_error()
+    if error:
+        return error
+    names = [m["model_name"] for m in report.get_settings()["models"]]
+    try:
+        return jsonify(price_fetch.fetch_prices(names))
+    except price_fetch.PriceFetchError as exc:
+        return jsonify({"error": str(exc)}), 502
+    except Exception:  # noqa: BLE001
+        logger.exception("AI price fetch failed")
+        return jsonify({"error": "讀取失敗，請稍後再試或手動填寫"}), 500

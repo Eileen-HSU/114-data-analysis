@@ -404,7 +404,22 @@ def unit_metrics(prices, now):
         )
     per1k = _metric(per1k_t, per1k_c)
 
+    # 診斷：試算器沒有數字時，讓畫面說明是哪一步被排除（不用猜）
+    all_batches = db.session.query(unit.unit_id, unit.item_count).filter(
+        unit.unit_type == usage.UNIT_ANALYSIS_BATCH, unit.created_at >= since).all()
+    all_gens = db.session.query(unit.unit_id, unit.status).filter(
+        unit.unit_type == usage.UNIT_SURVEY_GENERATION, unit.created_at >= since).all()
+    diagnostics = {
+        "analysis_units": len(all_batches),
+        "analysis_no_items": sum(1 for _, n in all_batches if not n),
+        "analysis_no_tokens": sum(1 for uid, n in all_batches if n and uid not in batch_tokens),
+        "generation_units": len(all_gens),
+        "generation_not_completed": sum(1 for _, st in all_gens if st != "completed"),
+        "generation_no_tokens": sum(1 for uid, st in all_gens if st == "completed" and uid not in gen_tokens),
+    }
+
     return {
+        "diagnostics": diagnostics,
         "window_days": UNIT_WINDOW_DAYS,
         "min_units": MIN_UNITS,
         "reliable_units": RELIABLE_UNITS,
