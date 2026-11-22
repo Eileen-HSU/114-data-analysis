@@ -166,7 +166,7 @@ export default function GoogleLinkSection({ token, email, twoFactorEnabled, onPa
               <p style={{ fontSize: 13, margin: "0 0 8px" }}>驗證碼已寄到 {email}，請查收後輸入。</p>
               <label className="profile-confirm-label" htmlFor="google-set-otp">電子郵件驗證碼</label>
               <div className="d-flex gap-2 mb-2">
-                <input id="google-set-otp" className="form-control" inputMode="numeric" name="verification-code" autoComplete="off" placeholder="請輸入 6 位數驗證碼" value={otp} onChange={(e) => setOtp(e.target.value)} />
+                <input id="google-set-otp" className="form-control google-otp-input" inputMode="numeric" name="verification-code" autoComplete="off" placeholder="請輸入 6 位數驗證碼" value={otp} onChange={(e) => setOtp(e.target.value)} />
                 <button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={sendSetPasswordCode} style={{ whiteSpace: "nowrap" }}>
                   重新寄送
                 </button>
@@ -189,7 +189,7 @@ export default function GoogleLinkSection({ token, email, twoFactorEnabled, onPa
               <label className="profile-confirm-label" htmlFor="google-link-otp">電子郵件驗證碼</label>
               <p className="mb-1" style={{ fontSize: 12, color: "#888" }}>{otpSent ? `驗證碼已寄到 ${email}，請查收後輸入。` : `按「寄送驗證碼」後，會寄一組驗證碼到 ${email}。`}</p>
               <div className="d-flex gap-2 mb-2">
-                <input id="google-link-otp" className="form-control" inputMode="numeric" name="verification-code" autoComplete="off" placeholder="收到後輸入 6 位數驗證碼" value={otp} onChange={(e) => setOtp(e.target.value)} />
+                <input id="google-link-otp" className="form-control google-otp-input" inputMode="numeric" name="verification-code" autoComplete="off" placeholder="收到後輸入 6 位數驗證碼" value={otp} onChange={(e) => setOtp(e.target.value)} />
                 <button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={sendOtp} style={{ whiteSpace: "nowrap" }}>
                   {otpSent ? "重新寄送" : "寄送驗證碼"}
                 </button>

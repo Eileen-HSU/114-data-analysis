@@ -2588,3 +2588,9 @@ html[lang="en"] .sdp-topbar > .sdp-tab-group.sdp-tab-group-header {
 @media (max-width: 1400px) {
   .sdp-topbar { padding-top: 24px; padding-bottom: 20px; }
 }
+
+/* Google 區塊的驗證碼輸入框：提示文字淡一點 */
+.google-otp-input::placeholder {
+  color: #c4c9d1;
+  opacity: 1;
+}
