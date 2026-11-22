@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import { apiUrl } from "../../lib/api";
 import GoogleSignInButton from "../../components/feature/GoogleSignInButton";
+import { useAuth } from "../../hooks/AuthContext";
 
 // 安全設定：綁定／解除 Google 帳號。只能綁定與本帳號 Email 完全相同的 Google 帳號，
 // 綁定與解除都需重新輸入密碼；已開啟雙因子驗證者綁定時另需 Email 驗證碼。
-export default function GoogleLinkSection({ token, email, twoFactorEnabled }) {
+export default function GoogleLinkSection({ token, email, twoFactorEnabled, onPasswordSetChange }) {
+  const { updateUser } = useAuth();
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [status, setStatus] = useState(null); // { bound }
   const [unavailable, setUnavailable] = useState(false);
   const [mode, setMode] = useState(""); // "" | "bind" | "unbind"
@@ -19,7 +23,7 @@ export default function GoogleLinkSection({ token, email, twoFactorEnabled }) {
   const loadStatus = () =>
     fetch(apiUrl("/api/auth/google/status"), { headers: authHeaders })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => d && setStatus(d))
+      .then((d) => { if (d) { setStatus(d); onPasswordSetChange?.(d.password_set !== false); } })
       .catch(() => {});
 
   useEffect(() => {
@@ -35,7 +39,7 @@ export default function GoogleLinkSection({ token, email, twoFactorEnabled }) {
     return () => clearTimeout(timer);
   }, [message]);
 
-  const reset = () => { setMode(""); setPassword(""); setOtp(""); setOtpSent(false); };
+  const reset = () => { setMode(""); setPassword(""); setOtp(""); setOtpSent(false); setNewPassword(""); setConfirmPassword(""); };
 
   const sendOtp = async () => {
     setBusy(true);
@@ -46,6 +50,38 @@ export default function GoogleLinkSection({ token, email, twoFactorEnabled }) {
       if (res.ok) { setOtpSent(true); setMessage({ type: "ok", text: "驗證碼已寄到你的信箱，請於 10 分鐘內輸入。" }); }
       else setMessage({ type: "error", text: data.error || "寄送失敗，請稍後再試。" });
     } finally { setBusy(false); }
+  };
+
+  // 只用 Google 註冊的帳號：用 Email 驗證碼設定第一個密碼；成功後換發新 token
+  const sendSetPasswordCode = async () => {
+    setBusy(true);
+    setMessage({ type: "", text: "" });
+    try {
+      const res = await fetch(apiUrl("/api/auth/send-otp"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) { setOtpSent(true); setMessage({ type: "ok", text: "驗證碼已寄到你的信箱，請於 10 分鐘內輸入。" }); }
+      else setMessage({ type: "error", text: data.error || "寄送失敗，請稍後再試。" });
+    } catch { setMessage({ type: "error", text: "連線失敗，請稍後再試。" }); }
+    finally { setBusy(false); }
+  };
+
+  const setPasswordNow = async (e) => {
+    e.preventDefault();
+    if (!otp || !newPassword) { setMessage({ type: "error", text: "請輸入驗證碼與新密碼。" }); return; }
+    if (newPassword !== confirmPassword) { setMessage({ type: "error", text: "兩次輸入的密碼不一致。" }); return; }
+    setBusy(true);
+    setMessage({ type: "", text: "" });
+    try {
+      const res = await fetch(apiUrl("/api/auth/google/set-password"), { method: "POST", headers: authHeaders, body: JSON.stringify({ otp, new_password: newPassword }) });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        if (data.token) updateUser({ token: data.token }); // 舊 token 已失效，換成新的
+        reset();
+        setMessage({ type: "ok", text: "密碼已設定，之後可用 Email 與密碼登入。" });
+        loadStatus();
+      } else setMessage({ type: "error", text: data.error || "設定失敗，請稍後再試。" });
+    } catch { setMessage({ type: "error", text: "連線失敗，請稍後再試。" }); }
+    finally { setBusy(false); }
   };
 
   const bind = async (credential) => {
@@ -91,10 +127,15 @@ export default function GoogleLinkSection({ token, email, twoFactorEnabled }) {
             <span className={`two-factor-status ${bound ? "enabled" : "disabled"}`}>{bound ? "已綁定" : "未綁定"}</span>
           </div>
           <p className="security-desc mb-0">
-            {noPassword ? `此帳號以 Google（${email}）註冊，請使用 Google 登入。` : bound ? `可使用 Google（${email}）登入。` : `可綁定與本帳號相同 Email（${email}）的 Google 帳號，之後用 Google 登入。`}
+            {noPassword ? `此帳號以 Google（${email}）註冊，請使用 Google 登入；若也想用密碼登入，可按「設定密碼」。` : bound ? `可使用 Google（${email}）登入。` : `可綁定與本帳號相同 Email（${email}）的 Google 帳號，之後用 Google 登入。`}
           </p>
         </div>
       </div>
+      {!mode && noPassword && (
+        <button className="btn-security-action" type="button" onClick={() => { setMessage({ type: "", text: "" }); setMode("setpw"); }}>
+          設定密碼
+        </button>
+      )}
       {!mode && !noPassword && (
         <button className="btn-security-action" type="button" onClick={() => { setMessage({ type: "", text: "" }); setMode(bound ? "unbind" : "bind"); }}>
           {bound ? "解除綁定" : "綁定 Google"}
@@ -102,20 +143,53 @@ export default function GoogleLinkSection({ token, email, twoFactorEnabled }) {
       )}
 
       {mode && (
-        <form onSubmit={mode === "unbind" ? unbind : (e) => e.preventDefault()} style={{ width: "100%", maxWidth: 420 }} autoComplete="off">
+        <div style={{ width: "100%" }}>
+        <form onSubmit={mode === "unbind" ? unbind : mode === "setpw" ? setPasswordNow : (e) => e.preventDefault()} style={{ width: "100%", maxWidth: 420 }} autoComplete="off">
           {mode === "bind" && (
             <p style={{ fontSize: 13, color: "#7a4b00", background: "#fff7e6", border: "1px solid #f5c26b", borderRadius: 8, padding: "8px 10px" }}>
               使用 Google 登入時將略過本系統的 Email 驗證，建議為你的 Google 帳號開啟兩步驟驗證。
             </p>
           )}
-          <label className="profile-confirm-label" htmlFor="google-link-password">請重新輸入密碼</label>
-          <input id="google-link-password" type="password" className="form-control mb-2" autoComplete="current-password"
-            value={password} onChange={(e) => setPassword(e.target.value)} />
+          {mode === "setpw" ? (
+            !otpSent ? (
+              <div className="mb-2">
+                <p style={{ fontSize: 13, margin: "0 0 8px" }}>為了確認是你本人，會先寄一組驗證碼到 {email}。</p>
+                <div className="d-flex align-items-center gap-2">
+                  <button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={sendSetPasswordCode}>
+                    {busy ? "寄送中…" : "寄送驗證碼"}
+                  </button>
+                  <button type="button" className="btn-security-action" onClick={() => { reset(); setMessage({ type: "", text: "" }); }}>取消</button>
+                </div>
+              </div>
+            ) : (
+            <>
+              <p style={{ fontSize: 13, margin: "0 0 8px" }}>驗證碼已寄到 {email}，請查收後輸入。</p>
+              <label className="profile-confirm-label" htmlFor="google-set-otp">電子郵件驗證碼</label>
+              <div className="d-flex gap-2 mb-2">
+                <input id="google-set-otp" className="form-control" inputMode="numeric" name="verification-code" autoComplete="off" placeholder="請輸入 6 位數驗證碼" value={otp} onChange={(e) => setOtp(e.target.value)} />
+                <button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={sendSetPasswordCode} style={{ whiteSpace: "nowrap" }}>
+                  重新寄送
+                </button>
+              </div>
+              <label className="profile-confirm-label" htmlFor="google-set-new">請輸入新密碼（至少 8 個字元，含英文與數字）</label>
+              <input id="google-set-new" type="password" className="form-control mb-2" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+              <label className="profile-confirm-label" htmlFor="google-set-confirm">請再輸入一次新密碼</label>
+              <input id="google-set-confirm" type="password" className="form-control mb-2" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+            </>
+            )
+          ) : (
+            <>
+              <label className="profile-confirm-label" htmlFor="google-link-password">請重新輸入密碼</label>
+              <input id="google-link-password" type="password" className="form-control mb-2" autoComplete="current-password"
+                value={password} onChange={(e) => setPassword(e.target.value)} />
+            </>
+          )}
           {mode === "bind" && twoFactorEnabled && (
             <>
-              <label className="profile-confirm-label" htmlFor="google-link-otp">Email 驗證碼</label>
+              <label className="profile-confirm-label" htmlFor="google-link-otp">電子郵件驗證碼</label>
+              <p className="mb-1" style={{ fontSize: 12, color: "#888" }}>{otpSent ? `驗證碼已寄到 ${email}，請查收後輸入。` : `按「寄送驗證碼」後，會寄一組驗證碼到 ${email}。`}</p>
               <div className="d-flex gap-2 mb-2">
-                <input id="google-link-otp" className="form-control" inputMode="numeric" value={otp} onChange={(e) => setOtp(e.target.value)} />
+                <input id="google-link-otp" className="form-control" inputMode="numeric" name="verification-code" autoComplete="off" placeholder="收到後輸入 6 位數驗證碼" value={otp} onChange={(e) => setOtp(e.target.value)} />
                 <button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={sendOtp} style={{ whiteSpace: "nowrap" }}>
                   {otpSent ? "重新寄送" : "寄送驗證碼"}
                 </button>
@@ -129,8 +203,15 @@ export default function GoogleLinkSection({ token, email, twoFactorEnabled }) {
                 disabled={busy || !password || (twoFactorEnabled && !otp)} onUnavailable={() => setUnavailable(true)} />
             </div>
           )}
+          {!(mode === "setpw" && !otpSent) && (
           <div className="d-flex align-items-center justify-content-end gap-2 mt-2">
             <button type="button" className="btn-security-action" onClick={() => { reset(); setMessage({ type: "", text: "" }); }}>取消</button>
+            {mode === "setpw" && otpSent && (
+              <button type="submit" className="btn-security-action" disabled={busy || !otp || !newPassword}
+                style={{ opacity: busy || !otp || !newPassword ? 0.5 : 1 }}>
+                {busy ? "處理中…" : "確認設定密碼"}
+              </button>
+            )}
             {mode === "unbind" && (
               <button type="submit" className="btn-security-action" disabled={busy || !password}
                 style={{ background: "#c0392b", borderColor: "#c0392b", color: "#fff", opacity: busy || !password ? 0.5 : 1 }}>
@@ -138,7 +219,9 @@ export default function GoogleLinkSection({ token, email, twoFactorEnabled }) {
               </button>
             )}
           </div>
+          )}
         </form>
+        </div>
       )}
 
       {message.text && (

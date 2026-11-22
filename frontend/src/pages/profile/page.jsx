@@ -86,6 +86,7 @@ export default function ProfilePage() {
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(user?.email_2fa_enabled === true);
   const [showTwoFactorNotice, setShowTwoFactorNotice] = useState(false);
   const [showPasswordNotice, setShowPasswordNotice] = useState(false);
+  const [passwordSet, setPasswordSet] = useState(true); // 用 Google 註冊且未設定密碼時為 false
   const [twoFactorModal, setTwoFactorModal] = useState(null);
   const [showDisableTwoFactorModal, setShowDisableTwoFactorModal] = useState(false);
   const [twoFactorPassword, setTwoFactorPassword] = useState("");
@@ -794,10 +795,10 @@ export default function ProfilePage() {
                   <div className="security-icon bg-violet-50"><i className="ri-lock-password-line text-violet"></i></div>
                   <div>
                     <p className="security-label mb-0"><InterfaceText>{"密碼"}</InterfaceText></p>
-                    <p className="security-desc mb-0"><InterfaceText>{"建議定期更新密碼，提升帳號安全。"}</InterfaceText></p>
+                    <p className="security-desc mb-0"><InterfaceText>{passwordSet ? "建議定期更新密碼，提升帳號安全。" : "此帳號以 Google 註冊，尚未設定密碼。請在下方「Google 帳號」按「設定密碼」。"}</InterfaceText></p>
                   </div>
                 </div>
-                <button className="btn-security-action" onClick={() => navigate("/change-password")}><InterfaceText>{"變更密碼"}</InterfaceText></button>
+                <button className="btn-security-action" disabled={!passwordSet} style={passwordSet ? undefined : { opacity: 0.5, cursor: "not-allowed" }} onClick={() => navigate("/change-password")}><InterfaceText>{"變更密碼"}</InterfaceText></button>
               </div>
               <div className="security-item">
                 <div className="d-flex align-items-center gap-3">
@@ -832,7 +833,7 @@ export default function ProfilePage() {
                   <span className="two-factor-switch-knob"></span>
                 </button>
               </div>
-              <GoogleLinkSection token={user?.token} email={user?.email || profile?.email} twoFactorEnabled={twoFactorEnabled} />
+              <GoogleLinkSection token={user?.token} email={user?.email || profile?.email} twoFactorEnabled={twoFactorEnabled} onPasswordSetChange={setPasswordSet} />
             </section>
           )}
 

@@ -432,6 +432,58 @@ def google_register():
     }), 201
 
 
+@google_bp.route("/api/auth/google/set-password", methods=["POST"])
+def google_set_password():
+    """只用 Google 註冊、還沒有密碼的帳號，用 Email 驗證碼設定第一個密碼。
+    驗證碼由 /api/auth/send-otp（PASSWORD_RESET）寄到帳號 Email。成功後換發新 token（舊 token 失效）。"""
+    user, err = _auth_user()
+    if err:
+        return err
+    if _password_set(user.user_id):
+        return jsonify({"error": "這個帳號已經有密碼，請使用「變更密碼」"}), 400
+    data = request.get_json(silent=True) or {}
+    otp = str(data.get("otp") or "").strip()
+    new_password = str(data.get("new_password") or "")
+    if not otp or not new_password:
+        return jsonify({"error": "請輸入驗證碼與新密碼"}), 400
+
+    from routes.auth.register import is_valid_password
+    if not is_valid_password(new_password):
+        return jsonify({"error": "密碼至少需要 8 個字元，並包含英文字母和數字"}), 400
+
+    from routes.auth.pwd import taiwan_now
+    record = UserVerification.query.filter_by(
+        target_email=user.email, type="PASSWORD_RESET", is_used=False
+    ).order_by(UserVerification.created_at.desc()).first()
+    if not record or record.expires_at < taiwan_now().replace(tzinfo=None):
+        return jsonify({"error": "驗證碼不存在或已過期，請重新取得"}), 400
+    if record.attempts >= 5:
+        record.is_used = True
+        db.session.commit()
+        return jsonify({"error": "嘗試次數過多，請重新取得驗證碼"}), 429
+    if not check_password_hash(record.code_hash, otp):
+        record.attempts += 1
+        db.session.commit()
+        return jsonify({"error": f"驗證碼錯誤，剩餘 {5 - record.attempts} 次機會"}), 400
+
+    try:
+        from routes.auth.login import build_token
+        from routes.auth.token_service import bump_token_version
+        user.password_hash = generate_password_hash(new_password)
+        mark_password_set(user.user_id)
+        bump_token_version(user.user_id)  # 其他裝置上的舊 token 立即失效
+        record.is_used = True
+        db.session.commit()
+        token = build_token(user.user_id)
+    except Exception:
+        db.session.rollback()
+        logger.error("google set-password failed", exc_info=True)
+        return jsonify({"error": "設定失敗，請稍後再試"}), 500
+    _notify(user, "【DataAnalysis】已設定帳號密碼",
+            f"您的帳號已於 {_now_text()} 設定密碼，之後可使用 Email 與密碼登入。\n若非本人操作，請立即聯絡管理員。")
+    return jsonify({"message": "密碼已設定", "token": token, "password_set": True}), 200
+
+
 def init_google_auth(app):
     ensure_google_schema(app)
     app.register_blueprint(google_bp)

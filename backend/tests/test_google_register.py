@@ -112,20 +112,55 @@ with app.app_context():
 r = client.post("/api/auth/2fa/disable", json={"email": "new.student@example.com", "password": "x"}, headers=H)
 check("無密碼帳號關閉 2FA 時提示先設定密碼", r.status_code == 400 and "忘記密碼" in r.get_json()["error"])
 
-# ---- 用忘記密碼設定密碼後，可用密碼登入、password_set = 1 ----
+# ---- 無密碼帳號用忘記密碼流程設定密碼（另一個入口）----
+r = reg(cred("g-fp", "forgot.user@example.com"))
+fp_id = r.get_json()["user_id"]
 with app.app_context():
     db.session.add(m.UserVerification(
-        user_id=new_id, type="PASSWORD_RESET", code_hash=generate_password_hash("123456"),
+        user_id=fp_id, type="PASSWORD_RESET", code_hash=generate_password_hash("123456"),
         expires_at=(taiwan_now() + timedelta(minutes=10)).replace(tzinfo=None),
-        target_email="new.student@example.com", is_used=False, attempts=0))
+        target_email="forgot.user@example.com", is_used=False, attempts=0))
     db.session.commit()
-r = client.post("/api/auth/reset-password", json={"email": "new.student@example.com", "otp": "123456", "new_password": "Brand-new1"})
-check("忘記密碼流程可設定密碼", r.status_code == 200)
+r = client.post("/api/auth/reset-password", json={"email": "forgot.user@example.com", "otp": "123456", "new_password": "Brand-new1"})
+check("忘記密碼流程也可設定密碼", r.status_code == 200)
 clear_rl()
-r = client.post("/api/login", json={"email": "new.student@example.com", "password": "Brand-new1"})
-check("設定後可用密碼登入", r.status_code == 200 and r.get_json().get("token"))
+check("設定後可用密碼登入（忘記密碼入口）", client.post("/api/login", json={"email": "forgot.user@example.com", "password": "Brand-new1"}).status_code == 200)
 with app.app_context():
-    check("password_set 變成 1", db.session.execute(text("SELECT password_set FROM `User` WHERE user_id=:u"), {"u": new_id}).scalar() == 1)
+    check("password_set 變成 1（忘記密碼入口）", db.session.execute(text("SELECT password_set FROM `User` WHERE user_id=:u"), {"u": fp_id}).scalar() == 1)
+
+# ---- 在個人資料頁用驗證碼設定密碼（/api/auth/google/set-password）----
+def add_code(code="654321", minutes=10):
+    with app.app_context():
+        db.session.add(m.UserVerification(
+            user_id=new_id, type="PASSWORD_RESET", code_hash=generate_password_hash(code),
+            expires_at=(taiwan_now() + timedelta(minutes=minutes)).replace(tzinfo=None),
+            target_email="new.student@example.com", is_used=False, attempts=0))
+        db.session.commit()
+
+
+SP = "/api/auth/google/set-password"
+check("未登入不能設定密碼", client.post(SP, json={"otp": "1", "new_password": "Abcdef12"}).status_code == 401)
+add_code()
+check("缺欄位 → 400", client.post(SP, json={"otp": "654321"}, headers=H).status_code == 400)
+check("弱密碼 → 400", client.post(SP, json={"otp": "654321", "new_password": "abc"}, headers=H).status_code == 400)
+r = client.post(SP, json={"otp": "000000", "new_password": "Abcdef12"}, headers=H)
+check("驗證碼錯誤 → 400 並顯示剩餘次數", r.status_code == 400 and "剩餘" in r.get_json()["error"])
+for _ in range(5):
+    client.post(SP, json={"otp": "000000", "new_password": "Abcdef12"}, headers=H)
+r = client.post(SP, json={"otp": "654321", "new_password": "Abcdef12"}, headers=H)
+check("錯太多次後驗證碼作廢（即使輸入正確也不行）", r.status_code in (400, 429))
+add_code("111222", minutes=-1)
+check("過期的驗證碼 → 400", client.post(SP, json={"otp": "111222", "new_password": "Abcdef12"}, headers=H).status_code == 400)
+add_code("777888")
+r = client.post(SP, json={"otp": "777888", "new_password": "Abcdef12"}, headers=H)
+check("驗證碼正確可設定密碼，回傳新 token", r.status_code == 200 and r.get_json()["token"] and r.get_json()["password_set"] is True)
+check("舊 token 失效", client.get("/api/auth/google/status", headers=H).status_code == 401)
+H2 = {"Authorization": "Bearer " + r.get_json()["token"]}
+check("新 token 可用，且 password_set = True", client.get("/api/auth/google/status", headers=H2).get_json()["password_set"] is True)
+clear_rl()
+check("設定後可用密碼登入", client.post("/api/login", json={"email": "new.student@example.com", "password": "Abcdef12"}).status_code == 200)
+add_code("999000")
+check("已經有密碼就不能再用這個入口", client.post(SP, json={"otp": "999000", "new_password": "Another12"}, headers=H2).status_code == 400)
 
 # ---- 頻率限制（與一般註冊共用 register_ip）----
 clear_rl()
