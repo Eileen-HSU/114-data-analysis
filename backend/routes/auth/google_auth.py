@@ -4,7 +4,10 @@
 - 使用者先用密碼登入，再到個人資料頁自行綁定「email 完全相同」的 Google 帳號。
 - 以 Google 的 sub（帳號唯一 ID）綁定，存 User.google_sub 並設唯一值；email 只用來比對。
 - 綁定／解除需重新輸入密碼；已開啟雙因子驗證者，綁定時另需 email 驗證碼。
-- Google 登入不需 email 驗證碼；未綁定的 Google 帳號一律拒絕，不自動建立帳號。
+- Google 登入不需 email 驗證碼；未綁定的 Google 帳號登入一律拒絕。
+- Google 註冊（/api/auth/google/register）：email 尚未註冊才建立帳號，不需 email 驗證碼；
+  email 已有帳號時一律拒絕（不自動合併，避免帳號被接管），請對方先用密碼登入再綁定。
+  這種帳號沒有人知道的密碼（隨機雜湊）且 password_set = 0，之後可用「忘記密碼」設定密碼。
 - Admin 帳號不開放 Google 登入（只查 User 表）。
 - 綁定、解除、Google 登入都寄通知信（寄信失敗不影響操作）。
 - 後端驗證 ID token 的簽章、aud（自己的 Client ID）、iss、效期；只需要 Client ID，不需要 Client Secret。
@@ -12,15 +15,16 @@
 
 import logging
 import os
+import secrets
 import time
 
 import jwt
 from flask import Blueprint, jsonify, request
 from sqlalchemy import inspect, text
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from extensions import db
-from models import User, UserVerification
+from models import Admin, User, UserProfile, UserVerification
 from services import rate_limit_service as rl
 
 logger = logging.getLogger(__name__)
@@ -99,6 +103,28 @@ def _set_sub(user_id, sub):
     )
 
 
+def _password_set(user_id):
+    """False 表示這是只用 Google 開的帳號，還沒有自己設定過密碼。
+    欄位不存在（舊資料庫、尚未補欄位）時一律視為已設定，不影響既有流程。"""
+    try:
+        with db.session.begin_nested():
+            value = db.session.execute(
+                text("SELECT password_set FROM `User` WHERE user_id = :u"), {"u": user_id}
+            ).scalar()
+    except Exception:  # noqa: BLE001
+        return True
+    return value is None or bool(value)
+
+
+def mark_password_set(user_id):
+    """使用者透過「忘記密碼」設定了密碼之後呼叫（由 pwd.py 使用）。欄位不存在時略過。"""
+    try:
+        with db.session.begin_nested():
+            db.session.execute(text("UPDATE `User` SET password_set = 1 WHERE user_id = :u"), {"u": user_id})
+    except Exception:  # noqa: BLE001
+        logger.warning("mark_password_set skipped", exc_info=True)
+
+
 def _user_by_sub(sub):
     user_id = db.session.execute(
         text("SELECT user_id FROM `User` WHERE google_sub = :s"), {"s": sub}
@@ -114,6 +140,9 @@ def ensure_google_schema(app):
             cols = {c["name"] for c in insp.get_columns("User")}
             if "google_sub" not in cols:
                 db.session.execute(text("ALTER TABLE `User` ADD COLUMN google_sub VARCHAR(64) NULL"))
+                db.session.commit()
+            if "password_set" not in cols:
+                db.session.execute(text("ALTER TABLE `User` ADD COLUMN password_set TINYINT(1) NOT NULL DEFAULT 1"))
                 db.session.commit()
             indexes = {i["name"] for i in inspect(db.engine).get_indexes("User")}
             if "uq_user_google_sub" not in indexes:
@@ -202,7 +231,8 @@ def google_status():
     user, err = _auth_user()
     if err:
         return err
-    return jsonify({"bound": bool(_get_sub(user.user_id)), "email": user.email}), 200
+    return jsonify({"bound": bool(_get_sub(user.user_id)), "email": user.email,
+                    "password_set": _password_set(user.user_id)}), 200
 
 
 @google_bp.route("/api/auth/google/bind", methods=["POST"])
@@ -268,6 +298,8 @@ def google_unbind():
     key, ip, blocked, wait = _check_sensitive_attempt(user)
     if blocked:
         return _too_many(wait)
+    if not _password_set(user.user_id):
+        return jsonify({"error": "這個帳號還沒有設定密碼，請先用「忘記密碼」設定密碼後，才能解除 Google 綁定"}), 400
     if not check_password_hash(user.password_hash, str(data.get("password") or "")):
         _record_sensitive_failure(key, ip)
         return jsonify({"error": "密碼錯誤"}), 403
@@ -334,6 +366,70 @@ def google_login():
         "email_2fa_enabled": bool(user.email_2fa_enabled),
         "login_method": "google",
     }), 200
+
+
+@google_bp.route("/api/auth/google/register", methods=["POST"])
+def google_register():
+    """用 Google 帳號直接註冊。email 已有帳號（User 或 Admin）一律拒絕，不自動合併。"""
+    if not google_login_enabled():
+        return jsonify({"error": "目前未開放 Google 登入"}), 403
+    ip = rl.client_ip()
+    ok, wait = rl.allow("register_ip", ip)
+    if not ok:
+        return _too_many(wait)
+
+    data = request.get_json(silent=True) or {}
+    try:
+        payload = verify_google_credential(data.get("credential"))
+        sub, google_email = _identity(payload)
+    except GoogleTokenError:
+        return jsonify({"error": "Google 驗證失敗，請再試一次"}), 401
+
+    if _user_by_sub(sub):
+        return jsonify({"error": "這個 Google 帳號已註冊，請直接用 Google 登入", "code": "GOOGLE_ALREADY_REGISTERED"}), 409
+    if User.query.filter(db.func.lower(User.email) == google_email).first() or \
+            Admin.query.filter(db.func.lower(Admin.email) == google_email).first():
+        return jsonify({
+            "error": "此電子郵件已註冊。請先用密碼登入，再到個人資料頁綁定 Google 帳號。",
+            "code": "EMAIL_EXISTS",
+        }), 409
+
+    name = str(payload.get("name") or "").strip() or google_email.split("@")[0]
+    try:
+        user = User(
+            user_name=name[:50],
+            email=google_email[:100],
+            # 沒有人知道的隨機密碼：密碼登入不可能成功，要用「忘記密碼」才能設定自己的密碼
+            password_hash=generate_password_hash(secrets.token_urlsafe(48)),
+        )
+        db.session.add(user)
+        db.session.flush()
+        db.session.add(UserProfile(user_id=user.user_id, language="zh-TW"))
+        db.session.execute(
+            text("UPDATE `User` SET google_sub = :s, password_set = 0 WHERE user_id = :u"),
+            {"s": sub, "u": user.user_id},
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        logger.error("google register failed", exc_info=True)
+        return jsonify({"error": "註冊失敗，請稍後再試"}), 500
+
+    from routes.auth.login import build_token
+    token = build_token(user.user_id)
+    _notify(user, "【DataAnalysis】已使用 Google 建立帳號",
+            f"您的帳號已於 {_now_text()} 使用 Google 建立，之後可直接用 Google 登入。\n"
+            "若要同時使用密碼登入，請在登入頁使用「忘記密碼」設定密碼。\n若非本人操作，請聯絡管理員。")
+    return jsonify({
+        "message": f"使用者 {user.user_name} 註冊成功！",
+        "token": token,
+        "account_type": "user",
+        "user_id": user.user_id,
+        "user_name": user.user_name,
+        "email": user.email,
+        "email_2fa_enabled": False,
+        "login_method": "google",
+    }), 201
 
 
 def init_google_auth(app):

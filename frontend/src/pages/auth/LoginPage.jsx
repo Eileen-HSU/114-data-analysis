@@ -303,8 +303,8 @@ export default function LoginPage() {
                 />
                 <p className="text-center mt-2 mb-0" style={{ fontSize: 12, color: "#888" }}>
                   {language === "en"
-                    ? "Google sign-in works after you link your Google account in Profile."
-                    : "需先用密碼登入，並在個人資料頁綁定 Google 帳號後才能使用。"}
+                    ? "For accounts created with Google, or password accounts you linked in Profile."
+                    : "適用於用 Google 註冊的帳號，或已在個人資料頁綁定 Google 的帳號。"}
                 </p>
               </div>
             )}

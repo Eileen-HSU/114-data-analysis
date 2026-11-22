@@ -267,6 +267,10 @@ def disable_2fa():
         if auth_user_id != user.user_id:
             return jsonify({"error": "Forbidden"}), 403
 
+        from routes.auth.google_auth import _password_set
+        if not _password_set(user.user_id):
+            return jsonify({"error": "這個帳號還沒有設定密碼，請先用「忘記密碼」設定密碼"}), 400
+
         if not check_password_hash(user.password_hash, password):
             rl.record_failure("disable2fa_account", account_key)
             rl.record_failure("disable2fa_ip", ip)

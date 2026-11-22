@@ -207,6 +207,8 @@ def reset_password():
 
     try:
         user.password_hash = generate_password_hash(new_password)
+        from routes.auth.google_auth import mark_password_set
+        mark_password_set(user.user_id)  # 只用 Google 開的帳號，設定密碼後也能用密碼登入
         from routes.auth.token_service import bump_token_version
         bump_token_version(user.user_id)  # 舊 token 立即失效
         record.is_used = True

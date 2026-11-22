@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "../../hooks/AuthContext";
 import { apiUrl } from "../../lib/api";
+import GoogleSignInButton from "../../components/feature/GoogleSignInButton";
 import conqightLogo from "../../assets/conqight-logo.png";
 import "./auth.css";
 
@@ -22,6 +23,7 @@ export default function SignUpPage() {
   const [isGenderOpen, setIsGenderOpen] = useState(false);
   const [alertModal, setAlertModal] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [googleAvailable, setGoogleAvailable] = useState(true);
 
   const genderOptions = [
     { value: "男", label: "男", emoji: "👨" },
@@ -116,6 +118,51 @@ const handleSubmit = async (e) => {
     }
   }; // <--- 你之前漏掉的這個括號，就是紅屏報錯的元兇
 
+  // Google 註冊：email 尚未註冊才會建立帳號（不需 Email 驗證碼、不需設定密碼）
+  const finishGoogleLogin = (data) => {
+    login({
+      name: data.user_name,
+      user_name: data.user_name,
+      email: data.email,
+      user_id: data.user_id,
+      account_type: data.account_type,
+      token: data.token,
+      email_2fa_enabled: data.email_2fa_enabled,
+    });
+    navigate("/workspace", { replace: true });
+  };
+
+  const handleGoogleCredential = async (credential) => {
+    if (!credential || isSubmitting) return;
+    const post = (path) => fetch(apiUrl(path), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credential }),
+    }).then(async (res) => ({ res, data: await res.json().catch(() => ({})) }));
+    try {
+      setIsSubmitting(true);
+      let { res, data } = await post("/api/auth/google/register");
+      if (res.status === 409 && data.code === "GOOGLE_ALREADY_REGISTERED") {
+        // 已經用這個 Google 帳號註冊過：直接幫他登入
+        ({ res, data } = await post("/api/auth/google/login"));
+      }
+      if (res.ok) {
+        finishGoogleLogin(data);
+        return;
+      }
+      setIsSubmitting(false);
+      setAlertModal({
+        type: "error",
+        title: "Google 註冊失敗",
+        message: data.error || "Google 註冊失敗，請再試一次。",
+        onConfirm: data.code === "EMAIL_EXISTS" ? () => navigate("/login") : undefined,
+      });
+    } catch {
+      setIsSubmitting(false);
+      setAlertModal({ type: "error", title: "Google 註冊失敗", message: "連線失敗，請稍後再試。" });
+    }
+  };
+
   const closeAlertModal = () => {
     const onConfirm = alertModal?.onConfirm;
     setAlertModal(null);
@@ -179,6 +226,16 @@ const handleSubmit = async (e) => {
             <p className="auth-subtitle"><InterfaceText>{"已有帳號？"}</InterfaceText>{" "}
               <a className="auth-link" onClick={() => navigate("/login")} style={{ cursor: "pointer" }}><InterfaceText>{"立即登入"}</InterfaceText></a>
             </p>
+
+            {googleAvailable && (
+              <div className="mb-3">
+                <GoogleSignInButton text="signup_with" onCredential={handleGoogleCredential}
+                  disabled={isSubmitting} onUnavailable={() => setGoogleAvailable(false)} />
+                <div className="d-flex align-items-center gap-2 my-3" style={{ color: "#999", fontSize: 13 }}>
+                  <hr className="flex-grow-1 m-0" /><span><InterfaceText>{"或用 Email 註冊"}</InterfaceText></span><hr className="flex-grow-1 m-0" />
+                </div>
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} autoComplete="off">
               <div className="row g-3 mb-3">

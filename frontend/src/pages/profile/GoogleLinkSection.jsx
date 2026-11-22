@@ -79,6 +79,7 @@ export default function GoogleLinkSection({ token, email, twoFactorEnabled }) {
 
   if (unavailable || !status) return null;
   const bound = Boolean(status.bound);
+  const noPassword = status.password_set === false; // 用 Google 註冊、還沒設定密碼
 
   return (
     <div className="security-item" style={{ flexWrap: "wrap", gap: 12 }}>
@@ -90,11 +91,11 @@ export default function GoogleLinkSection({ token, email, twoFactorEnabled }) {
             <span className={`two-factor-status ${bound ? "enabled" : "disabled"}`}>{bound ? "已綁定" : "未綁定"}</span>
           </div>
           <p className="security-desc mb-0">
-            {bound ? `可使用 Google（${email}）登入。` : `可綁定與本帳號相同 Email（${email}）的 Google 帳號，之後用 Google 登入。`}
+            {noPassword ? `此帳號以 Google（${email}）註冊，請使用 Google 登入。` : bound ? `可使用 Google（${email}）登入。` : `可綁定與本帳號相同 Email（${email}）的 Google 帳號，之後用 Google 登入。`}
           </p>
         </div>
       </div>
-      {!mode && (
+      {!mode && !noPassword && (
         <button className="btn-security-action" type="button" onClick={() => { setMessage({ type: "", text: "" }); setMode(bound ? "unbind" : "bind"); }}>
           {bound ? "解除綁定" : "綁定 Google"}
         </button>
